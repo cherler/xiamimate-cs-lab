@@ -23,6 +23,7 @@ const SUITES = [
   ['第六批内核 · MST / 拓扑关键路径 / 分区 / inode', 'round6-graph-os.test.ts'],
   ['第七批内核 · B+树 / 遍历 / 信号量 / 位示图 / CSMA', 'round7-final.test.ts'],
   ['预置串的说法必须为真', 'presets-claims.test.ts'],
+  ['学习进度的规则', 'progress-rules.test.ts'],
 ] as const
 
 let failed = 0

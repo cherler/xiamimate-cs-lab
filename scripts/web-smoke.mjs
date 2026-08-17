@@ -682,6 +682,147 @@ for (const [name, directed] of [['Dijkstra', 0], ['最小生成树', 0], ['拓�
     : bad(`${name} 连线没接上：最远 ${gap}px，上限 ${limit}px`)
 }
 
+// ═══ 12. 学习进度与错题本 ═══════════════════════════════
+console.log('\n【12】进度与错题本：答错要进错题本，刷新后还在')
+await p.evaluate(() => localStorage.clear())
+await p.reload({ waitUntil: 'networkidle' })
+await p.waitForSelector('.tick')
+
+const chipText = () => p.evaluate(() =>
+  document.querySelector('.chip.act')?.textContent?.trim() ?? '')
+const openPg = async () => { await p.click('.chip.act'); await p.waitForTimeout(220) }
+const closePg = async () => { await p.click('.pgx'); await p.waitForTimeout(200) }
+
+// 初始：0 掌握、错题本空
+{
+  const c = await chipText()
+  await openPg()
+  const empty = await p.evaluate(() => ({
+    queue: document.querySelectorAll('.pgqueue li').length,
+    empty: !!document.querySelector('.pgempty'),
+    sum: document.querySelector('.pgsum')?.textContent?.trim(),
+  }))
+  await closePg()
+  c.includes('0 /') && empty.queue === 0 && empty.empty
+    ? ok(`初始状态：页眉「${c}」，错题本为空并给出下一步提示`)
+    : bad(`初始状态不对：chip=${c} ${JSON.stringify(empty)}`)
+}
+
+// 故意答错一问 → 必须进错题本
+await nav('页面置换')
+await p.click('.probpick button >> nth=1')
+await p.waitForTimeout(300)
+await p.fill('.qlist li:nth-child(1) input', '__zzz__')
+await p.click('.qlist li:nth-child(1) .qrow button')
+await p.waitForTimeout(220)
+{
+  const badge = await p.evaluate(() =>
+    document.querySelector('.qlist li:nth-child(1) .qbadge')?.textContent?.trim())
+  await openPg()
+  const q = await p.evaluate(() => ({
+    n: document.querySelectorAll('.pgqueue li button').length,
+    first: document.querySelector('.pgqueue li .qq')?.textContent?.slice(0, 20),
+    meta: document.querySelector('.pgqueue li .meta')?.textContent?.trim(),
+  }))
+  await closePg()
+  badge === '错过' && q.n === 1 && q.meta?.includes('错 1 次')
+    ? ok(`答错一问：题目上标「${badge}」，错题本收进 1 条（${q.meta}）`)
+    : bad(`错题没进错题本：badge=${badge} ${JSON.stringify(q)}`)
+}
+
+// 刷新后记录必须还在 —— 这是"留存"的全部意义
+await p.reload({ waitUntil: 'networkidle' })
+await p.waitForSelector('.tick')
+{
+  await openPg()
+  const q = await p.evaluate(() => document.querySelectorAll('.pgqueue li button').length)
+  await closePg()
+  q === 1
+    ? ok('刷新页面后错题本里那一条仍在 —— 记录真的落盘了')
+    : bad(`刷新后记录丢了：错题本 ${q} 条`)
+}
+
+// 从错题本点进去 → 必须跳到对应实验、选中对应真题、高亮那一问
+{
+  await openPg()
+  await p.click('.pgqueue li button >> nth=0')
+  await p.waitForTimeout(420)
+  const landed = await p.evaluate(() => ({
+    title: document.querySelector('.top h1')?.textContent,
+    problemOn: document.querySelector('.probpick button.on')?.textContent?.trim(),
+    focused: document.querySelectorAll('.qlist li.focused').length,
+    maskGone: !document.querySelector('.pgmask'),
+  }))
+  landed.title === '页面置换' && landed.focused === 1 && landed.maskGone
+    ? ok(`从错题本点进去：跳到「${landed.title}」并选中「${landed.problemOn}」，高亮那一问`)
+    : bad(`跳转不对：${JSON.stringify(landed)}`)
+}
+
+// 连续答对两次才出师
+{
+  //  跳转过来是全新挂载，还没有任何反馈元素 —— 先故意错一次把正确答案露出来。
+  //  （第一版直接去读 .nomark，取到空串，于是"两次答对"其实是两次答错。）
+  await p.fill('.qlist li:nth-child(1) input', '__zzz__')
+  await p.click('.qlist li:nth-child(1) .qrow button')
+  await p.waitForTimeout(200)
+  const correct = await p.evaluate(() =>
+    document.querySelector('.qlist li:nth-child(1) .nomark b')?.textContent ?? '')
+  if (!correct) bad('拿不到正确答案，后面几条无从谈起')
+  for (let k = 0; k < 2; k++) {
+    await p.fill('.qlist li:nth-child(1) input', correct)
+    await p.click('.qlist li:nth-child(1) .qrow button')
+    await p.waitForTimeout(200)
+    const badge = await p.evaluate(() =>
+      document.querySelector('.qlist li:nth-child(1) .qbadge')?.textContent?.trim())
+    const want = k === 0 ? '巩固中' : '已掌握'
+    badge === want
+      ? ok(`第 ${k + 1} 次答对 → 标记为「${badge}」`)
+      : bad(`第 ${k + 1} 次答对后标记是「${badge}」，应为「${want}」`)
+  }
+  await openPg()
+  const q = await p.evaluate(() => ({
+    queue: document.querySelectorAll('.pgqueue li button').length,
+    sum: document.querySelector('.pgsum b')?.textContent,
+  }))
+  await closePg()
+  q.queue === 0 && q.sum === '1'
+    ? ok(`连续答对两次后移出错题本，已掌握计数变成 ${q.sum}`)
+    : bad(`出师规则不对：队列 ${q.queue} 条，已掌握 ${q.sum}`)
+}
+
+// 偏离原题配置时不许记账
+{
+  await p.click('.param:has-text("物理块数") .opts button:has-text("5")')
+  await p.waitForTimeout(280)
+  const notice = await p.evaluate(() => !!document.querySelector('.qnorec'))
+  const before = await chipText()
+  await p.fill('.qlist li:nth-child(1) input', '__zzz__')
+  await p.click('.qlist li:nth-child(1) .qrow button')
+  await p.waitForTimeout(220)
+  await openPg()
+  const q = await p.evaluate(() => document.querySelectorAll('.pgqueue li button').length)
+  await closePg()
+  const after = await chipText()
+  notice && q === 0 && before === after
+    ? ok('改了配置后作答：明说「不计入进度」，错题本没被污染，计数不变')
+    : bad(`偏离时仍在记账：提示=${notice} 队列=${q} chip ${before}→${after}`)
+}
+
+// 清空记录
+{
+  await p.click('.probpick button >> nth=0')      // 回到自由探索，免得残留
+  await openPg()
+  await p.click('.pgclear')
+  await p.waitForTimeout(150)
+  await p.click('.pgconfirm .danger')
+  await p.waitForTimeout(220)
+  const sum = await p.evaluate(() => document.querySelector('.pgsum b')?.textContent)
+  await closePg()
+  sum === '0'
+    ? ok('清空记录（带二次确认）→ 已掌握归零')
+    : bad(`清空没生效：已掌握 ${sum}`)
+}
+
 console.log(`\n${'─'.repeat(50)}`)
 console.log(errs.length ? `控制台错误 ${errs.length} 条：\n  ` + errs.slice(0, 4).join('\n  ') : '控制台无错误')
 console.log(fail === 0 ? '视图层冒烟：通过' : `视图层冒烟：失败 ${fail} 项`)

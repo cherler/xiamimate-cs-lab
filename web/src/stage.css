@@ -920,3 +920,84 @@
 .csw.coll{background:#E2664A26;border-color:#E2664A66}
 .csw.okslot{background:#45B39A26;border-color:#45B39A66}
 .csw.wait{background:#00000038}
+
+/* ═══ 进度与错题本 ═══ */
+.chip.act{cursor:pointer;position:relative;display:inline-flex;gap:6px;align-items:center}
+.chip.act:hover{color:var(--ink);border-color:var(--faint)}
+.chip.act .dot{background:var(--miss);color:#fff;font-size:9px;font-weight:700;
+  border-radius:8px;padding:0 5px;line-height:14px;min-width:14px;text-align:center}
+
+.pgmask{position:fixed;inset:0;background:#000000b8;backdrop-filter:blur(2px);
+  display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;z-index:50}
+/* 面板自己滚，页眉钉住 —— 30 个实验的列表会把它撑到视口两倍高，
+   整块跟着滚的话页眉和"已掌握 N/139"就看不见了 */
+.pgwrap{background:var(--panel);border:1px solid var(--line);border-radius:8px;
+  width:100%;max-width:760px;box-shadow:0 20px 60px #00000080;
+  max-height:calc(100vh - 80px);display:flex;flex-direction:column;min-height:0}
+.pghead{display:flex;align-items:baseline;gap:14px;padding:16px 20px;
+  border-bottom:1px solid var(--line);flex:0 0 auto}
+.pghead h2{margin:0;font-size:16px;font-weight:700}
+.pgsum{font-size:12.5px;color:var(--dim)}
+.pgsum b{color:var(--hit);font-family:var(--mono);font-size:15px}
+.pgx{margin-left:auto;background:none;border:0;color:var(--faint);cursor:pointer;
+  font-size:15px;padding:2px 6px;border-radius:4px}
+.pgx:hover{color:var(--ink);background:var(--panel-2)}
+.pgbody{padding:16px 20px 20px;display:flex;flex-direction:column;gap:20px;
+  overflow-y:auto;min-height:0}
+.pgcap{font-family:var(--mono);font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--faint);margin-bottom:9px;display:flex;gap:10px;align-items:baseline}
+.pgcap em{font-style:normal;text-transform:none;letter-spacing:.02em;font-size:11px;opacity:.85}
+.pgempty{margin:0;font-size:12.5px;color:var(--faint);line-height:1.9;
+  padding:14px 16px;background:#00000028;border-radius:6px}
+
+.pgqueue{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px}
+.pgqueue li button{width:100%;text-align:left;background:#00000028;border:1px solid var(--line);
+  border-left-width:2px;border-radius:6px;padding:9px 13px;cursor:pointer;color:var(--dim);
+  display:flex;flex-direction:column;gap:3px}
+.pgqueue li.wrong button{border-left-color:var(--miss)}
+.pgqueue li.shaky button{border-left-color:var(--now)}
+.pgqueue li button:hover{background:var(--panel-2);border-color:var(--faint)}
+.pgqueue .tag{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;color:var(--faint)}
+.pgqueue .qq{font-size:12.5px;color:var(--ink);line-height:1.6}
+.pgqueue .meta{font-size:10.5px;color:var(--faint)}
+.pgmore{font-size:11.5px;color:var(--faint);padding:6px 13px}
+
+.pggrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:9px}
+.pgcard{border:1px solid var(--line);border-radius:6px;padding:11px 13px;background:var(--panel-2);
+  display:flex;flex-direction:column;gap:6px}
+.pgcard .g{font-size:12px;color:var(--dim)}
+.pgcard .n{font-family:var(--mono);font-size:11px;color:var(--faint)}
+
+.pgbar{display:flex;height:6px;border-radius:3px;overflow:hidden;background:#00000048}
+.pgbar i{display:block;height:100%}
+.pgbar .m{background:var(--hit)}
+.pgbar .s{background:var(--now)}
+.pgbar .w{background:var(--miss)}
+
+.pgexps{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:5px}
+.pgexps li{display:grid;grid-template-columns:1fr 120px 52px;gap:11px;align-items:center;
+  font-size:12px;color:var(--dim);padding:3px 0}
+.pgexps li.done .t{color:var(--hit)}
+.pgexps .n{font-family:var(--mono);font-size:10.5px;color:var(--faint);text-align:right}
+
+.pgfoot{border-top:1px solid var(--line);padding-top:14px;display:flex;
+  flex-direction:column;gap:10px}
+.pgnote{margin:0;font-size:11px;color:var(--faint);line-height:1.9}
+.pgnote b{color:var(--dim)}
+.pgclear{align-self:flex-start;background:none;border:1px solid var(--line);color:var(--faint);
+  border-radius:4px;padding:4px 12px;cursor:pointer;font-size:11.5px}
+.pgclear:hover{color:var(--miss);border-color:#E2664A66}
+.pgconfirm{display:flex;gap:9px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--miss)}
+.pgconfirm button{background:var(--panel-2);border:1px solid var(--line);color:var(--dim);
+  border-radius:4px;padding:4px 12px;cursor:pointer;font-size:11.5px}
+.pgconfirm button.danger{border-color:#E2664A66;color:var(--miss)}
+
+/* 题目上的掌握徽章 */
+.qbadge{margin-left:8px;font-size:9.5px;padding:1px 6px;border-radius:8px;
+  font-family:var(--mono);letter-spacing:.04em;vertical-align:1px}
+.qbadge.mastered{background:#45B39A1c;color:var(--hit);border:1px solid #45B39A44}
+.qbadge.shaky{background:#F0B42918;color:var(--now);border:1px solid #F0B42944}
+.qbadge.wrong{background:#E2664A16;color:var(--miss);border:1px solid #E2664A44}
+.qlist li.focused{outline:1px solid var(--now);outline-offset:6px;border-radius:4px}
+.qnorec{margin:0 0 11px;font-size:11.5px;color:var(--faint)}
+.qnorec b{color:var(--miss)}

@@ -15,7 +15,9 @@ import { StepLog, ParamPanel, Readouts, Violations, Bounds } from './shell/Panel
 import { ProblemPanel } from './shell/ProblemPanel.tsx'
 import { SequenceEditor, parseSequence, formatSequence } from './shell/SequenceEditor.tsx'
 import { EntityEditor } from './shell/EntityEditor.tsx'
-import { problemsFor } from './problems.ts'
+import { problemsFor, PROBLEMS } from './problems.ts'
+import { ProgressPanel } from './shell/ProgressPanel.tsx'
+import * as progress from './progress.ts'
 
 export default function App() {
   const [expId, setExpId] = useState(EXPERIMENTS[0].id)
@@ -32,6 +34,11 @@ export default function App() {
    */
   const [seqText, setSeqText] = useState<Record<string, string | undefined>>({})
   const [seqValues, setSeqValues] = useState<Record<string, number[] | undefined>>({})
+  /** 学习进度（只存本地）；懒加载一次，之后全在内存里 */
+  const [store, setStore] = useState<progress.Store>(() => progress.load())
+  const [showProgress, setShowProgress] = useState(false)
+  /** 从错题本跳过来时要高亮的那一问 */
+  const [focusQ, setFocusQ] = useState<number | null>(null)
   /** 实体表的改动；undefined = 没改过，用 baseDoc.entities */
   const [entities, setEntities] = useState<Record<string, Entity[] | undefined>>({})
 
@@ -140,6 +147,37 @@ export default function App() {
   }
   function seek(i: number) { setIndex(i); }
 
+  function recordAnswer(problemId: string, qi: number, correct: boolean) {
+    setStore(s => {
+      const next = progress.record(s, progress.keyOf(problemId, qi), correct)
+      progress.save(next)
+      return next
+    })
+  }
+  /** 从错题本跳到某实验的某道题的某一问 */
+  function jumpToQuestion(experimentId: string, problemId: string, qi: number) {
+    if (experimentId !== expId) selectExp(experimentId)
+    setProblemId(problemId)
+    setOverrides(o => ({ ...o, [experimentId]: {} }))
+    setSeqText(t => ({ ...t, [experimentId]: undefined }))
+    setSeqValues(v => ({ ...v, [experimentId]: undefined }))
+    setEntities(e => ({ ...e, [experimentId]: undefined }))
+    setIndex(0); setPlaying(false)
+    setShowProgress(false)
+    setFocusQ(qi)
+  }
+
+  /** 页眉上的进度数字 —— 全量统计一次，便宜 */
+  const { mastered, totalQ, reviewCount } = useMemo(() => {
+    const all = PROBLEMS.flatMap(p => p.questions.map((_, qi) => ({ problemId: p.id, qi })))
+    const st = progress.statOf(store, all)
+    return {
+      mastered: st.mastered,
+      totalQ: st.total,
+      reviewCount: progress.reviewQueue(store, all).length,
+    }
+  }, [store])
+
   const grouped = EXPERIMENTS.reduce<Record<string, typeof EXPERIMENTS>>((acc, e) => {
     (acc[e.group] ??= []).push(e); return acc
   }, {})
@@ -155,6 +193,10 @@ export default function App() {
             : <span className="chip">{trace.length} 步</span>}
           {problem && <span className="chip on">{problem.source}</span>}
           <span className="chip">{EXPERIMENTS.length} 个实验</span>
+          <button className="chip act" onClick={() => setShowProgress(true)}>
+            进度 {mastered} / {totalQ}
+            {reviewCount > 0 && <b className="dot">{reviewCount}</b>}
+          </button>
         </div>
       </header>
 
@@ -224,7 +266,11 @@ export default function App() {
                   <ProblemPanel
                     problems={problems} activeId={problemId} trace={trace} doc={doc}
                     runDoc={runDoc} drifted={drifted}
-                    onPick={pickProblem} onRestore={restoreProblem} onSeek={seek}
+                    onPick={id => { pickProblem(id); setFocusQ(null) }}
+                    onRestore={restoreProblem} onSeek={seek}
+                    onAnswer={recordAnswer}
+                    statusOf={(pid, qi) => progress.statusOf(store.q[progress.keyOf(pid, qi)])}
+                    focusQ={focusQ}
                   />
                 </>
               : <div className="viol"><div className="t">无轨迹</div><p>当前配置跑不出任何一步。</p></div>}
@@ -239,6 +285,15 @@ export default function App() {
       </div>
 
       <Bounds items={exp.bounds} />
+
+      {showProgress && (
+        <ProgressPanel
+          store={store} experiments={EXPERIMENTS}
+          onJump={jumpToQuestion}
+          onClose={() => setShowProgress(false)}
+          onClear={() => { progress.clearAll(); setStore(progress.load()) }}
+        />
+      )}
     </div>
   )
 }
