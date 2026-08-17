@@ -196,13 +196,18 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
     associativity: 'number', replacement: 'string',
   },
   scheduler: { algorithm: 'string', quantum: 'number' },
+  page: { algorithm: 'string', frames: 'number' },
+  disk: { algorithm: 'string', headStart: 'number', maxTrack: 'number', direction: 'number' },
   tcp: { variant: 'string', initialCwnd: 'number', initialSsthresh: 'number', rounds: 'number' },
 }
 
-const ENUMS: Record<string, string[]> = {
-  replacement: ['LRU', 'FIFO'],
-  algorithm: ['FCFS', 'SJF', 'SRTF', 'RR'],
-  variant: ['Tahoe', 'Reno'],
+/** 同名参数在不同 kind 下取值不同 —— 所以按 kind 分表，不能只按字段名 */
+const ENUMS: Record<string, Record<string, string[]>> = {
+  cache:     { replacement: ['LRU', 'FIFO'] },
+  scheduler: { algorithm: ['FCFS', 'SJF', 'SRTF', 'RR'] },
+  tcp:       { variant: ['Tahoe', 'Reno'] },
+  page:      { algorithm: ['FIFO', 'LRU', 'OPT', 'CLOCK'] },
+  disk:      { algorithm: ['FCFS', 'SSTF', 'SCAN', 'C-SCAN', 'LOOK'] },
 }
 
 /**
@@ -280,8 +285,10 @@ export function validateDocument(raw: SimDocument): Violation[] {
       err(`params.${key}`, '必填字段缺失', got)
     } else if (typeof got !== want) {
       err(`params.${key}`, `类型应为 ${want}`, got)
-    } else if (ENUMS[key] && !ENUMS[key].includes(got as string)) {
-      err(`params.${key}`, `取值必须是 ${ENUMS[key].join(' / ')}`, got)
+    } else {
+      const allowed = ENUMS[doc.kind]?.[key]
+      if (allowed && !allowed.includes(got as string))
+        err(`params.${key}`, `取值必须是 ${allowed.join(' / ')}`, got)
     }
   }
   // 结构不过关就别往下查数值规则了，报错会串
@@ -315,6 +322,30 @@ export function validateDocument(raw: SimDocument): Violation[] {
       if ((e.at ?? 0) < 0) err(`entities.${e.id}.at`, '到达时刻不能为负', e.at)
     }
     if ((doc.params.quantum as number) <= 0) err('params.quantum', '时间片必须为正', doc.params.quantum)
+  }
+
+  if (doc.kind === 'page') {
+    if ((doc.params.frames as number) < 1) err('params.frames', '物理块数至少为 1', doc.params.frames)
+    const ref = doc.streams.find(s => s.name === 'referenceString')
+    if (!ref) err('streams', '缺少 referenceString')
+    else if (ref.values.length === 0) err('streams.referenceString', '引用串为空')
+    else if (ref.values.some(x => typeof x !== 'number' || x < 0))
+      err('streams.referenceString', '页号必须是非负数字')
+  }
+
+  if (doc.kind === 'disk') {
+    const p = doc.params
+    const maxT = p.maxTrack as number
+    const head = p.headStart as number
+    if (maxT < 1) err('params.maxTrack', '最大磁道号至少为 1', maxT)
+    if (head < 0 || head > maxT) err('params.headStart', `磁头初始位置须在 0..${maxT}`, head)
+    const req = doc.streams.find(s => s.name === 'requests')
+    if (!req) err('streams', '缺少 requests')
+    else if (req.values.length === 0) err('streams.requests', '请求队列为空')
+    else {
+      const bad = req.values.filter(x => typeof x !== 'number' || x < 0 || x > maxT)
+      if (bad.length) err('streams.requests', `有磁道号超出 0..${maxT}`, bad.slice(0, 3))
+    }
   }
 
   if (doc.kind === 'tcp') {

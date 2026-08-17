@@ -12,6 +12,8 @@ import type { SimDocument } from '@engine/core/document.ts'
 import { EXPERIMENTS } from './registry.ts'
 import { AxisBand } from './shell/AxisBand.tsx'
 import { StepLog, ParamPanel, Readouts, Violations, Bounds } from './shell/Panels.tsx'
+import { ProblemPanel } from './shell/ProblemPanel.tsx'
+import { problemsFor } from './problems.ts'
 
 export default function App() {
   const [expId, setExpId] = useState(EXPERIMENTS[0].id)
@@ -19,14 +21,27 @@ export default function App() {
   const [index, setIndex] = useState(0)
   const [tab, setTab] = useState(EXPERIMENTS[0].tabs[0].id)
   const [playing, setPlaying] = useState(false)
+  const [problemId, setProblemId] = useState<string | null>(null)
 
   const exp = EXPERIMENTS.find(e => e.id === expId)!
+  const problems = useMemo(() => problemsFor(exp.id), [exp])
+  const problem = problems.find(p => p.id === problemId) ?? null
 
-  // ── 唯一的真相来源：doc。参数改动只改 doc，其余全部派生。──
+  // ── 唯一的真相来源：doc。选了真题就用真题的配置，用户改的参数叠在上面。──
+  const baseDoc = problem?.doc ?? exp.defaultDoc
   const doc: SimDocument = useMemo(() => ({
-    ...exp.defaultDoc,
-    params: { ...exp.defaultDoc.params, ...(overrides[exp.id] ?? {}) },
-  }), [exp, overrides])
+    ...baseDoc,
+    params: { ...baseDoc.params, ...(overrides[exp.id] ?? {}) },
+  }), [baseDoc, exp.id, overrides])
+
+  // 参数被改得偏离原题时要明说 —— 因为答案是按当前配置算的
+  const drifted = problem !== null &&
+    Object.entries(overrides[exp.id] ?? {}).some(([k, v]) => problem.doc.params[k] !== v)
+
+  /** 供真题里"改个参数再算一遍"型的题用 */
+  const runDoc = useMemo(() => (d: SimDocument) => {
+    try { return run(exp.kernel.compile(d)) as unknown[] } catch { return [] }
+  }, [exp])
 
   const violations = useMemo(() => validateDocument(doc), [doc])
 
@@ -40,7 +55,16 @@ export default function App() {
 
   function selectExp(id: string) {
     const e = EXPERIMENTS.find(x => x.id === id)!
-    setExpId(id); setTab(e.tabs[0].id); setIndex(0); setPlaying(false)
+    setExpId(id); setTab(e.tabs[0].id); setIndex(0); setPlaying(false); setProblemId(null)
+  }
+  function pickProblem(id: string | null) {
+    setProblemId(id)
+    setOverrides(o => ({ ...o, [exp.id]: {} }))
+    setIndex(0); setPlaying(false)
+  }
+  function restoreProblem() {
+    setOverrides(o => ({ ...o, [exp.id]: {} }))
+    setIndex(0)
   }
   function setParam(key: string, v: number | string) {
     setOverrides(o => ({ ...o, [exp.id]: { ...(o[exp.id] ?? {}), [key]: v } }))
@@ -61,7 +85,8 @@ export default function App() {
           {violations.length > 0
             ? <span className="chip warn">配置不合法</span>
             : <span className="chip">{trace.length} 步</span>}
-          <span className="chip">阶段 1 · 视图层</span>
+          {problem && <span className="chip on">{problem.source}</span>}
+          <span className="chip">{EXPERIMENTS.length} 个实验</span>
         </div>
       </header>
 
@@ -110,6 +135,11 @@ export default function App() {
                     onTogglePlay={() => setPlaying(p => !p)}
                   />
                   <StepLog exp={exp} trace={trace} index={clamped} onSeek={seek} />
+                  <ProblemPanel
+                    problems={problems} activeId={problemId} trace={trace} doc={doc}
+                    runDoc={runDoc} drifted={drifted}
+                    onPick={pickProblem} onRestore={restoreProblem} onSeek={seek}
+                  />
                 </>
               : <div className="viol"><div className="t">无轨迹</div><p>当前配置跑不出任何一步。</p></div>}
         </div>

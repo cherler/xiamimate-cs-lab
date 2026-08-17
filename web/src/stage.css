@@ -117,3 +117,106 @@
 .phase .pd{font-size:11px;line-height:1.6;color:var(--faint)}
 .phase.on .pd{color:var(--dim)}
 .phasenow{border-top:1px solid var(--line);padding-top:4px}
+
+/* ═══ 页面置换：置换表 ═══ */
+.ptwrap{overflow-x:auto}
+.ptable{border-collapse:separate;border-spacing:2px;font-family:var(--mono);font-size:11.5px}
+.ptable th,.ptable td{min-width:26px;height:26px;text-align:center;border-radius:2px;
+  background:#00000030;border:1px solid var(--line);color:var(--dim);
+  font-variant-numeric:tabular-nums;font-weight:400;padding:0 4px}
+.ptable .rowhead{background:var(--panel-2);color:var(--faint);font-size:10px;
+  white-space:nowrap;text-align:right;padding-right:8px;min-width:48px}
+.ptable th.cur,.ptable td.cur{border-color:var(--now)}
+.ptable thead th.cur{color:var(--now);font-weight:700;background:#F0B42918}
+.ptable td.in{background:#F0B42918;color:var(--now);font-weight:700;border-color:#F0B42966}
+.ptable td.hit{background:#45B39A1f;color:var(--hit);font-weight:700;border-color:#45B39A55}
+.ptresult td{font-weight:700}
+.ptresult td.hit{color:var(--hit);background:#45B39A14}
+.ptresult td.fault{color:var(--miss);background:#E2664A14}
+.ptnote{margin:12px 0 0;font-size:12px;color:var(--dim);line-height:1.8}
+.ptnote b{color:var(--ink);font-family:var(--mono)}
+
+/* ═══ 页面置换：物理块 ═══ */
+.frames{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:8px}
+.frame{border:1px solid var(--line);background:var(--panel-2);border-radius:5px;padding:9px 11px}
+.frame.empty{border-style:dashed;opacity:.6}
+.frame.touched{border-color:var(--now);background:#F0B42914;box-shadow:0 0 0 1px #F0B42933}
+.frame .fno{font-family:var(--mono);font-size:9.5px;letter-spacing:.13em;color:var(--faint);
+  display:flex;justify-content:space-between;align-items:center}
+.frame .fno .hand{color:var(--now);font-size:13px}
+.frame .fpage{font-family:var(--mono);font-size:22px;font-weight:700;line-height:1.3}
+.frame.empty .fpage{color:var(--faint);font-size:14px}
+.frame.touched .fpage{color:var(--now)}
+.frame .fmeta{font-family:var(--mono);font-size:9.5px;color:var(--faint)}
+.frame .fmeta b{color:var(--faint)}
+.frame .fmeta b.on{color:var(--hit)}
+.evnote{margin:11px 0 0;font-size:12px;color:var(--dim)}
+.evnote b{color:var(--ink);font-family:var(--mono)}
+
+/* ═══ 磁盘调度：磁头轨迹 ═══ */
+.dwrap{position:relative}
+.dscale{position:relative;height:14px;margin:0 0 4px}
+.dscale span{position:absolute;transform:translateX(-50%);font-family:var(--mono);
+  font-size:9px;color:var(--faint)}
+.dplot{position:relative;border:1px solid var(--line);border-radius:4px;background:#00000026}
+.dplot svg{position:absolute;inset:0;width:100%;height:100%}
+.dnode{position:absolute;width:9px;height:9px;border-radius:50%;background:var(--now);
+  transform:translate(-50%,-50%);z-index:2}
+.dnode.future{background:#5D6480;opacity:.55}
+.dnode.start{background:var(--dim);width:7px;height:7px}
+.dnode.cur{box-shadow:0 0 0 3px #F0B4293d}
+.dnode em{position:absolute;left:12px;top:50%;transform:translateY(-50%);font-style:normal;
+  font-family:var(--mono);font-size:9.5px;color:var(--faint);white-space:nowrap}
+.dnode.cur em{color:var(--now);font-weight:700}
+.dlegend{display:flex;gap:16px;margin-top:10px;font-size:11.5px;color:var(--faint);flex-wrap:wrap}
+.dlegend b{color:var(--ink);font-family:var(--mono)}
+.dlegend .tot{margin-left:auto}
+
+/* ═══ 磁盘调度：本步状态 ═══ */
+.dbar{margin-bottom:14px}
+.dtrack{position:relative;height:34px;background:#00000030;border:1px solid var(--line);
+  border-radius:4px}
+.dreq{position:absolute;top:6px;width:2px;height:10px;background:#5D6480;transform:translateX(-50%)}
+.dhead{position:absolute;top:0;bottom:0;width:2px;background:var(--now);transform:translateX(-50%)}
+.dhead em{position:absolute;top:-2px;left:6px;font-style:normal;font-family:var(--mono);
+  font-size:10px;color:var(--now);font-weight:700}
+.dends{display:flex;justify-content:space-between;font-family:var(--mono);
+  font-size:9px;color:var(--faint);margin-top:3px}
+
+/* ═══ 真题面板 ═══ */
+.prob .body{display:flex;flex-direction:column;gap:11px}
+.probpick{display:flex;gap:5px;flex-wrap:wrap}
+.probpick button{background:var(--panel-2);border:1px solid var(--line);color:var(--dim);
+  border-radius:4px;padding:4px 10px;cursor:pointer;font-size:11.5px}
+.probpick button:hover{color:var(--ink);border-color:var(--faint)}
+.probpick button.on{background:#F0B42918;border-color:var(--now);color:var(--now);font-weight:600}
+.probidle{margin:0;font-size:12px;color:var(--faint);line-height:1.8}
+.probstate{margin:0;font-size:13px;color:var(--ink);line-height:1.9;
+  padding:10px 12px;background:var(--panel-2);border-radius:5px;border-left:2px solid var(--f-tag)}
+.probdrift{font-size:11.5px;color:var(--miss);display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+.probdrift b{color:var(--ink)}
+.probdrift button{background:none;border:1px solid var(--miss);color:var(--miss);
+  border-radius:3px;padding:2px 8px;cursor:pointer;font-size:11px}
+.qlist{margin:0;padding:0 0 0 20px;display:flex;flex-direction:column;gap:12px}
+.qlist li{list-style:decimal;color:var(--faint)}
+.qlist li::marker{font-family:var(--mono);font-size:11px}
+.qp{font-size:12.5px;color:var(--ink);margin-bottom:6px;line-height:1.7}
+.qrow{display:flex;gap:6px;align-items:center}
+.qrow input{background:var(--panel-2);border:1px solid var(--line);color:var(--ink);
+  border-radius:4px;padding:4px 9px;width:110px;font-family:var(--mono);font-size:12.5px}
+.qrow input:focus{border-color:var(--now);outline:none}
+.qu{font-family:var(--mono);font-size:10.5px;color:var(--faint)}
+.qrow button{background:var(--panel-2);border:1px solid var(--line);color:var(--dim);
+  border-radius:4px;padding:4px 11px;cursor:pointer;font-size:11.5px}
+.qrow button:hover{color:var(--ink);border-color:var(--faint)}
+.qlist li.right .qrow input{border-color:var(--hit)}
+.qlist li.wrong .qrow input{border-color:var(--miss)}
+.qfb{margin-top:6px;display:flex;gap:11px;align-items:center;flex-wrap:wrap;font-size:12px}
+.okmark{color:var(--hit);font-weight:600}
+.nomark{color:var(--miss)}
+.nomark b{color:var(--ink);font-family:var(--mono)}
+.qfb .jump{background:none;border:1px solid var(--now);color:var(--now);border-radius:3px;
+  padding:2px 9px;cursor:pointer;font-size:11px}
+.qfb .jump:hover{background:#F0B42918}
+.qhint{margin-top:5px;font-size:11.5px;color:var(--faint)}
+.chip.on{color:var(--now);border-color:#F0B42955;background:#F0B42912}

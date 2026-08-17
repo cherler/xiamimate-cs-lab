@@ -15,6 +15,7 @@ const SUITES = [
   ['标准 5 · 内核可插拔', 'kernel-pluggable.test.ts'],
   ['标准 6 · DSL 是唯一入口', 'dsl-sole-entry.test.ts'],
   ['L2 · 组合原语 compare', 'compose-l2.test.ts'],
+  ['新内核 · 页面置换 / 磁盘调度', 'new-kernels.test.ts'],
 ] as const
 
 let failed = 0

@@ -36,17 +36,36 @@ const snap = () => p.evaluate(() => ({
 await p.goto(URL, { waitUntil: 'networkidle' })
 await p.waitForSelector('.tick')
 
-console.log('\n【1】三个实验都能起来，且各自的舞台不同')
-for (const [i, name] of [['Cache 命中率'], ['进程调度甘特图'], ['TCP 拥塞窗口']].entries()) {
+const EXPS = [
+  ['Cache 命中率', 'cache'],
+  ['页面置换', 'page'],
+  ['进程调度甘特图', 'sched'],
+  ['磁盘调度', 'disk'],
+  ['TCP 拥塞窗口', 'tcp'],
+]
+console.log(`\n【1】${EXPS.length} 个实验都能起来，且各自的舞台不同`)
+for (const [i, [name, shot]] of EXPS.entries()) {
   await p.click(`.nav button >> nth=${i}`)
-  await p.waitForTimeout(200)
+  await p.waitForTimeout(220)
   const s = await snap()
-  const shot = ['cache', 'sched', 'tcp'][i]
   await p.screenshot({ path: `/tmp/web-${shot}.png`, fullPage: true })
-  s.title === name[0] && s.ticks > 0 && s.logRows > 0 && s.bounds
-    ? ok(`${name[0].padEnd(12)} ${s.ticks} 步 · tab[${s.tabs.join('/')}] · 有边界栏`)
-    : bad(`${name[0]} 起不来：${JSON.stringify(s)}`)
+  s.title === name && s.ticks > 0 && s.logRows > 0 && s.bounds
+    ? ok(`${name.padEnd(14)} ${String(s.ticks).padStart(2)} 步 · tab[${s.tabs.join('/')}] · 有边界栏`)
+    : bad(`${name} 起不来：${JSON.stringify(s)}`)
 }
+
+// 舞台必须真的不同 —— 不能五个实验长一个样
+const stageSigs = []
+for (let i = 0; i < EXPS.length; i++) {
+  await p.click(`.nav button >> nth=${i}`); await p.waitForTimeout(200)
+  stageSigs.push(await p.evaluate(() => {
+    const el = document.querySelector('.col > .card')
+    return [...el.querySelectorAll('*')].map(x => x.className).filter(Boolean).slice(0, 8).join(',')
+  }))
+}
+new Set(stageSigs).size === EXPS.length
+  ? ok(`五个舞台的 DOM 结构互不相同（渲染层可替换的实证）`)
+  : bad(`有舞台长得一样：${stageSigs.length - new Set(stageSigs).size} 处重复`)
 
 console.log('\n【2】验收标准 3：改一个状态，多个视图一起变（视图之间零互写）')
 await p.click('.nav button >> nth=0')
@@ -116,6 +135,63 @@ const sweep = await p.evaluate(() => ({
 sweep.bars >= 3
   ? ok(`命中率随相联度：${sweep.bars} 个扫描点 ${sweep.vals.join(' ')}`)
   : bad(`扫描视图没渲染：${JSON.stringify(sweep)}`)
+
+// ═══ 6. 真题面板 ═══════════════════════════════════════
+console.log('\n【6】真题：选题 → 载入配置 → 判题 → 跳到那一步')
+await p.click('.nav button >> nth=1')          // 页面置换（有 Belady 那道题）
+await p.waitForTimeout(250)
+const probBefore = await snap()
+await p.click('.probpick button >> nth=1')     // 第一道真题
+await p.waitForTimeout(300)
+const probAfter = await p.evaluate(() => ({
+  statement: document.querySelector('.probstate')?.textContent?.slice(0, 24),
+  questions: document.querySelectorAll('.qlist li').length,
+  chipOn: !!document.querySelector('.chip.on'),
+}))
+probAfter.questions > 0 && probAfter.statement && probAfter.chipOn
+  ? ok(`选中真题：${probAfter.questions} 问 · 题干「${probAfter.statement}…」· 页眉有标记`)
+  : bad(`真题没载入：${JSON.stringify(probAfter)}`)
+
+// 故意填错 → 必须判错并给出正确答案
+await p.fill('.qlist li:nth-child(1) input', '999')
+await p.click('.qlist li:nth-child(1) .qrow button')
+await p.waitForTimeout(200)
+const wrong = await p.evaluate(() => ({
+  cls: document.querySelector('.qlist li:nth-child(1)')?.className,
+  fb: document.querySelector('.qlist li:nth-child(1) .nomark')?.textContent,
+  jump: !!document.querySelector('.qlist li:nth-child(1) .jump'),
+}))
+wrong.cls === 'wrong' && wrong.fb && wrong.jump
+  ? ok(`填错被判错，给出正确答案「${wrong.fb.trim()}」并提供跳转`)
+  : bad(`判错逻辑不对：${JSON.stringify(wrong)}`)
+
+// 用它给的正确答案再填一次 → 必须判对（说明答案是真从轨迹派生的）
+const correct = await p.evaluate(() =>
+  document.querySelector('.qlist li:nth-child(1) .nomark b')?.textContent ?? '')
+await p.fill('.qlist li:nth-child(1) input', correct)
+await p.click('.qlist li:nth-child(1) .qrow button')
+await p.waitForTimeout(200)
+const right2 = await p.evaluate(() => document.querySelector('.qlist li:nth-child(1)')?.className)
+right2 === 'right'
+  ? ok(`填入它给的答案「${correct}」判对 —— 答案确实从轨迹派生`)
+  : bad(`填对了却没判对：class=${right2}`)
+
+// 跳转按钮必须真的改变当前步
+const stepBefore = await p.evaluate(() => document.querySelector('.tick.cur')?.getAttribute('aria-label'))
+await p.click('.qlist li:nth-child(1) .jump').catch(() => {})
+await p.waitForTimeout(200)
+const stepAfter = await p.evaluate(() => document.querySelector('.tick.cur')?.getAttribute('aria-label'))
+stepBefore !== stepAfter
+  ? ok(`「跳到第 N 步看为什么」生效：${stepBefore} → ${stepAfter}`)
+  : bad(`跳转没生效，仍停在 ${stepAfter}`)
+
+// 改参数 → 必须提示已偏离原题
+await p.click('.param:has-text("物理块数") .opts button:has-text("5")')
+await p.waitForTimeout(250)
+const drift = await p.evaluate(() => !!document.querySelector('.probdrift'))
+drift ? ok('改参数后提示「配置已被改动，答案按当前配置算」')
+      : bad('改参数后没提示偏离原题')
+void probBefore
 
 console.log(`\n${'─'.repeat(50)}`)
 console.log(errs.length ? `控制台错误 ${errs.length} 条：\n  ` + errs.slice(0, 4).join('\n  ') : '控制台无错误')
