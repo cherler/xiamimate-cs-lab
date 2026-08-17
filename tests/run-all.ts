@@ -17,6 +17,7 @@ const SUITES = [
   ['L2 · 组合原语 compare', 'compose-l2.test.ts'],
   ['新内核 · 页面置换 / 磁盘调度', 'new-kernels.test.ts'],
   ['第二批内核 · 排序 / Dijkstra / 银行家 / ARQ', 'round2-kernels.test.ts'],
+  ['第三批内核 · 浮点 / 流水线 / 虚存 / 乘除', 'round3-arch.test.ts'],
   ['预置串的说法必须为真', 'presets-claims.test.ts'],
 ] as const
 

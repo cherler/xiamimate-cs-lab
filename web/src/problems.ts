@@ -19,6 +19,11 @@ import type { SortState } from '@engine/kernels/sort.ts'
 import type { DijkstraState } from '@engine/kernels/dijkstra.ts'
 import type { BankerState } from '@engine/kernels/banker.ts'
 import type { ArqState } from '@engine/kernels/arq.ts'
+import type { FloatState } from '@engine/kernels/float.ts'
+import type { PipeState } from '@engine/kernels/pipeline.ts'
+import type { VmState } from '@engine/kernels/vm.ts'
+import type { MulState } from '@engine/kernels/multiply.ts'
+import { PIPE_PRESETS, VM_PRESETS } from '@engine/presets/entities.ts'
 
 /** 跑任意配置，供"改个参数再算一遍"型的题用 —— 仍然不手写答案 */
 export type RunDoc = (doc: SimDocument) => unknown[]
@@ -541,9 +546,187 @@ const arqProblems: Problem[] = [
   },
 ]
 
+// ═══ IEEE 754 ══════════════════════════════════════════
+const floatProblems: Problem[] = [
+  {
+    id: 'float-1',
+    experimentId: 'float',
+    source: '典型题型 · 浮点数的机器表示',
+    statement:
+      '将十进制数 −12.5 表示为 IEEE 754 单精度浮点数（1 位符号 + 8 位阶码 + 23 位尾数，偏置 127）。',
+    doc: {
+      kind: 'float', params: { format: 'single', operation: 'encode' }, entities: [],
+      streams: [{ name: 'operands', values: [-12.5] }],
+    },
+    questions: [
+      q<FloatState>({
+        prompt: '符号位 S 是多少？',
+        answer: t => last(t).bits[0],
+        revealStep: t => t.findIndex(s => s.phase === 'sign'),
+      }),
+      q<FloatState>({
+        prompt: '阶码字段（8 位二进制）是？', kind: 'text',
+        hint: '真值 e 加上偏置 127',
+        answer: t => last(t).bits.slice(1, 9),
+        revealStep: t => t.findIndex(s => s.phase === 'exponent'),
+      }),
+      q<FloatState>({
+        prompt: '完整的 32 位机器数用十六进制表示是？（如 0xC1480000）', kind: 'text',
+        answer: t => '0x' + BigInt('0b' + last(t).bits).toString(16).toUpperCase().padStart(8, '0'),
+        revealStep: t => t.length - 1,
+      }),
+      q<FloatState>({
+        prompt: '把这个数改成 0.1，尾数还能精确表示吗？（填 能 或 不能）', kind: 'text',
+        hint: '在上面的操作数框里把 −12.5 改成 0.1，看第 3 步的说明',
+        answer: (_t, d, runDoc) => {
+          const t = runDoc({ ...d, streams: [{ name: 'operands', values: [0.1] }] }) as FloatState[]
+          return t.some(s => String(s.detail['是否有限'] ?? '').includes('无限')) ? '不能' : '能'
+        },
+      }),
+    ],
+  },
+]
+
+// ═══ 流水线 ════════════════════════════════════════════
+const pipeProblems: Problem[] = [
+  {
+    id: 'pipe-1',
+    experimentId: 'pipeline',
+    source: '典型题型 · 流水线数据冒险与前递',
+    statement:
+      '五段流水线（IF/ID/EX/MEM/WB），四条算术指令依次相关：'
+      + '每一条都要用上一条刚写入的寄存器。寄存器堆前半周期写、后半周期读。',
+    doc: {
+      kind: 'pipeline', params: { forwarding: 0 },
+      entities: PIPE_PRESETS[1].entities, streams: [],
+    },
+    questions: [
+      q<PipeState>({
+        prompt: '不采用数据前递时，执行完这 4 条指令共需多少个时钟周期？', unit: '周期',
+        answer: t => String(t.length),
+        revealStep: t => t.length - 1,
+      }),
+      q<PipeState>({
+        prompt: '采用数据前递后，共需多少个时钟周期？', unit: '周期',
+        hint: '把右侧「数据前递」切到 1',
+        answer: (_t, d, runDoc) =>
+          String((runDoc({ ...d, params: { ...d.params, forwarding: 1 } }) as PipeState[]).length),
+      }),
+      q<PipeState>({
+        prompt: '前递省下了多少个周期？', unit: '周期',
+        answer: (t, d, runDoc) =>
+          String(t.length - (runDoc({ ...d, params: { ...d.params, forwarding: 1 } }) as PipeState[]).length),
+      }),
+      q<PipeState>({
+        prompt: '若 4 条指令互不相关，理想情况下需要多少周期？', unit: '周期',
+        hint: '段数 + (指令数 − 1)',
+        answer: (_t, d) => String(5 + d.entities.filter(e => e.type === 'inst').length - 1),
+      }),
+    ],
+  },
+]
+
+// ═══ 虚存 ══════════════════════════════════════════════
+const vmProblems: Problem[] = [
+  {
+    id: 'vm-1',
+    experimentId: 'vm',
+    source: '典型题型 · 虚地址转换与 TLB',
+    statement:
+      '某系统采用分页管理，虚地址 16 位，页大小 4KB，TLB 有 4 项、全相联、LRU 替换。'
+      + '页表如右表所示（有效位为 0 表示该页不在内存）。CPU 依次访问给定的虚地址序列。',
+    doc: {
+      kind: 'vm',
+      params: { virtualBits: 16, pageSizeBytes: 4096, tlbEntries: 4 },
+      entities: VM_PRESETS[0].entities,
+      streams: [{ name: 'virtualAddresses', values: [0x0000, 0x0FFF, 0x1000, 0x2ABC, 0x3001, 0x4001, 0x0002, 0x5FFF] }],
+    },
+    questions: [
+      q<VmState>({
+        prompt: '虚地址中页内偏移占多少位？', unit: '位',
+        hint: '页大小 4KB = 2^12',
+        answer: (_t, d) => String(Math.log2(d.params.pageSizeBytes as number)),
+        revealStep: () => 0,
+      }),
+      q<VmState>({
+        prompt: '访问 0x2ABC 时，虚页号是多少？',
+        answer: t => String(t[3].vpn),
+        revealStep: () => 3,
+      }),
+      q<VmState>({
+        prompt: '访问 0x2ABC 得到的物理地址是？（十六进制，如 0x3ABC）', kind: 'text',
+        answer: t => t[3].paddr === null ? '缺页' : '0x' + t[3].paddr.toString(16).toUpperCase(),
+        revealStep: () => 3,
+      }),
+      q<VmState>({
+        prompt: '整个序列中发生了几次缺页？', unit: '次',
+        answer: t => String(last(t).faults),
+        revealStep: t => t.findIndex(s => s.outcome === 'fault'),
+      }),
+      q<VmState>({
+        prompt: '把 TLB 缩到 1 项，TLB 命中次数变成多少？', unit: '次',
+        hint: '在右侧把「TLB 项数」切到 1',
+        answer: (_t, d, runDoc) => {
+          const t = runDoc({ ...d, params: { ...d.params, tlbEntries: 1 } }) as VmState[]
+          return String(t[t.length - 1].tlbHits)
+        },
+      }),
+    ],
+  },
+]
+
+// ═══ 定点乘除 ══════════════════════════════════════════
+const mulProblems: Problem[] = [
+  {
+    id: 'mul-1',
+    experimentId: 'multiply',
+    source: '典型题型 · Booth 算法',
+    statement:
+      '用 Booth 算法计算 (−5) × 3，字长 8 位，结果用补码表示。'
+      + '（乘数末尾补一个附加位 0，每轮看「末位 + 附加位」两位决定加、减还是不动。）',
+    doc: {
+      kind: 'multiply', params: { algorithm: 'Booth', bits: 8 }, entities: [],
+      streams: [{ name: 'operands', values: [-5, 3] }],
+    },
+    questions: [
+      q<MulState>({
+        prompt: '共需要多少轮？', unit: '轮',
+        hint: '一位乘每轮处理一位',
+        answer: (_t, d) => String(d.params.bits),
+        revealStep: t => t.length - 1,
+      }),
+      q<MulState>({
+        prompt: '第 1 轮的判断位组合是？（如 01）', kind: 'text',
+        answer: t => t.find(s => s.round === 1 && s.judge)?.judge ?? '—',
+        revealStep: t => t.findIndex(s => s.round === 1 && !!s.judge),
+      }),
+      q<MulState>({
+        prompt: '最终乘积是多少（十进制）？',
+        answer: t => {
+          const m = last(t).log.match(/= (-?\d+)（/)
+          return m ? m[1] : '—'
+        },
+        revealStep: t => t.length - 1,
+      }),
+      q<MulState>({
+        prompt: '改用加减交替法算 11 ÷ 3，商是多少？',
+        hint: '把算法切到「加减交替」，操作数改成 11 3',
+        answer: (_t, d, runDoc) => {
+          const t = runDoc({
+            ...d, params: { ...d.params, algorithm: '加减交替' },
+            streams: [{ name: 'operands', values: [11, 3] }],
+          }) as MulState[]
+          return String(t[t.length - 1].q)
+        },
+      }),
+    ],
+  },
+]
+
 export const PROBLEMS: Problem[] = [
   ...cacheProblems, ...pageProblems, ...schedProblems, ...tcpProblems, ...diskProblems,
   ...sortProblems, ...dijkstraProblems, ...bankerProblems, ...arqProblems,
+  ...floatProblems, ...pipeProblems, ...vmProblems, ...mulProblems,
 ]
 
 export const problemsFor = (experimentId: string) =>

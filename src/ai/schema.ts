@@ -206,6 +206,10 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
     protocol: 'string', windowSize: 'number', totalFrames: 'number',
     delay: 'number', timeout: 'number',
   },
+  float: { format: 'string', operation: 'string' },
+  pipeline: { forwarding: 'number' },
+  vm: { virtualBits: 'number', pageSizeBytes: 'number', tlbEntries: 'number' },
+  multiply: { algorithm: 'string', bits: 'number' },
 }
 
 /** 同名参数在不同 kind 下取值不同 —— 所以按 kind 分表，不能只按字段名 */
@@ -217,6 +221,8 @@ const ENUMS: Record<string, Record<string, string[]>> = {
   disk:      { algorithm: ['FCFS', 'SSTF', 'SCAN', 'C-SCAN', 'LOOK'] },
   sort:      { algorithm: ['直接插入', '希尔', '冒泡', '简单选择', '快速', '堆', '归并'] },
   arq:       { protocol: ['SW', 'GBN', 'SR'] },
+  float:     { format: ['single', 'double'], operation: ['encode', 'add', 'sub'] },
+  multiply:  { algorithm: ['原码一位乘', 'Booth', '加减交替'] },
 }
 
 /**
@@ -437,6 +443,79 @@ export function validateDocument(raw: SimDocument): Violation[] {
       if (!['frame', 'ack'].includes(String(e.attrs.target)))
         err(`entities.${e.id}.target`, '丢失对象只能是 frame 或 ack', e.attrs.target)
       if (seq < 0 || seq >= N) err(`entities.${e.id}.seq`, `序号 ${seq} 超出 0..${N - 1}`, seq)
+    }
+  }
+
+  if (doc.kind === 'float') {
+    const ops = doc.streams.find(s => s.name === 'operands')
+    const need = doc.params.operation === 'encode' ? 1 : 2
+    if (!ops) err('streams', '缺少 operands')
+    else if (ops.values.length < need)
+      err('streams.operands', `${doc.params.operation === 'encode' ? '编码' : '加减'}需要 ${need} 个操作数`, ops.values.length)
+    else if (ops.values.some(v => typeof v !== 'number' || !Number.isFinite(v)))
+      err('streams.operands', '操作数必须是有限的数字')
+  }
+
+  if (doc.kind === 'pipeline') {
+    const insts = doc.entities.filter(e => e.type === 'inst')
+    if (insts.length === 0) err('entities', '至少要有一条指令')
+    if (insts.length > 12) err('entities', '超过 12 条指令时空图会看不过来', insts.length)
+    const ids = insts.map(e => e.id)
+    const dup = ids.filter((x, i) => ids.indexOf(x) !== i)
+    if (dup.length) err('entities', `指令编号重复：${[...new Set(dup)].join('、')}`, dup[0])
+    const OPS = ['add', 'sub', 'and', 'or', 'lw', 'sw', 'beq', 'bne', 'j']
+    for (const e of insts) {
+      if (!OPS.includes(String(e.attrs.op)))
+        err(`entities.${e.id}.op`, `未知指令：合法的有 ${OPS.join(' / ')}`, e.attrs.op)
+      //  写回自己的源寄存器不算错，但写 R0 之类的常零寄存器在多数体系里是无效写
+      if (String(e.attrs.rd) === 'R0')
+        err(`entities.${e.id}.rd`, 'R0 恒为零，不能作为目的寄存器', e.attrs.rd)
+    }
+  }
+
+  if (doc.kind === 'vm') {
+    const p = doc.params
+    const page = p.pageSizeBytes as number
+    const vb = p.virtualBits as number
+    if (!isPow2(page)) err('params.pageSizeBytes', '页大小必须是 2 的幂', page)
+    if (vb < 1 || vb > 32) err('params.virtualBits', '虚地址位数须在 1..32', vb)
+    else if (page > Math.pow(2, vb)) err('params.pageSizeBytes', `页大小超过整个虚地址空间`, page)
+    if ((p.tlbEntries as number) < 1) err('params.tlbEntries', 'TLB 至少 1 项', p.tlbEntries)
+    const pages = Math.pow(2, vb) / page
+    const ptes = doc.entities.filter(e => e.type === 'pte')
+    if (ptes.length === 0) err('entities', '页表不能为空')
+    const pids = ptes.map(e => e.id)
+    const pdup = pids.filter((x, i) => pids.indexOf(x) !== i)
+    if (pdup.length) err('entities', `页号重复：${[...new Set(pdup)].join('、')}`, pdup[0])
+    for (const e of ptes) {
+      const pn = Number(e.id)
+      if (!Number.isInteger(pn) || pn < 0 || pn >= pages)
+        err(`entities.${e.id}`, `页号超出 0..${pages - 1}`, e.id)
+    }
+    const seq = doc.streams.find(s => s.name === 'virtualAddresses')
+    if (!seq) err('streams', '缺少 virtualAddresses')
+    else if (seq.values.length === 0) err('streams.virtualAddresses', '访问序列为空')
+    else {
+      const oob = seq.values.filter(v => typeof v !== 'number' || v < 0 || v >= Math.pow(2, vb))
+      if (oob.length) err('streams.virtualAddresses', `有地址超出 0..2^${vb}−1`, oob.slice(0, 3))
+    }
+  }
+
+  if (doc.kind === 'multiply') {
+    const bits = doc.params.bits as number
+    if (![4, 8, 16].includes(bits)) err('params.bits', '位数只支持 4 / 8 / 16', bits)
+    const ops = doc.streams.find(s => s.name === 'operands')
+    if (!ops) err('streams', '缺少 operands')
+    else if (ops.values.length < 2) err('streams.operands', '需要两个操作数', ops.values.length)
+    else {
+      const [a, b] = ops.values as number[]
+      const lim = Math.pow(2, bits - 1)
+      if (!Number.isInteger(a) || a < -lim || a >= lim)
+        err('streams.operands', `第 1 个操作数须在 ${-lim}..${lim - 1}（${bits} 位补码）`, a)
+      if (!Number.isInteger(b) || b < -lim || b >= lim)
+        err('streams.operands', `第 2 个操作数须在 ${-lim}..${lim - 1}`, b)
+      if (doc.params.algorithm === '加减交替' && b === 0)
+        err('streams.operands', '除数不能为 0', b)
     }
   }
 

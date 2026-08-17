@@ -199,3 +199,72 @@ export const ARQ_PRESETS: EntityPreset[] = [
     entities: [],
   },
 ]
+
+// ═══ 流水线指令序列 ═════════════════════════════════════
+const inst = (id: string, op: string, rd = '', rs = '', rt = '', taken = 0) =>
+  ({ id, type: 'inst', attrs: { op, rd, rs, rt, taken } })
+
+export const PIPE_PRESETS: EntityPreset[] = [
+  {
+    label: '无相关',
+    note: '四条指令互不依赖 —— 周期数恰好等于 段数 + (n−1)，没有一个气泡',
+    entities: [
+      inst('I1', 'add', 'R1', 'R2', 'R3'),
+      inst('I2', 'add', 'R4', 'R5', 'R6'),
+      inst('I3', 'add', 'R7', 'R8', 'R9'),
+      inst('I4', 'add', 'R10', 'R11', 'R12'),
+    ],
+  },
+  {
+    label: '连环 RAW',
+    note: '每条都要上一条刚算出的结果 —— 不开前递气泡最多，开了前递能全消',
+    entities: [
+      inst('I1', 'add', 'R1', 'R2', 'R3'),
+      inst('I2', 'add', 'R4', 'R1', 'R5'),
+      inst('I3', 'add', 'R6', 'R4', 'R7'),
+      inst('I4', 'add', 'R8', 'R6', 'R9'),
+    ],
+  },
+  {
+    label: 'load-use',
+    note: 'lw 的结果紧接着就被用 —— 这是前递唯一救不了的相关，必插一个气泡',
+    entities: [
+      inst('I1', 'lw', 'R1', 'R2'),
+      inst('I2', 'add', 'R3', 'R1', 'R4'),
+      inst('I3', 'add', 'R5', 'R6', 'R7'),
+    ],
+  },
+  {
+    label: '分支跳转',
+    note: '分支在 EX 段才判定 —— 那时后面两条已经取进来了，只能冲刷掉',
+    entities: [
+      inst('I1', 'add', 'R1', 'R2', 'R3'),
+      inst('I2', 'beq', '', 'R1', 'R4', 1),
+      inst('I3', 'add', 'R5', 'R6', 'R7'),
+      inst('I4', 'add', 'R8', 'R9', 'R10'),
+    ],
+  },
+]
+
+// ═══ 页表 ═══════════════════════════════════════════════
+const pte = (page: number, frame: number, valid = 1) =>
+  ({ id: String(page), type: 'pte', attrs: { frame, valid } })
+
+export const VM_PRESETS: EntityPreset[] = [
+  {
+    label: '教材经典',
+    note: '六个页表项，其中页 3 无效 —— 访问它必然缺页',
+    entities: [pte(0, 5), pte(1, 9), pte(2, 3), pte(3, 0, 0), pte(4, 7), pte(5, 2)],
+  },
+  {
+    label: '全部有效',
+    note: '所有页都在内存里 —— 只会有 TLB 未命中，永远不会缺页',
+    entities: [pte(0, 5), pte(1, 9), pte(2, 3), pte(3, 6), pte(4, 7), pte(5, 2),
+               pte(6, 1), pte(7, 4)],
+  },
+  {
+    label: '大半缺页',
+    note: '只有两页在内存 —— 缺页次数远多于命中，抖动的典型场景',
+    entities: [pte(0, 5), pte(1, 9), pte(2, 0, 0), pte(3, 0, 0), pte(4, 0, 0), pte(5, 0, 0)],
+  },
+]

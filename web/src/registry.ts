@@ -27,7 +27,19 @@ import {
 } from '@engine/presets/sequences.ts'
 import {
   SCHED_PRESETS, DIJKSTRA_PRESETS, BANKER_PRESETS, TCP_PRESETS, ARQ_PRESETS, NODES,
+  PIPE_PRESETS, VM_PRESETS,
 } from '@engine/presets/entities.ts'
+import {
+  VM_PRESETS_SEQ, FLOAT_PRESETS, MUL_PRESETS,
+} from '@engine/presets/sequences.ts'
+import { floatKernel, type FloatState } from '@engine/kernels/float.ts'
+import { pipelineKernel, type PipeState } from '@engine/kernels/pipeline.ts'
+import { vmKernel, type VmState } from '@engine/kernels/vm.ts'
+import { multiplyKernel, type MulState } from '@engine/kernels/multiply.ts'
+import { FloatStage } from './stages/FloatStage.tsx'
+import { PipelineStage } from './stages/PipelineStage.tsx'
+import { VmStage } from './stages/VmStage.tsx'
+import { MultiplyStage } from './stages/MultiplyStage.tsx'
 import type { AnyExperiment, Experiment } from './types.ts'
 
 const pct = (n: number) => (n * 100).toFixed(1) + '%'
@@ -609,7 +621,234 @@ const arq: Experiment<ArqState> = {
   },
 }
 
+// ═══ IEEE 754 浮点 ═════════════════════════════════════
+const float: Experiment<FloatState> = {
+  id: 'float',
+  group: '计算机组成原理',
+  title: 'IEEE 754 浮点',
+  subtitle: '编码七步 · 加减四步',
+  kernel: floatKernel,
+  defaultDoc: {
+    kind: 'float',
+    params: { format: 'single', operation: 'encode' },
+    entities: [],
+    streams: [{ name: 'operands', values: [-12.5] }],
+  },
+  params: [
+    { key: 'format', label: '精度', kind: 'enum', options: ['single', 'double'] },
+    { key: 'operation', label: '做什么', kind: 'enum', options: ['encode', 'add', 'sub'] },
+  ],
+  sequence: {
+    stream: 'operands', label: '操作数',
+    hint: '编码填 1 个；加减填 2 个（可含小数与负号）',
+    maxLength: 2, presets: FLOAT_PRESETS,
+  },
+  bounds: [
+    '只建模规格化数；非规格化数、无穷、NaN 不在范围内',
+    '舍入固定为 IEEE 754 默认的「就近舍入、中间值取偶」',
+    '加减法保留 3 位保护位后舍入，与硬件的实际位宽可能不同',
+    '不建模运算过程中的上溢/下溢中断',
+  ],
+  tabs: [{ id: 'bits', label: '位域拆解' }, { id: 'steps', label: '推导链' }],
+  Stage: FloatStage,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: '完成' }
+    : s.phase === 'round' || s.phase === 'mantissa' ? { key: 'bad', label: '舍入' }
+    : { key: 'idle', label: '推导' }),
+  metric: s => (s.bits.length ? s.bits.split('').filter(b => b !== '?').length / s.bits.length : 0),
+  tickLabel: s => s.phase,
+  readouts: (s, doc) => [
+    { label: '精度', value: doc.params.format === 'double' ? '双精度 64 位' : '单精度 32 位' },
+    { label: '本步', value: s.phase },
+    { label: '已确定位', value: `${s.bits.split('').filter(b => b !== '?').length} / ${s.bits.length}` },
+    ...Object.entries(s.detail).slice(0, 4).map(([k, v]) => ({ label: k, value: v.slice(0, 28) })),
+  ],
+}
+
+// ═══ 流水线 ════════════════════════════════════════════
+const pipeline: Experiment<PipeState> = {
+  id: 'pipeline',
+  group: '计算机组成原理',
+  title: '指令流水线',
+  subtitle: '数据冒险 · 前递 · 分支冲刷',
+  kernel: pipelineKernel,
+  defaultDoc: {
+    kind: 'pipeline',
+    params: { forwarding: 0 },
+    entities: PIPE_PRESETS[1].entities,
+  streams: [],
+  },
+  params: [
+    { key: 'forwarding', label: '数据前递', kind: 'number', options: [0, 1], unit: '0 关 / 1 开' },
+  ],
+  entitySpec: {
+    tables: [{
+      type: 'inst',
+      label: '指令序列',
+      hint: 'rd 是写入的寄存器，rs / rt 是读取的',
+      columns: () => [
+        { key: 'id', label: '编号', kind: 'text', width: 56 },
+        { key: 'op', label: '操作', kind: 'enum',
+          options: ['add', 'sub', 'and', 'or', 'lw', 'sw', 'beq', 'bne'], width: 78 },
+        { key: 'rd', label: 'rd 写', kind: 'text', width: 62 },
+        { key: 'rs', label: 'rs 读', kind: 'text', width: 62 },
+        { key: 'rt', label: 'rt 读', kind: 'text', width: 62 },
+        { key: 'taken', label: '分支跳转', kind: 'number', width: 78 },
+      ],
+      newRow: i => ({
+        id: `I${i + 1}`, type: 'inst',
+        attrs: { op: 'add', rd: `R${i + 1}`, rs: 'R0', rt: 'R0', taken: 0 },
+      }),
+      minRows: 1, maxRows: 10,
+    }],
+    presets: PIPE_PRESETS,
+  },
+  bounds: [
+    '假设指令与数据存储分离，不建模结构冒险',
+    '寄存器堆「前半周期写、后半周期读」—— 所以生产者进 WB 那一拍消费者就能读到',
+    '分支在 EX 段判定，不建模分支预测与延迟槽',
+    '只建模 RAW，不建模 WAR / WAW（顺序单发射流水线里不会出现）',
+  ],
+  tabs: [{ id: 'chart', label: '时空图' }, { id: 'now', label: '本周期' }],
+  Stage: PipelineStage,
+  tone: s => (s.flushed.length ? { key: 'bad', label: '冲刷' }
+    : s.stalled.length ? { key: 'bad', label: '气泡' }
+    : Object.keys(s.forwards).length ? { key: 'good', label: '前递' }
+    : { key: 'idle', label: '推进' }),
+  metric: (s, _i) => {
+    const total = Object.keys(s.at).length
+    return total ? s.done / total : 0
+  },
+  tickLabel: s => `第 ${s.cycle} 周期`,
+  readouts: (s, doc) => {
+    const n = doc.entities.filter(e => e.type === 'inst').length
+    return [
+      { label: '周期', value: String(s.cycle) },
+      { label: '已完成', value: `${s.done} / ${n}` },
+      { label: '本周期停顿', value: s.stalled.join('、') || '无',
+        tone: s.stalled.length ? 'bad' : undefined },
+      { label: '本周期前递', value: Object.keys(s.forwards).join('、') || '无',
+        tone: Object.keys(s.forwards).length ? 'good' : undefined },
+      { label: '本周期冲刷', value: s.flushed.join('、') || '无',
+        tone: s.flushed.length ? 'bad' : undefined },
+      { label: '前递开关', value: doc.params.forwarding === 1 ? '已开启' : '已关闭' },
+    ]
+  },
+}
+
+// ═══ 虚存 + TLB ════════════════════════════════════════
+const vm: Experiment<VmState> = {
+  id: 'vm',
+  group: '计算机组成原理',
+  title: '虚地址转换与 TLB',
+  subtitle: '拆地址 · 查 TLB · 查页表',
+  kernel: vmKernel,
+  defaultDoc: {
+    kind: 'vm',
+    params: { virtualBits: 16, pageSizeBytes: 4096, tlbEntries: 4 },
+    entities: VM_PRESETS[0].entities,
+    streams: [{ name: 'virtualAddresses', values: VM_PRESETS_SEQ[0].values }],
+  },
+  params: [
+    { key: 'pageSizeBytes', label: '页大小', kind: 'number', options: [1024, 2048, 4096], unit: 'B' },
+    { key: 'tlbEntries', label: 'TLB 项数', kind: 'number', options: [1, 2, 4, 8], unit: '项' },
+    { key: 'virtualBits', label: '虚地址位数', kind: 'number', options: [12, 16], unit: '位' },
+  ],
+  sequence: {
+    stream: 'virtualAddresses', label: '访问的虚拟地址',
+    radix: 16, hint: '十六进制', maxLength: 20, presets: VM_PRESETS_SEQ,
+  },
+  entitySpec: {
+    tables: [{
+      type: 'pte',
+      label: '页表',
+      hint: '页号就是这一行的 id；有效位 0 表示不在内存',
+      columns: () => [
+        { key: 'id', label: '页号', kind: 'text', width: 58 },
+        { key: 'frame', label: '页框号', kind: 'number', width: 72 },
+        { key: 'valid', label: '有效位', kind: 'number', width: 66 },
+      ],
+      newRow: i => ({ id: String(i), type: 'pte', attrs: { frame: 0, valid: 1 } }),
+      minRows: 1, maxRows: 16, chunk: 8,
+    }],
+    presets: VM_PRESETS,
+  },
+  bounds: [
+    '单级页表，不建模多级页表与页目录',
+    'TLB 为全相联、LRU 替换；组相联 TLB 不在范围内',
+    '不建模写回、脏位与访问位',
+    '缺页只标记出来，不模拟换页的具体过程（那是页面置换实验的事）',
+  ],
+  tabs: [{ id: 'chain', label: '转换链' }, { id: 'tables', label: 'TLB 与页表' }],
+  Stage: VmStage,
+  tone: s => (s.outcome === 'tlbHit' ? { key: 'good', label: 'TLB 命中' }
+    : s.outcome === 'ptHit' ? { key: 'idle', label: '查页表' }
+    : { key: 'bad', label: '缺页' }),
+  metric: s => s.tlbHits / (s.i + 1),
+  tickLabel: (s, i) => `第 ${i + 1} 次 0x${s.vaddr.toString(16).toUpperCase()}`,
+  readouts: s => [
+    { label: 'TLB 命中', value: String(s.tlbHits), tone: 'good' },
+    { label: '查页表', value: String(s.ptHits) },
+    { label: '缺页', value: String(s.faults), tone: 'bad' },
+    { label: '虚页号', value: String(s.vpn) },
+    { label: '页内偏移', value: String(s.offset) },
+    { label: '物理地址', value: s.paddr === null ? '缺页' : '0x' + s.paddr.toString(16).toUpperCase(),
+      tone: s.paddr === null ? 'bad' : undefined },
+  ],
+}
+
+// ═══ 定点乘除 ══════════════════════════════════════════
+const multiply: Experiment<MulState> = {
+  id: 'multiply',
+  group: '计算机组成原理',
+  title: '定点乘除逐步',
+  subtitle: '原码一位乘 · Booth · 加减交替',
+  kernel: multiplyKernel,
+  defaultDoc: {
+    kind: 'multiply',
+    params: { algorithm: 'Booth', bits: 8 },
+    entities: [],
+    streams: [{ name: 'operands', values: [5, 3] }],
+  },
+  params: [
+    { key: 'algorithm', label: '算法', kind: 'enum', options: ['原码一位乘', 'Booth', '加减交替'] },
+    { key: 'bits', label: '位数', kind: 'number', options: [4, 8], unit: '位' },
+  ],
+  sequence: {
+    stream: 'operands', label: '操作数',
+    hint: '两个数：乘法是 被乘数 乘数；除法是 被除数 除数',
+    maxLength: 2, presets: MUL_PRESETS,
+  },
+  bounds: [
+    '一位乘/一位除，不建模两位乘、阵列乘法器',
+    '加减交替法按「符号单独算、数值部分用绝对值」的形式做，与直接补码除法的中间步骤不同',
+    '乘积取低 2n 位，不判溢出',
+    '除法要求商能装进 n 位；被除数远大于除数时结果无意义',
+  ],
+  tabs: [{ id: 'regs', label: '寄存器' }, { id: 'table', label: '逐轮表' }],
+  Stage: MultiplyStage,
+  tone: s => (s.act === 'add' || s.act === 'sub' ? { key: 'good', label: '加减' }
+    : s.act === 'shift' ? { key: 'idle', label: '移位' }
+    : s.act === 'none' ? { key: 'idle', label: '不动' }
+    : { key: 'good', label: '完成' }),
+  metric: (s, _i) => {
+    const b = s.hi.length
+    return b ? Math.min(1, s.round / b) : 0
+  },
+  tickLabel: s => `第 ${s.round} 轮 ${s.act}`,
+  readouts: (s, doc) => [
+    { label: '算法', value: String(doc.params.algorithm) },
+    { label: '轮次', value: `${s.round} / ${doc.params.bits}` },
+    { label: '本步动作', value: s.act },
+    { label: '判断位', value: s.judge || '—' },
+    ...(s.q !== null
+      ? [{ label: '商 / 余数', value: `${s.q} / ${s.rem}` }]
+      : [{ label: '部分积', value: s.hi }]),
+  ],
+}
+
 export const EXPERIMENTS = [
-  cache, page, scheduler, disk, banker,
-  sort, dijkstra, tcp, arq,
+  cache, float, multiply, pipeline, vm,
+  page, scheduler, disk, banker,
+  sort, dijkstra,
+  tcp, arq,
 ] as unknown as AnyExperiment[]

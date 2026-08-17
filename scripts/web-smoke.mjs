@@ -15,6 +15,11 @@ p.on('console', m => { if (m.type() === 'error') errs.push('console: ' + m.text(
 p.on('response', r => { if (r.status() === 404) errs.push('404: ' + r.url()) })
 
 let fail = 0
+/** 按名字切实验 —— 别用 nth，加一个实验就会全盘错位（已经栽过两次） */
+const nav = async name => {
+  await p.click(`.nav button:has-text("${name}")`)
+  await p.waitForTimeout(260)
+}
 const ok = m => console.log(`  ✅ ${m}`)
 const bad = m => { fail++; console.log(`  ❌ ${m}`) }
 
@@ -38,6 +43,10 @@ await p.waitForSelector('.tick')
 
 const EXPS = [
   ['Cache 命中率', 'cache'],
+  ['IEEE 754 浮点', 'float'],
+  ['定点乘除逐步', 'multiply'],
+  ['指令流水线', 'pipeline'],
+  ['虚地址转换与 TLB', 'vm'],
   ['页面置换', 'page'],
   ['进程调度甘特图', 'sched'],
   ['磁盘调度', 'disk'],
@@ -74,8 +83,7 @@ new Set(stageSigs).size === EXPS.length
   : bad(`有舞台长得一样：${stageSigs.length - new Set(stageSigs).size} 处重复`)
 
 console.log('\n【2】验收标准 3：改一个状态，多个视图一起变（视图之间零互写）')
-await p.click('.nav button >> nth=0')
-await p.waitForTimeout(200)
+await nav('Cache 命中率')
 const a = await snap()
 await p.click('.tick >> nth=5')
 await p.waitForTimeout(200)
@@ -144,8 +152,7 @@ sweep.bars >= 3
 
 // ═══ 6. 真题面板 ═══════════════════════════════════════
 console.log('\n【6】真题：选题 → 载入配置 → 判题 → 跳到那一步')
-await p.click('.nav button >> nth=1')          // 页面置换（有 Belady 那道题）
-await p.waitForTimeout(250)
+await nav('页面置换')                          // 有 Belady 那道题
 const probBefore = await snap()
 await p.click('.probpick button >> nth=1')     // 第一道真题
 await p.waitForTimeout(300)
@@ -201,10 +208,6 @@ void probBefore
 
 // ═══ 7. 四个新实验各自的核心视觉 ═══════════════════════
 console.log('\n【7】新实验的舞台必须真的画出东西（不能只有壳）')
-const nav = async name => {
-  await p.click(`.nav button:has-text("${name}")`)
-  await p.waitForTimeout(260)
-}
 
 // 排序：数组条 + 逐趟表
 await nav('排序逐趟')
@@ -335,7 +338,8 @@ Number(srTx) < Number(gbnTx) && Number(gbnTx) > 0
 
 // ═══ 8. 新实验的真题 ═══════════════════════════════════
 console.log('\n【8】四个新实验的真题都能判对（答案从轨迹派生）')
-for (const name of ['排序逐趟', 'Dijkstra', '银行家算法', '滑动窗口']) {
+for (const name of ['排序逐趟', 'Dijkstra', '银行家算法', '滑动窗口',
+                     'IEEE 754', '指令流水线', '虚地址转换', '定点乘除']) {
   await nav(name)
   const picks = await p.evaluate(() => document.querySelectorAll('.probpick button').length)
   if (picks < 2) { bad(`${name} 没有真题可选`); continue }
