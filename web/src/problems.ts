@@ -23,7 +23,11 @@ import type { FloatState } from '@engine/kernels/float.ts'
 import type { PipeState } from '@engine/kernels/pipeline.ts'
 import type { VmState } from '@engine/kernels/vm.ts'
 import type { MulState } from '@engine/kernels/multiply.ts'
-import { PIPE_PRESETS, VM_PRESETS } from '@engine/presets/entities.ts'
+import { PIPE_PRESETS, VM_PRESETS, ROUTE_PRESETS } from '@engine/presets/entities.ts'
+import type { CrcState } from '@engine/kernels/crc.ts'
+import type { HammingState } from '@engine/kernels/hamming.ts'
+import type { SubnetState } from '@engine/kernels/subnet.ts'
+import type { HsState } from '@engine/kernels/handshake.ts'
 
 /** 跑任意配置，供"改个参数再算一遍"型的题用 —— 仍然不手写答案 */
 export type RunDoc = (doc: SimDocument) => unknown[]
@@ -723,10 +727,234 @@ const mulProblems: Problem[] = [
   },
 ]
 
+// ═══ CRC ═══════════════════════════════════════════════
+const crcProblems: Problem[] = [
+  {
+    id: 'crc-1',
+    experimentId: 'crc',
+    source: '典型题型 · CRC 校验码计算',
+    statement:
+      '数据为 1101011011，生成多项式 G(x) = x⁴ + x + 1（即 10011）。'
+      + '求循环冗余校验码（FCS），并写出实际发送的码字。',
+    doc: {
+      kind: 'crc',
+      params: { generator: '10011', operation: 'encode', errorAt: -1 },
+      entities: [],
+      streams: [{ name: 'dataBits', values: [1,1,0,1,0,1,1,0,1,1] }],
+    },
+    questions: [
+      q<CrcState>({
+        prompt: '校验码是几位？', unit: '位',
+        hint: '生成多项式的位数减 1',
+        answer: (_t, d) => String(String(d.params.generator).length - 1),
+      }),
+      q<CrcState>({
+        prompt: '数据后面要补几个 0 再做除法？', unit: '个',
+        answer: (_t, d) => String(String(d.params.generator).length - 1),
+        revealStep: () => 0,
+      }),
+      q<CrcState>({
+        prompt: '余数（FCS）是多少？', kind: 'text',
+        answer: t => last(t).remainder,
+        revealStep: t => t.length - 1,
+      }),
+      q<CrcState>({
+        prompt: '实际发送的码字是多少？', kind: 'text',
+        answer: t => last(t).dividend,
+        revealStep: t => t.length - 1,
+      }),
+      q<CrcState>({
+        prompt: '若第 3 位在传输中翻转，接收端算出的余数还是全 0 吗？（填 是 或 否）', kind: 'text',
+        hint: '把「做什么」切到 check，「注入错误位」切到 3',
+        answer: (_t, d, runDoc) => {
+          const t = runDoc({ ...d, params: { ...d.params, operation: 'check', errorAt: 3 } }) as CrcState[]
+          return /^0*$/.test(t[t.length - 1].remainder) ? '是' : '否'
+        },
+      }),
+    ],
+  },
+]
+
+// ═══ 海明码 ════════════════════════════════════════════
+const hammingProblems: Problem[] = [
+  {
+    id: 'ham-1',
+    experimentId: 'hamming',
+    source: '典型题型 · 海明码的编码与纠错',
+    statement:
+      '对 4 位数据 1011 编海明码（偶校验，校验位放在 1、2、4 位）。'
+      + '传输中第 5 位发生了翻转，接收端如何定位并纠正？',
+    doc: {
+      kind: 'hamming',
+      params: { operation: 'check', errorAt: 5, evenParity: 1 },
+      entities: [],
+      streams: [{ name: 'dataBits', values: [1,0,1,1] }],
+    },
+    questions: [
+      q<HammingState>({
+        prompt: '需要几位校验位？', unit: '位',
+        hint: '满足 2^r ≥ k + r + 1 的最小 r',
+        answer: (_t, d) => {
+          const k = (d.streams.find(x => x.name === 'dataBits')?.values ?? []).length
+          let r = 0
+          while (Math.pow(2, r) < k + r + 1) r++
+          return String(r)
+        },
+        revealStep: () => 0,
+      }),
+      q<HammingState>({
+        prompt: '码字总长是多少位？', unit: '位',
+        answer: t => String(t[0].bits.length),
+        revealStep: () => 0,
+      }),
+      q<HammingState>({
+        prompt: 'P1 负责校验哪几位？（按位号从小到大，空格分隔）', kind: 'text',
+        hint: '位号的二进制里含 1 的那些位',
+        answer: t => (t.find(s => s.phase === 'parity' && s.p === 1)?.covers ?? []).join(' '),
+        revealStep: t => t.findIndex(s => s.phase === 'parity' && s.p === 1),
+      }),
+      q<HammingState>({
+        prompt: '接收端算出的校验子是多少？',
+        answer: t => String(last(t).syndrome),
+        revealStep: t => t.findIndex(s => s.phase === 'locate'),
+      }),
+      q<HammingState>({
+        prompt: '若改成第 7 位出错，校验子会是多少？',
+        hint: '把「让第几位出错」切到 7',
+        answer: (_t, d, runDoc) => {
+          const t = runDoc({ ...d, params: { ...d.params, errorAt: 7 } }) as HammingState[]
+          return String(t[t.length - 1].syndrome)
+        },
+      }),
+    ],
+  },
+]
+
+// ═══ 子网划分 ══════════════════════════════════════════
+const subnetProblems: Problem[] = [
+  {
+    id: 'sub-1',
+    experimentId: 'subnet',
+    source: '典型题型 · 子网划分',
+    statement:
+      '某主机的 IP 地址为 192.168.10.130，子网掩码为 /25（255.255.255.128）。'
+      + '求该子网的网络地址、广播地址与可用主机数。',
+    doc: {
+      kind: 'subnet',
+      params: { operation: 'subnet', prefix: 25, splitBits: 0 },
+      entities: ROUTE_PRESETS[0].entities,
+      streams: [{ name: 'addresses', values: [((192 << 24) | (168 << 16) | (10 << 8) | 130) >>> 0] }],
+    },
+    questions: [
+      q<SubnetState>({
+        prompt: '主机号占多少位？', unit: '位',
+        answer: (_t, d) => String(32 - (d.params.prefix as number)),
+        revealStep: t => t.findIndex(s => s.phase === 'mask'),
+      }),
+      q<SubnetState>({
+        prompt: '网络地址是？（点分十进制，如 192.168.10.128）', kind: 'text',
+        answer: t => {
+          const b = t.find(s => s.phase === 'network')!.bits
+          return (b.match(/.{8}/g) ?? []).map(x => parseInt(x, 2)).join('.')
+        },
+        revealStep: t => t.findIndex(s => s.phase === 'network'),
+      }),
+      q<SubnetState>({
+        prompt: '广播地址是？（点分十进制）', kind: 'text',
+        answer: t => {
+          const b = t.find(s => s.phase === 'broadcast')!.bits
+          return (b.match(/.{8}/g) ?? []).map(x => parseInt(x, 2)).join('.')
+        },
+        revealStep: t => t.findIndex(s => s.phase === 'broadcast'),
+      }),
+      q<SubnetState>({
+        prompt: '这个子网最多能分配给多少台主机？', unit: '台',
+        hint: '2^主机位 − 2（去掉网络地址和广播地址）',
+        answer: t => t.find(s => s.phase === 'hosts')!.detail['可用主机数'],
+        revealStep: t => t.findIndex(s => s.phase === 'hosts'),
+      }),
+      q<SubnetState>({
+        prompt: '改成 /26，可用主机数变成多少？', unit: '台',
+        hint: '把右侧「前缀长度」切到 26',
+        answer: (_t, d, runDoc) => {
+          const t = runDoc({ ...d, params: { ...d.params, prefix: 26 } }) as SubnetState[]
+          return t.find(s => s.phase === 'hosts')!.detail['可用主机数']
+        },
+      }),
+    ],
+  },
+]
+
+// ═══ TCP 连接管理 ══════════════════════════════════════
+const hsProblems: Problem[] = [
+  {
+    id: 'hs-1',
+    experimentId: 'handshake',
+    source: '典型题型 · 三次握手与四次挥手',
+    statement:
+      '客户端与服务器建立 TCP 连接，客户端初始序号 100，服务器初始序号 300；'
+      + '数据传输结束后由客户端主动关闭。',
+    doc: {
+      kind: 'handshake',
+      params: { scenario: 'both', clientSeq: 100, serverSeq: 300 },
+      entities: [], streams: [],
+    },
+    questions: [
+      q<HsState>({
+        prompt: '建立连接共交换多少个报文段？', unit: '个',
+        answer: (_t, d, runDoc) => {
+          const t = runDoc({ ...d, params: { ...d.params, scenario: 'connect' } }) as HsState[]
+          return String(t[t.length - 1].history.length)
+        },
+      }),
+      q<HsState>({
+        prompt: '第二次握手报文段的确认号 ack 是多少？',
+        hint: 'SYN 要消耗一个序号',
+        answer: t => {
+          const seg = t.map(s => s.seg).filter(Boolean)[1]
+          return String(seg!.ack)
+        },
+        revealStep: t => t.findIndex(s => s.seg?.flags === 'SYN+ACK'),
+      }),
+      q<HsState>({
+        prompt: '客户端收到 SYN+ACK 后进入什么状态？', kind: 'text',
+        answer: t => {
+          const k = t.findIndex(s => s.seg?.flags === 'SYN+ACK' && s.act === 'send')
+          return t.slice(k).find(s => s.act === 'arrive')?.client ?? '—'
+        },
+        revealStep: t => {
+          const k = t.findIndex(s => s.seg?.flags === 'SYN+ACK' && s.act === 'send')
+          return t.slice(k).findIndex(s => s.act === 'arrive') + k
+        },
+      }),
+      q<HsState>({
+        prompt: '服务器收到第一个 FIN 后进入什么状态？', kind: 'text',
+        hint: '它可能还有数据没发完，所以不能直接关',
+        answer: t => {
+          const k = t.findIndex(s => s.seg?.flags === 'FIN' && s.act === 'send')
+          return t.slice(k).find(s => s.act === 'arrive')?.server ?? '—'
+        },
+        revealStep: t => {
+          const k = t.findIndex(s => s.seg?.flags === 'FIN' && s.act === 'send')
+          return t.slice(k).findIndex(s => s.act === 'arrive') + k
+        },
+      }),
+      q<HsState>({
+        prompt: '释放连接共交换多少个报文段？', unit: '个',
+        answer: (_t, d, runDoc) => {
+          const t = runDoc({ ...d, params: { ...d.params, scenario: 'close' } }) as HsState[]
+          return String(t[t.length - 1].history.length)
+        },
+      }),
+    ],
+  },
+]
+
 export const PROBLEMS: Problem[] = [
   ...cacheProblems, ...pageProblems, ...schedProblems, ...tcpProblems, ...diskProblems,
   ...sortProblems, ...dijkstraProblems, ...bankerProblems, ...arqProblems,
   ...floatProblems, ...pipeProblems, ...vmProblems, ...mulProblems,
+  ...crcProblems, ...hammingProblems, ...subnetProblems, ...hsProblems,
 ]
 
 export const problemsFor = (experimentId: string) =>

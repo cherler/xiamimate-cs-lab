@@ -55,6 +55,10 @@ const EXPS = [
   ['Dijkstra 最短路', 'dijkstra'],
   ['TCP 拥塞窗口', 'tcp'],
   ['滑动窗口 ARQ', 'arq'],
+  ['CRC 循环冗余校验', 'crc'],
+  ['海明码', 'hamming'],
+  ['子网划分与路由匹配', 'subnet'],
+  ['TCP 连接管理', 'handshake'],
 ]
 console.log(`\n【1】${EXPS.length} 个实验都能起来，且各自的舞台不同`)
 for (const [i, [name, shot]] of EXPS.entries()) {
@@ -339,7 +343,8 @@ Number(srTx) < Number(gbnTx) && Number(gbnTx) > 0
 // ═══ 8. 新实验的真题 ═══════════════════════════════════
 console.log('\n【8】四个新实验的真题都能判对（答案从轨迹派生）')
 for (const name of ['排序逐趟', 'Dijkstra', '银行家算法', '滑动窗口',
-                     'IEEE 754', '指令流水线', '虚地址转换', '定点乘除']) {
+                     'IEEE 754', '指令流水线', '虚地址转换', '定点乘除',
+                     'CRC', '海明码', '子网划分', 'TCP 连接管理']) {
   await nav(name)
   const picks = await p.evaluate(() => document.querySelectorAll('.probpick button').length)
   if (picks < 2) { bad(`${name} 没有真题可选`); continue }

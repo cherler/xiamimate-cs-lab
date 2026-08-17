@@ -573,3 +573,97 @@
   padding:5px 0;border-radius:3px;background:#00000038;color:var(--dim);
   border:1px solid var(--line)}
 .mb.judge{border-color:var(--now);background:#F0B42920;color:var(--now);font-weight:700}
+
+/* ═══ CRC 长除法竖式 ═══ */
+.crcdiv{font-family:var(--mono);font-size:12px;min-width:min-content}
+.crow{display:flex;align-items:center;gap:8px;height:20px}
+.clab{min-width:78px;text-align:right;font-size:10px;color:var(--faint);white-space:nowrap}
+.cbits{display:grid;grid-template-columns:repeat(var(--n),18px);gap:1px}
+.cbit{text-align:center;color:var(--dim);border-radius:2px}
+.cbit.blank{color:transparent}
+.cbit.gen{color:var(--f-tag);background:#5B7FD41c}
+.cbit.hot{color:var(--now);background:#F0B42922;font-weight:700}
+.cbit.done{opacity:.35}
+.cbit.on{color:var(--ink)}
+.crow.q .cbit.on{color:var(--now);font-weight:700}
+.crow.gen.skip .clab{opacity:.5}
+.crow.res{border-bottom:1px solid var(--line)}
+.crow.res.cur .clab{color:var(--now)}
+.cgroup{margin-top:3px}
+.crccode{display:flex;gap:2px;flex-wrap:wrap;margin-bottom:10px}
+.ccb{min-width:22px;text-align:center;font-family:var(--mono);font-size:13px;padding:6px 0;
+  border-radius:3px;border:1px solid var(--line)}
+.ccb.data{background:#5B7FD41c;color:var(--f-tag);border-color:#5B7FD444}
+.ccb.fcs{background:#F0B42920;color:var(--now);border-color:#F0B42955}
+.crclegend{display:flex;gap:14px;font-size:11px;color:var(--faint);margin-bottom:11px}
+.crclegend span{display:flex;gap:5px;align-items:center}
+.cw{width:10px;height:10px;border-radius:2px;display:inline-block}
+.cw.data{background:#5B7FD41c;border:1px solid #5B7FD444}
+.cw.fcs{background:#F0B42920;border:1px solid #F0B42955}
+
+/* ═══ 海明码 ═══ */
+.hgrid{display:flex;flex-direction:column;gap:3px;min-width:min-content}
+.hrow{display:grid;grid-template-columns:88px repeat(var(--n),30px);gap:2px;align-items:center}
+.hlab{font-size:10px;color:var(--faint);text-align:right;padding-right:6px;white-space:nowrap}
+.hcell{text-align:center;font-family:var(--mono);font-size:11px;padding:3px 0;border-radius:3px;
+  background:#00000030;color:var(--dim);border:1px solid transparent}
+.hcell.num{font-size:10px;color:var(--faint)}
+.hcell.num.hot{color:var(--now)}
+.hcell.name.p{color:var(--f-idx);background:#9B6FCC18}
+.hcell.name.d{color:var(--f-tag);background:#5B7FD418}
+.hcell.bit{font-size:13px}
+.hcell.bit.p{color:var(--f-idx);background:#9B6FCC1c;border-color:#9B6FCC44}
+.hcell.bit.d{color:var(--f-tag);background:#5B7FD41c;border-color:#5B7FD444}
+.hcell.bit.cov{box-shadow:inset 0 -2px 0 var(--now)}
+.hcell.bit.hot{border-color:var(--now);background:#F0B42926;color:var(--now);font-weight:700}
+.hcell.bit.unk{color:var(--faint);opacity:.45}
+.hcell.binv{display:flex;flex-direction:column;gap:0;background:none;padding:0}
+.hcell.binv em{font-style:normal;font-size:8.5px;line-height:1.25;color:var(--faint);opacity:.6}
+.hcell.binv em.one{color:var(--now);opacity:1}
+.hsyn{margin:10px 0 0;font-size:12.5px;color:var(--now);font-weight:600}
+.hgroup{border:1px solid var(--line);border-radius:5px;padding:9px 11px;margin-bottom:8px;
+  background:#00000024}
+.hgroup.future{opacity:.4}
+.hgroup.cur{background:#F0B42910;border-color:#F0B42955}
+.ghead{display:flex;gap:10px;align-items:baseline;margin-bottom:6px;font-size:11.5px;color:var(--faint)}
+.ghead b{font-family:var(--mono);color:var(--f-idx);font-size:13px}
+.ghead em{font-style:normal;margin-left:auto}
+.ghead em.pass{color:var(--hit)} .ghead em.fail{color:var(--miss)}
+.gbits{display:flex;gap:2px;flex-wrap:wrap}
+.gb{min-width:22px;text-align:center;font-family:var(--mono);font-size:11.5px;padding:3px 0;
+  border-radius:2px;background:#00000030;color:var(--faint);border:1px solid transparent}
+.gb.in{color:var(--ink);background:#F0B42914;border-color:#F0B42933}
+.gb.self{border-color:var(--f-idx);color:var(--f-idx)}
+
+/* ═══ 子网 ═══ */
+.subline{display:flex;gap:9px;align-items:center;margin:11px 0;flex-wrap:wrap}
+.subline .k{font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--faint);min-width:56px}
+.subline .v{font-family:var(--mono);font-size:12px;color:var(--dim)}
+.sbits{display:flex;gap:1px;flex:1;min-width:200px}
+.sb{flex:1;text-align:center;font-family:var(--mono);font-size:9px;padding:2px 0;border-radius:2px;
+  background:#00000030;color:var(--faint)}
+.sb.on{background:#5B7FD426;color:var(--f-tag)}
+
+/* ═══ 握手时序图 ═══ */
+.hswrap{display:flex;flex-direction:column;gap:8px}
+.hslanes{display:flex;justify-content:space-between;font-size:10.5px;color:var(--faint);
+  font-family:var(--mono);letter-spacing:.08em;padding:0 8px}
+.hsplot{position:relative;width:100%}
+.hsplot svg{position:absolute;inset:0;width:100%;height:100%}
+.hstag{position:absolute;transform:translate(-50%,-50%);font-family:var(--mono);font-size:10px;
+  padding:3px 7px;border-radius:3px;background:var(--panel);border:1px solid var(--line);
+  color:var(--hit);white-space:nowrap;pointer-events:none;text-align:center;line-height:1.5}
+.hstag em{display:block;font-style:normal;font-size:8.5px;color:var(--faint)}
+.hstag b{display:block;font-size:9px;color:var(--miss)}
+.hstag.lost{color:var(--miss);border-color:#E2664A88}
+.hstag.future{opacity:.25}
+.hsnow{display:flex;gap:11px;margin-top:9px}
+.hsside{flex:1;border:1px solid var(--line);border-radius:5px;padding:9px 12px;background:var(--panel-2)}
+.hsside .k{display:block;font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;
+  color:var(--faint);margin-bottom:3px}
+.hsside b{font-family:var(--mono);font-size:14px}
+.hsside.c b{color:var(--f-tag)} .hsside.s b{color:var(--f-idx)}
+.hschain{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.hsnode{padding:6px 11px;border-radius:4px;border:1px solid var(--line);background:#00000028;
+  font-family:var(--mono);font-size:11px;color:var(--faint)}
+.hsnode.on{border-color:var(--now);background:#F0B42920;color:var(--now);font-weight:700}

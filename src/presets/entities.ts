@@ -268,3 +268,53 @@ export const VM_PRESETS: EntityPreset[] = [
     entities: [pte(0, 5), pte(1, 9), pte(2, 0, 0), pte(3, 0, 0), pte(4, 0, 0), pte(5, 0, 0)],
   },
 ]
+
+// ═══ 路由表（最长前缀匹配）═══════════════════════════════
+const ipn = (a: number, b: number, c: number, d: number) => ((a << 24) | (b << 16) | (c << 8) | d) >>> 0
+const route = (id: string, a: number, b: number, c: number, d: number, prefix: number, nextHop: string) =>
+  ({ id, type: 'route', attrs: { network: ipn(a, b, c, d), prefix, nextHop } })
+
+export const ROUTE_PRESETS: EntityPreset[] = [
+  {
+    label: '多条重叠',
+    note: '同一个地址能匹配三条 —— 正好用来说明"为什么要取最长的那条"',
+    entities: [
+      route('R1', 192, 168, 0, 0, 16, '接口 A'),
+      route('R2', 192, 168, 10, 0, 24, '接口 B'),
+      route('R3', 192, 168, 10, 128, 25, '接口 C'),
+      route('R4', 10, 0, 0, 0, 8, '接口 D'),
+    ],
+  },
+  {
+    label: '含默认路由',
+    note: '0.0.0.0/0 匹配一切但前缀最短 —— 只有别的都不匹配时才轮到它',
+    entities: [
+      route('默认', 0, 0, 0, 0, 0, '默认网关'),
+      route('R1', 192, 168, 0, 0, 16, '接口 A'),
+      route('R2', 172, 16, 0, 0, 12, '接口 B'),
+    ],
+  },
+  {
+    label: '无匹配项',
+    note: '路由表里没有一条能匹配 —— 既没有默认路由，只能丢弃',
+    entities: [
+      route('R1', 10, 0, 0, 0, 8, '接口 A'),
+      route('R2', 172, 16, 0, 0, 12, '接口 B'),
+    ],
+  },
+]
+
+// ═══ 握手丢包 ═══════════════════════════════════════════
+export const HS_PRESETS: EntityPreset[] = [
+  { label: '不丢包', note: '理想情况 —— 建连恰好三个报文段，断连恰好四个', entities: [] },
+  {
+    label: '第一个 SYN 丢失',
+    note: '客户端等超时后重发 SYN —— 连接仍能建立，只是多花了一个超时',
+    entities: [{ id: 'L1', type: 'loss', attrs: { nth: 1 } }],
+  },
+  {
+    label: 'SYN+ACK 丢失',
+    note: '服务器已进 SYN_RCVD，客户端却什么都没收到 —— 半开连接就是这么来的',
+    entities: [{ id: 'L1', type: 'loss', attrs: { nth: 2 } }],
+  },
+]

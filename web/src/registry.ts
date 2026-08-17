@@ -31,7 +31,17 @@ import {
 } from '@engine/presets/entities.ts'
 import {
   VM_PRESETS_SEQ, FLOAT_PRESETS, MUL_PRESETS,
+  CRC_PRESETS, HAMMING_PRESETS, SUBNET_PRESETS,
 } from '@engine/presets/sequences.ts'
+import { ROUTE_PRESETS, HS_PRESETS } from '@engine/presets/entities.ts'
+import { crcKernel, type CrcState } from '@engine/kernels/crc.ts'
+import { hammingKernel, type HammingState } from '@engine/kernels/hamming.ts'
+import { subnetKernel, type SubnetState } from '@engine/kernels/subnet.ts'
+import { handshakeKernel, type HsState } from '@engine/kernels/handshake.ts'
+import { CrcStage } from './stages/CrcStage.tsx'
+import { HammingStage } from './stages/HammingStage.tsx'
+import { SubnetStage } from './stages/SubnetStage.tsx'
+import { HandshakeStage } from './stages/HandshakeStage.tsx'
 import { floatKernel, type FloatState } from '@engine/kernels/float.ts'
 import { pipelineKernel, type PipeState } from '@engine/kernels/pipeline.ts'
 import { vmKernel, type VmState } from '@engine/kernels/vm.ts'
@@ -846,9 +856,238 @@ const multiply: Experiment<MulState> = {
   ],
 }
 
+// ═══ CRC ═══════════════════════════════════════════════
+const crc: Experiment<CrcState> = {
+  id: 'crc',
+  group: '计算机网络',
+  title: 'CRC 循环冗余校验',
+  subtitle: '模 2 长除法 · 检错',
+  kernel: crcKernel,
+  defaultDoc: {
+    kind: 'crc',
+    params: { generator: '10011', operation: 'encode', errorAt: -1 },
+    entities: [],
+    streams: [{ name: 'dataBits', values: CRC_PRESETS[0].values }],
+  },
+  params: [
+    { key: 'generator', label: '生成多项式', kind: 'enum',
+      options: ['110', '1001', '10011', '110101'] },
+    { key: 'operation', label: '做什么', kind: 'enum', options: ['encode', 'check'] },
+    { key: 'errorAt', label: '注入错误位', kind: 'number',
+      options: [-1, 0, 3, 7, 11], unit: '−1 表示不注入' },
+  ],
+  sequence: {
+    stream: 'dataBits', label: '数据位', hint: '只能填 0 和 1',
+    maxLength: 32, presets: CRC_PRESETS,
+  },
+  bounds: [
+    '只建模 CRC 的检错，不做纠错 —— CRC 本身也不具备纠错能力',
+    '生成多项式用二进制串给出，不涉及多项式的代数形式',
+    '不建模比特反转以外的差错（如突发差错的具体分布）',
+    '实际协议里的 CRC 还有初值、异或输出、位序反转等约定，本实验不含',
+  ],
+  tabs: [{ id: 'div', label: '长除法竖式' }, { id: 'result', label: '码字与判定' }],
+  Stage: CrcStage,
+  tone: s => (s.phase === 'verify'
+    ? (/^0*$/.test(s.remainder) ? { key: 'good', label: '无差错' } : { key: 'bad', label: '检出差错' })
+    : s.q === '1' ? { key: 'good', label: '异或' }
+    : s.phase === 'divide' ? { key: 'idle', label: '上商 0' }
+    : { key: 'idle', label: s.phase === 'init' ? '准备' : '结果' }),
+  metric: (s, i) => {
+    const n = s.dividend.length || 1
+    return s.at >= 0 ? (s.at + 1) / n : (s.phase === 'init' ? 0 : 1)
+  },
+  tickLabel: s => (s.at >= 0 ? `第 ${s.at + 1} 位 商${s.q}` : s.phase),
+  readouts: (s, doc) => [
+    { label: '生成多项式', value: String(doc.params.generator) },
+    { label: '校验位数', value: String(String(doc.params.generator).length - 1) },
+    { label: '当前商', value: s.quotient || '—' },
+    { label: '余数', value: s.remainder || '尚未算完' },
+    { label: '本步', value: s.at >= 0 ? `对齐第 ${s.at + 1} 位，上商 ${s.q}` : s.phase },
+  ],
+}
+
+// ═══ 海明码 ════════════════════════════════════════════
+const hamming: Experiment<HammingState> = {
+  id: 'hamming',
+  group: '计算机网络',
+  title: '海明码',
+  subtitle: '校验位布局 · 定位并纠正一位错',
+  kernel: hammingKernel,
+  defaultDoc: {
+    kind: 'hamming',
+    params: { operation: 'check', errorAt: 5, evenParity: 1 },
+    entities: [],
+    streams: [{ name: 'dataBits', values: HAMMING_PRESETS[0].values }],
+  },
+  params: [
+    { key: 'operation', label: '做什么', kind: 'enum', options: ['encode', 'check'] },
+    { key: 'errorAt', label: '让第几位出错', kind: 'number',
+      options: [0, 1, 2, 3, 5, 7], unit: '0 表示不出错' },
+    { key: 'evenParity', label: '校验方式', kind: 'number', options: [1, 0], unit: '1 偶 / 0 奇' },
+  ],
+  sequence: {
+    stream: 'dataBits', label: '数据位', hint: '只能填 0 和 1',
+    maxLength: 16, presets: HAMMING_PRESETS,
+  },
+  bounds: [
+    '只建模能纠一位错的基本海明码；加一位全校验的 SEC-DED（能纠一检二）不在范围内',
+    '假设最多出现一位错 —— 出两位错时校验子会指向一个错误的位置',
+    '校验位固定放在 2 的幂次位，这是最常见的约定',
+    '不建模突发差错与交织',
+  ],
+  tabs: [{ id: 'code', label: '码字与位号' }, { id: 'groups', label: '校验分组' }],
+  Stage: HammingStage,
+  tone: s => (s.phase === 'locate'
+    ? (s.syndrome === 0 ? { key: 'good', label: '无错' } : { key: 'bad', label: '定位到错位' })
+    : s.phase === 'inject' ? { key: 'bad', label: '注入错误' }
+    : s.ok === false ? { key: 'bad', label: '校验不通过' }
+    : s.ok === true ? { key: 'good', label: '校验通过' }
+    : { key: 'idle', label: '编码' }),
+  metric: s => (s.bits.length ? s.bits.split('').filter(b => b !== '?').length / s.bits.length : 0),
+  tickLabel: s => (s.p ? `P${s.p}` : s.phase),
+  readouts: (s, doc) => {
+    const k = (doc.streams.find(x => x.name === 'dataBits')?.values ?? []).length
+    return [
+      { label: '数据位数', value: String(k) },
+      { label: '校验位数', value: String(s.bits.length - k) },
+      { label: '码长', value: String(s.bits.length) },
+      { label: '本步校验位', value: s.p ? `P${s.p}` : '—' },
+      { label: '校验子', value: String(s.syndrome),
+        tone: s.syndrome > 0 ? 'bad' : undefined },
+      { label: '结论', value: s.phase === 'locate'
+          ? (s.syndrome === 0 ? '无错' : `第 ${s.syndrome} 位出错`) : '推导中' },
+    ]
+  },
+}
+
+// ═══ 子网划分 ══════════════════════════════════════════
+const subnet: Experiment<SubnetState> = {
+  id: 'subnet',
+  group: '计算机网络',
+  title: '子网划分与路由匹配',
+  subtitle: '掩码按位与 · 最长前缀',
+  kernel: subnetKernel,
+  defaultDoc: {
+    kind: 'subnet',
+    params: { operation: 'subnet', prefix: 25, splitBits: 0 },
+    entities: ROUTE_PRESETS[0].entities,
+    streams: [{ name: 'addresses', values: SUBNET_PRESETS[0].values }],
+  },
+  params: [
+    { key: 'operation', label: '做什么', kind: 'enum', options: ['subnet', 'lpm'] },
+    { key: 'prefix', label: '前缀长度', kind: 'number', options: [8, 16, 24, 25, 26, 30], unit: '位' },
+    { key: 'splitBits', label: '再借几位划子网', kind: 'number', options: [0, 1, 2, 3], unit: '位' },
+  ],
+  sequence: {
+    stream: 'addresses', label: '地址',
+    hint: '十六进制的 32 位地址（预置里给了常见的点分形式）',
+    radix: 16, maxLength: 1, presets: SUBNET_PRESETS,
+  },
+  entitySpec: {
+    tables: [{
+      type: 'route',
+      label: '路由表',
+      hint: '仅「最长前缀匹配」模式用；网络号的主机位必须为 0',
+      columns: () => [
+        { key: 'id', label: '项', kind: 'text', width: 66 },
+        { key: 'network', label: '网络号（十进制整数）', kind: 'number', width: 150 },
+        { key: 'prefix', label: '前缀', kind: 'number', width: 62 },
+        { key: 'nextHop', label: '下一跳', kind: 'text', width: 84 },
+      ],
+      newRow: i => ({ id: `R${i + 1}`, type: 'route', attrs: { network: 0, prefix: 0, nextHop: '默认' } }),
+      minRows: 1, maxRows: 10,
+    }],
+    presets: ROUTE_PRESETS,
+  },
+  bounds: [
+    '只做 IPv4，不含 IPv6',
+    '不区分公网/私网、不校验保留地址（如 127.0.0.0/8）',
+    '「可用主机数 = 2^h − 2」按传统约定；现代设备允许 /31 用于点对点链路',
+    '路由表按顺序线性比较，不建模实际路由器的 Trie / TCAM 查找结构',
+  ],
+  tabs: [{ id: 'bits', label: '地址位域' }, { id: 'detail', label: '结论' }],
+  Stage: SubnetStage,
+  tone: s => (s.phase === 'match'
+    ? (s.hit ? { key: 'good', label: '匹配' } : { key: 'bad', label: '不匹配' })
+    : s.phase === 'pick' ? { key: 'good', label: '选定' }
+    : { key: 'idle', label: '拆解' }),
+  metric: (s, i) => {
+    const ones = s.mask.indexOf('0') < 0 ? s.mask.length : s.mask.indexOf('0')
+    return ones / 32
+  },
+  tickLabel: s => (s.entry || s.phase),
+  readouts: s => [
+    ...Object.entries(s.detail).slice(0, 5).map(([k, v]) => ({ label: k, value: v.slice(0, 30) })),
+    { label: '本步', value: s.phase },
+  ],
+}
+
+// ═══ TCP 连接管理 ══════════════════════════════════════
+const handshake: Experiment<HsState> = {
+  id: 'handshake',
+  group: '计算机网络',
+  title: 'TCP 连接管理',
+  subtitle: '三次握手 · 四次挥手 · 状态迁移',
+  kernel: handshakeKernel,
+  defaultDoc: {
+    kind: 'handshake',
+    params: { scenario: 'both', clientSeq: 100, serverSeq: 300 },
+    entities: [],
+    streams: [],
+  },
+  params: [
+    { key: 'scenario', label: '场景', kind: 'enum', options: ['connect', 'close', 'both'] },
+    { key: 'clientSeq', label: '客户端初始序号', kind: 'number', options: [0, 100, 1000] },
+    { key: 'serverSeq', label: '服务器初始序号', kind: 'number', options: [0, 300, 2000] },
+  ],
+  entitySpec: {
+    tables: [{
+      type: 'loss',
+      label: '报文段丢失',
+      hint: '第 nth 个报文段丢失（按发出的先后计）',
+      columns: () => [
+        { key: 'id', label: '编号', kind: 'text', width: 60 },
+        { key: 'nth', label: '第几个报文段', kind: 'number', width: 110 },
+      ],
+      newRow: i => ({ id: `L${i + 1}`, type: 'loss', attrs: { nth: 1 } }),
+      minRows: 0, maxRows: 4,
+    }],
+    presets: HS_PRESETS,
+  },
+  bounds: [
+    '只建模连接的建立与释放，不含数据传输阶段',
+    '超时重传最多尝试 3 次，之后放弃 —— 真实实现有退避策略',
+    '不建模同时打开 / 同时关闭这两种少见情形',
+    'TIME_WAIT 的 2MSL 只作为一步说明，不按真实时长推进',
+  ],
+  tabs: [{ id: 'timeline', label: '时序图' }, { id: 'states', label: '状态迁移' }],
+  Stage: HandshakeStage,
+  tone: s => (s.act === 'lost' ? { key: 'bad', label: '丢失' }
+    : s.act === 'timeout' ? { key: 'bad', label: '超时' }
+    : s.act === 'send' ? { key: 'good', label: '发出' }
+    : s.act === 'arrive' ? { key: 'good', label: '到达' }
+    : { key: 'idle', label: '说明' }),
+  metric: (s, _i) => {
+    const order = ['CLOSED', 'SYN_SENT', 'ESTABLISHED', 'FIN_WAIT_1', 'FIN_WAIT_2', 'TIME_WAIT']
+    const k = order.indexOf(s.client)
+    return k < 0 ? 0 : k / (order.length - 1)
+  },
+  tickLabel: s => (s.seg ? s.seg.flags : s.act),
+  readouts: s => [
+    { label: '客户端状态', value: s.client },
+    { label: '服务器状态', value: s.server },
+    { label: '本步', value: { send: '发出报文段', arrive: '报文段到达', lost: '报文段丢失',
+      timeout: '超时重传', wait: '说明', done: '完成' }[s.act] },
+    { label: '报文段', value: s.seg ? `${s.seg.flags} seq=${s.seg.seq}` : '—',
+      tone: s.seg?.lost ? 'bad' : undefined },
+    { label: '已交换', value: `${s.history.length} 个报文段` },
+  ],
+}
+
 export const EXPERIMENTS = [
   cache, float, multiply, pipeline, vm,
   page, scheduler, disk, banker,
   sort, dijkstra,
-  tcp, arq,
+  tcp, arq, crc, hamming, subnet, handshake,
 ] as unknown as AnyExperiment[]

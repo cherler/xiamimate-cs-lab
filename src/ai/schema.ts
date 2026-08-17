@@ -210,6 +210,10 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   pipeline: { forwarding: 'number' },
   vm: { virtualBits: 'number', pageSizeBytes: 'number', tlbEntries: 'number' },
   multiply: { algorithm: 'string', bits: 'number' },
+  crc: { generator: 'string', operation: 'string', errorAt: 'number' },
+  hamming: { operation: 'string', errorAt: 'number', evenParity: 'number' },
+  subnet: { operation: 'string', prefix: 'number', splitBits: 'number' },
+  handshake: { scenario: 'string', clientSeq: 'number', serverSeq: 'number' },
 }
 
 /** 同名参数在不同 kind 下取值不同 —— 所以按 kind 分表，不能只按字段名 */
@@ -223,6 +227,10 @@ const ENUMS: Record<string, Record<string, string[]>> = {
   arq:       { protocol: ['SW', 'GBN', 'SR'] },
   float:     { format: ['single', 'double'], operation: ['encode', 'add', 'sub'] },
   multiply:  { algorithm: ['原码一位乘', 'Booth', '加减交替'] },
+  crc:       { operation: ['encode', 'check'] },
+  hamming:   { operation: ['encode', 'check'] },
+  subnet:    { operation: ['subnet', 'lpm'] },
+  handshake: { scenario: ['connect', 'close', 'both'] },
 }
 
 /**
@@ -516,6 +524,80 @@ export function validateDocument(raw: SimDocument): Violation[] {
         err('streams.operands', `第 2 个操作数须在 ${-lim}..${lim - 1}`, b)
       if (doc.params.algorithm === '加减交替' && b === 0)
         err('streams.operands', '除数不能为 0', b)
+    }
+  }
+
+  if (doc.kind === 'crc') {
+    const g = String(doc.params.generator)
+    if (!/^[01]+$/.test(g)) err('params.generator', '生成多项式只能由 0/1 组成', g)
+    else if (g.length < 2) err('params.generator', '生成多项式至少 2 位（1 位校验码）', g)
+    //  首位必须是 1，否则最高次项系数为 0，等价于一个更短的多项式
+    else if (g[0] !== '1') err('params.generator', '生成多项式最高位必须是 1', g)
+    const d = doc.streams.find(s => s.name === 'dataBits')
+    if (!d) err('streams', '缺少 dataBits')
+    else if (d.values.length === 0) err('streams.dataBits', '数据不能为空')
+    else if (d.values.some(v => v !== 0 && v !== 1)) err('streams.dataBits', '数据位只能是 0 或 1')
+    else if (d.values.length > 32) err('streams.dataBits', '超过 32 位除法步骤会看不过来', d.values.length)
+  }
+
+  if (doc.kind === 'hamming') {
+    const d = doc.streams.find(s => s.name === 'dataBits')
+    if (!d) err('streams', '缺少 dataBits')
+    else if (d.values.length === 0) err('streams.dataBits', '数据不能为空')
+    else if (d.values.some(v => v !== 0 && v !== 1)) err('streams.dataBits', '数据位只能是 0 或 1')
+    else if (d.values.length > 16) err('streams.dataBits', '超过 16 位校验分组会看不清', d.values.length)
+    else {
+      const k = d.values.length
+      let r = 0
+      while (Math.pow(2, r) < k + r + 1) r++
+      const at = doc.params.errorAt as number
+      if (at < 0 || at > k + r)
+        err('params.errorAt', `出错位号须在 0..${k + r}（0 表示不注入）`, at)
+    }
+  }
+
+  if (doc.kind === 'subnet') {
+    const p = doc.params
+    const prefix = p.prefix as number
+    const split = p.splitBits as number
+    if (p.operation === 'subnet') {
+      if (prefix < 0 || prefix > 32) err('params.prefix', '前缀长度须在 0..32', prefix)
+      if (split < 0) err('params.splitBits', '借位数不能为负', split)
+      else if (prefix + split > 32)
+        err('params.splitBits', `前缀 ${prefix} 再借 ${split} 位超过 32 位`, split)
+    } else {
+      const routes = doc.entities.filter(e => e.type === 'route')
+      if (routes.length === 0) err('entities', '路由表不能为空')
+      for (const r of routes) {
+        const pl = Number(r.attrs.prefix)
+        if (!Number.isInteger(pl) || pl < 0 || pl > 32)
+          err(`entities.${r.id}.prefix`, '前缀长度须在 0..32', r.attrs.prefix)
+        const nw = Number(r.attrs.network)
+        if (!Number.isInteger(nw) || nw < 0 || nw > 0xFFFFFFFF)
+          err(`entities.${r.id}.network`, '网络号超出 32 位地址范围', r.attrs.network)
+        //  网络号的主机位必须为 0，否则这条路由项本身写错了
+        else if (pl > 0 && pl < 32) {
+          const m = (0xFFFFFFFF << (32 - pl)) >>> 0
+          if (((nw & m) >>> 0) !== nw)
+            err(`entities.${r.id}.network`, `网络号的主机位不为 0，与 /${pl} 不自洽`, r.attrs.network)
+        }
+      }
+    }
+    const a = doc.streams.find(s => s.name === 'addresses')
+    if (!a) err('streams', '缺少 addresses')
+    else if (a.values.length === 0) err('streams.addresses', '地址不能为空')
+    else if (a.values.some(v => typeof v !== 'number' || v < 0 || v > 0xFFFFFFFF))
+      err('streams.addresses', '地址必须在 0..2^32−1')
+  }
+
+  if (doc.kind === 'handshake') {
+    const p = doc.params
+    if ((p.clientSeq as number) < 0) err('params.clientSeq', '初始序号不能为负', p.clientSeq)
+    if ((p.serverSeq as number) < 0) err('params.serverSeq', '初始序号不能为负', p.serverSeq)
+    for (const e of doc.entities) {
+      const nth = Number(e.attrs.nth)
+      if (!Number.isInteger(nth) || nth < 1)
+        err(`entities.${e.id}.nth`, '丢失的报文段序号从 1 起', e.attrs.nth)
     }
   }
 
