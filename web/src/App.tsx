@@ -1,0 +1,127 @@
+/**
+ * 宿主框架。
+ *
+ * 单向数据流（验收标准 3）：
+ *   参数 / 选中实验 / 当前步  →  重算 doc → 校验 → 编译 → 跑出轨迹 → 所有视图从轨迹派生
+ * 视图之间从不互相写。改一个状态，五块地方一起变。
+ */
+import { useMemo, useState } from 'react'
+import { run } from '@engine/core/kernel.ts'
+import { validateDocument } from '@engine/ai/schema.ts'
+import type { SimDocument } from '@engine/core/document.ts'
+import { EXPERIMENTS } from './registry.ts'
+import { AxisBand } from './shell/AxisBand.tsx'
+import { StepLog, ParamPanel, Readouts, Violations, Bounds } from './shell/Panels.tsx'
+
+export default function App() {
+  const [expId, setExpId] = useState(EXPERIMENTS[0].id)
+  const [overrides, setOverrides] = useState<Record<string, Record<string, number | string>>>({})
+  const [index, setIndex] = useState(0)
+  const [tab, setTab] = useState(EXPERIMENTS[0].tabs[0].id)
+  const [playing, setPlaying] = useState(false)
+
+  const exp = EXPERIMENTS.find(e => e.id === expId)!
+
+  // ── 唯一的真相来源：doc。参数改动只改 doc，其余全部派生。──
+  const doc: SimDocument = useMemo(() => ({
+    ...exp.defaultDoc,
+    params: { ...exp.defaultDoc.params, ...(overrides[exp.id] ?? {}) },
+  }), [exp, overrides])
+
+  const violations = useMemo(() => validateDocument(doc), [doc])
+
+  const trace = useMemo(() => {
+    if (violations.length > 0) return []
+    try { return run(exp.kernel.compile(doc)) as never[] } catch { return [] }
+  }, [exp, doc, violations])
+
+  const clamped = Math.min(index, Math.max(0, trace.length - 1))
+  const state = trace[clamped]
+
+  function selectExp(id: string) {
+    const e = EXPERIMENTS.find(x => x.id === id)!
+    setExpId(id); setTab(e.tabs[0].id); setIndex(0); setPlaying(false)
+  }
+  function setParam(key: string, v: number | string) {
+    setOverrides(o => ({ ...o, [exp.id]: { ...(o[exp.id] ?? {}), [key]: v } }))
+    setIndex(0); setPlaying(false)
+  }
+  function seek(i: number) { setIndex(i); }
+
+  const grouped = EXPERIMENTS.reduce<Record<string, typeof EXPERIMENTS>>((acc, e) => {
+    (acc[e.group] ??= []).push(e); return acc
+  }, {})
+
+  return (
+    <div className="app">
+      <header className="top">
+        <h1>{exp.title}</h1>
+        <span className="sub">{exp.subtitle}</span>
+        <div className="chips">
+          {violations.length > 0
+            ? <span className="chip warn">配置不合法</span>
+            : <span className="chip">{trace.length} 步</span>}
+          <span className="chip">阶段 1 · 视图层</span>
+        </div>
+      </header>
+
+      <div className="grid">
+        {/* 左：实验目录 */}
+        <nav className="card nav" aria-label="实验目录">
+          {Object.entries(grouped).map(([group, list]) => (
+            <div key={group}>
+              <div className="grp">{group}</div>
+              {list.map((e, i) => (
+                <button
+                  key={e.id}
+                  className={e.id === expId ? 'on' : ''}
+                  onClick={() => selectExp(e.id)}
+                  aria-current={e.id === expId}
+                >
+                  <span className="n">{String(EXPERIMENTS.indexOf(e) + 1).padStart(2, '0')}</span>
+                  <span>{e.title}</span>
+                </button>
+              ))}
+            </div>
+          ))}
+        </nav>
+
+        {/* 中：舞台 + 轴 + 日志 */}
+        <div className="col">
+          <div className="tabs" role="tablist">
+            {exp.tabs.map(t => (
+              <button
+                key={t.id} role="tab"
+                aria-selected={t.id === tab}
+                onClick={() => setTab(t.id)}
+              >{t.label}</button>
+            ))}
+          </div>
+
+          {violations.length > 0
+            ? <Violations items={violations} />
+            : state
+              ? <>
+                  <exp.Stage doc={doc} trace={trace} index={clamped} state={state} tab={tab} />
+                  <AxisBand
+                    exp={exp} trace={trace} index={clamped}
+                    playing={playing}
+                    onSeek={seek}
+                    onTogglePlay={() => setPlaying(p => !p)}
+                  />
+                  <StepLog exp={exp} trace={trace} index={clamped} onSeek={seek} />
+                </>
+              : <div className="viol"><div className="t">无轨迹</div><p>当前配置跑不出任何一步。</p></div>}
+        </div>
+
+        {/* 右：参数 + 读数 */}
+        <div className="col">
+          <ParamPanel specs={exp.params} values={doc.params} onChange={setParam} />
+          {state && <Readouts items={exp.readouts(state, doc, clamped)} />}
+        </div>
+      </div>
+
+      <Bounds items={exp.bounds} />
+    </div>
+  )
+}

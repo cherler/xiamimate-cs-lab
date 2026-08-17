@@ -1,0 +1,119 @@
+/* ═══ 舞台专用样式：位域条 / Cache 网格 / 甘特图 / TCP 曲线 ═══ */
+
+/* ── 签名元素：地址位域拆解条 ── */
+.bits{padding:15px 14px 9px 20px}
+.bitrow{display:flex;gap:3px;justify-content:flex-start;margin-bottom:7px}
+.seg{display:flex;flex-direction:column;align-items:center;gap:5px;
+  padding:7px 9px 6px;border-radius:4px;border:1px solid}
+.seg .bl{display:flex;gap:2px}
+.seg b{width:13px;height:19px;display:grid;place-items:center;border-radius:2px;
+  font-family:var(--mono);font-size:11px;font-weight:500;background:#00000055}
+.seg b.ell{background:none;width:11px;opacity:.55}
+.seg .cap{display:flex;gap:6px;align-items:baseline}
+.seg .cap .k{font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase}
+.seg .cap .v{font-family:var(--mono);font-size:12.5px;font-weight:700}
+.s-tag{border-color:#5B7FD455;background:#5B7FD40f}.s-tag b,.s-tag .k,.s-tag .v{color:var(--f-tag)}
+.s-idx{border-color:#9B6FCC55;background:#9B6FCC0f}.s-idx b,.s-idx .k,.s-idx .v{color:var(--f-idx)}
+.s-off{border-color:#4E7C8F55;background:#4E7C8F0f}.s-off b,.s-off .k,.s-off .v{color:var(--f-off)}
+.bitnote{font-size:11px;color:var(--faint)}
+.bitnote .a{font-family:var(--mono);color:var(--ink);font-size:12px}
+
+/* ── Cache 组织矩阵 ── */
+.stage{position:relative}
+.stage>svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:2}
+.sets{display:flex;flex-direction:column;gap:3px;padding:20px 14px 14px 20px}
+.setrow{display:grid;grid-template-columns:56px repeat(auto-fit,minmax(0,1fr));gap:3px}
+.setlbl{display:flex;align-items:center;justify-content:flex-end;padding-right:8px;
+  font-family:var(--mono);font-size:10px;color:var(--faint)}
+.cell{border:1px solid var(--line);background:#00000030;border-radius:3px;
+  padding:5px 8px;min-height:36px;display:flex;flex-direction:column;justify-content:center;gap:1px;
+  transition:min-height .12s}
+.cell .t{font-family:var(--mono);font-size:12px;letter-spacing:.03em}
+.cell .m{font-family:var(--mono);font-size:9px;color:var(--faint);letter-spacing:.07em;min-height:12px}
+.cell .m .ev{color:var(--miss);letter-spacing:.05em}
+.cell.empty .t{color:var(--faint)}
+.setrow.active .setlbl{color:var(--now)}
+.setrow.active .cell{border-color:#F0B42944;background:#F0B4290a}
+.cell.touched{border-color:var(--now);background:#F0B42918;box-shadow:0 0 0 1px #F0B42933}
+.cell.touched .t{color:var(--now);font-weight:700}
+.setrow.vacant .cell{min-height:19px;background:#00000018;border-color:#2E2E3F80;padding:2px 8px}
+.setrow.vacant .cell .t{font-size:10px;color:#4A4860}
+.setrow.vacant .cell .m{display:none}
+.setrow.vacant .setlbl{font-size:9px;color:#4A4860}
+
+/* ── 相联度扫描 ── */
+.sweep{display:flex;gap:10px;align-items:flex-end;height:150px}
+.sweep .bar{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;height:100%}
+.sweep .v{font-family:var(--mono);font-size:11px;color:var(--dim);font-variant-numeric:tabular-nums}
+.sweep .track{flex:1;width:100%;background:#00000038;border-radius:3px;
+  display:flex;align-items:flex-end;overflow:hidden}
+.sweep .track i{display:block;width:100%;background:#45B39A66;border-radius:3px 3px 0 0;
+  transition:height .15s}
+.sweep .bar.cur .track i{background:var(--now)}
+.sweep .bar.cur .v{color:var(--now);font-weight:700}
+.sweep .x{font-family:var(--mono);font-size:10.5px;color:var(--dim)}
+.sweep .bar.cur .x{color:var(--now)}
+.sweep .n{font-family:var(--mono);font-size:9px;color:var(--faint)}
+.sweepnote{margin:12px 0 0;font-size:12px;color:var(--dim);line-height:1.8}
+.sweepnote b{color:var(--ink);font-weight:600}
+
+/* ── 甘特图 ── */
+.gantt{display:flex;flex-direction:column;gap:3px}
+.gline{display:grid;grid-template-columns:34px minmax(0,1fr);gap:8px;align-items:center}
+.glbl{font-family:var(--mono);font-size:11px;text-align:right;font-weight:600}
+.gcells{display:flex;gap:2px}
+.gcell{flex:1;min-width:5px;height:24px;border-radius:2px;background:#00000030;
+  border:1px solid transparent}
+.gcell.wait{background:#5D648033}
+.gcell.done{background:#45B39A1a}
+.gcell.idle{background:#00000030}
+.gcell.cur{outline:1.5px solid var(--now);outline-offset:1px;z-index:1}
+.gaxis .gcells{gap:2px}
+.gtick{flex:1;min-width:5px;text-align:center;font-family:var(--mono);
+  font-size:8.5px;color:var(--faint);font-variant-numeric:tabular-nums}
+.gtick.cur{color:var(--now)}
+.legend{display:flex;gap:14px;margin-top:11px;flex-wrap:wrap;
+  font-size:11px;color:var(--faint)}
+.legend span{display:flex;gap:5px;align-items:center}
+.legend i{width:11px;height:11px;border-radius:2px;display:block}
+.legend i.run{background:#5B7FD4}
+.legend i.wait{background:#5D648033}
+.legend i.done{background:#45B39A1a}
+.legend i.idle{background:#00000030;border:1px solid var(--line)}
+
+/* ── 队列状态 ── */
+.queue{display:flex;flex-direction:column;gap:11px}
+.qbox{display:flex;flex-direction:column;gap:5px}
+.qt{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--faint)}
+.qrow{display:flex;gap:6px;flex-wrap:wrap}
+.qchip{display:flex;gap:6px;align-items:baseline;padding:5px 10px;border-radius:4px;
+  border:1px solid var(--line);background:var(--panel-2);
+  font-family:var(--mono);font-size:12px;font-weight:600}
+.qchip em{font-style:normal;font-size:9.5px;color:var(--faint);font-weight:400}
+.qchip.run{box-shadow:0 0 0 1px currentColor}
+.qchip.done{color:var(--faint);opacity:.65}
+.qchip.idle{color:var(--faint);border-style:dashed}
+.qempty{font-size:12px;color:var(--faint);font-style:italic}
+
+/* ── TCP 曲线 ── */
+.curvewrap{position:relative}
+.curve{width:100%;height:190px;display:block}
+.curvedot{position:absolute;width:9px;height:9px;border-radius:50%;
+  background:var(--now);box-shadow:0 0 0 3px #F0B4292e;
+  transform:translate(-50%,-50%);pointer-events:none}
+.curvelegend{display:flex;gap:14px;margin-top:9px;flex-wrap:wrap;
+  font-size:11px;color:var(--faint);align-items:center}
+.curvelegend span{display:flex;gap:5px;align-items:center}
+.curvelegend i{width:11px;height:2.5px;border-radius:2px;display:block}
+.curvelegend .max{margin-left:auto;font-family:var(--mono);font-size:10px}
+
+/* ── TCP 状态机 ── */
+.phases{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:12px}
+.phase{border:1px solid var(--line);background:var(--panel-2);border-radius:5px;
+  padding:9px 11px;color:var(--faint)}
+.phase.on{background:#00000030;box-shadow:0 0 0 1px currentColor}
+.phase .pn{font-size:13px;font-weight:700;margin-bottom:3px}
+.phase .pd{font-size:11px;line-height:1.6;color:var(--faint)}
+.phase.on .pd{color:var(--dim)}
+.phasenow{border-top:1px solid var(--line);padding-top:4px}

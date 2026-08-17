@@ -16,6 +16,9 @@ npm install
 npm test          # 跑全部测试
 npm run typecheck # tsc --noEmit
 
+npm run web          # 起视图层（三个实验都能跑）
+npm run web:single   # 打成一个自包含 HTML
+
 npm run demo:cache   # 单看 Cache 参考实现的轨迹
 npm run demo:sched
 npm run demo:tcp
@@ -36,6 +39,10 @@ src/
 │   ├── sweep.ts      参数扫描（高阶）  · parameter 轴 → 曲线
 │   └── compare.ts    并排对比（高阶）  · 沿用内层轴 → N 条轨迹对齐
 └── reference/        独立参考实现 —— 验证基准，不是内核
+web/                  视图层（Vite + React）
+├── src/shell/        共享框架：轴 · 日志 · 参数 · 读数 · 边界
+├── src/stages/       每个内核一个舞台
+└── src/registry.ts   实验注册表 —— 加实验只改这里
 tests/                每个测试都自带"必须能红"的自检
 docs/
 ├── blueprint.md      总蓝图（产品闭环 + 架构 + 标准）
@@ -63,7 +70,7 @@ logs/                 每次验证的结果与发现
 | 0b | parameter 轴 · 高阶内核 | ✅ 通过 |
 | 0c | 验收标准 5 / 6 | ✅ 通过 |
 | 0d | 内容环实测：AI 填 DSL | ✅ 精确题 60/60（20题×3次）、陷阱题 6/6 |
-| 1 | 宿主框架 + 视图层（补验收标准 3） | 未开始 |
+| 1 | 宿主框架 + 视图层 | ✅ 三实验接真引擎，标准 3 已验 |
 | 0e | **L2 组合级**：AI 自选原语 | ✅ 36/36（12题×3次），选原语与填参数均 100% |
 | 3 | L3 新原语（风险最高，可能做不成） | 未开始 |
 

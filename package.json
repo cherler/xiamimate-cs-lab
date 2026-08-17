@@ -15,15 +15,24 @@
     "ai:fill": "tsx scripts/ai-fill.ts",
     "ai:bench": "tsx scripts/ai-bench.ts",
     "ai:l2": "tsx scripts/ai-l2.ts",
-    "test:l2": "tsx tests/compose-l2.test.ts"
+    "test:l2": "tsx tests/compose-l2.test.ts",
+    "web": "vite --config web/vite.config.ts web",
+    "web:build": "vite build --config web/vite.config.ts web",
+    "web:single": "npm run web:build && node scripts/bundle-single.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^6.0.5",
     "playwright": "^1.62.1",
     "tsx": "^4.23.0",
-    "typescript": "^5.9.0"
+    "typescript": "^5.9.0",
+    "vite": "^8.2.1"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.117.1"
+    "@anthropic-ai/sdk": "^0.117.1",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
   }
 }
