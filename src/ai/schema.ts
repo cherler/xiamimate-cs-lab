@@ -326,6 +326,10 @@ export function validateDocument(raw: SimDocument): Violation[] {
 
   if (doc.kind === 'scheduler') {
     if (doc.entities.length === 0) err('entities', '至少要有一个进程')
+    //  进程表可编辑之后，重名成了真实可达的状态：甘特图会把两个 P1 画成一个
+    const ids = doc.entities.map(e => e.id)
+    const dup = ids.filter((x, i) => ids.indexOf(x) !== i)
+    if (dup.length) err('entities', `进程名重复：${[...new Set(dup)].join('、')}`, dup[0])
     for (const e of doc.entities) {
       if ((e.attrs.burst as number) <= 0) err(`entities.${e.id}.burst`, '执行时间必须为正', e.attrs.burst)
       if ((e.at ?? 0) < 0) err(`entities.${e.id}.at`, '到达时刻不能为负', e.at)
@@ -373,8 +377,15 @@ export function validateDocument(raw: SimDocument): Violation[] {
     if (!nodes.includes(doc.params.source as string))
       err('params.source', '源点不在顶点表里', doc.params.source)
     if (new Set(nodes).size !== nodes.length) err('entities', '顶点 id 有重复')
+    const seen = new Set<string>()
     for (const e of edges) {
       const { from, to, w } = e.attrs
+      if (from === to) err(`entities.${e.id}`, `自环（${from}→${to}）：最短路里没有意义`, from)
+      //  无向图下 A-B 与 B-A 是同一条；重边会让"松弛一次"变成松弛两次，步骤对不上教材
+      const key = doc.params.directed === 1
+        ? `${from}>${to}` : [String(from), String(to)].sort().join('-')
+      if (seen.has(key)) err(`entities.${e.id}`, `与已有的边重复（${from}–${to}）`, key)
+      seen.add(key)
       if (!nodes.includes(from as string)) err(`entities.${e.id}.from`, '端点不在顶点表里', from)
       if (!nodes.includes(to as string)) err(`entities.${e.id}.to`, '端点不在顶点表里', to)
       // Dijkstra 不接受负权 —— 这是算法前提，不是实现限制
@@ -389,6 +400,9 @@ export function validateDocument(raw: SimDocument): Violation[] {
     const procs = doc.entities.filter(e => e.type === 'process')
     if (res.length === 0) err('params.resources', '至少要有一类资源')
     if (procs.length === 0) err('entities', '至少要有一个进程')
+    const pid = procs.map(e => e.id)
+    const pdup = pid.filter((x, i) => pid.indexOf(x) !== i)
+    if (pdup.length) err('entities', `进程名重复：${[...new Set(pdup)].join('、')}`, pdup[0])
     for (const r of res)
       if (!resEnts.some(e => e.id === r)) err(`entities.${r}`, `资源 ${r} 没有给出总量`)
     for (const p of procs) for (const r of res) {
@@ -431,6 +445,9 @@ export function validateDocument(raw: SimDocument): Violation[] {
     if ((p.rounds as number) <= 0) err('params.rounds', '轮数必须为正', p.rounds)
     if ((p.initialCwnd as number) <= 0) err('params.initialCwnd', '初始 cwnd 必须为正', p.initialCwnd)
     if ((p.initialSsthresh as number) <= 1) err('params.initialSsthresh', 'ssthresh 必须 >1', p.initialSsthresh)
+    const lid = doc.entities.map(e => e.id)
+    const ldup = lid.filter((x, i) => lid.indexOf(x) !== i)
+    if (ldup.length) err('entities', `事件编号重复：${[...new Set(ldup)].join('、')}`, ldup[0])
     for (const e of doc.entities) {
       const at = e.at ?? 0
       if (at < 1 || at > (p.rounds as number))

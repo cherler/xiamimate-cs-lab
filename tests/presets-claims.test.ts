@@ -13,9 +13,19 @@ import { cacheKernel, type CacheState } from '../src/kernels/cache.ts'
 import { pageKernel, type PageState } from '../src/kernels/page.ts'
 import { diskKernel, type DiskState } from '../src/kernels/disk.ts'
 import { sortKernel, type SortState } from '../src/kernels/sort.ts'
+import { schedKernel, type SchedState } from '../src/kernels/scheduler.ts'
+import { dijkstraKernel, type DijkstraState } from '../src/kernels/dijkstra.ts'
+import { bankerKernel, type BankerState } from '../src/kernels/banker.ts'
+import { tcpKernel, type TcpState } from '../src/kernels/tcp.ts'
+import { arqKernel, type ArqState } from '../src/kernels/arq.ts'
+import { validateDocument } from '../src/ai/schema.ts'
 import {
   CACHE_PRESETS, PAGE_PRESETS, DISK_PRESETS, SORT_PRESETS, type Preset,
 } from '../src/presets/sequences.ts'
+import {
+  SCHED_PRESETS, DIJKSTRA_PRESETS, BANKER_PRESETS, TCP_PRESETS, ARQ_PRESETS,
+  type EntityPreset,
+} from '../src/presets/entities.ts'
 
 let failures = 0
 const ok = (m: string) => console.log(`  ✅ ${m}`)
@@ -276,6 +286,258 @@ const sortRun = (values: number[], algorithm: string) => {
   kinds === 3
     ? ok(`大量重复：${v.length} 个元素只有 ${kinds} 种取值（${[...new Set(v)].sort().join('/')}）`)
     : bad(`取值种类不是 3 种，而是 ${kinds} 种：${v.join(' ')}`)
+}
+
+// ═══════════════════════════════════════════════════════
+//  实体表预置
+// ═══════════════════════════════════════════════════════
+const epick = (list: EntityPreset[], label: string) => {
+  const p = list.find(x => x.label === label)
+  if (!p) throw new Error(`实体预置「${label}」不存在`)
+  return p
+}
+
+console.log('\n【进程表】')
+
+const schedRun = (ents: SimDocument['entities'], algorithm: string, quantum = 2) => {
+  const doc: SimDocument = {
+    kind: 'scheduler', params: { algorithm, quantum }, entities: ents, streams: [],
+  }
+  const t = run(schedKernel.compile(doc)) as SchedState[]
+  //  平均周转时间独立算：完成时刻 − 到达时刻，跟内核内部怎么记账无关
+  const finish: Record<string, number> = {}
+  //  某进程首次出现在 completed 里的那一步，t 就是它的完成时刻
+  t.forEach(st => st.completed.forEach(pid => { if (!(pid in finish)) finish[pid] = st.t }))
+  const turn = ents.map(e => (finish[e.id] ?? Infinity) - (e.at ?? 0))
+  return { avg: turn.reduce((a, b) => a + b, 0) / turn.length, steps: t.length }
+}
+const f1 = (x: number) => x.toFixed(1)
+
+// 「同时到达 → SJF 平均周转最短」
+{
+  const v = epick(SCHED_PRESETS, '同时到达').entities
+  const sjf = schedRun(v, 'SJF').avg
+  const others = ['FCFS', 'RR'].map(a => ({ a, x: schedRun(v, a).avg }))
+  others.every(o => o.x >= sjf)
+    ? ok(`同时到达：SJF 平均周转 ${f1(sjf)}，不劣于 ${others.map(o => `${o.a} ${f1(o.x)}`).join('、')}`)
+    : bad(`SJF 不是最优：SJF ${f1(sjf)}，${others.map(o => `${o.a} ${f1(o.x)}`).join('、')}`)
+}
+
+// 「护航效应 → FCFS 与非抢占 SJF 一样糟，只有 SRTF 能救」
+//  原来写的是"FCFS 远大于 SJF"，实测两者完全相等 ——
+//  长作业已经在跑，非抢占的 SJF 插不进来。说法和判据一起改。
+{
+  const v = epick(SCHED_PRESETS, '护航效应').entities
+  const fcfs = schedRun(v, 'FCFS').avg
+  const sjf = schedRun(v, 'SJF').avg
+  const srtf = schedRun(v, 'SRTF').avg
+  fcfs === sjf && srtf < fcfs / 2
+    ? ok(`护航效应：FCFS ${f1(fcfs)} = 非抢占 SJF ${f1(sjf)}（插不进来），抢占式 SRTF 降到 ${f1(srtf)}`)
+    : bad(`护航效应说法不成立：FCFS ${f1(fcfs)} / SJF ${f1(sjf)} / SRTF ${f1(srtf)}`)
+}
+
+// 「SRTF 抢占 → 平均周转严格小于 SJF」
+{
+  const v = epick(SCHED_PRESETS, 'SRTF 抢占').entities
+  const srtf = schedRun(v, 'SRTF').avg
+  const sjf = schedRun(v, 'SJF').avg
+  srtf < sjf
+    ? ok(`SRTF 抢占：SRTF 平均周转 ${f1(srtf)} < SJF ${f1(sjf)}`)
+    : bad(`SRTF 没占到便宜：SRTF ${f1(srtf)} vs SJF ${f1(sjf)}`)
+}
+
+// 「教材经典 → 四种算法跑出四种不同结果」
+{
+  const v = epick(SCHED_PRESETS, '教材经典').entities
+  const all = ['FCFS', 'SJF', 'SRTF', 'RR'].map(a => ({ a, x: schedRun(v, a).avg }))
+  const distinct = new Set(all.map(x => x.x.toFixed(3))).size
+  distinct === 4
+    ? ok(`教材经典：四种算法四个不同的平均周转（${all.map(o => `${o.a} ${f1(o.x)}`).join('、')}）`)
+    : bad(`只有 ${distinct} 种不同结果：${all.map(o => `${o.a} ${f1(o.x)}`).join('、')}`)
+}
+
+console.log('\n【图的边】')
+
+const dijFinalOf = (ents: SimDocument['entities'], source = 'A') => {
+  const doc: SimDocument = { kind: 'dijkstra', params: { source, directed: 0 }, entities: ents, streams: [] }
+  const v = validateDocument(doc)
+  if (v.length) throw new Error(`预置本身不合法：${v[0].location} ${v[0].message}`)
+  return (run(dijkstraKernel.compile(doc)) as DijkstraState[]).at(-1)!
+}
+
+// 每个图预置首先必须是合法文档（自环 / 重边 / 负权都会被拦）
+{
+  const bads = DIJKSTRA_PRESETS.filter(p => {
+    try { dijFinalOf(p.entities); return false } catch { return true }
+  })
+  bads.length === 0
+    ? ok(`${DIJKSTRA_PRESETS.length} 个图预置全部通过验证器（无自环、无重边、无负权）`)
+    : bad(`这些图预置不合法：${bads.map(p => p.label).join('、')}`)
+}
+
+// 「贪心陷阱 → 绕路比直连边短」
+{
+  const p = epick(DIJKSTRA_PRESETS, '贪心陷阱')
+  const direct = Number(p.entities.find(e => e.type === 'edge'
+    && e.attrs.from === 'A' && e.attrs.to === 'G')!.attrs.w)
+  const best = dijFinalOf(p.entities).dist.G
+  best < direct
+    ? ok(`贪心陷阱：直连 A→G 权 ${direct}，绕路只要 ${best}`)
+    : bad(`绕路没更短：直连 ${direct}，最短 ${best}`)
+}
+
+// 「G 不可达 → dist(G) 保持 ∞，算法照样终止」
+{
+  const f = dijFinalOf(epick(DIJKSTRA_PRESETS, 'G 不可达').entities)
+  f.dist.G === Infinity && f.settled.length > 0 && !f.settled.includes('G')
+    ? ok(`G 不可达：dist(G)=∞，其余 ${f.settled.length} 个顶点正常确定，算法未卡死`)
+    : bad(`不可达处理不对：dist(G)=${f.dist.G}，已确定 ${f.settled.join('')}`)
+}
+
+// 「等距分叉 → 两条路长度相同」
+{
+  const p = epick(DIJKSTRA_PRESETS, '等距分叉')
+  const f = dijFinalOf(p.entities)
+  //  独立算两条候选路径的长度，不看内核选了哪条
+  const w = (a: string, b: string) => Number(p.entities.find(e => e.type === 'edge' &&
+    ((e.attrs.from === a && e.attrs.to === b) || (e.attrs.from === b && e.attrs.to === a)))!.attrs.w)
+  const viaB = w('A', 'B') + w('B', 'G')
+  const viaC = w('A', 'C') + w('C', 'G')
+  viaB === viaC && f.dist.G === viaB
+    ? ok(`等距分叉：A→B→G 与 A→C→G 都是 ${viaB}，最短距离唯一为 ${f.dist.G}`)
+    : bad(`两条路不等长：${viaB} vs ${viaC}，实测最短 ${f.dist.G}`)
+}
+
+console.log('\n【资源矩阵】')
+
+const bankFinalOf = (ents: SimDocument['entities']) => {
+  const doc: SimDocument = { kind: 'banker', params: { resources: 'A,B,C' }, entities: ents, streams: [] }
+  const v = validateDocument(doc)
+  if (v.length) throw new Error(`预置不合法：${v[0].location} ${v[0].message}`)
+  return (run(bankerKernel.compile(doc)) as BankerState[]).at(-1)!
+}
+
+{
+  const safe = bankFinalOf(epick(BANKER_PRESETS, '教材经典').entities)
+  safe.act === 'safe' && safe.sequence.length === 5
+    ? ok(`教材经典：判为安全，序列 ${safe.sequence.join('→')}`)
+    : bad(`教材经典没判成安全：${safe.act}，序列 ${safe.sequence.join('→')}`)
+}
+{
+  const unsafe = bankFinalOf(epick(BANKER_PRESETS, '不安全状态').entities)
+  unsafe.act === 'unsafe'
+    ? ok(`不安全状态：判为不安全，只推进了 ${unsafe.sequence.length} 个进程`)
+    : bad(`不安全状态被判成了安全：序列 ${unsafe.sequence.join('→')}`)
+}
+// 「只剩一条路 → 第一步只有一个进程能被满足」
+{
+  const p = epick(BANKER_PRESETS, '只剩一条路')
+  const doc: SimDocument = { kind: 'banker', params: { resources: 'A,B,C' }, entities: p.entities, streams: [] }
+  const t = run(bankerKernel.compile(doc)) as BankerState[]
+  const first = t.find(st => st.act === 'accept')!
+  //  独立算：初始 Work 下有几个进程的 Need 能被满足
+  const RES2 = ['A', 'B', 'C']
+  const avail = RES2.map(r => {
+    const total = Number(p.entities.find(e => e.type === 'resource' && e.id === r)!.attrs.total)
+    return total - p.entities.filter(e => e.type === 'process')
+      .reduce((s, x) => s + Number(x.attrs[`alloc_${r}`] ?? 0), 0)
+  })
+  const fits = p.entities.filter(e => e.type === 'process').filter(e =>
+    RES2.every((r, k) => Number(e.attrs[`max_${r}`]) - Number(e.attrs[`alloc_${r}`]) <= avail[k]))
+  fits.length === 1 && first.pid === fits[0].id
+    ? ok(`只剩一条路：初始 Work=(${avail.join(' ')}) 下只有 ${fits[0].id} 能被满足，算法也确实先选了它`)
+    : bad(`不止一条路：能满足的有 ${fits.map(e => e.id).join('、')}，算法先选了 ${first.pid}`)
+}
+
+console.log('\n【丢包事件】')
+
+const tcpLastOf = (ents: SimDocument['entities'], variant: string) => {
+  const doc: SimDocument = {
+    kind: 'tcp',
+    params: { variant, initialCwnd: 1, initialSsthresh: 16, rounds: 20 },
+    entities: ents, streams: [],
+  }
+  const v = validateDocument(doc)
+  if (v.length) throw new Error(`预置不合法：${v[0].location} ${v[0].message}`)
+  return (run(tcpKernel.compile(doc)) as TcpState[])
+}
+
+// 「只有超时 → Tahoe 与 Reno 表现相同」
+{
+  const v = epick(TCP_PRESETS, '只有超时').entities
+  const tahoe = tcpLastOf(v, 'Tahoe').map(s => s.cwnd).join(',')
+  const reno = tcpLastOf(v, 'Reno').map(s => s.cwnd).join(',')
+  tahoe === reno
+    ? ok('只有超时：Tahoe 与 Reno 的 cwnd 序列逐轮完全一致')
+    : bad(`两者不同：\n    Tahoe ${tahoe}\n    Reno  ${reno}`)
+}
+// 「只有重复 ACK → Reno 最终窗口比 Tahoe 大」
+{
+  const v = epick(TCP_PRESETS, '只有重复 ACK').entities
+  const tahoe = tcpLastOf(v, 'Tahoe').at(-1)!.cwnd
+  const reno = tcpLastOf(v, 'Reno').at(-1)!.cwnd
+  reno > tahoe
+    ? ok(`只有重复 ACK：末轮 cwnd Reno ${reno} > Tahoe ${tahoe} —— 快恢复不回 1`)
+    : bad(`Reno 没占到便宜：Reno ${reno}，Tahoe ${tahoe}`)
+}
+// 「不丢包 → 窗口单调增」
+{
+  const t = tcpLastOf(epick(TCP_PRESETS, '不丢包').entities, 'Reno')
+  const mono = t.every((s, k) => k === 0 || s.cwnd >= t[k - 1].cwnd)
+  mono && t.every(s => s.event === 'none')
+    ? ok(`不丢包：${t.length} 轮 cwnd 单调不减，1 → ${t.at(-1)!.cwnd}，全程无事件`)
+    : bad(`不丢包却不单调或有事件：${t.map(s => s.cwnd).join(',')}`)
+}
+
+const arqLastOf = (ents: SimDocument['entities'], protocol: string) => {
+  const doc: SimDocument = {
+    kind: 'arq',
+    //  停止等待的窗口只能是 1，验证器会拦 —— 之前这里一律传 4，是测试传错了参数
+    params: { protocol, windowSize: protocol === 'SW' ? 1 : 4, totalFrames: 8, delay: 2, timeout: 8 },
+    entities: ents, streams: [],
+  }
+  const v = validateDocument(doc)
+  if (v.length) throw new Error(`预置不合法：${v[0].location} ${v[0].message}`)
+  return (run(arqKernel.compile(doc), 4000) as ArqState[]).at(-1)!
+}
+
+// 「丢一个数据帧 → GBN 重发之后全部，SR 只补一帧」
+{
+  const v = epick(ARQ_PRESETS, '丢一个数据帧').entities
+  const g = arqLastOf(v, 'GBN'), s2 = arqLastOf(v, 'SR')
+  g.delivered === 8 && s2.delivered === 8 && s2.transmissions - 8 === 1 && g.transmissions - 8 > 1
+    ? ok(`丢一个数据帧：GBN 重传 ${g.transmissions - 8} 帧次，SR 只重传 ${s2.transmissions - 8} 帧次`)
+    : bad(`重传数不符：GBN ${g.transmissions - 8}，SR ${s2.transmissions - 8}`)
+}
+// 「丢一个 ACK → GBN 靠后面的累积 ACK 补上，不必重传」
+{
+  const v = epick(ARQ_PRESETS, '丢一个 ACK').entities
+  const g = arqLastOf(v, 'GBN')
+  g.delivered === 8 && g.transmissions === 8
+    ? ok(`丢一个 ACK：GBN 仍是 ${g.transmissions} 帧次，一次都没重传 —— 累积确认补上了`)
+    : bad(`GBN 还是重传了：传输 ${g.transmissions} 次`)
+}
+// 「连丢两帧 → GBN 一次回退把两个洞一起补上，传输次数不变；SR 反而多补一帧」
+//  原来写的是"差距进一步拉大"，实测 GBN 12→12 一点没变：
+//  5 号帧的重发本来就在 2 号帧那次回退的批次里。
+{
+  const one = epick(ARQ_PRESETS, '丢一个数据帧').entities
+  const two = epick(ARQ_PRESETS, '连丢两帧').entities
+  const g1 = arqLastOf(one, 'GBN').transmissions, g2 = arqLastOf(two, 'GBN').transmissions
+  const s1 = arqLastOf(one, 'SR').transmissions, s2b = arqLastOf(two, 'SR').transmissions
+  g1 === g2 && s2b === s1 + 1
+    ? ok(`连丢两帧：GBN 仍是 ${g2} 帧次（一次回退补两个洞），SR 从 ${s1} 增到 ${s2b}`)
+    : bad(`说法不成立：GBN ${g1}→${g2}，SR ${s1}→${s2b}`)
+}
+// 「不丢包 → 三种协议都零重传」
+{
+  const v = epick(ARQ_PRESETS, '不丢包').entities
+  const wrong = (['SW', 'GBN', 'SR'] as const).map(p2 => ({
+    p: p2, t: arqLastOf(v, p2).transmissions,
+  })).filter(x => x.t !== 8)
+  wrong.length === 0
+    ? ok('不丢包：SW / GBN / SR 传输次数都恰好等于总帧数 8，零重传')
+    : bad(`有重传：${wrong.map(x => `${x.p} ${x.t}`).join('、')}`)
 }
 
 // ═══ 自检：这套判据得会红 ══════════════════════════════

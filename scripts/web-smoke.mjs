@@ -63,8 +63,9 @@ const stageSigs = []
 for (let i = 0; i < EXPS.length; i++) {
   await p.click(`.nav button >> nth=${i}`); await p.waitForTimeout(200)
   stageSigs.push(await p.evaluate(() => {
-    // 舞台是中列第一个「不是序列编辑器」的卡片 —— 编辑器长得都一样，混进来会误判
-    const el = document.querySelector('.col > .card:not(.seq)')
+    //  认舞台自己的容器，不靠"中列第几张卡片"猜 ——
+    //  之前每加一个编辑器（序列 / 实体）这条就会误报一次
+    const el = document.querySelector('.stagewrap > .card')
     return [...el.querySelectorAll('*')].map(x => x.className).filter(Boolean).slice(0, 8).join(',')
   }))
 }
@@ -477,6 +478,166 @@ const afterDrift = await p.evaluate(() => !!document.querySelector('.probdrift')
 !beforeDrift && afterDrift
   ? ok('选了真题后改引用串 → 提示「配置已被改动」（答案按当前序列算）')
   : bad(`序列偏离没提示：改前 ${beforeDrift} 改后 ${afterDrift}`)
+
+// ═══ 10. 实体表可编辑 ═══════════════════════════════════
+console.log('\n【10】实体表可编辑：进程表 / 图的边 / 资源矩阵 / 丢包事件')
+const entOf = () => p.evaluate(() => ({
+  tables: document.querySelectorAll('.ent .enttab').length,
+  rows: document.querySelectorAll('.ent tbody tr').length,
+  inputs: document.querySelectorAll('.ent input, .ent select').length,
+  presets: document.querySelectorAll('.entacts button:not(.ghost)').length,
+  ticks: document.querySelectorAll('.tick').length,
+  bad: document.querySelectorAll('.ent input.bad').length,
+}))
+
+for (const [name, tables] of [['进程调度', 1], ['Dijkstra', 1], ['银行家算法', 2], ['TCP 拥塞窗口', 1], ['滑动窗口', 1]]) {
+  await nav(name)
+  const e = await entOf()
+  e.tables === tables && e.inputs > 0 && e.presets >= 3
+    ? ok(`${name.padEnd(12)} ${e.tables} 张表 · ${e.rows} 行 · ${e.inputs} 个输入 · ${e.presets} 个预置`)
+    : bad(`${name} 实体表不对：${JSON.stringify(e)}`)
+}
+
+// 改一个格子 → 仿真必须重跑
+await nav('进程调度')
+const p0 = await entOf()
+await p.fill('.ent tbody tr:nth-child(1) td:nth-child(3) input', '12')
+await p.waitForTimeout(280)
+const p1 = await entOf()
+p1.ticks > p0.ticks
+  ? ok(`把 P1 服务时间改成 12 → 轨迹从 ${p0.ticks} 步涨到 ${p1.ticks} 步`)
+  : bad(`改服务时间没重跑：${p0.ticks} → ${p1.ticks}`)
+
+// 半截输入（清空）不许喂给仿真
+await p.fill('.ent tbody tr:nth-child(1) td:nth-child(3) input', '')
+await p.waitForTimeout(250)
+const half = await entOf()
+half.bad === 1 && half.ticks === p1.ticks
+  ? ok(`清空那一格：标红但轨迹仍是 ${half.ticks} 步 —— 半截输入没喂给仿真`)
+  : bad(`半截输入处理不对：标红 ${half.bad} 个，轨迹 ${half.ticks} 步`)
+await p.fill('.ent tbody tr:nth-child(1) td:nth-child(3) input', '7')
+await p.waitForTimeout(250)
+
+// 加行 / 删行
+const rowsBefore = (await entOf()).rows
+await p.click('.entadd')
+await p.waitForTimeout(260)
+const added = await entOf()
+await p.click('.ent tbody tr:last-child td.act button')
+await p.waitForTimeout(260)
+const removed = await entOf()
+added.rows === rowsBefore + 1 && removed.rows === rowsBefore
+  ? ok(`加一行 → ${added.rows} 行，删掉 → ${removed.rows} 行，轨迹跟着重算`)
+  : bad(`增删行不对：${rowsBefore} → ${added.rows} → ${removed.rows}`)
+
+// 进程重名必须被验证器拦住，且编辑器仍在（改坏了得改得回来）
+await p.fill('.ent tbody tr:nth-child(2) td:nth-child(1) input', 'P1')
+await p.waitForTimeout(280)
+const dup = await p.evaluate(() => ({
+  viol: document.querySelectorAll('.viol').length,
+  msg: document.querySelector('.viol p')?.textContent,
+  editorStillThere: !!document.querySelector('.ent input'),
+}))
+dup.viol > 0 && dup.msg?.includes('重复') && dup.editorStillThere
+  ? ok(`进程重名被拦下（${dup.msg.trim().slice(0, 24)}），编辑器仍在`)
+  : bad(`重名没被拦：${JSON.stringify(dup)}`)
+await p.click('.entacts button.ghost')
+await p.waitForTimeout(280)
+const back = await entOf()
+back.rows === rowsBefore && (await p.evaluate(() => document.querySelectorAll('.viol').length)) === 0
+  ? ok(`点「恢复默认」→ 回到 ${back.rows} 行，违规清零`)
+  : bad(`恢复默认失效：${back.rows} 行`)
+
+// 预置：护航效应（说法已被引擎测试验过）载入后必须真的改变结果
+await p.click('.entacts button:has-text("护航效应")')
+await p.waitForTimeout(300)
+const convoyFcfs = await p.evaluate(() => document.querySelectorAll('.tick').length)
+await p.click('.param:has-text("调度算法") .opts button:has-text("SRTF")')
+await p.waitForTimeout(300)
+const convoyOk = await p.evaluate(() => ({
+  rows: document.querySelectorAll('.ent tbody tr').length,
+  burst: document.querySelector('.ent tbody tr:nth-child(1) td:nth-child(3) input')?.value,
+}))
+convoyOk.rows === 4 && convoyOk.burst === '20' && convoyFcfs > 20
+  ? ok(`载入「护航效应」：4 个进程，长作业服务时间 ${convoyOk.burst}，轨迹 ${convoyFcfs} 步`)
+  : bad(`预置没载入：${JSON.stringify(convoyOk)}`)
+
+// 图的边：删掉通往 G 的边 → G 必须变成不可达
+await nav('Dijkstra')
+await p.click('.entacts button:has-text("G 不可达")')
+await p.waitForTimeout(320)
+const unreachable = await p.evaluate(() => {
+  const g = [...document.querySelectorAll('.gnode')].find(n => n.querySelector('b')?.textContent === 'G')
+  return { dist: g?.querySelector('em')?.textContent, edges: document.querySelectorAll('.gedge').length }
+})
+unreachable.dist === '∞'
+  ? ok(`载入「G 不可达」：图上只剩 ${unreachable.edges} 条边，G 的距离显示 ∞`)
+  : bad(`G 居然可达：${JSON.stringify(unreachable)}`)
+
+// 自环必须被拦（边可编辑之后才可能出现的非法状态）
+await p.click('.entacts button.ghost')
+await p.waitForTimeout(280)
+await p.selectOption('.ent tbody tr:nth-child(1) td:nth-child(2) select', 'A')
+await p.waitForTimeout(300)
+const loop = await p.evaluate(() => ({
+  viol: document.querySelectorAll('.viol').length,
+  msg: document.querySelector('.viol p')?.textContent,
+  editorStillThere: !!document.querySelector('.ent select'),
+}))
+loop.viol > 0 && loop.msg?.includes('自环') && loop.editorStillThere
+  ? ok(`把边改成 A→A：自环被拦下（${loop.msg.trim().slice(0, 20)}），编辑器仍在`)
+  : bad(`自环没被拦：${JSON.stringify(loop)}`)
+await p.click('.entacts button.ghost')
+await p.waitForTimeout(280)
+
+// 银行家：两张表，改总量必须能把安全状态改成不安全
+await nav('银行家算法')
+await p.click('.tabs button >> nth=1')      // 判定在「安全性检查」这个 tab 上
+await p.waitForTimeout(240)
+const bankBefore = await p.evaluate(() => document.querySelectorAll('.tick').length)
+await p.click(`.tick >> nth=${bankBefore - 1}`)
+await p.waitForTimeout(250)
+const verdictBefore = await p.evaluate(() =>
+  document.querySelector('.bverdict b')?.textContent)
+//  降到 4 的话已分配 7 > 4，那是「状态非法」不是「不安全」——
+//  降到 7 才刚好把可用量压到 0，逼出真正的不安全状态
+await p.fill('.ent .enttab:nth-child(1) tbody tr:nth-child(1) td:nth-child(2) input', '7')
+await p.waitForTimeout(320)
+const n2 = await p.evaluate(() => document.querySelectorAll('.tick').length)
+await p.click(`.tick >> nth=${n2 - 1}`)
+await p.waitForTimeout(250)
+const verdictAfter = await p.evaluate(() => document.querySelector('.bverdict b')?.textContent)
+verdictBefore === '安全状态' && verdictAfter === '不安全状态'
+  ? ok(`把 A 资源总量从 10 改成 7 → 判定从「${verdictBefore}」变成「${verdictAfter}」`)
+  : bad(`改总量没改变判定：${verdictBefore} → ${verdictAfter}`)
+
+// 已分配超过总量 = 状态本身非法，不是"不安全"
+await p.fill('.ent .enttab:nth-child(1) tbody tr:nth-child(1) td:nth-child(2) input', '1')
+await p.waitForTimeout(320)
+const illegal = await p.evaluate(() => ({
+  viol: document.querySelectorAll('.viol').length,
+  msg: document.querySelector('.viol p')?.textContent,
+}))
+illegal.viol > 0 && illegal.msg?.includes('超过总量')
+  ? ok(`已分配 7 > 总量 1：判为状态非法而不是「不安全」（${illegal.msg.trim().slice(0, 26)}）`)
+  : bad(`没区分「非法」与「不安全」：${JSON.stringify(illegal)}`)
+await p.click('.entacts button.ghost')
+await p.waitForTimeout(280)
+
+// ARQ：删掉丢包事件 → 重传必须归零
+await nav('滑动窗口')
+await p.click('.entacts button:has-text("不丢包")')
+await p.waitForTimeout(320)
+const lastN = await p.evaluate(() => document.querySelectorAll('.tick').length)
+await p.click(`.tick >> nth=${lastN - 1}`)
+await p.waitForTimeout(250)
+const noLoss = await p.evaluate(() => {
+  const r = [...document.querySelectorAll('.pr')].find(x => x.querySelector('.k')?.textContent === '其中重传')
+  return { retrans: r?.querySelector('.v')?.textContent, rows: document.querySelectorAll('.ent tbody tr').length }
+})
+noLoss.retrans === '0'
+  ? ok(`载入「不丢包」：丢包表清空（${noLoss.rows} 行提示），重传次数 ${noLoss.retrans}`)
+  : bad(`不丢包却有重传：${JSON.stringify(noLoss)}`)
 
 console.log(`\n${'─'.repeat(50)}`)
 console.log(errs.length ? `控制台错误 ${errs.length} 条：\n  ` + errs.slice(0, 4).join('\n  ') : '控制台无错误')

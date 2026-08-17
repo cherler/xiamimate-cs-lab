@@ -25,6 +25,9 @@ import { DiskStage } from './stages/DiskStage.tsx'
 import {
   CACHE_PRESETS, PAGE_PRESETS, DISK_PRESETS, SORT_PRESETS,
 } from '@engine/presets/sequences.ts'
+import {
+  SCHED_PRESETS, DIJKSTRA_PRESETS, BANKER_PRESETS, TCP_PRESETS, ARQ_PRESETS, NODES,
+} from '@engine/presets/entities.ts'
 import type { AnyExperiment, Experiment } from './types.ts'
 
 const pct = (n: number) => (n * 100).toFixed(1) + '%'
@@ -104,6 +107,20 @@ const scheduler: Experiment<SchedState> = {
     { key: 'algorithm', label: '调度算法', kind: 'enum', options: ['FCFS', 'SJF', 'SRTF', 'RR'] },
     { key: 'quantum', label: '时间片', kind: 'number', options: [1, 2, 3, 4], unit: '仅 RR 用' },
   ],
+  entitySpec: {
+    tables: [{
+      type: 'process',
+      label: '进程表',
+      columns: () => [
+        { key: 'id', label: '进程', kind: 'text', width: 62 },
+        { key: 'at', label: '到达时刻', kind: 'number', width: 84 },
+        { key: 'burst', label: '服务时间', kind: 'number', width: 84 },
+      ],
+      newRow: i => ({ id: `P${i + 1}`, type: 'process', at: 0, attrs: { burst: 3 } }),
+      minRows: 1, maxRows: 8,
+    }],
+    presets: SCHED_PRESETS,
+  },
   bounds: [
     '单 CPU、单核，不考虑多处理器',
     '忽略上下文切换开销与 I/O 阻塞',
@@ -153,6 +170,21 @@ const tcp: Experiment<TcpState> = {
     { key: 'initialCwnd', label: '初始窗口', kind: 'number', options: [1, 2, 4], unit: 'MSS' },
     { key: 'rounds', label: '模拟轮数', kind: 'number', options: [12, 20, 30], unit: 'RTT' },
   ],
+  entitySpec: {
+    tables: [{
+      type: 'loss',
+      label: '丢包事件',
+      columns: () => [
+        { key: 'id', label: '编号', kind: 'text', width: 58 },
+        { key: 'at', label: '第几轮', kind: 'number', width: 74 },
+        { key: 'type', label: '事件类型', kind: 'enum',
+          options: ['timeout', 'tripleDup'], labels: ['超时', '三次重复 ACK'], width: 116 },
+      ],
+      newRow: i => ({ id: `L${i + 1}`, type: 'loss', at: 5, attrs: { type: 'timeout' } }),
+      minRows: 0, maxRows: 6,
+    }],
+    presets: TCP_PRESETS,
+  },
   bounds: [
     '只建模拥塞控制，不含流量控制（接收窗口）',
     '假设 RTT 恒定，每轮恰好发送一个窗口',
@@ -325,11 +357,7 @@ const sort: Experiment<SortState> = {
   ],
 }
 
-// ═══ Dijkstra ══════════════════════════════════════════
-const NODE_XY: Record<string, [number, number]> = {
-  A: [12, 50], B: [34, 18], C: [34, 74], D: [56, 92],
-  E: [58, 22], F: [62, 58], G: [88, 40],
-}
+// ═══ Dijkstra ═════════════════════════════════════════
 const dijkstra: Experiment<DijkstraState> = {
   id: 'dijkstra',
   group: '数据结构',
@@ -340,7 +368,7 @@ const dijkstra: Experiment<DijkstraState> = {
     kind: 'dijkstra',
     params: { source: 'A', directed: 0 },
     entities: [
-      ...Object.entries(NODE_XY).map(([id, [x, y]]) => ({ id, type: 'node', attrs: { x, y } })),
+      ...NODES,
       ...([
         ['A', 'B', 4], ['A', 'C', 6], ['A', 'D', 6],
         ['B', 'C', 1], ['B', 'E', 7],
@@ -356,8 +384,31 @@ const dijkstra: Experiment<DijkstraState> = {
     { key: 'source', label: '源点', kind: 'enum', options: ['A', 'B', 'C', 'D', 'E', 'F', 'G'] },
     { key: 'directed', label: '图的类型', kind: 'number', options: [0, 1], unit: '0 无向 / 1 有向' },
   ],
+  entitySpec: {
+    tables: [{
+      type: 'edge',
+      label: '边表',
+      //  只开放边（端点 + 权）。顶点固定 A–G：顶点坐标是布局信息，
+      //  让学生填 x/y 既没有教学价值，也容易把图画乱。
+      columns: doc => {
+        const ids = doc.entities.filter(e => e.type === 'node').map(e => e.id)
+        return [
+          { key: 'from', label: '起点', kind: 'enum', options: ids, width: 64 },
+          { key: 'to', label: '终点', kind: 'enum', options: ids, width: 64 },
+          { key: 'w', label: '权值', kind: 'number', width: 70 },
+        ]
+      },
+      newRow: (i, doc) => {
+        const ids = doc.entities.filter(e => e.type === 'node').map(e => e.id)
+        return { id: `E${i + 1}`, type: 'edge', attrs: { from: ids[0], to: ids[1] ?? ids[0], w: 1 } }
+      },
+      minRows: 1, maxRows: 16, chunk: 6,
+    }],
+    presets: DIJKSTRA_PRESETS,
+  },
   bounds: [
     'Dijkstra 要求边权非负；含负权边请改用 Bellman-Ford',
+    '顶点固定为 A–G（坐标是布局信息，不开放编辑）；可增删的是边',
     '每轮选点为线性扫描（O(V²)），不是堆优化版；结果相同，步数展示不同',
     '同距离时按顶点名字典序选点 —— 教材若约定别的顺序，中间过程会不同、最短距离相同',
     '不处理重边与自环',
@@ -411,8 +462,45 @@ const banker: Experiment<BankerState> = {
   //  这个实验的自由度在实体（各进程的 Max/Allocation），不在标量参数，
   //  所以参数面板故意留空 —— 不为了凑一栏而造假参数。
   params: [],
-  paramsNote: '本实验的自由度在资源矩阵里（各进程的 Max / Allocation、各资源总量），'
-    + '不是标量参数，所以这里没有可调项。矩阵编辑还没做，暂时只能通过选真题切换不同的初始状态。',
+  paramsNote: '本实验的自由度在下面的资源矩阵里（各资源总量、各进程的 Max / Allocation），'
+    + '不是标量参数，所以这里没有可调项。',
+  entitySpec: {
+    tables: [
+      {
+        type: 'resource',
+        label: '资源总量',
+        hint: '资源类别由参数 resources 决定，不在这里增删',
+        columns: () => [
+          { key: 'id', label: '资源', kind: 'text', width: 58 },
+          { key: 'total', label: '系统总量', kind: 'number', width: 84 },
+        ],
+        newRow: i => ({ id: String.fromCharCode(65 + i), type: 'resource', attrs: { total: 1 } }),
+        fixedRows: true,
+      },
+      {
+        type: 'process',
+        label: '进程需求',
+        hint: 'Need = Max − Allocation，由这两栏算出来',
+        //  列数取决于有几类资源 —— 这就是 columns 做成函数的原因
+        columns: doc => {
+          const res = String(doc.params.resources).split(',').map(x => x.trim()).filter(Boolean)
+          return [
+            { key: 'id', label: '进程', kind: 'text', width: 58 },
+            ...res.map(r => ({ key: `max_${r}`, label: `Max ${r}`, kind: 'number' as const, width: 66 })),
+            ...res.map(r => ({ key: `alloc_${r}`, label: `已分配 ${r}`, kind: 'number' as const, width: 74 })),
+          ]
+        },
+        newRow: (i, doc) => {
+          const res = String(doc.params.resources).split(',').map(x => x.trim()).filter(Boolean)
+          const attrs: Record<string, number> = {}
+          for (const r of res) { attrs[`max_${r}`] = 1; attrs[`alloc_${r}`] = 0 }
+          return { id: `P${i}`, type: 'process', attrs }
+        },
+        minRows: 1, maxRows: 8,
+      },
+    ],
+    presets: BANKER_PRESETS,
+  },
   bounds: [
     '只做安全性检查，不含"某进程请求资源是否批准"的试分配环节',
     '按进程登记顺序线性扫描找可满足者；换扫描顺序可能得到另一个安全序列',
@@ -468,6 +556,23 @@ const arq: Experiment<ArqState> = {
     { key: 'delay', label: '单程时延', kind: 'number', options: [1, 2, 3], unit: '时隙' },
     { key: 'timeout', label: '超时', kind: 'number', options: [6, 8, 12], unit: '时隙' },
   ],
+  entitySpec: {
+    tables: [{
+      type: 'loss',
+      label: '丢包事件',
+      hint: '第 nth 次传输该序号时丢失，重传能过去',
+      columns: () => [
+        { key: 'id', label: '编号', kind: 'text', width: 56 },
+        { key: 'target', label: '丢什么', kind: 'enum',
+          options: ['frame', 'ack'], labels: ['数据帧', 'ACK'], width: 88 },
+        { key: 'seq', label: '序号', kind: 'number', width: 64 },
+        { key: 'nth', label: '第几次传输', kind: 'number', width: 92 },
+      ],
+      newRow: i => ({ id: `L${i + 1}`, type: 'loss', attrs: { target: 'frame', seq: 0, nth: 1 } }),
+      minRows: 0, maxRows: 6,
+    }],
+    presets: ARQ_PRESETS,
+  },
   bounds: [
     '序号不做回绕（不取模），所以看不到"窗口上限 2ⁿ−1"这一考点',
     '信道保序、不重排，每时隙至多发一个新帧',

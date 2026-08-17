@@ -7,8 +7,9 @@
  * 加一个新实验 = 往注册表里加一条，宿主框架一行不用改。
  */
 import type { FC } from 'react'
-import type { SimDocument } from '@engine/core/document.ts'
+import type { SimDocument, Entity } from '@engine/core/document.ts'
 import type { Preset } from '@engine/presets/sequences.ts'
+import type { EntityPreset } from '@engine/presets/entities.ts'
 import type { Kernel } from '@engine/core/kernel.ts'
 
 /** 参数面板的一项 —— 只给离散选项，避免自由输入产生非法配置 */
@@ -47,6 +48,46 @@ export type SequenceSpec = {
   random?: () => number[]
 }
 
+/**
+ * 可编辑的实体表 —— 进程表 / 图的边 / 资源矩阵 / 丢包事件。
+ *
+ * 跟序列编辑器同源：改的仍是 doc.entities，没有绕过文档层。
+ * 区别只在形状：序列是一串标量，实体是一张表。
+ */
+export type EntityColumn =
+  | { key: string; label: string; kind: 'text'; width?: number }
+  | { key: string; label: string; kind: 'number'; unit?: string; width?: number }
+  | { key: string; label: string; kind: 'enum'; options: string[]; labels?: string[]; width?: number }
+
+export type EntityTableSpec = {
+  /** 只管这一类实体，其余原样保留 */
+  type: string
+  label: string
+  hint?: string
+  /**
+   * 列定义。做成函数是因为银行家的列数取决于 params.resources ——
+   * 资源有几类，Max/Allocation 就有几列。
+   */
+  columns: (doc: SimDocument) => EntityColumn[]
+  /** `id` 与 `at` 是 Entity 的顶层字段，其余列名都落在 attrs 里 */
+  newRow: (index: number, doc: SimDocument) => Entity
+  minRows?: number
+  maxRows?: number
+  /**
+   * 每多少行折一栏。窄表（如三列的边表）行数一多就会挤成细长一条、
+   * 右边全是空白 —— 折栏之后并排放，一屏看得全。
+   */
+  chunk?: number
+  /** 行不可增删时（如银行家的资源类别由参数决定）关掉加/减按钮 */
+  fixedRows?: boolean
+}
+
+export type EntitySpec = {
+  tables: EntityTableSpec[]
+  /** 整组实体的预置 —— 与序列预置同一条纪律：note 是能被证伪的主张 */
+  presets?: EntityPreset[]
+}
+
 export type ViewTab = { id: string; label: string }
 
 export type StageProps<S> = {
@@ -70,6 +111,8 @@ export interface Experiment<S = never> {
   paramsNote?: string
   /** 驱动序列可编辑 —— 参数换不了题面数据，这个才行 */
   sequence?: SequenceSpec
+  /** 实体表可编辑 —— 进程表 / 图的边 / 资源矩阵 / 丢包事件 */
+  entitySpec?: EntitySpec
 
   /** 内容标准 #2：诚实标注失真范围 */
   bounds: string[]

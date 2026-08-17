@@ -8,12 +8,13 @@
 import { useMemo, useState } from 'react'
 import { run } from '@engine/core/kernel.ts'
 import { validateDocument } from '@engine/ai/schema.ts'
-import type { SimDocument } from '@engine/core/document.ts'
+import type { SimDocument, Entity } from '@engine/core/document.ts'
 import { EXPERIMENTS } from './registry.ts'
 import { AxisBand } from './shell/AxisBand.tsx'
 import { StepLog, ParamPanel, Readouts, Violations, Bounds } from './shell/Panels.tsx'
 import { ProblemPanel } from './shell/ProblemPanel.tsx'
 import { SequenceEditor, parseSequence, formatSequence } from './shell/SequenceEditor.tsx'
+import { EntityEditor } from './shell/EntityEditor.tsx'
 import { problemsFor } from './problems.ts'
 
 export default function App() {
@@ -31,6 +32,8 @@ export default function App() {
    */
   const [seqText, setSeqText] = useState<Record<string, string | undefined>>({})
   const [seqValues, setSeqValues] = useState<Record<string, number[] | undefined>>({})
+  /** 实体表的改动；undefined = 没改过，用 baseDoc.entities */
+  const [entities, setEntities] = useState<Record<string, Entity[] | undefined>>({})
 
   const exp = EXPERIMENTS.find(e => e.id === expId)!
   const problems = useMemo(() => problemsFor(exp.id), [exp])
@@ -48,10 +51,14 @@ export default function App() {
   const seqLive = seqValues[exp.id]
   const seqKey = seqLive ? seqLive.join(',') : ''
 
+  const entLive = entities[exp.id]
+  const entKey = entLive ? JSON.stringify(entLive) : ''
+
   const doc: SimDocument = useMemo(() => {
     const d: SimDocument = {
       ...baseDoc,
       params: { ...baseDoc.params, ...(overrides[exp.id] ?? {}) },
+      entities: entLive ?? baseDoc.entities,
     }
     if (exp.sequence && seqLive) {
       const name = exp.sequence.stream
@@ -60,12 +67,16 @@ export default function App() {
     return d
   // seqLive 是数组，按内容做依赖才不会每帧重算
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [baseDoc, exp.id, exp.sequence, overrides, seqKey])
+  // entLive 是数组，按内容做依赖才不会每帧重算
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [baseDoc, exp.id, exp.sequence, overrides, seqKey, entKey])
 
   // 参数或序列被改得偏离原题时要明说 —— 因为答案是按当前配置算的
   const seqDrifted = problem !== null && exp.sequence !== undefined && seqLive !== undefined &&
     formatSequence(baseSeq, exp.sequence) !== formatSequence(seqLive, exp.sequence)
-  const drifted = seqDrifted || (problem !== null &&
+  const entDrifted = entLive !== undefined &&
+    JSON.stringify(entLive) !== JSON.stringify(baseDoc.entities)
+  const drifted = seqDrifted || (problem !== null && entDrifted) || (problem !== null &&
     Object.entries(overrides[exp.id] ?? {}).some(([k, v]) => problem.doc.params[k] !== v))
 
   /** 供真题里"改个参数再算一遍"型的题用 */
@@ -87,6 +98,7 @@ export default function App() {
     const e = EXPERIMENTS.find(x => x.id === id)!
     setExpId(id); setTab(e.tabs[0].id); setIndex(0); setPlaying(false); setProblemId(null)
     setSeqText(t => ({ ...t, [id]: undefined })); setSeqValues(v => ({ ...v, [id]: undefined }))
+    setEntities(e => ({ ...e, [id]: undefined }))
   }
   function pickProblem(id: string | null) {
     setProblemId(id)
@@ -102,6 +114,15 @@ export default function App() {
   function clearSeq() {
     setSeqText(t => ({ ...t, [exp.id]: undefined }))
     setSeqValues(v => ({ ...v, [exp.id]: undefined }))
+    setEntities(e => ({ ...e, [exp.id]: undefined }))
+  }
+  function editEntities(next: Entity[]) {
+    setEntities(e => ({ ...e, [exp.id]: next }))
+    setIndex(0); setPlaying(false)
+  }
+  function resetEntities() {
+    setEntities(e => ({ ...e, [exp.id]: undefined }))
+    setIndex(0); setPlaying(false)
   }
   function editSeq(text: string) {
     setSeqText(t => ({ ...t, [exp.id]: text }))
@@ -177,11 +198,22 @@ export default function App() {
             />
           )}
 
+          {exp.entitySpec && (
+            <EntityEditor
+              spec={exp.entitySpec} doc={doc} dirty={entDrifted}
+              onChange={editEntities} onReset={resetEntities}
+            />
+          )}
+
           {violations.length > 0
             ? <Violations items={violations} />
             : state
               ? <>
-                  <exp.Stage doc={doc} trace={trace} index={clamped} state={state} tab={tab} />
+                  {/* 舞台外面套一层稳定容器：测试要认出"哪块是舞台"，
+                      不能靠"中列第几张卡片"猜 —— 每加一个编辑器就会误判一次 */}
+                  <div className="stagewrap">
+                    <exp.Stage doc={doc} trace={trace} index={clamped} state={state} tab={tab} />
+                  </div>
                   <AxisBand
                     exp={exp} trace={trace} index={clamped}
                     playing={playing}

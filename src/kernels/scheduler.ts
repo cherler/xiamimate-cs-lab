@@ -73,7 +73,19 @@ export const schedKernel: Kernel<SchedState> = {
             sliceLeft = 0
           }
         }
-        if (completed.length >= procs.length) return null
+        //  结算完最后一个进程就直接 return null 的话，"全部完成"这件事
+        //  被算出来又扔掉了 —— 轨迹里没有任何一步显示它，UI 永远停在"已完成 3/4"。
+        //  必须把这一步发出去。
+        if (completed.length >= procs.length) {
+          return {
+            state: {
+              t, running: null, readyQueue: ready, remaining, completed,
+              log: `t=${t} 全部 ${procs.length} 个进程执行完毕`,
+              sliceLeft: 0,
+            },
+            done: true,
+          }
+        }
 
         // 到达
         for (const p of procs) {

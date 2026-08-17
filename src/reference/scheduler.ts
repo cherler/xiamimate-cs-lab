@@ -82,6 +82,19 @@ export function runScheduler(d: SchedulerDSL): SchedulerStep[] {
     }
   }
 
+  //  循环条件在"全部完成"时就退出了，于是最后一次完成没有任何一步记录它 ——
+  //  轨迹末态永远显示"已完成 n−1 / n"。补一步收尾。
+  //  （统一内核当初写出了同样的毛病：两份独立实现撞了同一个盲点，
+  //   直到看着界面上那句"已完成 3/4"才发现。）
+  if (completed.length === d.processes.length) {
+    trace.push({
+      t: trace.length ? trace[trace.length - 1].t + 1 : 0,
+      running: null, readyQueue: [...ready],
+      remaining: { ...remaining }, completed: [...completed],
+      log: `t=${trace.length ? trace[trace.length - 1].t + 1 : 0} 全部 ${d.processes.length} 个进程执行完毕`,
+    })
+  }
+
   return trace
 }
 
