@@ -12,7 +12,8 @@
     "demo:cache": "tsx src/reference/cache.ts",
     "demo:sched": "tsx src/reference/scheduler.ts",
     "demo:tcp": "tsx src/reference/tcp.ts",
-    "ai:fill": "tsx scripts/ai-fill.ts"
+    "ai:fill": "tsx scripts/ai-fill.ts",
+    "ai:bench": "tsx scripts/ai-bench.ts"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",

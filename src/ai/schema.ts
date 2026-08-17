@@ -132,10 +132,74 @@ import type { Violation } from '../core/verify.ts'
 
 const isPow2 = (n: number) => Number.isInteger(n) && n > 0 && (n & (n - 1)) === 0
 
-export function validateDocument(doc: SimDocument): Violation[] {
+/**
+ * 每个 kind 必须存在的 params 及其类型。
+ *
+ * 为什么不能只靠 schema 的 required：实测发现第三方 Anthropic 兼容端点
+ * **不强制 required**（"Cache 没说替换策略"那道题，模型直接省掉了 replacement）。
+ * schema 是给模型的提示，不是给我们的保证 —— 落地校验必须自己做。
+ */
+const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
+  cache: {
+    addressBits: 'number', cacheSizeBytes: 'number', blockSizeBytes: 'number',
+    associativity: 'number', replacement: 'string',
+  },
+  scheduler: { algorithm: 'string', quantum: 'number' },
+  tcp: { variant: 'string', initialCwnd: 'number', initialSsthresh: 'number', rounds: 'number' },
+}
+
+const ENUMS: Record<string, string[]> = {
+  replacement: ['LRU', 'FIFO'],
+  algorithm: ['FCFS', 'SJF', 'SRTF', 'RR'],
+  variant: ['Tahoe', 'Reno'],
+}
+
+/**
+ * 归一化：把"省略的空集合"补成 `[]`。
+ *
+ * 为什么要区别对待：缺 `replacement` 是缺一个有语义的值，猜不得，必须拒；
+ * 缺 `entities: []` 是缺一个空集合，信息量为零，拒绝没道理。
+ * 实测里模型经常直接省掉用不到的数组 —— 这不算错，归一化掉就行。
+ */
+export function normalizeDocument(doc: SimDocument): SimDocument {
+  return {
+    ...doc,
+    entities: Array.isArray(doc?.entities) ? doc.entities : [],
+    streams: Array.isArray(doc?.streams) ? doc.streams : [],
+  }
+}
+
+export function validateDocument(raw: SimDocument): Violation[] {
   const v: Violation[] = []
   const err = (location: string, message: string, actual?: unknown) =>
     v.push({ severity: 'error', location, message, actual })
+
+  // ── 关卡 0：结构 —— 字段在不在、类型对不对、枚举合不合法 ──
+  if (!raw || typeof raw !== 'object') { err('', '不是对象', raw); return v }
+  if (typeof raw.kind !== 'string' || !(raw.kind in REQUIRED)) {
+    err('kind', `未知的实验类型`, raw.kind); return v
+  }
+  if (raw.entities !== undefined && !Array.isArray(raw.entities))
+    err('entities', '存在但不是数组', raw.entities)
+  if (raw.streams !== undefined && !Array.isArray(raw.streams))
+    err('streams', '存在但不是数组', raw.streams)
+  if (!raw.params || typeof raw.params !== 'object') {
+    err('params', '缺失或不是对象', raw.params); return v
+  }
+  const doc = normalizeDocument(raw)
+
+  for (const [key, want] of Object.entries(REQUIRED[doc.kind])) {
+    const got = doc.params[key]
+    if (got === undefined || got === null) {
+      err(`params.${key}`, '必填字段缺失', got)
+    } else if (typeof got !== want) {
+      err(`params.${key}`, `类型应为 ${want}`, got)
+    } else if (ENUMS[key] && !ENUMS[key].includes(got as string)) {
+      err(`params.${key}`, `取值必须是 ${ENUMS[key].join(' / ')}`, got)
+    }
+  }
+  // 结构不过关就别往下查数值规则了，报错会串
+  if (v.length > 0) return v
 
   if (doc.kind === 'cache') {
     const p = doc.params

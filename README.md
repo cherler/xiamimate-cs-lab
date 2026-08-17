@@ -61,14 +61,22 @@ logs/                 每次验证的结果与发现
 | 0 | DSL 收敛验证（三个实验挤一个 schema） | ✅ 通过 |
 | 0b | parameter 轴 · 高阶内核 | ✅ 通过 |
 | 0c | 验收标准 5 / 6 | ✅ 通过 |
-| 0d | 内容环实测：AI 填 DSL | ✅ 正常题 3/3、陷阱题 3/3 被拦（样本量小） |
+| 0d | 内容环实测：AI 填 DSL | ✅ 精确题 60/60（20题×3次）、陷阱题 6/6 |
 | 1 | 宿主框架 + 视图层（补验收标准 3） | 未开始 |
 | 2 | L2 组合级 | 未开始 |
 | 3 | L3 新原语（风险最高，可能做不成） | 未开始 |
 
-**AI 填 DSL 实测要点**（详见 `logs/2026-08-17-ai-fill.md`）：
-MiniMax 的 Anthropic 兼容端点**不支持 `output_config.format`**，
-**强制工具调用 `tool_choice` 才是可用路径**。脚本内置逐级降级探测，换模型时会自动重测。
+**AI 填 DSL 实测要点**（详见 `logs/2026-08-17-ai-bench.md`）：
+
+- MiniMax 的 Anthropic 兼容端点**不支持 `output_config.format`**，**强制工具调用 `tool_choice` 才是可用路径**（脚本内置逐级降级探测，换模型自动重测）
+- 强制 `tool_choice` 仍有 **~3% 偶发不出 `tool_use` 块** → `fillWithRetry()` 重试
+- 端点**不强制 schema 的 `required`** → 落地校验必须自己做（`validateDocument` 关卡 0）
+- 但**缺"有语义的值"和缺"空集合"要分开处理** → `normalizeDocument()` 把省略的数组补成 `[]`
+
+```bash
+npm run ai:bench        # 跑一遍
+npm run ai:bench -- 3   # 每题 3 次，统计通过率
+```
 
 ## 铁律
 
