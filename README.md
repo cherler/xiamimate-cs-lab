@@ -33,7 +33,8 @@ src/
 │   ├── cache.ts      Cache 命中率      · step 轴
 │   ├── scheduler.ts  进程调度甘特图    · time 轴
 │   ├── tcp.ts        TCP 拥塞窗口      · time 轴
-│   └── sweep.ts      参数扫描（高阶）  · parameter 轴
+│   ├── sweep.ts      参数扫描（高阶）  · parameter 轴 → 曲线
+│   └── compare.ts    并排对比（高阶）  · 沿用内层轴 → N 条轨迹对齐
 └── reference/        独立参考实现 —— 验证基准，不是内核
 tests/                每个测试都自带"必须能红"的自检
 docs/
@@ -63,7 +64,7 @@ logs/                 每次验证的结果与发现
 | 0c | 验收标准 5 / 6 | ✅ 通过 |
 | 0d | 内容环实测：AI 填 DSL | ✅ 精确题 60/60（20题×3次）、陷阱题 6/6 |
 | 1 | 宿主框架 + 视图层（补验收标准 3） | 未开始 |
-| 2 | L2 组合级 | 未开始 |
+| 0e | **L2 组合级**：AI 自选原语 | ✅ 36/36（12题×3次），选原语与填参数均 100% |
 | 3 | L3 新原语（风险最高，可能做不成） | 未开始 |
 
 **AI 填 DSL 实测要点**（详见 `logs/2026-08-17-ai-bench.md`）：
@@ -72,10 +73,13 @@ logs/                 每次验证的结果与发现
 - 强制 `tool_choice` 仍有 **~3% 偶发不出 `tool_use` 块** → `fillWithRetry()` 重试
 - 端点**不强制 schema 的 `required`** → 落地校验必须自己做（`validateDocument` 关卡 0）
 - 但**缺"有语义的值"和缺"空集合"要分开处理** → `normalizeDocument()` 把省略的数组补成 `[]`
+- 端点**同样不强制 `enum`** → 凡是能从别处拿到权威值的字段就别让模型填（`kind` 直接用工具名覆盖）
 
 ```bash
-npm run ai:bench        # 跑一遍
-npm run ai:bench -- 3   # 每题 3 次，统计通过率
+npm run ai:bench        # L1：填参数，跑一遍
+npm run ai:bench -- 3   # 每题 3 次
+npm run ai:l2           # L2：6 个工具混着给，模型自选原语
+npm run ai:l2 -- 3
 ```
 
 ## 铁律

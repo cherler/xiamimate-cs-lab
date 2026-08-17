@@ -94,6 +94,75 @@ export async function fillWithRetry(
   throw new Error(`${maxAttempts} 次均失败，最后一次：${last?.message}`)
 }
 
+// ═══ L2：多工具模式 —— 由模型自己选用哪个原语 ══════════
+/**
+ * 把全部原语作为工具一起给出去，`tool_choice: {type:'any'}` 强制调用但不指定调哪个。
+ *
+ * 这是 L2 的真考题：如果直接把 compare schema 递过去，等于人替它组装好了。
+ * L2 要求的是模型**自己判断**这题该用单实验还是并排对比。
+ */
+export const SYSTEM_L2 = `${SYSTEM}
+
+你有多个工具，每个对应一种实验形态：
+- 单实验（cache / scheduler / tcp）：题目只要求分析一种配置
+- 并排对比（compare_*）：题目要求"分别采用 X 和 Y""比较…""对比…"两种或多种配置
+
+先判断题目属于哪一种，再调用对应的工具。
+用并排对比时：varyParam 填被对比的参数名，并在 streams 里加一条 name="variants" 的流列出取值。`
+
+/** 工具名不能带冒号，跟 kind 之间做个映射 */
+export const toolNameOf = (kind: string) => kind.replace(':', '_')
+export const kindOfTool = (tool: string) =>
+  tool.startsWith('compare_') ? `compare:${tool.slice('compare_'.length)}` : tool
+
+const TOOL_DESC: Record<string, string> = {
+  cache: '单个 Cache 命中率实验',
+  scheduler: '单个进程调度甘特图实验',
+  tcp: '单个 TCP 拥塞窗口实验',
+  'compare:cache': '并排对比多种 Cache 配置（如 LRU vs FIFO、不同相联度）',
+  'compare:scheduler': '并排对比多种调度算法（如 FCFS vs SJF）',
+  'compare:tcp': '并排对比多种 TCP 配置（如 Reno vs Tahoe）',
+}
+
+export type MultiResult = { kind: string; doc: SimDocument; attempts: number; ms: number }
+
+export async function fillMultiTool(
+  client: Anthropic, model: string, problem: string,
+  schemas: Record<string, object>, maxAttempts = 3,
+): Promise<MultiResult> {
+  const tools = Object.entries(schemas).map(([kind, schema]) => ({
+    name: toolNameOf(kind),
+    description: TOOL_DESC[kind] ?? kind,
+    input_schema: schema as never,
+  }))
+
+  const t0 = Date.now()
+  let last: Error | null = null
+  for (let i = 1; i <= maxAttempts; i++) {
+    try {
+      const r = await client.messages.create({
+        model, max_tokens: 4096, system: SYSTEM_L2,
+        messages: [{ role: 'user', content: problem }],
+        tools,
+        tool_choice: { type: 'any' },   // 必须调一个，但调哪个由模型定
+      })
+      const tu = r.content.find(b => b.type === 'tool_use')
+      if (!tu) throw new Error(`没有 tool_use 块（stop_reason=${r.stop_reason}）`)
+      const t = tu as { name: string; input: SimDocument }
+      const kind = kindOfTool(t.name)
+
+      // doc.kind 是模型生成的文本，不可靠 —— 实测里它会填错（端点同样不强制 enum）。
+      // 权威来源是被调用的工具名：那是 API 的路由结果，映射由我们控制。
+      // 所以不去校验 doc.kind，直接以工具名覆盖。
+      return { kind, doc: { ...t.input, kind }, attempts: i, ms: Date.now() - t0 }
+    } catch (e) {
+      last = e as Error
+      if (i < maxAttempts) await new Promise(r => setTimeout(r, 400 * i))
+    }
+  }
+  throw new Error(`${maxAttempts} 次均失败，最后一次：${last?.message}`)
+}
+
 /** 逐级降级探测端点支持哪种结构化输出 */
 export async function probeMode(
   client: Anthropic, model: string, problem: string, schema: object,

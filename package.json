@@ -13,7 +13,9 @@
     "demo:sched": "tsx src/reference/scheduler.ts",
     "demo:tcp": "tsx src/reference/tcp.ts",
     "ai:fill": "tsx scripts/ai-fill.ts",
-    "ai:bench": "tsx scripts/ai-bench.ts"
+    "ai:bench": "tsx scripts/ai-bench.ts",
+    "ai:l2": "tsx scripts/ai-l2.ts",
+    "test:l2": "tsx tests/compose-l2.test.ts"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",

@@ -123,7 +123,58 @@ export const TCP_SCHEMA: JsonSchema = {
   additionalProperties: false,
 }
 
-export const SCHEMAS = { cache: CACHE_SCHEMA, scheduler: SCHED_SCHEMA, tcp: TCP_SCHEMA }
+// ═══ L2 组合：并排对比 ═════════════════════════════════
+/**
+ * 把一份基础 schema 升成对比版：加 varyParam，streams 里加 variants。
+ * 这是 L2 的关键 —— 组合原语用的还是 SimDocument，没有新增顶层概念。
+ */
+function toCompareSchema(base: JsonSchema, kind: string, varyEnum: string[]): JsonSchema {
+  const baseProps = (base.properties as Record<string, JsonSchema>)
+  const params = JSON.parse(JSON.stringify(baseProps.params)) as JsonSchema
+  const pp = params.properties as Record<string, JsonSchema>
+  pp.varyParam = { type: 'string', enum: varyEnum, description: '被对比的参数名' }
+  ;(params.required as string[]).push('varyParam')
+
+  return {
+    type: 'object',
+    properties: {
+      kind: { type: 'string', enum: [kind] },
+      params,
+      entities: baseProps.entities,
+      streams: {
+        type: 'array',
+        description: '除内层原有的流之外，必须额外给一条 name="variants" 的流，列出要对比的取值',
+        items: {
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+            values: { type: 'array', items: { anyOf: [{ type: 'number' }, { type: 'string' }] } },
+          },
+          required: ['name', 'values'],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ['kind', 'params', 'entities', 'streams'],
+    additionalProperties: false,
+  }
+}
+
+export const COMPARE_CACHE_SCHEMA = toCompareSchema(
+  CACHE_SCHEMA, 'compare:cache', ['replacement', 'associativity', 'blockSizeBytes', 'cacheSizeBytes'])
+export const COMPARE_SCHED_SCHEMA = toCompareSchema(
+  SCHED_SCHEMA, 'compare:scheduler', ['algorithm', 'quantum'])
+export const COMPARE_TCP_SCHEMA = toCompareSchema(
+  TCP_SCHEMA, 'compare:tcp', ['variant', 'initialSsthresh', 'initialCwnd'])
+
+export const SCHEMAS = {
+  cache: CACHE_SCHEMA,
+  scheduler: SCHED_SCHEMA,
+  tcp: TCP_SCHEMA,
+  'compare:cache': COMPARE_CACHE_SCHEMA,
+  'compare:scheduler': COMPARE_SCHED_SCHEMA,
+  'compare:tcp': COMPARE_TCP_SCHEMA,
+}
 
 // ═══ schema 管不了的规则，在这里管 ═════════════════════
 // 这就是"不能有数值约束 → 验证器从可选变必需"的落点。
@@ -169,6 +220,35 @@ export function normalizeDocument(doc: SimDocument): SimDocument {
   }
 }
 
+/**
+ * 组合 doc（compare:xxx）的校验：拆成内层 doc 再走同一套规则。
+ * 组合原语没有自己的合法性规则 —— 它的合法性就是"每个变体都合法"。
+ */
+function validateCompare(raw: SimDocument): Violation[] {
+  const v: Violation[] = []
+  const innerKind = raw.kind.slice('compare:'.length)
+  const vary = raw.params?.varyParam
+  if (typeof vary !== 'string')
+    return [{ severity: 'error', location: 'params.varyParam', message: '组合实验必须指定被对比的参数名', actual: vary }]
+
+  const streams = Array.isArray(raw.streams) ? raw.streams : []
+  const variants = streams.find(s => s.name === 'variants')?.values
+  if (!Array.isArray(variants) || variants.length < 2)
+    v.push({ severity: 'error', location: 'streams.variants', message: '对比至少要两个取值', actual: variants })
+
+  for (const val of variants ?? []) {
+    const params = { ...raw.params, [vary]: val }
+    delete params.varyParam
+    const inner: SimDocument = {
+      kind: innerKind, params,
+      entities: raw.entities, streams: streams.filter(s => s.name !== 'variants'),
+    }
+    for (const e of validateDocument(inner))
+      v.push({ ...e, location: `variants[${String(val)}].${e.location}` })
+  }
+  return v
+}
+
 export function validateDocument(raw: SimDocument): Violation[] {
   const v: Violation[] = []
   const err = (location: string, message: string, actual?: unknown) =>
@@ -176,6 +256,12 @@ export function validateDocument(raw: SimDocument): Violation[] {
 
   // ── 关卡 0：结构 —— 字段在不在、类型对不对、枚举合不合法 ──
   if (!raw || typeof raw !== 'object') { err('', '不是对象', raw); return v }
+  if (typeof raw.kind === 'string' && raw.kind.startsWith('compare:')) {
+    if (!(raw.kind.slice('compare:'.length) in REQUIRED)) {
+      err('kind', '未知的内层实验类型', raw.kind); return v
+    }
+    return validateCompare(raw)
+  }
   if (typeof raw.kind !== 'string' || !(raw.kind in REQUIRED)) {
     err('kind', `未知的实验类型`, raw.kind); return v
   }
