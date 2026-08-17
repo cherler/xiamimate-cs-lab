@@ -1,0 +1,21 @@
+{
+  "name": "xiamimate-cs-lab",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "计算机专业课交互仿真实验室 —— 引擎与内核",
+  "scripts": {
+    "test": "tsx tests/run-all.ts",
+    "test:phase0": "tsx tests/phase0-convergence.test.ts",
+    "test:sweep": "tsx tests/parameter-axis.test.ts",
+    "typecheck": "tsc --noEmit",
+    "demo:cache": "tsx src/reference/cache.ts",
+    "demo:sched": "tsx src/reference/scheduler.ts",
+    "demo:tcp": "tsx src/reference/tcp.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "tsx": "^4.23.0",
+    "typescript": "^5.9.0"
+  }
+}
