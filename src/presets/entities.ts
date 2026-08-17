@@ -422,3 +422,108 @@ export const PART_PRESETS: EntityPreset[] = [
     ],
   },
 ]
+
+// ═══ 图遍历用的无向图 ═══════════════════════════════════
+const XY8: Record<string, [number, number]> = {
+  A: [10, 46], B: [30, 18], C: [30, 74], D: [52, 8],
+  E: [52, 40], F: [52, 78], G: [74, 46], H: [92, 82],
+}
+export const TRAV_NODES = Object.entries(XY8).map(([id, [x, y]]) => ({ id, type: 'node', attrs: { x, y } }))
+const te = (f: string, t: string) => ({ id: `${f}${t}`, type: 'edge', attrs: { from: f, to: t, w: 1 } })
+
+export const TRAV_PRESETS: EntityPreset[] = [
+  {
+    label: '含孤立顶点',
+    note: 'H 跟谁都不连 —— 主分量走完后必须换起点，否则它永远访问不到',
+    entities: [...TRAV_NODES,
+      te('A','B'), te('A','C'), te('B','D'), te('B','E'),
+      te('C','F'), te('E','F'), te('D','G'), te('F','G')],
+  },
+  {
+    label: '连通图',
+    note: '全部连通 —— DFS 一条路走到黑，BFS 一层层铺开，两种序列差别最明显',
+    entities: [...TRAV_NODES,
+      te('A','B'), te('A','C'), te('B','D'), te('B','E'),
+      te('C','F'), te('E','F'), te('D','G'), te('F','G'), te('G','H')],
+  },
+  {
+    label: '一条链',
+    note: '退化成链 —— 此时 DFS 与 BFS 的访问序列完全相同',
+    entities: [...TRAV_NODES,
+      te('A','B'), te('B','C'), te('C','D'), te('D','E'),
+      te('E','F'), te('F','G'), te('G','H')],
+  },
+]
+
+// ═══ 位示图请求 ═════════════════════════════════════════
+const bmreq = (id: string, count: number, free = 0, block = -1, at = 0) =>
+  ({ id, type: 'req', at, attrs: { count, free, block } })
+
+export const BITMAP_PRESETS: EntityPreset[] = [
+  {
+    label: '分配后回收',
+    note: '先连着分三批，再回收中间那批 —— 下一次分配会优先填回收出来的低位',
+    entities: [
+      bmreq('文件A', 5, 0, -1, 0), bmreq('文件B', 3, 0, -1, 1), bmreq('文件C', 4, 0, -1, 2),
+      bmreq('文件B', 3, 1, 5, 3), bmreq('文件D', 6, 0, -1, 4),
+    ],
+  },
+  {
+    label: '跨字边界',
+    note: '一次要 12 块，跨过好几个字 —— 正好看清字号怎么进位',
+    entities: [bmreq('大文件', 12, 0, -1, 0), bmreq('小文件', 3, 0, -1, 1)],
+  },
+  {
+    label: '分配失败',
+    note: '申请数超过总块数 —— 直接失败，不留半分配的中间状态',
+    entities: [bmreq('文件A', 60, 0, -1, 0), bmreq('文件B', 10, 0, -1, 1)],
+  },
+]
+
+// ═══ CSMA/CD 各站 ═══════════════════════════════════════
+const sta = (id: string, readyAt: number, picks: string) =>
+  ({ id, type: 'station', attrs: { readyAt, picks } })
+
+export const CSMA_PRESETS: EntityPreset[] = [
+  {
+    label: '两站争用',
+    note: '两站同时就绪 → 冲突一次，退避取值不同就各自错开，随后都成功',
+    entities: [sta('A', 1, '1,3,5,7'), sta('B', 1, '0,2,4,6')],
+  },
+  {
+    label: '退避撞车',
+    note: '两站每次都取同一个 r —— 一直撞，直到达到重传上限',
+    entities: [sta('A', 1, '1,1,1,1,1,1'), sta('B', 1, '1,1,1,1,1,1')],
+  },
+  {
+    label: '三站争用',
+    note: '三站同时抢 —— 冲突后退避范围扩大，错开的可能才变大',
+    entities: [sta('A', 1, '1,3,2'), sta('B', 1, '0,1,5'), sta('C', 1, '1,2,0')],
+  },
+  {
+    label: '错峰就绪',
+    note: '三站在不同时刻就绪 —— 谁也不撞谁，一次冲突都没有',
+    entities: [sta('A', 1, '0'), sta('B', 3, '0'), sta('C', 5, '0')],
+  },
+]
+
+// ═══ 信号量调度序列 ═════════════════════════════════════
+export const SEM_SCHEDULES: { label: string; note: string; values: string[] }[] = [
+  {
+    label: '交替执行',
+    note: '生产者与消费者轮流拿到 CPU —— 正常协作，不会死锁',
+    values: ['P1','P1','P1','P1','P1','C1','C1','C1','C1','C1',
+             'P1','P1','P1','P1','P1','C1','C1','C1','C1','C1'],
+  },
+  {
+    label: '生产者连跑',
+    note: '生产者一口气跑到底 —— 缓冲区填满后它会阻塞在 P(empty) 上',
+    values: ['P1','P1','P1','P1','P1','P1','P1','P1','P1','P1',
+             'P1','P1','C1','C1','C1','C1','C1'],
+  },
+  {
+    label: '消费者先跑',
+    note: '缓冲区还空着消费者就来了 —— 它会阻塞在 P(full) 上等生产者',
+    values: ['C1','C1','P1','P1','P1','P1','P1','C1','C1','C1','C1'],
+  },
+]

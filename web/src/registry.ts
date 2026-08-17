@@ -45,7 +45,20 @@ import { trueHeight } from '@engine/core/tree.ts'
 import {
   MST_PRESETS, AOE_PRESETS, PART_PRESETS, MST_NODES, AOE_NODES,
 } from '@engine/presets/entities.ts'
-import { INODE_PRESETS } from '@engine/presets/sequences.ts'
+import { INODE_PRESETS, BPLUS_PRESETS } from '@engine/presets/sequences.ts'
+import {
+  TRAV_PRESETS, BITMAP_PRESETS, CSMA_PRESETS, SEM_SCHEDULES, TRAV_NODES,
+} from '@engine/presets/entities.ts'
+import { bplusKernel, type BPlusState } from '@engine/kernels/bplus.ts'
+import { traverseKernel, type TravState } from '@engine/kernels/traverse.ts'
+import { semaphoreKernel, type SemState } from '@engine/kernels/semaphore.ts'
+import { bitmapKernel, type BitmapState } from '@engine/kernels/bitmap.ts'
+import { csmaKernel, type CsmaState } from '@engine/kernels/csma.ts'
+import { BPlusStage } from './stages/BPlusStage.tsx'
+import { TraverseStage } from './stages/TraverseStage.tsx'
+import { SemaphoreStage } from './stages/SemaphoreStage.tsx'
+import { BitmapStage } from './stages/BitmapStage.tsx'
+import { CsmaStage } from './stages/CsmaStage.tsx'
 import { mstKernel, type MstState } from '@engine/kernels/mst.ts'
 import { topoKernel, type TopoState } from '@engine/kernels/topo.ts'
 import { partitionKernel, type PartState } from '@engine/kernels/partition.ts'
@@ -1536,10 +1549,268 @@ const inode: Experiment<InodeState> = {
   },
 }
 
+// ═══ B+ 树 ═════════════════════════════════════════════
+const bplus: Experiment<BPlusState> = {
+  id: 'bplus', group: '数据结构',
+  title: 'B+ 树的插入与分裂', subtitle: '所有键在叶子层 · 叶子成链',
+  kernel: bplusKernel,
+  defaultDoc: {
+    kind: 'bplus', params: { order: 3 }, entities: [],
+    streams: [{ name: 'keys', values: BPLUS_PRESETS[1].values }],
+  },
+  params: [{ key: 'order', label: '阶 m', kind: 'number', options: [3, 4, 5], unit: '最多 m−1 个键' }],
+  sequence: {
+    stream: 'keys', label: '插入序列', hint: '整数，按顺序依次插入',
+    maxLength: 24, presets: BPLUS_PRESETS,
+  },
+  bounds: [
+    '只做插入，不做删除 —— 删除涉及借键与合并，情形更多，另开实验更合适',
+    '不存重复键',
+    '按"叶子分裂时中间键复制上去"的常见约定；部分教材把分裂点取在别处，中间过程会不同',
+    '不建模磁盘页大小与实际的 I/O 次数',
+  ],
+  tabs: [{ id: 'tree', label: '树形' }, { id: 'leaves', label: '叶子链' }],
+  Stage: BPlusStage,
+  tone: s => (s.act === 'split' ? { key: 'bad', label: '分裂' }
+    : s.act === 'grow' ? { key: 'bad', label: '长高' }
+    : s.act === 'insert' ? { key: 'good', label: '插入' }
+    : s.act === 'done' ? { key: 'good', label: '完成' }
+    : { key: 'idle', label: '下降' }),
+  metric: (s, _i) => Math.min(1, s.height / 4),
+  tickLabel: s => (s.act === 'split' ? `分裂 ${s.upKey}` : String(s.key)),
+  readouts: (s, doc) => [
+    { label: '阶 m', value: `${doc.params.order}（最多 ${(doc.params.order as number) - 1} 个键）` },
+    { label: '当前键', value: String(s.key) },
+    { label: '树高', value: `${s.height} 层` },
+    { label: '分裂次数', value: String(s.splits), tone: s.splits > 0 ? 'bad' : undefined },
+    { label: '本步', value: { descend: '比较下降', insert: '插入叶子',
+      split: `${s.splitLeaf ? '叶子' : '内部结点'}分裂`, grow: '根分裂，树长高', done: '完成' }[s.act] },
+  ],
+}
+
+// ═══ 图的遍历 ══════════════════════════════════════════
+const traverse: Experiment<TravState> = {
+  id: 'traverse', group: '数据结构',
+  title: '图的遍历', subtitle: 'DFS 用栈 · BFS 用队列',
+  kernel: traverseKernel,
+  defaultDoc: {
+    kind: 'traverse', params: { algorithm: 'DFS', start: 'A', directed: 0 },
+    entities: TRAV_PRESETS[0].entities, streams: [],
+  },
+  params: [
+    { key: 'algorithm', label: '算法', kind: 'enum', options: ['DFS', 'BFS'] },
+    { key: 'start', label: '起点', kind: 'enum', options: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'] },
+    { key: 'directed', label: '图的类型', kind: 'number', options: [0, 1], unit: '0 无向 / 1 有向' },
+  ],
+  entitySpec: {
+    tables: [{
+      type: 'edge', label: '边表', hint: '遍历不看权值；顶点固定 A–H',
+      columns: doc => {
+        const ids = doc.entities.filter(e => e.type === 'node').map(e => e.id)
+        return [
+          { key: 'from', label: '端点1', kind: 'enum', options: ids, width: 64 },
+          { key: 'to', label: '端点2', kind: 'enum', options: ids, width: 64 },
+        ]
+      },
+      newRow: (i, doc) => {
+        const ids = doc.entities.filter(e => e.type === 'node').map(e => e.id)
+        return { id: `E${i + 1}`, type: 'edge', attrs: { from: ids[0], to: ids[1] ?? ids[0], w: 1 } }
+      },
+      minRows: 1, maxRows: 16, chunk: 8,
+    }],
+    presets: TRAV_PRESETS,
+  },
+  bounds: [
+    '邻接点按名字字典序访问，保证序列可复现 —— 教材里邻接表的存储顺序不同，序列也会不同',
+    'DFS 用显式栈实现，与递归写法的访问序相同',
+    '图不连通时会换起点继续，得到的是生成森林',
+    '不建模边的权值',
+  ],
+  tabs: [{ id: 'graph', label: '图' }, { id: 'container', label: '栈 / 队列' }],
+  Stage: TraverseStage,
+  tone: s => (s.act === 'visit' ? { key: 'good', label: '访问' }
+    : s.act === 'skip' ? { key: 'bad', label: '已访问，跳过' }
+    : s.act === 'done' ? { key: 'good', label: '完成' }
+    : { key: 'idle', label: '入容器' }),
+  metric: (s, _i) => {
+    const n = 8
+    return s.order.length / n
+  },
+  tickLabel: s => (s.at || s.act),
+  readouts: (s, doc) => {
+    const n = doc.entities.filter(e => e.type === 'node').length
+    const dfs = doc.params.algorithm === 'DFS'
+    return [
+      { label: '算法', value: `${doc.params.algorithm}（${dfs ? '栈' : '队列'}）` },
+      { label: '已访问', value: `${s.order.length} / ${n}` },
+      { label: '访问序列', value: s.order.join(' ') || '—' },
+      { label: dfs ? '栈内容' : '队列内容', value: s.pending.join(' ') || '空' },
+      { label: '生成树边数', value: String(s.treeEdges.length) },
+    ]
+  },
+}
+
+// ═══ 信号量 ════════════════════════════════════════════
+const semaphore: Experiment<SemState> = {
+  id: 'semaphore', group: '操作系统',
+  title: '信号量与生产者消费者', subtitle: 'P/V 操作 · 顺序错了会死锁',
+  kernel: semaphoreKernel,
+  defaultDoc: {
+    kind: 'semaphore', params: { bufferSize: 2, order: 'correct' }, entities: [],
+    streams: [{ name: 'schedule', values: SEM_SCHEDULES[0].values }],
+  },
+  params: [
+    { key: 'order', label: 'P 的顺序', kind: 'enum', options: ['correct', 'wrong'] },
+    { key: 'bufferSize', label: '缓冲区大小', kind: 'number', options: [1, 2, 3, 4], unit: '个' },
+  ],
+  bounds: [
+    '只建模一个生产者与一个消费者；多生产者多消费者的情形不改变结论，但轨迹会长很多',
+    '调度序列由文档给定，不做随机调度 —— 否则无法复现、也无法出题',
+    'V 操作唤醒等待队列里的第一个线程，且被唤醒者直接拿走资源（不再竞争）',
+    '不建模优先级、饥饿与自旋锁',
+  ],
+  tabs: [{ id: 'live', label: '运行状态' }, { id: 'code', label: '两段代码' }],
+  Stage: SemaphoreStage,
+  tone: s => (s.act === 'deadlock' ? { key: 'bad', label: '死锁' }
+    : s.act === 'block' ? { key: 'bad', label: '阻塞' }
+    : s.act === 'wake' ? { key: 'good', label: '唤醒' }
+    : s.act === 'work' ? { key: 'good', label: '临界区' }
+    : { key: 'idle', label: s.act === 'P' ? 'P 操作' : s.act === 'V' ? 'V 操作' : '说明' }),
+  metric: (s, _i) => {
+    const n = Object.keys(s.pc).length || 1
+    return 1 - Object.keys(s.blocked).length / n
+  },
+  tickLabel: s => (s.who ? `${s.who} ${s.act}` : s.act),
+  readouts: (s, doc) => [
+    { label: 'empty（空位）', value: String(s.empty), tone: s.empty === 0 ? 'bad' : undefined },
+    { label: 'full（产品）', value: String(s.full), tone: s.full === 0 ? 'bad' : undefined },
+    { label: 'mutex（锁）', value: String(s.mutex) },
+    { label: '缓冲区', value: `${s.buffer.length} / ${doc.params.bufferSize}` },
+    { label: '阻塞中', value: Object.entries(s.blocked).map(([k, v]) => `${k}@${v}`).join(' ') || '无',
+      tone: Object.keys(s.blocked).length ? 'bad' : undefined },
+    { label: '生产 / 消费', value: `${s.produced} / ${s.consumed}` },
+  ],
+}
+
+// ═══ 位示图 ════════════════════════════════════════════
+const bitmap: Experiment<BitmapState> = {
+  id: 'bitmap', group: '操作系统',
+  title: '位示图管理空闲块', subtitle: '字号 / 位号 ↔ 盘块号',
+  kernel: bitmapKernel,
+  defaultDoc: {
+    kind: 'bitmap', params: { words: 8, wordBits: 8 },
+    entities: BITMAP_PRESETS[0].entities, streams: [],
+  },
+  params: [
+    { key: 'words', label: '字数', kind: 'number', options: [4, 8, 16], unit: '个' },
+    { key: 'wordBits', label: '字长', kind: 'number', options: [8, 16, 32], unit: '位' },
+  ],
+  entitySpec: {
+    tables: [{
+      type: 'req', label: '分配 / 回收请求',
+      hint: '回收填 1 时用「起始盘块」定位；分配时忽略它',
+      columns: () => [
+        { key: 'id', label: '文件', kind: 'text', width: 78 },
+        { key: 'count', label: '块数', kind: 'number', width: 66 },
+        { key: 'free', label: '是否回收', kind: 'number', width: 82 },
+        { key: 'block', label: '起始盘块', kind: 'number', width: 84 },
+      ],
+      newRow: i => ({ id: `文件${i + 1}`, type: 'req', at: i, attrs: { count: 3, free: 0, block: -1 } }),
+      minRows: 1, maxRows: 12, chunk: 6,
+    }],
+    presets: BITMAP_PRESETS,
+  },
+  bounds: [
+    '字号、位号一律从 0 起编 —— 教材若从 1 起编，两条换算式要各加/减 1',
+    '分配采用顺序扫描找第一个空闲位，不做首次适应之外的策略',
+    '一次申请多块时不要求连续；连续分配是另一种文件分配方式',
+    '不建模位示图本身占用的磁盘空间',
+  ],
+  tabs: [{ id: 'grid', label: '位示图' }, { id: 'calc', label: '换算公式' }],
+  Stage: BitmapStage,
+  tone: s => (s.act === 'fail' ? { key: 'bad', label: '分配失败' }
+    : s.act === 'free' ? { key: 'idle', label: '回收' }
+    : { key: 'good', label: '分配' }),
+  metric: (s, _i) => {
+    const total = s.bits.length * (s.bits[0]?.length ?? 1)
+    return total ? 1 - s.freeCount / total : 0
+  },
+  tickLabel: s => `${s.act === 'free' ? '收' : '分'}${s.blocks.length}块`,
+  readouts: (s, doc) => {
+    const wb = doc.params.wordBits as number
+    const b0 = s.blocks[0]
+    return [
+      { label: '本步动作', value: s.act === 'alloc' ? '分配' : s.act === 'free' ? '回收' : '失败',
+        tone: s.act === 'fail' ? 'bad' : undefined },
+      { label: '涉及盘块', value: s.blocks.length ? s.blocks.join('、') : '—' },
+      { label: '第一块的字号', value: b0 === undefined ? '—' : String(Math.floor(b0 / wb)) },
+      { label: '第一块的位号', value: b0 === undefined ? '—' : String(b0 % wb) },
+      { label: '换算', value: b0 === undefined ? '—'
+          : `${Math.floor(b0 / wb)} × ${wb} + ${b0 % wb} = ${b0}` },
+      { label: '空闲块数', value: String(s.freeCount) },
+    ]
+  },
+}
+
+// ═══ CSMA/CD ═══════════════════════════════════════════
+const csma: Experiment<CsmaState> = {
+  id: 'csma', group: '计算机网络',
+  title: 'CSMA/CD 与退避', subtitle: '冲突 · 二进制指数退避',
+  kernel: csmaKernel,
+  defaultDoc: {
+    kind: 'csma', params: { maxAttempts: 16 },
+    entities: CSMA_PRESETS[0].entities, streams: [],
+  },
+  params: [
+    { key: 'maxAttempts', label: '重传上限', kind: 'number', options: [3, 8, 16], unit: '次' },
+  ],
+  entitySpec: {
+    tables: [{
+      type: 'station', label: '各站',
+      hint: '退避取值由这里给定 —— 真随机就没法复现、也没法出题',
+      columns: () => [
+        { key: 'id', label: '站', kind: 'text', width: 58 },
+        { key: 'readyAt', label: '第几个争用期就绪', kind: 'number', width: 132 },
+        { key: 'picks', label: '每次退避取的 r（逗号分隔）', kind: 'text', width: 190 },
+      ],
+      newRow: i => ({ id: String.fromCharCode(65 + i), type: 'station', attrs: { readyAt: 1, picks: '0,1,2' } }),
+      minRows: 1, maxRows: 6,
+    }],
+    presets: CSMA_PRESETS,
+  },
+  bounds: [
+    '以争用期（2τ）为时间单位，不建模帧长与实际传播时延',
+    '"随机"退避值由配置给定，不是真随机 —— 换成真随机就无法复现',
+    '假设所有站都能听到彼此的冲突（无隐藏站问题）',
+    '不建模 1-坚持 / 非坚持 / p-坚持 这几种监听策略的差别',
+  ],
+  tabs: [{ id: 'slots', label: '时隙图' }, { id: 'backoff', label: '退避表' }],
+  Stage: CsmaStage,
+  tone: s => (s.collision ? { key: 'bad', label: '冲突' }
+    : s.sending.length === 1 ? { key: 'good', label: '发送成功' }
+    : { key: 'idle', label: '空闲 / 退避' }),
+  metric: (s, _i) => {
+    const total = s.done.length + s.aborted.length
+    return total / Math.max(1, Object.keys(s.attempts).length)
+  },
+  tickLabel: s => (s.slot > 0 ? `第 ${s.slot} 个争用期` : '说明'),
+  readouts: (s, doc) => {
+    const n = doc.entities.filter(e => e.type === 'station').length
+    return [
+      { label: '争用期', value: s.slot > 0 ? String(s.slot) : '—' },
+      { label: '本期发送', value: s.sending.join('、') || '无' },
+      { label: '是否冲突', value: s.collision ? '冲突' : '无', tone: s.collision ? 'bad' : undefined },
+      { label: '已成功', value: `${s.done.length} / ${n}` },
+      { label: '已放弃', value: s.aborted.join('、') || '无', tone: s.aborted.length ? 'bad' : undefined },
+      { label: '各站冲突次数', value: Object.entries(s.attempts).map(([k, v]) => `${k}:${v}`).join(' ') || '—' },
+    ]
+  },
+}
+
 export const EXPERIMENTS = [
   cache, float, multiply, pipeline, vm,
   page, scheduler, disk, banker,
-  partition, inode,
-  sort, dijkstra, avl, hash, huffman, kmp, mst, topo,
-  tcp, arq, crc, hamming, subnet, handshake,
+  partition, inode, semaphore, bitmap,
+  sort, dijkstra, avl, bplus, hash, huffman, kmp, mst, topo, traverse,
+  tcp, arq, crc, hamming, subnet, handshake, csma,
 ] as unknown as AnyExperiment[]

@@ -222,6 +222,11 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   topo: { operation: 'string' },
   partition: { algorithm: 'string', memorySize: 'number' },
   inode: { blockSizeBytes: 'number', pointerSizeBytes: 'number', directCount: 'number' },
+  bplus: { order: 'number' },
+  traverse: { algorithm: 'string', start: 'string', directed: 'number' },
+  semaphore: { bufferSize: 'number', order: 'string' },
+  bitmap: { words: 'number', wordBits: 'number' },
+  csma: { maxAttempts: 'number' },
 }
 
 /** 同名参数在不同 kind 下取值不同 —— 所以按 kind 分表，不能只按字段名 */
@@ -244,6 +249,8 @@ const ENUMS: Record<string, Record<string, string[]>> = {
   mst:       { algorithm: ['Prim', 'Kruskal'] },
   topo:      { operation: ['topo', 'critical'] },
   partition: { algorithm: ['首次适应', '最佳适应', '最坏适应', '邻近适应'] },
+  traverse:  { algorithm: ['DFS', 'BFS'] },
+  semaphore: { order: ['correct', 'wrong'] },
 }
 
 /**
@@ -708,6 +715,76 @@ export function validateDocument(raw: SimDocument): Violation[] {
     else if (b.values.length === 0) err('streams.blockNumbers', '逻辑块号序列为空')
     else if (b.values.some(v => typeof v !== 'number' || v < 0 || !Number.isInteger(v)))
       err('streams.blockNumbers', '逻辑块号必须是非负整数')
+  }
+
+  if (doc.kind === 'bplus') {
+    const m = doc.params.order as number
+    //  B+ 树的阶至少是 3：阶为 2 时每个结点只能放 1 个键，分裂永远收敛不了
+    if (!Number.isInteger(m) || m < 3) err('params.order', 'B+ 树的阶至少为 3', m)
+    else if (m > 8) err('params.order', '阶超过 8 时结点太宽，画不下', m)
+    const k = doc.streams.find(s => s.name === 'keys')
+    if (!k) err('streams', '缺少 keys')
+    else if (k.values.length === 0) err('streams.keys', '插入序列为空')
+    else if (k.values.some(v => typeof v !== 'number' || !Number.isInteger(v)))
+      err('streams.keys', '键必须是整数')
+    else if (k.values.length > 24) err('streams.keys', '超过 24 个键树会画不下', k.values.length)
+  }
+
+  if (doc.kind === 'traverse') {
+    const nodes = doc.entities.filter(e => e.type === 'node').map(e => e.id)
+    if (nodes.length < 2) err('entities', '至少要有 2 个顶点', nodes.length)
+    if (!nodes.includes(String(doc.params.start)))
+      err('params.start', '起点不在顶点表里', doc.params.start)
+    for (const e of doc.entities.filter(x => x.type === 'edge')) {
+      if (!nodes.includes(String(e.attrs.from))) err(`entities.${e.id}.from`, '端点不在顶点表里', e.attrs.from)
+      if (!nodes.includes(String(e.attrs.to))) err(`entities.${e.id}.to`, '端点不在顶点表里', e.attrs.to)
+    }
+  }
+
+  if (doc.kind === 'semaphore') {
+    const b = doc.params.bufferSize as number
+    if (b < 1) err('params.bufferSize', '缓冲区至少 1 个位置', b)
+    else if (b > 8) err('params.bufferSize', '缓冲区超过 8 个位置就看不清了', b)
+    const sc = doc.streams.find(s => s.name === 'schedule')
+    if (!sc) err('streams', '缺少 schedule')
+    else if (sc.values.length === 0) err('streams.schedule', '调度序列为空')
+    else {
+      const bad2 = sc.values.filter(v => !/^[PC]\d+$/.test(String(v)))
+      if (bad2.length) err('streams.schedule', '线程名必须形如 P1 / C1（P 生产者、C 消费者）', bad2.slice(0, 3))
+      const kinds = new Set(sc.values.map(v => String(v)[0]))
+      if (kinds.size < 2) err('streams.schedule', '生产者和消费者都要有，否则演示不出协作', [...kinds])
+    }
+  }
+
+  if (doc.kind === 'bitmap') {
+    const w = doc.params.words as number
+    const wb = doc.params.wordBits as number
+    if (w < 1) err('params.words', '至少 1 个字', w)
+    else if (w > 16) err('params.words', '超过 16 个字画不下', w)
+    if (![8, 16, 32].includes(wb)) err('params.wordBits', '字长只支持 8 / 16 / 32 位', wb)
+    for (const r of doc.entities.filter(e => e.type === 'req')) {
+      const c = Number(r.attrs.count)
+      if (!Number.isInteger(c) || c < 1) err(`entities.${r.id}.count`, '块数必须是正整数', r.attrs.count)
+      if (Number(r.attrs.free ?? 0) === 1) {
+        const b = Number(r.attrs.block)
+        if (!Number.isInteger(b) || b < 0 || b >= w * wb)
+          err(`entities.${r.id}.block`, `回收的起始盘块号须在 0..${w * wb - 1}`, r.attrs.block)
+      }
+    }
+  }
+
+  if (doc.kind === 'csma') {
+    const m = doc.params.maxAttempts as number
+    if (m < 1) err('params.maxAttempts', '重传上限至少为 1', m)
+    const st = doc.entities.filter(e => e.type === 'station')
+    if (st.length < 1) err('entities', '至少要有 1 个站')
+    for (const s of st) {
+      if (Number(s.attrs.readyAt ?? 0) < 1)
+        err(`entities.${s.id}.readyAt`, '就绪时刻从第 1 个争用期起', s.attrs.readyAt)
+      const picks = String(s.attrs.picks ?? '').split(/[,\s]+/).filter(Boolean)
+      if (picks.some(x => !/^\d+$/.test(x)))
+        err(`entities.${s.id}.picks`, '退避取值必须是用逗号分隔的非负整数', s.attrs.picks)
+    }
   }
 
   if (doc.kind === 'tcp') {

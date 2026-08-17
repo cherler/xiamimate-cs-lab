@@ -21,6 +21,7 @@ const SUITES = [
   ['第四批内核 · CRC / 海明码 / 子网 / 握手', 'round4-net.test.ts'],
   ['第五批内核 · AVL / 散列 / 哈夫曼 / KMP', 'round5-ds.test.ts'],
   ['第六批内核 · MST / 拓扑关键路径 / 分区 / inode', 'round6-graph-os.test.ts'],
+  ['第七批内核 · B+树 / 遍历 / 信号量 / 位示图 / CSMA', 'round7-final.test.ts'],
   ['预置串的说法必须为真', 'presets-claims.test.ts'],
 ] as const
 

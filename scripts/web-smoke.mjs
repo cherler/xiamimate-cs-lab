@@ -41,48 +41,31 @@ const snap = () => p.evaluate(() => ({
 await p.goto(URL, { waitUntil: 'networkidle' })
 await p.waitForSelector('.tick')
 
-const EXPS = [
-  ['Cache 命中率', 'cache'],
-  ['IEEE 754 浮点', 'float'],
-  ['定点乘除逐步', 'multiply'],
-  ['指令流水线', 'pipeline'],
-  ['虚地址转换与 TLB', 'vm'],
-  ['页面置换', 'page'],
-  ['进程调度甘特图', 'sched'],
-  ['磁盘调度', 'disk'],
-  ['银行家算法', 'banker'],
-  ['动态分区分配', 'partition'],
-  ['文件索引寻址', 'inode'],
-  ['排序逐趟', 'sort'],
-  ['Dijkstra 最短路', 'dijkstra'],
-  ['AVL 平衡二叉树', 'avl'],
-  ['散列表', 'hash'],
-  ['哈夫曼树与编码', 'huffman'],
-  ['KMP 字符串匹配', 'kmp'],
-  ['最小生成树', 'mst'],
-  ['拓扑排序与关键路径', 'topo'],
-  ['TCP 拥塞窗口', 'tcp'],
-  ['滑动窗口 ARQ', 'arq'],
-  ['CRC 循环冗余校验', 'crc'],
-  ['海明码', 'hamming'],
-  ['子网划分与路由匹配', 'subnet'],
-  ['TCP 连接管理', 'handshake'],
-]
+/*
+ * 实验名单**从页面读**，不再手写。
+ * 手写的那份跟注册表顺序错位过两次（插入新实验时位置不同就整体串号），
+ * 每次都要花时间才认出是名单过期而不是应用坏了。
+ */
+const EXPS = await p.evaluate(() =>
+  [...document.querySelectorAll('.nav button')].map(b => ({
+    label: b.querySelector('span:last-child')?.textContent ?? '',
+    idx: b.querySelector('.n')?.textContent ?? '',
+  })))
+
 console.log(`\n【1】${EXPS.length} 个实验都能起来，且各自的舞台不同`)
-for (const [i, [name, shot]] of EXPS.entries()) {
+for (const [i, e] of EXPS.entries()) {
   await p.click(`.nav button >> nth=${i}`)
-  await p.waitForTimeout(220)
+  await p.waitForTimeout(200)
   const s = await snap()
-  await p.screenshot({ path: `/tmp/web-${shot}.png`, fullPage: true })
-  s.title === name && s.ticks > 0 && s.logRows > 0 && s.bounds
-    ? ok(`${name.padEnd(14)} ${String(s.ticks).padStart(2)} 步 · tab[${s.tabs.join('/')}] · 有边界栏`)
-    : bad(`${name} 起不来：${JSON.stringify(s)}`)
+  s.title === e.label && s.ticks > 0 && s.logRows > 0 && s.bounds
+    ? ok(`${e.label.padEnd(16)} ${String(s.ticks).padStart(3)} 步 · tab[${s.tabs.join('/')}] · 有边界栏`)
+    : bad(`${e.label} 起不来：标题「${s.title}」 步数 ${s.ticks} 边界栏 ${!!s.bounds}`)
 }
 
-// 舞台必须真的不同 —— 不能五个实验长一个样
+// 舞台必须真的不同 —— 不能几个实验长一个样
 const stageSigs = []
 for (let i = 0; i < EXPS.length; i++) {
-  await p.click(`.nav button >> nth=${i}`); await p.waitForTimeout(200)
+  await p.click(`.nav button >> nth=${i}`); await p.waitForTimeout(180)
   stageSigs.push(await p.evaluate(() => {
     //  认舞台自己的容器，不靠"中列第几张卡片"猜 ——
     //  之前每加一个编辑器（序列 / 实体）这条就会误报一次
@@ -365,7 +348,8 @@ for (const name of ['排序逐趟', 'Dijkstra', '银行家算法', '滑动窗口
                      'IEEE 754', '指令流水线', '虚地址转换', '定点乘除',
                      'CRC', '海明码', '子网划分', 'TCP 连接管理',
                      'AVL', '散列表', '哈夫曼', 'KMP',
-                     '最小生成树', '拓扑排序', '动态分区', '文件索引']) {
+                     '最小生成树', '拓扑排序', '动态分区', '文件索引',
+                     'B+ 树', '图的遍历', '信号量', '位示图', 'CSMA']) {
   await nav(name)
   const picks = await p.evaluate(() => document.querySelectorAll('.probpick button').length)
   if (picks < 2) { bad(`${name} 没有真题可选`); continue }

@@ -39,7 +39,14 @@ import type { TopoState } from '@engine/kernels/topo.ts'
 import type { PartState } from '@engine/kernels/partition.ts'
 import type { InodeState } from '@engine/kernels/inode.ts'
 import { maxFileSize } from '@engine/kernels/inode.ts'
-import { MST_PRESETS, AOE_PRESETS, PART_PRESETS } from '@engine/presets/entities.ts'
+import { MST_PRESETS, AOE_PRESETS, PART_PRESETS,
+  TRAV_PRESETS, BITMAP_PRESETS, CSMA_PRESETS, SEM_SCHEDULES } from '@engine/presets/entities.ts'
+import type { BPlusState } from '@engine/kernels/bplus.ts'
+import type { TravState } from '@engine/kernels/traverse.ts'
+import type { SemState } from '@engine/kernels/semaphore.ts'
+import type { BitmapState } from '@engine/kernels/bitmap.ts'
+import type { CsmaState } from '@engine/kernels/csma.ts'
+import { leafChain } from '@engine/kernels/bplus.ts'
 
 /** 跑任意配置，供"改个参数再算一遍"型的题用 —— 仍然不手写答案 */
 export type RunDoc = (doc: SimDocument) => unknown[]
@@ -1346,6 +1353,162 @@ const inodeProblems: Problem[] = [
   },
 ]
 
+// ═══ B+ 树 ═════════════════════════════════════════════
+const bplusProblems: Problem[] = [
+  {
+    id: 'bplus-1', experimentId: 'bplus',
+    source: '典型题型 · B+ 树的插入与分裂',
+    statement: '依次将 10、20、30、40、50、60、70 插入一棵初始为空的 3 阶 B+ 树'
+      + '（每个结点最多 2 个关键字）。',
+    doc: { kind: 'bplus', params: { order: 3 }, entities: [],
+      streams: [{ name: 'keys', values: [10,20,30,40,50,60,70] }] },
+    questions: [
+      q<BPlusState>({ prompt: '3 阶 B+ 树每个结点最多能放几个关键字？', unit: '个',
+        answer: (_t, d) => String((d.params.order as number) - 1) }),
+      q<BPlusState>({ prompt: '整个过程共分裂多少次？', unit: '次',
+        answer: t => String(last(t).splits), revealStep: t => t.findIndex(s => s.act === 'split') }),
+      q<BPlusState>({ prompt: '最终树高是多少？', unit: '层',
+        answer: t => String(last(t).height), revealStep: t => t.length - 1 }),
+      q<BPlusState>({ prompt: '沿叶子链读出来的关键字序列是？（空格分隔）', kind: 'text',
+        hint: 'B+ 树所有关键字都在叶子层，且有序',
+        answer: t => leafChain(last(t).nodes, last(t).root).join(' '),
+        revealStep: t => t.length - 1 }),
+      q<BPlusState>({ prompt: '改成 4 阶，分裂次数变成多少？', unit: '次',
+        hint: '结点能装的更多，分裂自然更少',
+        answer: (_t, d, runDoc) => {
+          const t = runDoc({ ...d, params: { ...d.params, order: 4 } }) as BPlusState[]
+          return String(t[t.length - 1].splits)
+        } }),
+    ],
+  },
+]
+
+// ═══ 图的遍历 ══════════════════════════════════════════
+const travProblems: Problem[] = [
+  {
+    id: 'trav-1', experimentId: 'traverse',
+    source: '典型题型 · DFS 与 BFS 的访问序列',
+    statement: '给定一个 8 个顶点的无向图（其中 H 是孤立顶点），从 A 出发遍历。'
+      + '邻接点按字母顺序访问。',
+    doc: { kind: 'traverse', params: { algorithm: 'DFS', start: 'A', directed: 0 },
+      entities: TRAV_PRESETS[0].entities, streams: [] },
+    questions: [
+      q<TravState>({ prompt: 'DFS 的访问序列是？（空格分隔）', kind: 'text',
+        answer: t => last(t).order.join(' '), revealStep: t => t.length - 1 }),
+      q<TravState>({ prompt: 'BFS 的访问序列是？（空格分隔）', kind: 'text',
+        hint: '把「算法」切到 BFS',
+        answer: (_t, d, runDoc) => {
+          const t = runDoc({ ...d, params: { ...d.params, algorithm: 'BFS' } }) as TravState[]
+          return t[t.length - 1].order.join(' ')
+        } }),
+      q<TravState>({ prompt: '孤立顶点 H 是第几个被访问的？', unit: '第 N 个',
+        hint: '主分量走完之后要换起点',
+        answer: t => String(last(t).order.indexOf('H') + 1),
+        revealStep: t => Math.max(0, t.findIndex(s => s.at === 'H')) }),
+      q<TravState>({ prompt: '生成森林一共有多少条边？', unit: '条',
+        hint: '边数 = 访问到的顶点数 − 连通分量数',
+        answer: t => String(last(t).treeEdges.length), revealStep: t => t.length - 1 }),
+    ],
+  },
+]
+
+// ═══ 信号量 ════════════════════════════════════════════
+const semProblems: Problem[] = [
+  {
+    id: 'sem-1', experimentId: 'semaphore',
+    source: '典型题型 · 生产者消费者与 P/V 顺序',
+    statement: '单缓冲区大小为 2 的生产者-消费者问题，使用三个信号量：'
+      + 'empty（初值 2）、full（初值 0）、mutex（初值 1）。'
+      + '按给定的调度序列执行，观察两种 P 操作顺序的差别。',
+    doc: { kind: 'semaphore', params: { bufferSize: 2, order: 'correct' }, entities: [],
+      streams: [{ name: 'schedule', values: SEM_SCHEDULES[0].values }] },
+    questions: [
+      q<SemState>({ prompt: 'empty 信号量的初值是多少？',
+        answer: (_t, d) => String(d.params.bufferSize), revealStep: () => 0 }),
+      q<SemState>({ prompt: '正确顺序下，整个调度序列走完共生产了几个产品？', unit: '个',
+        answer: t => String(last(t).produced), revealStep: t => t.length - 1 }),
+      q<SemState>({ prompt: '正确顺序下会不会死锁？（填 会 或 不会）', kind: 'text',
+        answer: t => (t.some(s => s.act === 'deadlock') ? '会' : '不会'),
+        revealStep: t => t.length - 1 }),
+      q<SemState>({ prompt: '把 P(mutex) 提到 P(empty) 前面，会不会死锁？（填 会 或 不会）', kind: 'text',
+        hint: '把右侧「P 的顺序」切到 wrong；生产者拿着锁去等空位，消费者又进不来',
+        answer: (_t, d, runDoc) => {
+          const t = runDoc({
+            ...d, params: { ...d.params, order: 'wrong', bufferSize: 1 },
+            streams: [{ name: 'schedule', values: ['P1','P1','P1','P1','P1','P1','P1','P1','P1','P1','P1','P1','C1','C1'] }],
+          }) as SemState[]
+          return t.some(s => s.act === 'deadlock') ? '会' : '不会'
+        } }),
+      q<SemState>({ prompt: 'mutex 在整个过程中出现过的最大值是多少？',
+        hint: '二元信号量',
+        answer: t => String(Math.max(...t.map(s => s.mutex))) }),
+    ],
+  },
+]
+
+// ═══ 位示图 ════════════════════════════════════════════
+const bitmapProblems: Problem[] = [
+  {
+    id: 'bm-1', experimentId: 'bitmap',
+    source: '典型题型 · 位示图的字号位号换算',
+    statement: '某系统用位示图管理磁盘空闲块，位示图共 8 个字、每字 8 位（字号、位号均从 0 开始编）。'
+      + '按给定的请求序列分配与回收。',
+    doc: { kind: 'bitmap', params: { words: 8, wordBits: 8 },
+      entities: BITMAP_PRESETS[0].entities, streams: [] },
+    questions: [
+      q<BitmapState>({ prompt: '这张位示图一共能管理多少个盘块？', unit: '个',
+        answer: (_t, d) => String((d.params.words as number) * (d.params.wordBits as number)) }),
+      q<BitmapState>({ prompt: '盘块号 26 对应的字号是多少？',
+        hint: '字号 = 盘块号 ÷ 字长（取整）',
+        answer: (_t, d) => String(Math.floor(26 / (d.params.wordBits as number))) }),
+      q<BitmapState>({ prompt: '盘块号 26 对应的位号是多少？',
+        answer: (_t, d) => String(26 % (d.params.wordBits as number)) }),
+      q<BitmapState>({ prompt: '第一次分配（文件A 申请 5 块）拿到的最后一个盘块号是？',
+        answer: t => String(t[0].blocks[t[0].blocks.length - 1] ?? -1), revealStep: () => 0 }),
+      q<BitmapState>({ prompt: '全部请求走完后还剩多少个空闲块？', unit: '个',
+        answer: t => String(last(t).freeCount), revealStep: t => t.length - 1 }),
+    ],
+  },
+]
+
+// ═══ CSMA/CD ═══════════════════════════════════════════
+const csmaProblems: Problem[] = [
+  {
+    id: 'csma-1', experimentId: 'csma',
+    source: '典型题型 · 二进制指数退避',
+    statement: 'A、B 两站在第 1 个争用期同时发送，发生冲突后按二进制指数退避算法重试。'
+      + '（各站每次退避取的 r 由题目给定，否则结果不可复现。）',
+    doc: { kind: 'csma', params: { maxAttempts: 16 },
+      entities: CSMA_PRESETS[0].entities, streams: [] },
+    questions: [
+      q<CsmaState>({ prompt: '第 1 次冲突后，退避值 r 要从哪个集合里取？（填形如 0-1 的区间）',
+        kind: 'text', hint: 'k = min(冲突次数, 10)，r 取自 {0 … 2^k − 1}',
+        answer: () => '0-1',
+        revealStep: t => Math.max(0, t.findIndex(s => s.collision)) }),
+      q<CsmaState>({ prompt: '第 3 次冲突后，r 的取值范围上界是多少？',
+        hint: '2^3 − 1',
+        answer: () => '7' }),
+      q<CsmaState>({ prompt: '本例中共发生几次冲突？', unit: '次',
+        answer: t => String(t.filter(s => s.collision).length),
+        revealStep: t => Math.max(0, t.findIndex(s => s.collision)) }),
+      q<CsmaState>({ prompt: '最终哪个站先发送成功？', kind: 'text',
+        answer: t => last(t).done[0] ?? '无', revealStep: t => t.length - 1 }),
+      q<CsmaState>({ prompt: '若两站每次都取相同的 r，重传上限设为 3，结果如何？（填 都放弃 或 都成功）',
+        kind: 'text', hint: '取相同的 r 就会一直撞在一起',
+        answer: (_t, d, runDoc) => {
+          const t = runDoc({
+            ...d, params: { ...d.params, maxAttempts: 3 },
+            entities: [
+              { id: 'A', type: 'station', attrs: { readyAt: 1, picks: '1,1,1,1' } },
+              { id: 'B', type: 'station', attrs: { readyAt: 1, picks: '1,1,1,1' } },
+            ],
+          }) as CsmaState[]
+          return t[t.length - 1].aborted.length === 2 ? '都放弃' : '都成功'
+        } }),
+    ],
+  },
+]
+
 export const PROBLEMS: Problem[] = [
   ...cacheProblems, ...pageProblems, ...schedProblems, ...tcpProblems, ...diskProblems,
   ...sortProblems, ...dijkstraProblems, ...bankerProblems, ...arqProblems,
@@ -1353,6 +1516,7 @@ export const PROBLEMS: Problem[] = [
   ...crcProblems, ...hammingProblems, ...subnetProblems, ...hsProblems,
   ...avlProblems, ...hashProblems, ...huffProblems, ...kmpProblems,
   ...mstProblems, ...topoProblems, ...partProblems, ...inodeProblems,
+  ...bplusProblems, ...travProblems, ...semProblems, ...bitmapProblems, ...csmaProblems,
 ]
 
 export const problemsFor = (experimentId: string) =>
