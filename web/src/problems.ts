@@ -34,6 +34,12 @@ import type { HuffState } from '@engine/kernels/huffman.ts'
 import type { KmpState } from '@engine/kernels/kmp.ts'
 import { asl } from '@engine/kernels/hashtable.ts'
 import { trueHeight, NIL } from '@engine/core/tree.ts'
+import type { MstState } from '@engine/kernels/mst.ts'
+import type { TopoState } from '@engine/kernels/topo.ts'
+import type { PartState } from '@engine/kernels/partition.ts'
+import type { InodeState } from '@engine/kernels/inode.ts'
+import { maxFileSize } from '@engine/kernels/inode.ts'
+import { MST_PRESETS, AOE_PRESETS, PART_PRESETS } from '@engine/presets/entities.ts'
 
 /** 跑任意配置，供"改个参数再算一遍"型的题用 —— 仍然不手写答案 */
 export type RunDoc = (doc: SimDocument) => unknown[]
@@ -1146,12 +1152,207 @@ const kmpProblems: Problem[] = [
   },
 ]
 
+// ═══ 最小生成树 ════════════════════════════════════════
+const mstProblems: Problem[] = [
+  {
+    id: 'mst-1', experimentId: 'mst',
+    source: '典型题型 · Prim 与 Kruskal',
+    statement:
+      '给定一个 6 个顶点的连通带权无向图（边与权值见图），'
+      + '分别用 Prim（从 A 出发）和 Kruskal 求最小生成树。',
+    doc: { kind: 'mst', params: { algorithm: 'Prim', start: 'A' },
+      entities: MST_PRESETS[0].entities, streams: [] },
+    questions: [
+      q<MstState>({
+        prompt: '最小生成树有几条边？', unit: '条',
+        hint: 'n 个顶点的生成树恰好 n−1 条边',
+        answer: (_t, d) => String(d.entities.filter(e => e.type === 'node').length - 1),
+      }),
+      q<MstState>({
+        prompt: 'Prim 从 A 出发，第一条选入的边是？（如 AC）', kind: 'text',
+        answer: t => t.find(s => s.act === 'take')?.edge ?? '—',
+        revealStep: t => t.findIndex(s => s.act === 'take'),
+      }),
+      q<MstState>({
+        prompt: '最小生成树的总权值是多少？',
+        answer: t => String(last(t).weight),
+        revealStep: t => t.length - 1,
+      }),
+      q<MstState>({
+        prompt: '改用 Kruskal，总权值是多少？',
+        hint: '两种算法的总权值一定相同 —— 这是 MST 的性质',
+        answer: (_t, d, runDoc) => {
+          const t = runDoc({ ...d, params: { ...d.params, algorithm: 'Kruskal' } }) as MstState[]
+          return String(t[t.length - 1].weight)
+        },
+      }),
+      q<MstState>({
+        prompt: 'Kruskal 过程中丢弃了几条会成环的边？', unit: '条',
+        answer: (_t, d, runDoc) => {
+          const t = runDoc({ ...d, params: { ...d.params, algorithm: 'Kruskal' } }) as MstState[]
+          return String(t.filter(s => s.act === 'skip').length)
+        },
+      }),
+    ],
+  },
+]
+
+// ═══ 关键路径 ══════════════════════════════════════════
+const topoProblems: Problem[] = [
+  {
+    id: 'topo-1', experimentId: 'topo',
+    source: '典型题型 · AOE 网的关键路径',
+    statement:
+      '某工程的 AOE 网有 7 个事件 V1~V7、9 个活动，边上的数字表示活动持续时间。'
+      + '求关键路径与工程总工期。',
+    doc: { kind: 'topo', params: { operation: 'critical' },
+      entities: AOE_PRESETS[0].entities, streams: [] },
+    questions: [
+      q<TopoState>({
+        prompt: '该图的一个拓扑序列是？（空格分隔，如 V1 V2 V3…）', kind: 'text',
+        hint: '入度为 0 的有多个时按名字字典序取',
+        answer: t => (t.filter(s => s.phase === 'topo').at(-1)?.order ?? []).join(' '),
+        revealStep: t => t.filter(s => s.phase === 'topo').length - 1,
+      }),
+      q<TopoState>({
+        prompt: '汇点 V7 的最早发生时间 ve(V7) 是多少？',
+        answer: t => String(last(t).ve['V7'] ?? 0),
+        revealStep: t => t.findIndex(s => s.phase === 'vl'),
+      }),
+      q<TopoState>({
+        prompt: '工程总工期是多少？',
+        hint: '总工期 = 汇点的 ve',
+        answer: t => String(Math.max(...Object.values(last(t).ve))),
+        revealStep: t => t.length - 1,
+      }),
+      q<TopoState>({
+        prompt: '关键活动有几个？', unit: '个',
+        answer: t => String(last(t).critical.length),
+        revealStep: t => t.length - 1,
+      }),
+      q<TopoState>({
+        prompt: '活动 V2→V5 的时间余量是多少？',
+        hint: '余量 = l − e；余量为 0 的才是关键活动',
+        answer: t => {
+          const l = last(t)
+          const id = 'V2→V5'
+          return String((l.el[id] ?? 0) - (l.ee[id] ?? 0))
+        },
+        revealStep: t => Math.max(0, t.findIndex(s => s.at === 'V2→V5')),
+      }),
+    ],
+  },
+]
+
+// ═══ 动态分区 ══════════════════════════════════════════
+const partProblems: Problem[] = [
+  {
+    id: 'part-1', experimentId: 'partition',
+    source: '典型题型 · 动态分区放置策略',
+    statement:
+      '内存总容量 640 KB，初始为一个空闲分区。按请求序列依次申请与释放，'
+      + '比较四种放置策略的结果。',
+    doc: { kind: 'partition', params: { algorithm: '首次适应', memorySize: 640 },
+      entities: PART_PRESETS[0].entities, streams: [] },
+    questions: [
+      q<PartState>({
+        prompt: '首次适应下，作业5（60 KB）落在哪个起址？', unit: '起址',
+        answer: t => String((t.find(s => s.job === '作业5') ?? t[0]).at),
+        revealStep: t => Math.max(0, t.findIndex(s => s.job === '作业5')),
+      }),
+      q<PartState>({
+        prompt: '最坏适应下，作业5 落在哪个起址？（与首次适应比一比）', unit: '起址',
+        hint: '把「放置策略」切到最坏适应',
+        answer: (_t, d, runDoc) => {
+          const t = runDoc({ ...d, params: { ...d.params, algorithm: '最坏适应' } }) as PartState[]
+          return String((t.find(s => s.job === '作业5') ?? t[0]).at)
+        },
+      }),
+      q<PartState>({
+        prompt: '作业6 申请 220 KB，四种策略下都发生了什么？（填 成功 或 失败）', kind: 'text',
+        hint: '看空闲总量够不够，再看有没有一整块够大的',
+        answer: t => ((t.find(s => s.job === '作业6') ?? t[0]).act === 'fail' ? '失败' : '成功'),
+        revealStep: t => Math.max(0, t.findIndex(s => s.job === '作业6')),
+      }),
+      q<PartState>({
+        prompt: '作业6 失败时，内存里的空闲总量是多少？（说明这是外碎片，不是内存不够）', unit: 'KB',
+        answer: t => String((t.find(s => s.job === '作业6') ?? t[0]).freeTotal),
+        revealStep: t => Math.max(0, t.findIndex(s => s.job === '作业6')),
+      }),
+      q<PartState>({
+        prompt: '作业7（40 KB）在四种策略下分别落在哪个起址？（按 首次 最佳 最坏 邻近 的顺序，空格分隔）',
+        kind: 'text',
+        hint: '这一步四种策略的结果各不相同 —— 正好看出它们的区别',
+        answer: (_t, d, runDoc) => ['首次适应', '最佳适应', '最坏适应', '邻近适应']
+          .map(a => {
+            const t = runDoc({ ...d, params: { ...d.params, algorithm: a } }) as PartState[]
+            return String((t.find(s => s.job === '作业7') ?? t[0]).at)
+          }).join(' '),
+      }),
+    ],
+  },
+]
+
+// ═══ 文件索引 ══════════════════════════════════════════
+const inodeProblems: Problem[] = [
+  {
+    id: 'inode-1', experimentId: 'inode',
+    source: '典型题型 · 混合索引寻址',
+    statement:
+      '某文件系统采用混合索引：inode 中有 10 个直接地址、1 个一级间接、1 个二级间接、'
+      + '1 个三级间接。磁盘块大小 1 KB，每个指针占 4 B。',
+    doc: {
+      kind: 'inode',
+      params: { blockSizeBytes: 1024, pointerSizeBytes: 4, directCount: 10 },
+      entities: [],
+      streams: [{ name: 'blockNumbers', values: [5, 100, 1000, 100000] }],
+    },
+    questions: [
+      q<InodeState>({
+        prompt: '一个索引块能存放多少个指针？', unit: '个',
+        hint: '块大小 ÷ 指针大小',
+        answer: (_t, d) => String(Math.floor((d.params.blockSizeBytes as number) / (d.params.pointerSizeBytes as number))),
+        revealStep: () => 0,
+      }),
+      q<InodeState>({
+        prompt: '逻辑块号 100 落在哪一级？（填 直接/一级间接/二级间接/三级间接）', kind: 'text',
+        answer: t => {
+          const s = t.find(x => x.lbn === 100)
+          return { direct: '直接', single: '一级间接', double: '二级间接',
+            triple: '三级间接', oob: '越界' }[s?.level ?? 'oob']
+        },
+        revealStep: t => Math.max(0, t.findIndex(x => x.lbn === 100)),
+      }),
+      q<InodeState>({
+        prompt: '访问逻辑块号 1000 需要读几次磁盘？', unit: '次',
+        answer: t => String((t.find(x => x.lbn === 1000) ?? t[0]).reads),
+        revealStep: t => Math.max(0, t.findIndex(x => x.lbn === 1000)),
+      }),
+      q<InodeState>({
+        prompt: '二级间接能覆盖的逻辑块号从哪一号开始？', unit: '号',
+        hint: '前面的直接与一级间接加起来',
+        answer: t => String(t[0].ranges[2].from),
+        revealStep: () => 0,
+      }),
+      q<InodeState>({
+        prompt: '这种 inode 支持的单个文件最大是多少 GB（保留两位小数）？', kind: 'text',
+        answer: (_t, d) => {
+          const m = maxFileSize(d.params.blockSizeBytes as number,
+            d.params.pointerSizeBytes as number, d.params.directCount as number)
+          return (m / (1 << 30)).toFixed(2)
+        },
+      }),
+    ],
+  },
+]
+
 export const PROBLEMS: Problem[] = [
   ...cacheProblems, ...pageProblems, ...schedProblems, ...tcpProblems, ...diskProblems,
   ...sortProblems, ...dijkstraProblems, ...bankerProblems, ...arqProblems,
   ...floatProblems, ...pipeProblems, ...vmProblems, ...mulProblems,
   ...crcProblems, ...hammingProblems, ...subnetProblems, ...hsProblems,
   ...avlProblems, ...hashProblems, ...huffProblems, ...kmpProblems,
+  ...mstProblems, ...topoProblems, ...partProblems, ...inodeProblems,
 ]
 
 export const problemsFor = (experimentId: string) =>

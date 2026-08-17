@@ -42,6 +42,18 @@ import { hashKernel, asl, type HashState } from '@engine/kernels/hashtable.ts'
 import { huffmanKernel, type HuffState } from '@engine/kernels/huffman.ts'
 import { kmpKernel, type KmpState } from '@engine/kernels/kmp.ts'
 import { trueHeight } from '@engine/core/tree.ts'
+import {
+  MST_PRESETS, AOE_PRESETS, PART_PRESETS, MST_NODES, AOE_NODES,
+} from '@engine/presets/entities.ts'
+import { INODE_PRESETS } from '@engine/presets/sequences.ts'
+import { mstKernel, type MstState } from '@engine/kernels/mst.ts'
+import { topoKernel, type TopoState } from '@engine/kernels/topo.ts'
+import { partitionKernel, type PartState } from '@engine/kernels/partition.ts'
+import { inodeKernel, maxFileSize, type InodeState } from '@engine/kernels/inode.ts'
+import { MstStage } from './stages/MstStage.tsx'
+import { TopoStage } from './stages/TopoStage.tsx'
+import { PartitionStage } from './stages/PartitionStage.tsx'
+import { InodeStage } from './stages/InodeStage.tsx'
 import { AvlStage } from './stages/AvlStage.tsx'
 import { HashStage } from './stages/HashStage.tsx'
 import { HuffmanStage } from './stages/HuffmanStage.tsx'
@@ -1294,9 +1306,240 @@ const kmp: Experiment<KmpState> = {
   ],
 }
 
+// ═══ 最小生成树 ════════════════════════════════════════
+const mst: Experiment<MstState> = {
+  id: 'mst', group: '数据结构',
+  title: '最小生成树', subtitle: 'Prim 从点长 · Kruskal 从边挑',
+  kernel: mstKernel,
+  defaultDoc: {
+    kind: 'mst', params: { algorithm: 'Prim', start: 'A' },
+    entities: MST_PRESETS[0].entities, streams: [],
+  },
+  params: [
+    { key: 'algorithm', label: '算法', kind: 'enum', options: ['Prim', 'Kruskal'] },
+    { key: 'start', label: 'Prim 起点', kind: 'enum', options: ['A', 'B', 'C', 'D', 'E', 'F'] },
+  ],
+  entitySpec: {
+    tables: [{
+      type: 'edge', label: '边表', hint: '无向图；顶点固定 A–F',
+      columns: doc => {
+        const ids = doc.entities.filter(e => e.type === 'node').map(e => e.id)
+        return [
+          { key: 'from', label: '端点1', kind: 'enum', options: ids, width: 64 },
+          { key: 'to', label: '端点2', kind: 'enum', options: ids, width: 64 },
+          { key: 'w', label: '权值', kind: 'number', width: 70 },
+        ]
+      },
+      newRow: (i, doc) => {
+        const ids = doc.entities.filter(e => e.type === 'node').map(e => e.id)
+        return { id: `E${i + 1}`, type: 'edge', attrs: { from: ids[0], to: ids[1] ?? ids[0], w: 1 } }
+      },
+      minRows: 1, maxRows: 16, chunk: 6,
+    }],
+    presets: MST_PRESETS,
+  },
+  bounds: [
+    '只处理连通的无向带权图；不连通时得到的是最小生成森林的一部分',
+    '权值相等时按边 id 字典序取，保证结果可复现 —— 教材里这时 MST 可能不唯一',
+    'Prim 用线性扫描找最小边（O(V²)），不是堆优化版；结果相同，步数展示不同',
+    '不处理自环与重边',
+  ],
+  tabs: [{ id: 'graph', label: '图' }, { id: 'edges', label: '边表' }],
+  Stage: MstStage,
+  tone: s => (s.act === 'take' ? { key: 'good', label: '选入' }
+    : s.act === 'skip' ? { key: 'bad', label: '成环丢弃' }
+    : s.act === 'done' ? { key: 'good', label: '完成' }
+    : { key: 'idle', label: '考察' }),
+  metric: (s, _i) => {
+    const n = 6
+    return s.chosen.length / Math.max(1, n - 1)
+  },
+  tickLabel: s => (s.edge || s.act),
+  readouts: (s, doc) => {
+    const n = doc.entities.filter(e => e.type === 'node').length
+    return [
+      { label: '算法', value: String(doc.params.algorithm) },
+      { label: '已选边', value: `${s.chosen.length} / ${n - 1}` },
+      { label: '总权值', value: String(s.weight) },
+      { label: '本步边', value: s.edge || '—' },
+      { label: '树中顶点', value: s.inTree.length ? s.inTree.join(' ') : '—' },
+    ]
+  },
+}
+
+// ═══ 拓扑排序与关键路径 ════════════════════════════════
+const topo: Experiment<TopoState> = {
+  id: 'topo', group: '数据结构',
+  title: '拓扑排序与关键路径', subtitle: 'AOE 网 · ve 正推 vl 逆推',
+  kernel: topoKernel,
+  defaultDoc: {
+    kind: 'topo', params: { operation: 'critical' },
+    entities: AOE_PRESETS[0].entities, streams: [],
+  },
+  params: [
+    { key: 'operation', label: '做什么', kind: 'enum', options: ['topo', 'critical'] },
+  ],
+  entitySpec: {
+    tables: [{
+      type: 'edge', label: '活动表（有向边）', hint: '权值 = 活动耗时；顶点固定 V1–V7',
+      columns: doc => {
+        const ids = doc.entities.filter(e => e.type === 'node').map(e => e.id)
+        return [
+          { key: 'from', label: '起点', kind: 'enum', options: ids, width: 68 },
+          { key: 'to', label: '终点', kind: 'enum', options: ids, width: 68 },
+          { key: 'w', label: '耗时', kind: 'number', width: 66 },
+        ]
+      },
+      newRow: (i, doc) => {
+        const ids = doc.entities.filter(e => e.type === 'node').map(e => e.id)
+        return { id: `A${i + 1}`, type: 'edge', attrs: { from: ids[0], to: ids[1] ?? ids[0], w: 1 } }
+      },
+      minRows: 1, maxRows: 14, chunk: 7,
+    }],
+    presets: AOE_PRESETS,
+  },
+  bounds: [
+    '入度为 0 的顶点有多个时按名字字典序取，保证拓扑序列可复现（教材里此时不唯一）',
+    'AOE 网假设只有一个源点和一个汇点；多源多汇需要先加虚拟结点',
+    '关键路径可能不止一条 —— 这里把所有关键活动都标出来，不只给一条路径',
+    '不建模活动的资源约束，只看时间',
+  ],
+  tabs: [{ id: 'graph', label: '图' }, { id: 'table', label: '表格' }],
+  Stage: TopoStage,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: '完成' }
+    : s.critical.includes(s.at) ? { key: 'bad', label: '关键活动' }
+    : s.phase === 'topo' ? { key: 'good', label: '输出顶点' }
+    : { key: 'idle', label: s.phase === 've' ? '正推 ve' : s.phase === 'vl' ? '逆推 vl' : '算活动' }),
+  metric: (s, _i) => {
+    const n = Object.keys(s.indeg).length || 1
+    return s.order.length / n
+  },
+  tickLabel: s => (s.at || s.phase),
+  readouts: (s, doc) => {
+    const n = doc.entities.filter(e => e.type === 'node').length
+    const total = Math.max(0, ...Object.values(s.ve))
+    return [
+      { label: '阶段', value: { topo: '拓扑排序', ve: '正推 ve', vl: '逆推 vl',
+        activity: '算活动 e / l', done: '完成' }[s.phase] },
+      { label: '拓扑序列', value: s.order.join(' ') || '—' },
+      { label: '已排序', value: `${s.order.length} / ${n}` },
+      { label: '总工期', value: total > 0 ? String(total) : '—' },
+      { label: '关键活动', value: s.critical.length ? s.critical.join('、') : '—',
+        tone: s.critical.length ? 'bad' : undefined },
+    ]
+  },
+}
+
+// ═══ 动态分区分配 ══════════════════════════════════════
+const partition: Experiment<PartState> = {
+  id: 'partition', group: '操作系统',
+  title: '动态分区分配', subtitle: '四种放置策略 · 外碎片',
+  kernel: partitionKernel,
+  defaultDoc: {
+    kind: 'partition', params: { algorithm: '首次适应', memorySize: 640 },
+    entities: PART_PRESETS[0].entities, streams: [],
+  },
+  params: [
+    { key: 'algorithm', label: '放置策略', kind: 'enum',
+      options: ['首次适应', '最佳适应', '最坏适应', '邻近适应'] },
+    { key: 'memorySize', label: '内存大小', kind: 'number', options: [512, 640, 1024], unit: 'KB' },
+  ],
+  entitySpec: {
+    tables: [{
+      type: 'req', label: '请求序列', hint: '释放填 1 时忽略大小，按作业名找',
+      columns: () => [
+        { key: 'id', label: '作业', kind: 'text', width: 72 },
+        { key: 'size', label: '申请大小', kind: 'number', unit: 'KB', width: 88 },
+        { key: 'free', label: '是否释放', kind: 'number', width: 82 },
+      ],
+      newRow: i => ({ id: `作业${i + 1}`, type: 'req', at: i, attrs: { size: 100, free: 0 } }),
+      minRows: 1, maxRows: 14, chunk: 7,
+    }],
+    presets: PART_PRESETS,
+  },
+  bounds: [
+    '只建模连续分配，不含分页与分段',
+    '空闲块小于 8 KB 时计入外碎片统计 —— 这个门限是展示用的约定，不是硬性规则',
+    '释放时只合并**相邻**空闲区，不做紧凑（compaction）',
+    '邻近适应从上次分配结束的地址开始绕一圈找，与部分教材"从上次分配的分区开始"略有差别',
+  ],
+  tabs: [{ id: 'bar', label: '内存布局' }, { id: 'table', label: '分区表' }],
+  Stage: PartitionStage,
+  tone: s => (s.act === 'fail' ? { key: 'bad', label: '分配失败' }
+    : s.act === 'free' ? { key: 'idle', label: '释放' }
+    : { key: 'good', label: '分配' }),
+  metric: (s, _i) => {
+    const used = s.blocks.filter(b => b.owner).reduce((x, b) => x + b.size, 0)
+    return used / Math.max(1, used + s.freeTotal)
+  },
+  tickLabel: s => `${s.job}${s.act === 'free' ? ' 释放' : ` ${s.size}K`}`,
+  readouts: (s, doc) => [
+    { label: '策略', value: String(doc.params.algorithm) },
+    { label: '本步', value: `${s.job} ${s.act === 'free' ? '释放' : `申请 ${s.size} KB`}` },
+    { label: '结果', value: s.act === 'fail' ? '失败' : s.at >= 0 ? `起址 ${s.at}` : '—',
+      tone: s.act === 'fail' ? 'bad' : undefined },
+    { label: '空闲总量', value: `${s.freeTotal} KB` },
+    { label: '空闲块数', value: String(s.blocks.filter(b => !b.owner).length) },
+    { label: '外碎片', value: `${s.external} KB`, tone: s.external > 0 ? 'bad' : undefined },
+  ],
+}
+
+// ═══ 文件索引寻址 ══════════════════════════════════════
+const inode: Experiment<InodeState> = {
+  id: 'inode', group: '操作系统',
+  title: '文件索引寻址', subtitle: '混合索引 · 几次磁盘访问',
+  kernel: inodeKernel,
+  defaultDoc: {
+    kind: 'inode',
+    params: { blockSizeBytes: 1024, pointerSizeBytes: 4, directCount: 10 },
+    entities: [],
+    streams: [{ name: 'blockNumbers', values: INODE_PRESETS[0].values }],
+  },
+  params: [
+    { key: 'blockSizeBytes', label: '块大小', kind: 'number', options: [512, 1024, 4096], unit: 'B' },
+    { key: 'pointerSizeBytes', label: '指针大小', kind: 'number', options: [2, 4, 8], unit: 'B' },
+    { key: 'directCount', label: '直接地址个数', kind: 'number', options: [8, 10, 12], unit: '个' },
+  ],
+  sequence: {
+    stream: 'blockNumbers', label: '要访问的逻辑块号',
+    hint: '非负整数', maxLength: 12, presets: INODE_PRESETS,
+  },
+  bounds: [
+    '按 UNIX 风格的混合索引：直接 + 一级 + 二级 + 三级间接',
+    '假设索引块与数据块同样大小；不建模 inode 本身的读取开销',
+    '不建模磁盘缓存 —— 实际系统里索引块常驻内存，访问次数会少于这里的数字',
+    '不含 FAT、连续分配、链接分配等其它文件分配方式',
+  ],
+  tabs: [{ id: 'chain', label: '寻址链' }, { id: 'levels', label: '分级结构' }],
+  Stage: InodeStage,
+  tone: s => (s.level === 'oob' ? { key: 'bad', label: '越界' }
+    : s.level === 'direct' ? { key: 'good', label: '直接' }
+    : { key: 'idle', label: { single: '一级', double: '二级', triple: '三级' }[s.level] ?? '' }),
+  metric: s => Math.min(1, s.reads / 4),
+  tickLabel: s => `块 ${s.lbn}`,
+  readouts: (s, doc) => {
+    const bs = doc.params.blockSizeBytes as number
+    const ps = doc.params.pointerSizeBytes as number
+    const dc = doc.params.directCount as number
+    const K = Math.floor(bs / ps)
+    const max = maxFileSize(bs, ps, dc)
+    return [
+      { label: '逻辑块号', value: String(s.lbn) },
+      { label: '落在', value: { direct: '直接地址', single: '一级间接',
+        double: '二级间接', triple: '三级间接', oob: '越界' }[s.level],
+        tone: s.level === 'oob' ? 'bad' : s.level === 'direct' ? 'good' : undefined },
+      { label: '磁盘访问', value: s.reads > 0 ? `${s.reads} 次` : '不可达', tone: s.reads >= 4 ? 'bad' : undefined },
+      { label: '每块指针数 K', value: `${bs} ÷ ${ps} = ${K}` },
+      { label: '文件最大长度', value: max >= (1 << 30)
+          ? `${(max / (1 << 30)).toFixed(2)} GB` : `${(max / (1 << 20)).toFixed(1)} MB` },
+    ]
+  },
+}
+
 export const EXPERIMENTS = [
   cache, float, multiply, pipeline, vm,
   page, scheduler, disk, banker,
-  sort, dijkstra, avl, hash, huffman, kmp,
+  partition, inode,
+  sort, dijkstra, avl, hash, huffman, kmp, mst, topo,
   tcp, arq, crc, hamming, subnet, handshake,
 ] as unknown as AnyExperiment[]

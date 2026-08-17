@@ -218,6 +218,10 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   hash: { size: 'number', method: 'string', rehashStep: 'number' },
   huffman: {},
   kmp: { text: 'string', pattern: 'string', showMatch: 'number' },
+  mst: { algorithm: 'string', start: 'string' },
+  topo: { operation: 'string' },
+  partition: { algorithm: 'string', memorySize: 'number' },
+  inode: { blockSizeBytes: 'number', pointerSizeBytes: 'number', directCount: 'number' },
 }
 
 /** 同名参数在不同 kind 下取值不同 —— 所以按 kind 分表，不能只按字段名 */
@@ -237,6 +241,9 @@ const ENUMS: Record<string, Record<string, string[]>> = {
   handshake: { scenario: ['connect', 'close', 'both'] },
   avl:       { mode: ['avl', 'bst'] },
   hash:      { method: ['拉链', '线性探测', '平方探测', '再散列'] },
+  mst:       { algorithm: ['Prim', 'Kruskal'] },
+  topo:      { operation: ['topo', 'critical'] },
+  partition: { algorithm: ['首次适应', '最佳适应', '最坏适应', '邻近适应'] },
 }
 
 /**
@@ -652,6 +659,55 @@ export function validateDocument(raw: SimDocument): Violation[] {
     else if (p.length > 24) err('params.pattern', '模式串过长，next 表会看不过来', p.length)
     if (t.length === 0) err('params.text', '主串不能为空')
     else if (t.length > 48) err('params.text', '主串过长，对齐图会看不过来', t.length)
+  }
+
+  if (doc.kind === 'mst' || doc.kind === 'topo') {
+    const nodes = doc.entities.filter(e => e.type === 'node').map(e => e.id)
+    const edges = doc.entities.filter(e => e.type === 'edge')
+    if (nodes.length < 2) err('entities', '至少要有 2 个顶点', nodes.length)
+    if (edges.length === 0) err('entities', '至少要有 1 条边')
+    if (doc.kind === 'mst' && !nodes.includes(String(doc.params.start)))
+      err('params.start', '起点不在顶点表里', doc.params.start)
+    for (const e of edges) {
+      if (!nodes.includes(String(e.attrs.from))) err(`entities.${e.id}.from`, '端点不在顶点表里', e.attrs.from)
+      if (!nodes.includes(String(e.attrs.to))) err(`entities.${e.id}.to`, '端点不在顶点表里', e.attrs.to)
+      if (e.attrs.from === e.attrs.to) err(`entities.${e.id}`, '自环在这两个算法里没有意义', e.attrs.from)
+      const w = Number(e.attrs.w)
+      if (!Number.isFinite(w)) err(`entities.${e.id}.w`, '权值必须是数字', e.attrs.w)
+      else if (doc.kind === 'topo' && w < 0) err(`entities.${e.id}.w`, '活动耗时不能为负', w)
+    }
+  }
+
+  if (doc.kind === 'partition') {
+    const total = doc.params.memorySize as number
+    if (total < 1) err('params.memorySize', '内存大小必须为正', total)
+    const reqs = doc.entities.filter(e => e.type === 'req')
+    if (reqs.length === 0) err('entities', '请求序列不能为空')
+    for (const r of reqs) {
+      const size = Number(r.attrs.size)
+      const isFree = Number(r.attrs.free ?? 0) === 1
+      if (!isFree) {
+        if (!Number.isInteger(size) || size <= 0)
+          err(`entities.${r.id}.size`, '申请大小必须为正整数', r.attrs.size)
+        else if (size > total)
+          err(`entities.${r.id}.size`, `申请 ${size} KB 超过内存总量 ${total} KB`, size)
+      }
+    }
+  }
+
+  if (doc.kind === 'inode') {
+    const bs = doc.params.blockSizeBytes as number
+    const ps = doc.params.pointerSizeBytes as number
+    const dc = doc.params.directCount as number
+    if (!isPow2(bs)) err('params.blockSizeBytes', '块大小必须是 2 的幂', bs)
+    if (ps < 1) err('params.pointerSizeBytes', '指针至少 1 字节', ps)
+    else if (ps > bs) err('params.pointerSizeBytes', '指针比一个块还大，索引块放不下任何指针', ps)
+    if (dc < 0) err('params.directCount', '直接地址个数不能为负', dc)
+    const b = doc.streams.find(s => s.name === 'blockNumbers')
+    if (!b) err('streams', '缺少 blockNumbers')
+    else if (b.values.length === 0) err('streams.blockNumbers', '逻辑块号序列为空')
+    else if (b.values.some(v => typeof v !== 'number' || v < 0 || !Number.isInteger(v)))
+      err('streams.blockNumbers', '逻辑块号必须是非负整数')
   }
 
   if (doc.kind === 'tcp') {

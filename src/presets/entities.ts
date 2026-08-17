@@ -318,3 +318,107 @@ export const HS_PRESETS: EntityPreset[] = [
     entities: [{ id: 'L1', type: 'loss', attrs: { nth: 2 } }],
   },
 ]
+
+// ═══ AOE 网 / 无向带权图 ═══════════════════════════════
+const XY6: Record<string, [number, number]> = {
+  A: [12, 30], B: [38, 12], C: [38, 62], D: [64, 88], E: [64, 20], F: [88, 52],
+}
+const XY7: Record<string, [number, number]> = {
+  V1: [8, 50], V2: [30, 22], V3: [30, 76], V4: [54, 50], V5: [54, 12], V6: [76, 74], V7: [94, 44],
+}
+export const MST_NODES = Object.entries(XY6).map(([id, [x, y]]) => ({ id, type: 'node', attrs: { x, y } }))
+export const AOE_NODES = Object.entries(XY7).map(([id, [x, y]]) => ({ id, type: 'node', attrs: { x, y } }))
+const und = (f: string, t: string, w: number) => ({ id: `${f}${t}`, type: 'edge', attrs: { from: f, to: t, w } })
+const dir = (f: string, t: string, w: number) => ({ id: `${f}→${t}`, type: 'edge', attrs: { from: f, to: t, w } })
+
+export const MST_PRESETS: EntityPreset[] = [
+  {
+    label: '教材经典',
+    note: 'Prim 与 Kruskal 会选出不同的边集，但总权值都是 15',
+    entities: [...MST_NODES,
+      und('A','B',6), und('A','C',1), und('A','D',5),
+      und('B','C',5), und('B','E',3),
+      und('C','D',5), und('C','E',6), und('C','F',4),
+      und('D','F',2), und('E','F',6)],
+  },
+  {
+    label: '权值互不相同',
+    note: '所有边权都不同 —— 此时最小生成树唯一，两种算法选出的边集完全一样',
+    entities: [...MST_NODES,
+      und('A','B',1), und('A','C',2), und('A','D',3),
+      und('B','C',4), und('B','E',5),
+      und('C','D',6), und('C','F',7),
+      und('D','F',8), und('E','F',9), und('C','E',10)],
+  },
+  {
+    label: '有大量成环边',
+    note: '边很密 —— Kruskal 会丢掉很多条成环的边，判环那一步看得最清楚',
+    entities: [...MST_NODES,
+      und('A','B',2), und('A','C',2), und('A','D',3), und('A','E',4), und('A','F',5),
+      und('B','C',1), und('B','D',6), und('C','D',1), und('C','E',7),
+      und('D','E',1), und('E','F',1), und('D','F',8)],
+  },
+]
+
+export const AOE_PRESETS: EntityPreset[] = [
+  {
+    label: '教材经典',
+    note: '七个事件九个活动，关键路径唯一，总工期 10',
+    entities: [...AOE_NODES,
+      dir('V1','V2',3), dir('V1','V3',2),
+      dir('V2','V4',2), dir('V2','V5',3),
+      dir('V3','V4',4), dir('V3','V6',3),
+      dir('V4','V6',2), dir('V5','V7',1), dir('V6','V7',2)],
+  },
+  {
+    label: '两条关键路径',
+    note: '有两条等长的最长路 —— 关键活动会多出一批，缩短其中一条并不能缩短工期',
+    entities: [...AOE_NODES,
+      dir('V1','V2',3), dir('V1','V3',3),
+      dir('V2','V4',2), dir('V3','V4',2),
+      dir('V4','V6',2), dir('V4','V5',1),
+      dir('V5','V7',1), dir('V6','V7',2)],
+  },
+  {
+    label: '含环（拓扑失败）',
+    note: 'V7 又指回 V2 —— 入度永远降不到 0，不存在拓扑序列，也就没有关键路径',
+    entities: [...AOE_NODES,
+      dir('V1','V2',3), dir('V2','V4',2), dir('V4','V6',2),
+      dir('V6','V7',2), dir('V7','V2',1),
+      dir('V1','V3',2), dir('V3','V4',4), dir('V2','V5',3), dir('V5','V7',1)],
+  },
+]
+
+// ═══ 动态分区请求序列 ═══════════════════════════════════
+const req = (id: string, size: number, free = 0, at = 0) =>
+  ({ id, type: 'req', at, attrs: { size, free } })
+
+export const PART_PRESETS: EntityPreset[] = [
+  {
+    label: '四策略全分开',
+    note: '这组请求下四种放置策略跑出四种不同的末态布局 —— 切换策略能看出真差别',
+    entities: [
+      req('作业1', 180, 0, 0), req('作业2', 100, 0, 1), req('作业3', 40, 0, 2), req('作业4', 120, 0, 3),
+      req('作业1', 0, 1, 4), req('作业3', 0, 1, 5),
+      req('作业5', 60, 0, 6), req('作业6', 220, 0, 7), req('作业7', 40, 0, 8),
+    ],
+  },
+  {
+    label: '外碎片致失败',
+    note: '空闲总量够，却被切得太碎，最后那个大作业谁也装不下 —— 这就是外碎片',
+    entities: [
+      req('A', 100, 0, 0), req('B', 100, 0, 1), req('C', 100, 0, 2), req('D', 100, 0, 3),
+      req('A', 0, 1, 4), req('C', 0, 1, 5),
+      req('E', 250, 0, 6),
+    ],
+  },
+  {
+    label: '合并相邻空闲区',
+    note: '连着释放两个相邻作业 —— 必须合并成一大块，否则后面的大作业进不来',
+    entities: [
+      req('A', 200, 0, 0), req('B', 200, 0, 1), req('C', 100, 0, 2),
+      req('A', 0, 1, 3), req('B', 0, 1, 4),
+      req('D', 380, 0, 5),
+    ],
+  },
+]

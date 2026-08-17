@@ -2,75 +2,46 @@
 import type { DijkstraState } from '@engine/kernels/dijkstra.ts'
 import type { SimDocument } from '@engine/core/document.ts'
 import type { StageProps } from '../types.ts'
+import { GraphView } from '../shell/GraphView.tsx'
 
 const fmt = (v: number) => (v === Infinity || v === null || v === undefined ? '∞' : String(v))
 
 export function DijkstraStage({ doc, trace, state, tab }: StageProps<DijkstraState>) {
-  const nodes = doc.entities.filter(e => e.type === 'node')
-  const edges = doc.entities.filter(e => e.type === 'edge')
   if (tab === 'table') return <Table doc={doc} trace={trace} state={state} />
-  return <Graph nodes={nodes} edges={edges} state={state} />
+  return <Graph doc={doc} state={state} />
 }
-
-type Ent = SimDocument['entities'][number]
 
 /**
  * 图：顶点坐标由 doc 给（attrs.x / attrs.y，0..100）。
- * 让文档定布局，而不是前端自己排 —— 同一道题换个前端也能画成一样。
+ * 用共享的 GraphView —— 当初这里自己画了一遍 SVG，
+ * 结果 viewBox 与结点百分比定位不重合，连线离结点中心差了上百像素。
+ * 那个 bug 修在 GraphView 里一次就够，不该每个图实验各修一遍。
  */
-function Graph({ nodes, edges, state }: { nodes: Ent[]; edges: Ent[]; state: DijkstraState }) {
-  const pos = Object.fromEntries(nodes.map((n, k) => {
-    const a = 2 * Math.PI * k / nodes.length - Math.PI / 2
-    return [n.id, {
-      x: typeof n.attrs.x === 'number' ? n.attrs.x : 50 + 36 * Math.cos(a),
-      y: typeof n.attrs.y === 'number' ? n.attrs.y : 50 + 36 * Math.sin(a),
-    }]
-  }))
+function Graph({ doc, state }: { doc: SimDocument; state: DijkstraState }) {
   const settled = new Set(state.settled)
-
   return (
     <div className="card">
       <h3>带权图 <span className="hint">深色=最短路已确定 · 高亮=本步正在松弛的边</span></h3>
       <div className="body">
-        <div className="gwrap">
-          <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
-            {edges.map(e => {
-              const f = pos[String(e.attrs.from)], t = pos[String(e.attrs.to)]
-              if (!f || !t) return null
-              const active =
-                (state.at === e.attrs.from && state.to === e.attrs.to) ||
-                (state.at === e.attrs.to && state.to === e.attrs.from)
-              // 树边：终点的前驱正好是另一端 —— 这就是最短路径树
-              const tree =
-                state.prev[String(e.attrs.to)] === e.attrs.from ||
-                state.prev[String(e.attrs.from)] === e.attrs.to
-              return (
-                <g key={e.id} className={`gedge ${active ? 'act' : ''} ${tree ? 'tree' : ''}`}>
-                  <line x1={f.x} y1={f.y} x2={t.x} y2={t.y} vectorEffect="non-scaling-stroke" />
-                  <text x={(f.x + t.x) / 2} y={(f.y + t.y) / 2 - 1.4}>{String(e.attrs.w)}</text>
-                </g>
-              )
-            })}
-          </svg>
-          {nodes.map(n => {
-            const p = pos[n.id]
-            const d = state.dist[n.id]
-            const cls = [
-              'gnode',
-              settled.has(n.id) ? 'settled' : '',
-              state.at === n.id ? 'at' : '',
-              state.to === n.id ? 'to' : '',
-            ].filter(Boolean).join(' ')
-            return (
-              <div key={n.id} className={cls} style={{ left: `${p.x}%`, top: `${p.y}%` }}>
-                <b>{n.id}</b>
-                <em>{fmt(d)}</em>
-              </div>
-            )
-          })}
-        </div>
+        <GraphView
+          doc={doc}
+          directed={doc.params.directed === 1}
+          edgeTone={id => {
+            const e = doc.entities.find(x => x.id === id)!
+            const active = (state.at === e.attrs.from && state.to === e.attrs.to)
+              || (state.at === e.attrs.to && state.to === e.attrs.from)
+            if (active) return 'active'
+            //  树边：终点的前驱正好是另一端 —— 这就是最短路径树
+            const tree = state.prev[String(e.attrs.to)] === e.attrs.from
+              || state.prev[String(e.attrs.from)] === e.attrs.to
+            return tree ? 'chosen' : 'plain'
+          }}
+          vertTone={id => (state.at === id ? 'active' : settled.has(id) ? 'done' : 'plain')}
+          vertSub={id => fmt(state.dist[id])}
+          legend={[['chosen', '最短路径树上的边'], ['active', '本步松弛的边']]}
+        />
         <div className="glegend">
-          <span>已确定 <b>{state.settled.length}</b> / {nodes.length}</span>
+          <span>已确定 <b>{state.settled.length}</b> / {doc.entities.filter(e => e.type === 'node').length}</span>
           <span>确定顺序 <b>{state.settled.join(' → ') || '—'}</b></span>
         </div>
       </div>

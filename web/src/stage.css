@@ -752,3 +752,68 @@
 .kach.hit{box-shadow:inset 0 -2px 0 var(--hit)}
 .kach.past{opacity:.4}
 .karow.small .kach{font-size:9px;padding:1px 0;background:none;color:var(--faint)}
+
+/* ═══ 共享图视图（MST / 拓扑 / 关键路径）═══ */
+.gvwrap{margin-bottom:11px}
+.gedge.chosen line{stroke:var(--hit);stroke-width:2.6px}
+.gedge.chosen text{fill:var(--hit);font-weight:700}
+.gedge.dropped line{stroke:var(--miss);stroke-width:1.6px;stroke-dasharray:3 2}
+.gedge.dropped text{fill:var(--miss)}
+.gedge.critical line{stroke:var(--miss);stroke-width:3px}
+.gedge.critical text{fill:var(--miss);font-weight:700}
+.gedge.act line,.gedge.active line{stroke:var(--now);stroke-width:2.8px}
+.gedge.active text{fill:var(--now);font-weight:700}
+.gnode.done{background:#45B39A1c;border-color:var(--hit)}
+.gnode.done b{color:var(--hit)}
+.gnode.active{border-color:var(--now);box-shadow:0 0 0 3px #F0B42926}
+.gnode.active b{color:var(--now)}
+.gnode.dim{opacity:.4}
+.gvlegend{display:flex;gap:14px;flex-wrap:wrap;margin-top:9px;font-size:11px;color:var(--faint)}
+.gvlegend span{display:flex;gap:5px;align-items:center}
+.gvw{width:14px;height:3px;border-radius:2px;display:inline-block;background:var(--line)}
+.gvw.chosen{background:var(--hit)} .gvw.dropped{background:var(--miss)}
+.gvw.critical{background:var(--miss);height:4px} .gvw.active{background:var(--now)}
+
+/* ═══ 动态分区内存条 ═══ */
+.membar{display:flex;gap:2px;height:64px;margin-bottom:5px}
+.memblk{min-width:0;border-radius:4px;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:2px;border:1px solid var(--line);overflow:hidden;padding:0 3px}
+.memblk .nm{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.memblk .sz{font-family:var(--mono);font-size:9.5px;opacity:.7}
+.memblk.used{background:#5B7FD426;border-color:#5B7FD455;color:var(--f-tag)}
+.memblk.free{background:#00000030;color:var(--faint)}
+.memblk.scanned{border-color:#E2664A66}
+.memblk.cur{border-color:var(--now);box-shadow:inset 0 0 0 1px var(--now)}
+.memblk.cur .nm{color:var(--now);font-weight:700}
+.memaxis{display:flex;justify-content:space-between;font-family:var(--mono);font-size:9.5px;
+  color:var(--faint);margin-bottom:11px}
+
+/* ═══ inode 寻址链 ═══ */
+.inbadge{display:inline-flex;gap:10px;align-items:baseline;padding:8px 14px;border-radius:6px;
+  font-size:13px;margin-bottom:13px;border:1px solid var(--line);background:var(--panel-2)}
+.inbadge b{font-family:var(--mono);font-size:15px}
+.inbadge.l0{border-color:#45B39A55;background:#45B39A16;color:var(--hit)}
+.inbadge.l1{border-color:#5B7FD455;background:#5B7FD416;color:var(--f-tag)}
+.inbadge.l2{border-color:#9B6FCC55;background:#9B6FCC16;color:var(--f-idx)}
+.inbadge.l3{border-color:#F0B42955;background:#F0B42916;color:var(--now)}
+.inbadge.oob{border-color:#E2664A66;background:#E2664A16;color:var(--miss)}
+.inchain{display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin-bottom:13px}
+.instep{display:flex;gap:6px;align-items:center;padding:7px 11px;border-radius:5px;
+  background:#00000028;border:1px solid var(--line);font-size:11.5px;color:var(--dim)}
+.instep .n{font-family:var(--mono);font-size:9px;color:var(--faint);
+  width:16px;height:16px;border-radius:50%;background:var(--panel-2);
+  display:flex;align-items:center;justify-content:center}
+.instep .ar{color:var(--faint);margin-left:2px}
+/* GraphView 的结点：ve/vl 这种「10 / 10」在圆圈里放不下，挪到圆下方 */
+.gvwrap .gwrap{aspect-ratio:16/9;max-height:400px;min-height:260px}
+.gvwrap .gnode{width:38px;height:38px}
+.gvwrap .gnode b{font-size:12px}
+.gvwrap .gnode em{position:absolute;top:100%;margin-top:3px;font-size:9.5px;white-space:nowrap;
+  background:var(--panel);padding:0 3px;border-radius:2px}
+/* 边权标签：HTML 覆盖层，不受 viewBox 非等比缩放影响 */
+.gvlab{position:absolute;transform:translate(-50%,-50%);font-family:var(--mono);font-size:10.5px;
+  color:var(--faint);background:var(--panel);padding:0 3px;border-radius:2px;pointer-events:none}
+.gvlab.chosen{color:var(--hit);font-weight:700}
+.gvlab.critical{color:var(--miss);font-weight:700}
+.gvlab.active{color:var(--now);font-weight:700}
+.gvlab.dropped{color:var(--miss);opacity:.6;text-decoration:line-through}

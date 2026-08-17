@@ -51,12 +51,16 @@ const EXPS = [
   ['进程调度甘特图', 'sched'],
   ['磁盘调度', 'disk'],
   ['银行家算法', 'banker'],
+  ['动态分区分配', 'partition'],
+  ['文件索引寻址', 'inode'],
   ['排序逐趟', 'sort'],
   ['Dijkstra 最短路', 'dijkstra'],
   ['AVL 平衡二叉树', 'avl'],
   ['散列表', 'hash'],
   ['哈夫曼树与编码', 'huffman'],
   ['KMP 字符串匹配', 'kmp'],
+  ['最小生成树', 'mst'],
+  ['拓扑排序与关键路径', 'topo'],
   ['TCP 拥塞窗口', 'tcp'],
   ['滑动窗口 ARQ', 'arq'],
   ['CRC 循环冗余校验', 'crc'],
@@ -83,7 +87,18 @@ for (let i = 0; i < EXPS.length; i++) {
     //  认舞台自己的容器，不靠"中列第几张卡片"猜 ——
     //  之前每加一个编辑器（序列 / 实体）这条就会误报一次
     const el = document.querySelector('.stagewrap > .card')
-    return [...el.querySelectorAll('*')].map(x => x.className).filter(Boolean).slice(0, 8).join(',')
+    /*
+     * 两处一直有问题，一起修在根因上：
+     * 1) `.className` 对 SVG 元素返回 SVGAnimatedString 对象，一律 stringify 成
+     *    "[object SVGAnimatedString]" —— 凡是带 SVG 的舞台，这个签名一直在比垃圾。
+     *    改用 getAttribute('class')。
+     * 2) 只取前 8 个元素，共用同一个视觉原语（如 MST 与拓扑都用 GraphView）
+     *    的两个舞台必然撞签名。那是**设计上的复用**，不是退化 ——
+     *    所以签名要取得更深，让它们在共用部分之后的差异显出来。
+     */
+    return [...el.querySelectorAll('*')]
+      .map(x => x.getAttribute('class') || x.tagName)
+      .slice(0, 40).join(',')
   }))
 }
 new Set(stageSigs).size === EXPS.length
@@ -349,7 +364,8 @@ console.log('\n【8】四个新实验的真题都能判对（答案从轨迹派�
 for (const name of ['排序逐趟', 'Dijkstra', '银行家算法', '滑动窗口',
                      'IEEE 754', '指令流水线', '虚地址转换', '定点乘除',
                      'CRC', '海明码', '子网划分', 'TCP 连接管理',
-                     'AVL', '散列表', '哈夫曼', 'KMP']) {
+                     'AVL', '散列表', '哈夫曼', 'KMP',
+                     '最小生成树', '拓扑排序', '动态分区', '文件索引']) {
   await nav(name)
   const picks = await p.evaluate(() => document.querySelectorAll('.probpick button').length)
   if (picks < 2) { bad(`${name} 没有真题可选`); continue }
@@ -652,6 +668,35 @@ const noLoss = await p.evaluate(() => {
 noLoss.retrans === '0'
   ? ok(`载入「不丢包」：丢包表清空（${noLoss.rows} 行提示），重传次数 ${noLoss.retrans}`)
   : bad(`不丢包却有重传：${JSON.stringify(noLoss)}`)
+
+// ═══ 11. 图的连线必须真的接在结点上 ═══════════════════
+console.log('\n【11】图视图：连线端点必须贴着结点中心')
+//  这条是补的：viewBox 用 xMidYMid meet 时 SVG 坐标系与结点的百分比定位不重合，
+//  三个图实验的连线都离结点中心 50~125px。图"看着像那么回事"，所以一直没发现。
+for (const [name, directed] of [['Dijkstra', 0], ['最小生成树', 0], ['拓扑排序', 1]]) {
+  await nav(name)
+  const gap = await p.evaluate(() => {
+    const nodes = [...document.querySelectorAll('.gnode')].map(n => {
+      const b = n.getBoundingClientRect()
+      return { cx: b.left + b.width / 2, cy: b.top + b.height / 2 }
+    })
+    let max = 0
+    for (const line of document.querySelectorAll('.gedge line')) {
+      const b = line.getBoundingClientRect()
+      //  线的包围盒四个角里，离结点最近的两个就是它的两端
+      const ends = [[b.left, b.top], [b.right, b.bottom], [b.left, b.bottom], [b.right, b.top]]
+        .map(([x, y]) => Math.min(...nodes.map(n => Math.hypot(n.cx - x, n.cy - y))))
+        .sort((a, z) => a - z).slice(0, 2)
+      max = Math.max(max, ends[1])
+    }
+    return Math.round(max)
+  })
+  //  无向图应当严丝合缝；有向图为箭头主动缩进约 4.5 个 viewBox 单位
+  const limit = directed ? 45 : 12
+  gap <= limit
+    ? ok(`${name.padEnd(10)} 所有连线端点离结点中心 ≤ ${gap}px（上限 ${limit}）`)
+    : bad(`${name} 连线没接上：最远 ${gap}px，上限 ${limit}px`)
+}
 
 console.log(`\n${'─'.repeat(50)}`)
 console.log(errs.length ? `控制台错误 ${errs.length} 条：\n  ` + errs.slice(0, 4).join('\n  ') : '控制台无错误')
