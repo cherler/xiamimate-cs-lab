@@ -199,6 +199,13 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   page: { algorithm: 'string', frames: 'number' },
   disk: { algorithm: 'string', headStart: 'number', maxTrack: 'number', direction: 'number' },
   tcp: { variant: 'string', initialCwnd: 'number', initialSsthresh: 'number', rounds: 'number' },
+  sort: { algorithm: 'string' },
+  dijkstra: { source: 'string', directed: 'number' },
+  banker: { resources: 'string' },
+  arq: {
+    protocol: 'string', windowSize: 'number', totalFrames: 'number',
+    delay: 'number', timeout: 'number',
+  },
 }
 
 /** 同名参数在不同 kind 下取值不同 —— 所以按 kind 分表，不能只按字段名 */
@@ -208,6 +215,8 @@ const ENUMS: Record<string, Record<string, string[]>> = {
   tcp:       { variant: ['Tahoe', 'Reno'] },
   page:      { algorithm: ['FIFO', 'LRU', 'OPT', 'CLOCK'] },
   disk:      { algorithm: ['FCFS', 'SSTF', 'SCAN', 'C-SCAN', 'LOOK'] },
+  sort:      { algorithm: ['直接插入', '希尔', '冒泡', '简单选择', '快速', '堆', '归并'] },
+  arq:       { protocol: ['SW', 'GBN', 'SR'] },
 }
 
 /**
@@ -345,6 +354,75 @@ export function validateDocument(raw: SimDocument): Violation[] {
     else {
       const bad = req.values.filter(x => typeof x !== 'number' || x < 0 || x > maxT)
       if (bad.length) err('streams.requests', `有磁道号超出 0..${maxT}`, bad.slice(0, 3))
+    }
+  }
+
+  if (doc.kind === 'sort') {
+    const arr = doc.streams.find(s => s.name === 'array')
+    if (!arr) err('streams', '缺少 array')
+    else if (arr.values.length < 2) err('streams.array', '待排序数组至少要 2 个元素', arr.values)
+    else if (arr.values.some(x => typeof x !== 'number')) err('streams.array', '元素必须是数字')
+    else if (arr.values.length > 24) err('streams.array', '超过 24 个元素逐趟展示会失去可读性', arr.values.length)
+  }
+
+  if (doc.kind === 'dijkstra') {
+    const nodes = doc.entities.filter(e => e.type === 'node').map(e => e.id)
+    const edges = doc.entities.filter(e => e.type === 'edge')
+    if (nodes.length < 2) err('entities', '至少要有 2 个顶点', nodes.length)
+    if (edges.length === 0) err('entities', '至少要有 1 条边')
+    if (!nodes.includes(doc.params.source as string))
+      err('params.source', '源点不在顶点表里', doc.params.source)
+    if (new Set(nodes).size !== nodes.length) err('entities', '顶点 id 有重复')
+    for (const e of edges) {
+      const { from, to, w } = e.attrs
+      if (!nodes.includes(from as string)) err(`entities.${e.id}.from`, '端点不在顶点表里', from)
+      if (!nodes.includes(to as string)) err(`entities.${e.id}.to`, '端点不在顶点表里', to)
+      // Dijkstra 不接受负权 —— 这是算法前提，不是实现限制
+      if (typeof w !== 'number' || w < 0)
+        err(`entities.${e.id}.w`, 'Dijkstra 要求边权非负，负权请用 Bellman-Ford', w)
+    }
+  }
+
+  if (doc.kind === 'banker') {
+    const res = String(doc.params.resources).split(',').map(s => s.trim()).filter(Boolean)
+    const resEnts = doc.entities.filter(e => e.type === 'resource')
+    const procs = doc.entities.filter(e => e.type === 'process')
+    if (res.length === 0) err('params.resources', '至少要有一类资源')
+    if (procs.length === 0) err('entities', '至少要有一个进程')
+    for (const r of res)
+      if (!resEnts.some(e => e.id === r)) err(`entities.${r}`, `资源 ${r} 没有给出总量`)
+    for (const p of procs) for (const r of res) {
+      const mx = p.attrs[`max_${r}`], al = p.attrs[`alloc_${r}`]
+      if (typeof mx !== 'number' || typeof al !== 'number') {
+        err(`entities.${p.id}`, `缺少 max_${r} / alloc_${r}`); continue
+      }
+      if (al > mx) err(`entities.${p.id}.alloc_${r}`, `已分配 ${al} 超过最大需求 ${mx}`, al)
+      if (al < 0 || mx < 0) err(`entities.${p.id}.max_${r}`, '需求量不能为负')
+    }
+    // 已分配总和不能超过系统总量 —— 这是状态本身就不合法，不是"不安全"
+    for (const r of res) {
+      const total = Number(resEnts.find(e => e.id === r)?.attrs.total ?? 0)
+      const used = procs.reduce((s, p) => s + Number(p.attrs[`alloc_${r}`] ?? 0), 0)
+      if (used > total) err(`entities.${r}.total`, `资源 ${r} 已分配 ${used} 超过总量 ${total}`, total)
+    }
+  }
+
+  if (doc.kind === 'arq') {
+    const p = doc.params
+    const W = p.windowSize as number, N = p.totalFrames as number
+    if (N < 1) err('params.totalFrames', '至少要发 1 帧', N)
+    if (W < 1) err('params.windowSize', '窗口至少为 1', W)
+    if (p.protocol === 'SW' && W !== 1) err('params.windowSize', '停止等待的窗口只能是 1', W)
+    if (W > N) err('params.windowSize', `窗口 ${W} 超过总帧数 ${N}，看不出滑动`, W)
+    if ((p.delay as number) < 1) err('params.delay', '传播时延至少 1 个时隙', p.delay)
+    // 超时必须大于一个往返，否则每帧都会在 ACK 回来之前先超时 —— 协议永远收敛不了
+    if ((p.timeout as number) <= 2 * (p.delay as number))
+      err('params.timeout', `超时 ${p.timeout} 必须大于往返 ${2 * (p.delay as number)}，否则 ACK 还没回来就重传`, p.timeout)
+    for (const e of doc.entities) {
+      const seq = Number(e.attrs.seq)
+      if (!['frame', 'ack'].includes(String(e.attrs.target)))
+        err(`entities.${e.id}.target`, '丢失对象只能是 frame 或 ack', e.attrs.target)
+      if (seq < 0 || seq >= N) err(`entities.${e.id}.seq`, `序号 ${seq} 超出 0..${N - 1}`, seq)
     }
   }
 

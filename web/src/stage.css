@@ -220,3 +220,170 @@
 .qfb .jump:hover{background:#F0B42918}
 .qhint{margin-top:5px;font-size:11.5px;color:var(--faint)}
 .chip.on{color:var(--now);border-color:#F0B42955;background:#F0B42912}
+
+/* ═══════════════════════════════════════════════════════
+   第二批实验：排序 / Dijkstra / 银行家 / ARQ
+   ═══════════════════════════════════════════════════════ */
+
+.card>.body.scroll{overflow-x:auto}
+
+/* 通用逐轮表 —— 排序逐趟、Dijkstra 距离表、银行家矩阵共用底子 */
+.ptab{border-collapse:separate;border-spacing:2px;font-family:var(--mono);font-size:11.5px;
+  font-variant-numeric:tabular-nums;width:100%}
+.ptab th,.ptab td{background:#00000030;border:1px solid var(--line);color:var(--dim);
+  text-align:center;padding:4px 8px;border-radius:2px;font-weight:400;white-space:nowrap}
+.ptab thead th{color:var(--faint);font-size:10px;letter-spacing:.06em;background:var(--panel-2)}
+.ptab tbody th{background:var(--panel-2);color:var(--faint);font-size:10.5px}
+.ptab tr.future td,.ptab th.future,.ptab td.future{opacity:.34}
+.ptab tr.init td{color:var(--faint)}
+.ptab td.seq{text-align:left;letter-spacing:.02em}
+.ptab td.seq span{display:inline-block;min-width:2.4em;text-align:right;padding-right:.5em;color:var(--dim)}
+.ptab td.seq span.fixed{color:var(--hit);font-weight:700}
+.tnote{margin:11px 0 0;font-size:11.5px;color:var(--faint);line-height:1.8}
+
+/* ── 排序：数组条 ── */
+.sheld{margin-bottom:11px}
+.sheldbox{display:flex;gap:9px;align-items:baseline;padding:7px 11px;border-radius:5px;
+  background:#F0B42912;border:1px solid #F0B42944;font-size:12px}
+.sheldbox b{font-family:var(--mono);font-size:16px;color:var(--now);font-weight:700}
+.sheldbox .k{font-size:11px;color:var(--faint)}
+.sheldbox.empty{background:var(--panel-2);border-color:var(--line);color:var(--faint);font-size:11.5px}
+
+.sbars{display:flex;gap:5px;align-items:flex-end;height:172px;padding:0 2px}
+.sbar{flex:1;min-width:0;height:100%;position:relative;display:flex;flex-direction:column;
+  justify-content:flex-end;border-radius:3px 3px 0 0;background:#00000028;
+  border:1px solid transparent;border-bottom:1px solid var(--line)}
+.sbar .sfill{background:var(--faint);border-radius:2px 2px 0 0;transition:height .16s ease}
+.sbar .sval{position:absolute;left:0;right:0;bottom:calc(100% - 0px);text-align:center;
+  font-family:var(--mono);font-size:11px;color:var(--dim);font-style:normal;
+  transform:translateY(-2px)}
+.sbar .sidx{position:absolute;left:0;right:0;top:100%;text-align:center;
+  font-family:var(--mono);font-size:9.5px;color:var(--faint);font-style:normal}
+.sbar.sorted .sfill{background:var(--f-tag)}
+.sbar.settled .sfill{background:var(--hit)}
+.sbar.settled .sval{color:var(--hit)}
+.sbar.cmp{border-color:#F0B42977;background:#F0B4290f}
+.sbar.chg{border-color:var(--now);background:#F0B42920}
+.sbar.chg .sval{color:var(--now);font-weight:700}
+.sbar.hole{border:1px dashed var(--miss);background:repeating-linear-gradient(
+  45deg,transparent,transparent 4px,#E2664A14 4px,#E2664A14 8px)}
+.sbar.hole .sfill{opacity:.2}
+.sbar.hole .sval{color:var(--miss)}
+
+.slegend{display:flex;gap:13px;flex-wrap:wrap;margin:26px 0 12px;font-size:11px;color:var(--faint)}
+.slegend span{display:flex;gap:5px;align-items:center}
+.sw{width:10px;height:10px;border-radius:2px;display:inline-block;background:var(--faint)}
+.sw.settled{background:var(--hit)} .sw.sorted{background:var(--f-tag)}
+.sw.cmp{background:#F0B4290f;border:1px solid #F0B42977}
+.sw.chg{background:#F0B42920;border:1px solid var(--now)}
+.sw.hole{background:none;border:1px dashed var(--miss)}
+
+/* ── Dijkstra：图 ── */
+.gwrap{position:relative;width:100%;aspect-ratio:16/10;min-height:230px}
+.gwrap svg{position:absolute;inset:0;width:100%;height:100%}
+.gedge line{stroke:var(--line);stroke-width:1.4px}
+.gedge text{fill:var(--faint);font-size:3.2px;font-family:var(--mono);text-anchor:middle}
+.gedge.tree line{stroke:var(--f-tag);stroke-width:2.2px}
+.gedge.tree text{fill:var(--f-tag)}
+.gedge.act line{stroke:var(--now);stroke-width:2.8px}
+.gedge.act text{fill:var(--now);font-weight:700}
+.gnode{position:absolute;transform:translate(-50%,-50%);width:44px;height:44px;border-radius:50%;
+  background:var(--panel-2);border:1.5px solid var(--line);display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:0;line-height:1.15}
+.gnode b{font-size:13px;color:var(--ink);font-weight:700}
+.gnode em{font-family:var(--mono);font-size:10.5px;color:var(--faint);font-style:normal}
+.gnode.settled{background:#45B39A1c;border-color:var(--hit)}
+.gnode.settled em{color:var(--hit)}
+.gnode.at{border-color:var(--now);box-shadow:0 0 0 3px #F0B42926}
+.gnode.at em{color:var(--now)}
+.gnode.to{border-color:var(--f-tag);border-style:dashed}
+.glegend{display:flex;gap:16px;flex-wrap:wrap;margin-top:11px;padding-top:10px;
+  border-top:1px solid var(--line);font-size:11.5px;color:var(--faint)}
+.glegend b{color:var(--ink);font-family:var(--mono)}
+.ptab.dij td.fixed{color:var(--hit);border-color:#45B39A44}
+.ptab.dij td.pick{background:#F0B42918;border-color:var(--now);color:var(--now);font-weight:700}
+.ptab.dij td i{font-style:normal;color:var(--faint);font-size:9.5px;margin-left:2px}
+
+/* ── 银行家：矩阵 + 搜索 ── */
+.ptab.bank thead th.sub{font-size:9.5px;min-width:26px}
+.ptab.bank td.fit{color:var(--hit);background:#45B39A16;border-color:#45B39A44}
+.ptab.bank td.nofit{color:var(--miss);background:#E2664A14;border-color:#E2664A3a}
+.ptab.bank td.yes{color:var(--hit)} .ptab.bank td.no{color:var(--faint)}
+.ptab.bank td.work{color:var(--now);background:#F0B42918;border-color:#F0B42955;font-weight:700}
+.ptab.bank td.dim{color:var(--faint);opacity:.6}
+.ptab.bank tr.done th{color:var(--hit)}
+.ptab.bank tr.trying th{color:var(--now);border-color:var(--now)}
+
+.bverdict{display:flex;gap:11px;align-items:baseline;flex-wrap:wrap;padding:10px 13px;
+  border-radius:5px;margin-bottom:13px;font-size:12px;color:var(--dim)}
+.bverdict b{font-size:14px}
+.bverdict.safe{background:#45B39A16;border:1px solid #45B39A44}
+.bverdict.safe b{color:var(--hit)}
+.bverdict.unsafe{background:#E2664A14;border:1px solid #E2664A44}
+.bverdict.unsafe b{color:var(--miss)}
+.btries{margin:0 0 13px;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px;
+  max-height:210px;overflow-y:auto}
+.btries li{display:flex;gap:9px;align-items:baseline;padding:5px 9px;border-radius:4px;
+  background:#00000028;border-left:2px solid var(--line);font-size:11.5px}
+.btries li.accept{border-left-color:var(--hit)}
+.btries li.reject{border-left-color:var(--miss);opacity:.72}
+.btries li.cur{background:#F0B42914;border-left-color:var(--now)}
+.btries .pid{font-family:var(--mono);font-weight:700;color:var(--ink);min-width:28px}
+.btries .mark{font-size:11px;min-width:56px}
+.btries li.accept .mark{color:var(--hit)} .btries li.reject .mark{color:var(--miss)}
+.btries .detail{font-family:var(--mono);font-size:10.5px;color:var(--faint)}
+.btries li.none{color:var(--faint);border-left-color:transparent}
+.bseq{display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding-top:11px;
+  border-top:1px solid var(--line);font-size:11.5px}
+.bseq .k{color:var(--faint)}
+.bseq b{font-family:var(--mono);padding:2px 8px;border-radius:3px;
+  background:#45B39A1c;color:var(--hit);border:1px solid #45B39A44}
+.bseq em{color:var(--faint);font-style:normal}
+
+/* ── ARQ：时空图 ── */
+.awrap{display:flex;flex-direction:column;gap:8px}
+.alanes{display:flex;justify-content:space-between;font-size:10.5px;color:var(--faint);
+  font-family:var(--mono);letter-spacing:.08em;padding:0 4px}
+.aplot{position:relative;width:100%}
+.aplot svg{position:absolute;inset:0;width:100%;height:100%}
+.aplot .alane{stroke:var(--line);stroke-width:1.5px}
+.amsg{stroke:var(--faint);stroke-width:1.4px}
+.amsg.ack{stroke:var(--f-tag)}
+.amsg.frame.seen{stroke:var(--hit)}
+.amsg.ack.seen{stroke:var(--f-tag)}
+/* 丢失必须压过 .amsg.frame.seen（0,3,0）—— 否则丢的帧会被画成正常的绿色 */
+.amsg.frame.lost,.amsg.ack.lost{stroke:var(--miss);stroke-dasharray:3 2}
+.amsg.future{opacity:.22}
+.atag{position:absolute;transform:translate(-50%,-50%);font-family:var(--mono);font-size:9.5px;
+  padding:1px 4px;border-radius:2px;background:var(--panel);border:1px solid var(--line);
+  color:var(--dim);white-space:nowrap;pointer-events:none}
+.atag.ack{color:var(--f-tag);border-color:#5B7FD455}
+/* 背景必须不透明 —— 半透明会让斜线从字里穿过去，看着像删除线 */
+.atag.lost{color:var(--miss);border-color:#E2664A88;background:var(--panel)}
+.anow{position:absolute;left:0;right:0;height:0;border-top:1px dashed var(--now);opacity:.6}
+
+/* ── ARQ：窗口 ── */
+.awin{display:flex;flex-direction:column;gap:9px;margin-bottom:12px}
+.arow{display:flex;gap:9px;align-items:center}
+.arow .k{font-size:10.5px;color:var(--faint);font-family:var(--mono);min-width:44px}
+.acells{display:flex;gap:3px;flex-wrap:wrap}
+.acell{width:26px;height:26px;border-radius:3px;display:flex;align-items:center;
+  justify-content:center;font-family:var(--mono);font-size:11px;color:var(--faint);
+  background:#00000030;border:1px solid var(--line)}
+.acell.inwin{border-color:var(--now)}
+.acell.acked{background:#45B39A1c;color:var(--hit);border-color:#45B39A44}
+.acell.flying{background:#F0B42920;color:var(--now)}
+.acell.usable{background:#00000030;color:var(--dim)}
+.acell.delivered{background:#45B39A1c;color:var(--hit);border-color:#45B39A44}
+.acell.buffered{background:#5B7FD422;color:var(--f-tag);border-color:#5B7FD455}
+.acell.expect{border-color:var(--now);box-shadow:0 0 0 2px #F0B4291f}
+.alegend{display:flex;gap:13px;flex-wrap:wrap;margin-bottom:12px;font-size:11px;color:var(--faint)}
+.alegend span{display:flex;gap:5px;align-items:center}
+.aw{width:10px;height:10px;border-radius:2px;display:inline-block;border:1px solid var(--line)}
+.aw.acked,.aw.delivered{background:#45B39A1c;border-color:#45B39A44}
+.aw.flying{background:#F0B42920;border-color:var(--now)}
+.aw.usable{background:#00000030}
+.aw.buffered{background:#5B7FD422;border-color:#5B7FD455}
+.bverdict.pending{background:var(--panel-2);border:1px solid var(--line)}
+.bverdict.pending b{color:var(--faint)}
+.pempty{margin:0;font-size:11.5px;color:var(--faint);line-height:1.8}

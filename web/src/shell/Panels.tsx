@@ -37,12 +37,22 @@ export function StepLog({
 
 // ── 参数：改了就重跑 ───────────────────────────────────
 export function ParamPanel({
-  specs, values, onChange,
+  specs, values, onChange, emptyNote,
 }: {
   specs: ParamSpec[]
   values: Record<string, number | string | boolean>
   onChange: (key: string, v: number | string) => void
+  /** 有些实验的自由度不在标量参数上（如银行家在资源矩阵里）—— 空面板要说明白，不能只留一个空盒子 */
+  emptyNote?: string
 }) {
+  if (specs.length === 0) {
+    return (
+      <div className="card">
+        <h3>参数</h3>
+        <div className="body"><p className="pempty">{emptyNote ?? '本实验没有可调参数。'}</p></div>
+      </div>
+    )
+  }
   return (
     <div className="card">
       <h3>参数 <span className="hint">改了立即重跑</span></h3>

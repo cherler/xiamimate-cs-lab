@@ -15,6 +15,10 @@ import type { SchedState } from '@engine/kernels/scheduler.ts'
 import type { TcpState } from '@engine/kernels/tcp.ts'
 import type { PageState } from '@engine/kernels/page.ts'
 import type { DiskState } from '@engine/kernels/disk.ts'
+import type { SortState } from '@engine/kernels/sort.ts'
+import type { DijkstraState } from '@engine/kernels/dijkstra.ts'
+import type { BankerState } from '@engine/kernels/banker.ts'
+import type { ArqState } from '@engine/kernels/arq.ts'
 
 /** 跑任意配置，供"改个参数再算一遍"型的题用 —— 仍然不手写答案 */
 export type RunDoc = (doc: SimDocument) => unknown[]
@@ -275,8 +279,271 @@ const diskProblems: Problem[] = [
   },
 ]
 
+// ═══ 排序逐趟 ══════════════════════════════════════════
+const SORT_INPUT = [49, 38, 65, 97, 76, 13, 27, 49]
+/** 取"第 n 趟结束后"的序列 —— 考题问的就是它 */
+const passResult = (t: SortState[], n: number) =>
+  (t.filter(s => s.passEnd)[n - 1]?.arr ?? []).join(' ')
+
+const sortProblems: Problem[] = [
+  {
+    id: 'sort-1',
+    experimentId: 'sort',
+    source: '典型题型 · 逐趟排序结果',
+    statement:
+      '对关键字序列 {49, 38, 65, 97, 76, 13, 27, 49} 进行排序。' +
+      '注意其中有两个 49 —— 稳定性问题就藏在这里。',
+    doc: {
+      kind: 'sort', params: { algorithm: '冒泡' }, entities: [],
+      streams: [{ name: 'array', values: SORT_INPUT }],
+    },
+    questions: [
+      q<SortState>({
+        prompt: '用冒泡排序，第 1 趟结束后的序列是？', kind: 'text',
+        hint: '一趟冒泡把当前最大值送到末尾；答案用空格分隔',
+        answer: t => passResult(t, 1),
+        revealStep: t => t.findIndex(s => s.passEnd),
+      }),
+      q<SortState>({
+        prompt: '用冒泡排序，第 3 趟结束后的序列是？', kind: 'text',
+        answer: t => passResult(t, 3),
+        revealStep: t => {
+          const ends = t.filter(s => s.passEnd)
+          return ends[2]?.i ?? t.length - 1
+        },
+      }),
+      q<SortState>({
+        prompt: '改用快速排序（基准取区间第一个元素），第 1 次划分后的序列是？', kind: 'text',
+        hint: '在右侧把「排序算法」切到「快速」',
+        answer: (_t, d, runDoc) =>
+          passResult(runDoc({ ...d, params: { ...d.params, algorithm: '快速' } }) as SortState[], 1),
+      }),
+      q<SortState>({
+        prompt: '快速排序第 1 次划分后，基准 49 落在哪个下标？', unit: '下标',
+        hint: '划分结束那一步，被写入的位置就是基准的最终位置',
+        answer: (_t, d, runDoc) => {
+          const t = runDoc({ ...d, params: { ...d.params, algorithm: '快速' } }) as SortState[]
+          const first = t.find(s => s.passEnd)
+          return String(first?.changed[0] ?? -1)
+        },
+      }),
+      q<SortState>({
+        prompt: '用简单选择排序，总共需要多少次比较？', unit: '次',
+        hint: '与初始序列无关，只取决于 n —— 想想为什么',
+        answer: (_t, d, runDoc) => {
+          const t = runDoc({ ...d, params: { ...d.params, algorithm: '简单选择' } }) as SortState[]
+          return String(t[t.length - 1].comparisons)
+        },
+      }),
+    ],
+  },
+]
+
+// ═══ Dijkstra ══════════════════════════════════════════
+const DIJ_EDGES: [string, string, number][] = [
+  ['A', 'B', 4], ['A', 'C', 6], ['A', 'D', 6],
+  ['B', 'C', 1], ['B', 'E', 7],
+  ['C', 'D', 2], ['C', 'E', 6], ['C', 'F', 4],
+  ['D', 'F', 5], ['E', 'F', 1], ['E', 'G', 6], ['F', 'G', 8],
+]
+const DIJ_XY: Record<string, [number, number]> = {
+  A: [12, 50], B: [34, 18], C: [34, 74], D: [56, 92],
+  E: [58, 22], F: [62, 58], G: [88, 40],
+}
+/** 从末态前驱表回溯出最短路径 */
+const pathTo = (s: DijkstraState, to: string, src: string) => {
+  const out = [to]
+  let cur = to, guard = 0
+  while (cur !== src && guard++ < 32) {
+    const p = s.prev[cur]
+    if (!p) return '不可达'
+    out.unshift(p); cur = p
+  }
+  return out.join('→')
+}
+
+const dijkstraProblems: Problem[] = [
+  {
+    id: 'dij-1',
+    experimentId: 'dijkstra',
+    source: '典型题型 · 单源最短路径',
+    statement:
+      '给定一个带权无向图，顶点为 A~G，边与权值如图所示。' +
+      '以 A 为源点，用 Dijkstra 算法求单源最短路径。',
+    doc: {
+      kind: 'dijkstra',
+      params: { source: 'A', directed: 0 },
+      entities: [
+        ...Object.entries(DIJ_XY).map(([id, [x, y]]) => ({ id, type: 'node', attrs: { x, y } })),
+        ...DIJ_EDGES.map(([from, to, w]) => ({ id: `${from}${to}`, type: 'edge', attrs: { from, to, w } })),
+      ],
+      streams: [],
+    },
+    questions: [
+      q<DijkstraState>({
+        prompt: 'A 到 G 的最短距离是多少？',
+        answer: t => String(last(t).dist.G),
+        revealStep: t => t.findIndex(s => s.act === 'pick' && s.at === 'G'),
+      }),
+      q<DijkstraState>({
+        prompt: 'A 到 G 的最短路径经过哪些顶点？（如 A→B→G）', kind: 'text',
+        hint: '看距离表里 G 那一格的括号，一路回溯',
+        answer: (t, d) => pathTo(last(t), 'G', String(d.params.source)),
+        revealStep: t => t.length - 1,
+      }),
+      q<DijkstraState>({
+        prompt: '顶点被确定最短路的先后顺序是？（如 A B C…）', kind: 'text',
+        hint: '每一轮选出的都是「未确定顶点中距离最小」的那个',
+        answer: t => last(t).settled.join(' '),
+        revealStep: t => t.length - 1,
+      }),
+      q<DijkstraState>({
+        prompt: '第 3 个被确定的顶点是？', kind: 'text',
+        answer: t => last(t).settled[2] ?? '—',
+        revealStep: t => {
+          const picks = t.map((s, i) => ({ s, i })).filter(x => x.s.act === 'pick')
+          return picks[2]?.i ?? 0
+        },
+      }),
+      q<DijkstraState>({
+        prompt: '改以 D 为源点，D 到 B 的最短距离是多少？',
+        hint: '在右侧把「源点」切到 D',
+        answer: (_t, d, runDoc) => {
+          const t = runDoc({ ...d, params: { ...d.params, source: 'D' } }) as DijkstraState[]
+          return String(t[t.length - 1].dist.B)
+        },
+      }),
+    ],
+  },
+]
+
+// ═══ 银行家算法 ═════════════════════════════════════════
+const BANK_ROWS: [string, number[], number[]][] = [
+  ['P0', [7, 5, 3], [0, 1, 0]],
+  ['P1', [3, 2, 2], [2, 0, 0]],
+  ['P2', [9, 0, 2], [3, 0, 2]],
+  ['P3', [2, 2, 2], [2, 1, 1]],
+  ['P4', [4, 3, 3], [0, 0, 2]],
+]
+const bankDoc = (totals: number[]): SimDocument => ({
+  kind: 'banker',
+  params: { resources: 'A,B,C' },
+  entities: [
+    ...['A', 'B', 'C'].map((id, k) => ({ id, type: 'resource', attrs: { total: totals[k] } })),
+    ...BANK_ROWS.map(([id, mx, al]) => ({
+      id, type: 'process',
+      attrs: {
+        max_A: mx[0], max_B: mx[1], max_C: mx[2],
+        alloc_A: al[0], alloc_B: al[1], alloc_C: al[2],
+      },
+    })),
+  ],
+  streams: [],
+})
+
+const bankerProblems: Problem[] = [
+  {
+    id: 'bank-1',
+    experimentId: 'banker',
+    source: '典型题型 · 安全性检查',
+    statement:
+      '系统有 A、B、C 三类资源，总量分别为 10、5、7。五个进程 P0~P4 的最大需求 Max 与' +
+      '已分配 Allocation 如资源矩阵所示。用银行家算法判断当前状态是否安全。',
+    doc: bankDoc([10, 5, 7]),
+    questions: [
+      q<BankerState>({
+        prompt: '当前系统的 Available 向量是？（如 3 3 2）', kind: 'text',
+        hint: 'Available = 总量 − 各进程已分配之和',
+        answer: t => ['A', 'B', 'C'].map(r => t[0].work[r]).join(' '),
+        revealStep: () => 0,
+      }),
+      q<BankerState>({
+        prompt: 'P0 的 Need 向量是？（如 7 4 3）', kind: 'text',
+        hint: 'Need = Max − Allocation',
+        answer: t => ['A', 'B', 'C'].map(r => t[0].need.P0[r]).join(' '),
+        revealStep: () => 0,
+      }),
+      q<BankerState>({
+        prompt: '当前状态是否安全？（填 安全 或 不安全）', kind: 'text',
+        answer: t => (last(t).act === 'safe' ? '安全' : '不安全'),
+        revealStep: t => t.length - 1,
+      }),
+      q<BankerState>({
+        prompt: '找到的安全序列是？（如 P1 P3 P0）', kind: 'text',
+        hint: '安全序列通常不唯一，这里填本实验按登记顺序扫描找到的第一个',
+        answer: t => last(t).sequence.join(' '),
+        revealStep: t => t.length - 1,
+      }),
+      q<BankerState>({
+        prompt: '若 A 类资源总量从 10 减到 8，系统还安全吗？（填 安全 或 不安全）', kind: 'text',
+        hint: '总量减少会压低 Available，第一个能被满足的进程可能就没了',
+        answer: (_t, _d, runDoc) => {
+          const t = runDoc(bankDoc([8, 5, 7])) as BankerState[]
+          return t[t.length - 1].act === 'safe' ? '安全' : '不安全'
+        },
+      }),
+    ],
+  },
+]
+
+// ═══ 滑动窗口 ARQ ═══════════════════════════════════════
+const arqDoc = (protocol: string, windowSize: number): SimDocument => ({
+  kind: 'arq',
+  params: { protocol, windowSize, totalFrames: 8, delay: 2, timeout: 8 },
+  entities: [{ id: 'L1', type: 'loss', attrs: { target: 'frame', seq: 2, nth: 1 } }],
+  streams: [],
+})
+
+const arqProblems: Problem[] = [
+  {
+    id: 'arq-1',
+    experimentId: 'arq',
+    source: '典型题型 · 后退N帧与选择重传的差别',
+    statement:
+      '发送方要发送编号 0~7 共 8 个数据帧，发送窗口为 4，单程传播时延 2 个时隙，超时时间 8 个时隙。' +
+      '其中 2 号帧在第一次传输时丢失，重传可以成功到达。',
+    doc: arqDoc('GBN', 4),
+    questions: [
+      q<ArqState>({
+        prompt: '采用后退 N 帧协议，总共需要传输多少帧次（含重传）？', unit: '帧次',
+        answer: t => String(last(t).transmissions),
+        revealStep: t => t.length - 1,
+      }),
+      q<ArqState>({
+        prompt: '其中重传了多少帧次？', unit: '帧次',
+        hint: '总传输次数减去 8',
+        answer: (t, d) => String(last(t).transmissions - (d.params.totalFrames as number)),
+        revealStep: t => Math.max(0, t.findIndex(s => s.event === 'timeout')),
+      }),
+      q<ArqState>({
+        prompt: '2 号帧丢失后，接收方对随后到达的 3、4、5 号帧如何处理？（填 缓存 或 丢弃）', kind: 'text',
+        hint: 'GBN 的接收窗口大小是 1',
+        answer: (_t, d) => (d.params.protocol === 'SR' ? '缓存' : '丢弃'),
+        revealStep: t => Math.max(0, t.findIndex(s => s.log.includes('直接丢弃'))),
+      }),
+      q<ArqState>({
+        prompt: '改用选择重传协议，总共需要传输多少帧次？', unit: '帧次',
+        hint: '在右侧把「协议」切到 SR',
+        answer: (_t, _d, runDoc) => {
+          const t = runDoc(arqDoc('SR', 4)) as ArqState[]
+          return String(t[t.length - 1].transmissions)
+        },
+      }),
+      q<ArqState>({
+        prompt: '选择重传比后退 N 帧少传了多少帧次？', unit: '帧次',
+        answer: (_t, _d, runDoc) => {
+          const g = runDoc(arqDoc('GBN', 4)) as ArqState[]
+          const s = runDoc(arqDoc('SR', 4)) as ArqState[]
+          return String(g[g.length - 1].transmissions - s[s.length - 1].transmissions)
+        },
+      }),
+    ],
+  },
+]
+
 export const PROBLEMS: Problem[] = [
   ...cacheProblems, ...pageProblems, ...schedProblems, ...tcpProblems, ...diskProblems,
+  ...sortProblems, ...dijkstraProblems, ...bankerProblems, ...arqProblems,
 ]
 
 export const problemsFor = (experimentId: string) =>

@@ -41,7 +41,11 @@ const EXPS = [
   ['页面置换', 'page'],
   ['进程调度甘特图', 'sched'],
   ['磁盘调度', 'disk'],
+  ['银行家算法', 'banker'],
+  ['排序逐趟', 'sort'],
+  ['Dijkstra 最短路', 'dijkstra'],
   ['TCP 拥塞窗口', 'tcp'],
+  ['滑动窗口 ARQ', 'arq'],
 ]
 console.log(`\n【1】${EXPS.length} 个实验都能起来，且各自的舞台不同`)
 for (const [i, [name, shot]] of EXPS.entries()) {
@@ -64,7 +68,7 @@ for (let i = 0; i < EXPS.length; i++) {
   }))
 }
 new Set(stageSigs).size === EXPS.length
-  ? ok(`五个舞台的 DOM 结构互不相同（渲染层可替换的实证）`)
+  ? ok(`${EXPS.length} 个舞台的 DOM 结构互不相同（渲染层可替换的实证）`)
   : bad(`有舞台长得一样：${stageSigs.length - new Set(stageSigs).size} 处重复`)
 
 console.log('\n【2】验收标准 3：改一个状态，多个视图一起变（视图之间零互写）')
@@ -192,6 +196,171 @@ const drift = await p.evaluate(() => !!document.querySelector('.probdrift'))
 drift ? ok('改参数后提示「配置已被改动，答案按当前配置算」')
       : bad('改参数后没提示偏离原题')
 void probBefore
+
+// ═══ 7. 四个新实验各自的核心视觉 ═══════════════════════
+console.log('\n【7】新实验的舞台必须真的画出东西（不能只有壳）')
+const nav = async name => {
+  await p.click(`.nav button:has-text("${name}")`)
+  await p.waitForTimeout(260)
+}
+
+// 排序：数组条 + 逐趟表
+await nav('排序逐趟')
+const sortView = await p.evaluate(() => ({
+  bars: document.querySelectorAll('.sbar').length,
+  vals: [...document.querySelectorAll('.sbar .sval')].map(x => x.textContent),
+  hole: document.querySelectorAll('.sbar.hole').length,
+}))
+await p.click('.tabs button >> nth=1'); await p.waitForTimeout(240)
+const sortPasses = await p.evaluate(() => ({
+  rows: document.querySelectorAll('.ptab tbody tr').length,
+  first: document.querySelector('.ptab tbody tr td.seq')?.textContent,
+}))
+await p.screenshot({ path: '/tmp/web-sort.png', fullPage: true })
+sortView.bars === 8 && sortPasses.rows >= 3
+  ? ok(`排序：8 个数组条（${sortView.vals.join(' ')}）· 逐趟表 ${sortPasses.rows} 行`)
+  : bad(`排序舞台不对：${JSON.stringify({ sortView, sortPasses })}`)
+
+// 挖坑法必须真的显示空位 —— 这是本轮修的那个 bug 的回归检查
+await p.click('.tabs button >> nth=0'); await p.waitForTimeout(200)
+let sawHole = false
+for (let k = 0; k < 6; k++) {
+  await p.click(`.tick >> nth=${k}`); await p.waitForTimeout(120)
+  const h = await p.evaluate(() => ({
+    hole: document.querySelectorAll('.sbar.hole').length,
+    held: document.querySelector('.sheldbox b')?.textContent,
+  }))
+  if (h.hole === 1 && h.held) { sawHole = true; break }
+}
+sawHole
+  ? ok('快排挖坑：某一步同时出现「1 个空位」和「手里端着的值」')
+  : bad('快排从没显示过空位 —— 挖坑法又画成凭空多一个数了')
+
+// Dijkstra：图 + 距离表
+await nav('Dijkstra')
+const dijView = await p.evaluate(() => ({
+  nodes: document.querySelectorAll('.gnode').length,
+  edges: document.querySelectorAll('.gedge').length,
+  dists: [...document.querySelectorAll('.gnode em')].map(x => x.textContent),
+}))
+await p.click('.tabs button >> nth=1'); await p.waitForTimeout(240)
+const dijTab = await p.evaluate(() => ({
+  cols: document.querySelectorAll('.ptab.dij thead th').length,
+  rows: document.querySelectorAll('.ptab.dij tbody tr').length,
+}))
+await p.screenshot({ path: '/tmp/web-dijkstra.png', fullPage: true })
+dijView.nodes === 7 && dijView.edges === 12 && dijTab.rows === 7
+  ? ok(`Dijkstra：7 顶点 12 边 · 距离表 ${dijTab.rows}×${dijTab.cols - 1}`)
+  : bad(`Dijkstra 舞台不对：${JSON.stringify({ dijView, dijTab })}`)
+
+// 距离必须随时间轴变化（不是画完就不动的静态图）
+await p.click('.tabs button >> nth=0'); await p.waitForTimeout(200)
+await p.click('.tick >> nth=0'); await p.waitForTimeout(180)
+const d0 = await p.evaluate(() => [...document.querySelectorAll('.gnode em')].map(x => x.textContent).join(','))
+await p.click('.tick >> nth=14'); await p.waitForTimeout(180)
+const d1 = await p.evaluate(() => [...document.querySelectorAll('.gnode em')].map(x => x.textContent).join(','))
+d0 !== d1
+  ? ok(`拖时间轴，顶点上的距离跟着变：${d0} → ${d1}`)
+  : bad(`距离不随时间轴变：始终 ${d0}`)
+
+// 银行家：矩阵 + 安全序列
+await nav('银行家算法')
+const bankView = await p.evaluate(() => ({
+  rows: document.querySelectorAll('.ptab.bank tbody tr').length,
+  work: [...document.querySelectorAll('.ptab.bank td.work')].map(x => x.textContent),
+}))
+await p.click('.tabs button >> nth=1'); await p.waitForTimeout(240)
+const bankSearch = await p.evaluate(() => ({
+  verdict: document.querySelector('.bverdict b')?.textContent,
+  seqLen: document.querySelectorAll('.bseq b').length,
+}))
+await p.screenshot({ path: '/tmp/web-banker.png', fullPage: true })
+bankView.rows === 5 && bankView.work.length === 3
+  ? ok(`银行家：5 个进程 · Work=(${bankView.work.join(' ')})`)
+  : bad(`银行家舞台不对：${JSON.stringify({ bankView, bankSearch })}`)
+
+// 第 1 步不许剧透答案 —— 学生还没推，安全序列就摆出来的话这个实验就白做了
+bankSearch.verdict === '推演中' && bankSearch.seqLen === 0
+  ? ok(`第 1 步不剧透：只显示「${bankSearch.verdict}」，安全序列为空`)
+  : bad(`第 1 步就把答案摊开了：判定「${bankSearch.verdict}」序列 ${bankSearch.seqLen} 个`)
+
+// 走到最后一步必须给出完整安全序列
+await p.click('.tabs button >> nth=0'); await p.waitForTimeout(150)
+const nTicks = await p.evaluate(() => document.querySelectorAll('.tick').length)
+await p.click(`.tick >> nth=${nTicks - 1}`); await p.waitForTimeout(200)
+await p.click('.tabs button >> nth=1'); await p.waitForTimeout(200)
+const finalSeq = await p.evaluate(() =>
+  [...document.querySelectorAll('.bseq b')].map(x => x.textContent))
+finalSeq.length === 5
+  ? ok(`末步给出完整安全序列：${finalSeq.join(' → ')}`)
+  : bad(`末步安全序列不完整：${finalSeq.join(' ')}（应有 5 个）`)
+
+// ARQ：时空图 + 窗口
+await nav('滑动窗口')
+const arqView = await p.evaluate(() => ({
+  msgs: document.querySelectorAll('.amsg').length,
+  lost: document.querySelectorAll('.amsg.lost').length,
+  tags: document.querySelectorAll('.atag').length,
+}))
+await p.click('.tabs button >> nth=1'); await p.waitForTimeout(240)
+const arqWin = await p.evaluate(() => ({
+  cells: document.querySelectorAll('.acell').length,
+  inwin: document.querySelectorAll('.acell.inwin').length,
+}))
+await p.screenshot({ path: '/tmp/web-arq.png', fullPage: true })
+arqView.msgs > 8 && arqView.lost >= 1 && arqWin.cells === 16
+  ? ok(`ARQ：时空图 ${arqView.msgs} 条报文（其中 ${arqView.lost} 条丢失）· 窗口 16 格`)
+  : bad(`ARQ 舞台不对：${JSON.stringify({ arqView, arqWin })}`)
+
+// GBN → SR：重传次数必须下降（内核里最关键的那条性质要能在 UI 上看见）
+const readTx = () => p.evaluate(() => {
+  const rs = [...document.querySelectorAll('.pr')]
+  const r = rs.find(x => x.querySelector('.k')?.textContent === '其中重传')
+  return r?.querySelector('.v')?.textContent
+})
+await p.click('.tabs button >> nth=0'); await p.waitForTimeout(150)
+const lastTick = await p.evaluate(() => document.querySelectorAll('.tick').length)
+await p.click(`.tick >> nth=${lastTick - 1}`); await p.waitForTimeout(200)
+const gbnTx = await readTx()
+await p.click('.param:has-text("协议") .opts button:has-text("SR")')
+await p.waitForTimeout(300)
+const srTicks = await p.evaluate(() => document.querySelectorAll('.tick').length)
+await p.click(`.tick >> nth=${srTicks - 1}`); await p.waitForTimeout(220)
+const srTx = await readTx()
+Number(srTx) < Number(gbnTx) && Number(gbnTx) > 0
+  ? ok(`UI 上也能看出 SR 更省：GBN 重传 ${gbnTx} 次 → SR 重传 ${srTx} 次`)
+  : bad(`SR 没比 GBN 省或读数没变：GBN=${gbnTx} SR=${srTx}`)
+
+// ═══ 8. 新实验的真题 ═══════════════════════════════════
+console.log('\n【8】四个新实验的真题都能判对（答案从轨迹派生）')
+for (const name of ['排序逐趟', 'Dijkstra', '银行家算法', '滑动窗口']) {
+  await nav(name)
+  const picks = await p.evaluate(() => document.querySelectorAll('.probpick button').length)
+  if (picks < 2) { bad(`${name} 没有真题可选`); continue }
+  await p.click('.probpick button >> nth=1')
+  await p.waitForTimeout(320)
+  const nq = await p.evaluate(() => document.querySelectorAll('.qlist li').length)
+  // 每一问都先故意填错拿到答案，再填回去 —— 验证答案确实是算出来的
+  let allRight = true, answers = []
+  for (let k = 1; k <= nq; k++) {
+    await p.fill(`.qlist li:nth-child(${k}) input`, '__zzz__')
+    await p.click(`.qlist li:nth-child(${k}) .qrow button`)
+    await p.waitForTimeout(140)
+    const correct = await p.evaluate(i =>
+      document.querySelector(`.qlist li:nth-child(${i}) .nomark b`)?.textContent ?? '', k)
+    if (!correct) { allRight = false; break }
+    answers.push(correct)
+    await p.fill(`.qlist li:nth-child(${k}) input`, correct)
+    await p.click(`.qlist li:nth-child(${k}) .qrow button`)
+    await p.waitForTimeout(140)
+    const cls = await p.evaluate(i =>
+      document.querySelector(`.qlist li:nth-child(${i})`)?.className, k)
+    if (cls !== 'right') { allRight = false; break }
+  }
+  allRight
+    ? ok(`${name.padEnd(12)} ${nq} 问全部判对 · 答案 [${answers.join(' | ')}]`)
+    : bad(`${name} 有问判不对（第 ${answers.length + 1} 问）`)
+}
 
 console.log(`\n${'─'.repeat(50)}`)
 console.log(errs.length ? `控制台错误 ${errs.length} 条：\n  ` + errs.slice(0, 4).join('\n  ') : '控制台无错误')

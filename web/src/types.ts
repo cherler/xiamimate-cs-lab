@@ -44,6 +44,8 @@ export interface Experiment<S = never> {
   kernel: Kernel<S>
   defaultDoc: SimDocument
   params: ParamSpec[]
+  /** params 为空时，在参数面板里解释这个实验的自由度在哪 */
+  paramsNote?: string
 
   /** 内容标准 #2：诚实标注失真范围 */
   bounds: string[]

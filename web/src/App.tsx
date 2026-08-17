@@ -146,7 +146,8 @@ export default function App() {
 
         {/* 右：参数 + 读数 */}
         <div className="col">
-          <ParamPanel specs={exp.params} values={doc.params} onChange={setParam} />
+          <ParamPanel specs={exp.params} values={doc.params} onChange={setParam}
+                      emptyNote={exp.paramsNote} />
           {state && <Readouts items={exp.readouts(state, doc, clamped)} />}
         </div>
       </div>
