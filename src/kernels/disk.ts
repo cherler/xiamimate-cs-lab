@@ -23,11 +23,17 @@ export type DiskState = {
   dir: number
   /** 本步是否是"走到边界再折返"的空跑（SCAN 系才有） */
   sweep: boolean
+  /**
+   * 本步途经的折返点（SCAN 碰到的边界 / C-SCAN 的边界与回绕点），按先后顺序。
+   * 不吐出来的话，轨迹图只能从 from 直接画到 head ——
+   * 数字算对了，但"先走到边界再掉头"这件事在图上根本看不见。
+   */
+  via: number[]
   log: string
 }
 
 export const DISK_VISIBLE = [
-  'i', 'from', 'head', 'served', 'moved', 'total', 'pending', 'dir', 'sweep', 'log',
+  'i', 'from', 'head', 'served', 'moved', 'total', 'pending', 'dir', 'sweep', 'via', 'log',
 ] as const
 
 export const diskKernel: Kernel<DiskState> = {
@@ -45,7 +51,7 @@ export const diskKernel: Kernel<DiskState> = {
 
       initial: () => ({
         i: -1, from: start, head: start, served: -1, moved: 0, total: 0,
-        pending: [...reqs], dir: goingUp ? 1 : -1, sweep: false, log: '',
+        pending: [...reqs], dir: goingUp ? 1 : -1, sweep: false, via: [], log: '',
       }),
 
       describe: s => s.log,
@@ -97,12 +103,15 @@ export const diskKernel: Kernel<DiskState> = {
 
         // SCAN 碰边、C-SCAN 回扫，都要把额外行程算进寻道距离
         let moved: number
+        const via: number[] = []
         if (sweep && algo === 'SCAN') {
           const edge = dir > 0 ? 0 : maxTrack           // 掉头前先走到的那个边界
+          via.push(edge)
           moved = Math.abs(edge - from) + Math.abs(pick - edge)
         } else if (sweep && algo === 'C-SCAN') {
           const far = dir > 0 ? maxTrack : 0
           const wrap = dir > 0 ? 0 : maxTrack
+          via.push(far, wrap)
           moved = Math.abs(far - from) + Math.abs(wrap - far) + Math.abs(pick - wrap)
         } else {
           moved = Math.abs(pick - from)
@@ -115,7 +124,7 @@ export const diskKernel: Kernel<DiskState> = {
         const log = `磁道 ${from} → ${pick}，移动 ${moved}（${why}），累计 ${total}`
 
         return {
-          state: { i, from, head: pick, served: pick, moved, total, pending, dir, sweep, log },
+          state: { i, from, head: pick, served: pick, moved, total, pending, dir, sweep, via, log },
           done: pending.length === 0,
         }
       },

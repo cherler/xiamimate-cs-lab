@@ -179,5 +179,43 @@ console.log('\n  自检：')
 }
 
 console.log(`\n${'─'.repeat(52)}`)
+// ── via 必须跟 moved 对得上 ────────────────────────────
+//  via 是给轨迹图用的折返点。它一旦跟 moved 脱节，就会出现
+//  「日志说走了 209，图上却画一条直线」这种数字对、图错的情况。
+{
+  //  这一串在磁头两侧都有请求，SCAN 才会被逼着走到边界
+  const twoSided: SimDocument = {
+    kind: 'disk',
+    params: { algorithm: 'SCAN', headStart: START, maxTrack: MAXT, direction: 1 },
+    entities: [],
+    streams: [{ name: 'requests', values: [120, 135, 150, 160, 175, 14] }],
+  }
+  const withAlgo = (a: string): SimDocument => ({ ...twoSided, params: { ...twoSided.params, algorithm: a } })
+
+  const wrong: string[] = []
+  for (const algo of ['FCFS', 'SSTF', 'SCAN', 'C-SCAN', 'LOOK']) {
+    const t = run(diskKernel.compile(withAlgo(algo))) as DiskState[]
+    for (const st of t) {
+      //  沿 from → via… → head 这条折线累加，必须等于内核报的 moved
+      const path = [st.from, ...st.via, st.head]
+      const walked = path.slice(1).reduce((sum, x, k) => sum + Math.abs(x - path[k]), 0)
+      if (walked !== st.moved) wrong.push(`${algo} 第${st.i + 1}步：折线 ${walked} ≠ moved ${st.moved}`)
+      if (!st.sweep && st.via.length > 0) wrong.push(`${algo} 第${st.i + 1}步：没标空跑却有折返点`)
+    }
+  }
+  wrong.length === 0
+    ? ok('五种算法的 via 折线累加处处等于 moved —— 轨迹图画的就是真实路径')
+    : bad(`via 与 moved 脱节：${wrong.slice(0, 3).join(' / ')}`)
+
+  // 自检：SCAN 在这串上必须真的有折返点，否则上面那条是空过
+  const scan = run(diskKernel.compile(withAlgo('SCAN'))) as DiskState[]
+  const look = run(diskKernel.compile(withAlgo('LOOK'))) as DiskState[]
+  const vias = scan.filter(st => st.via.length > 0)
+  vias.length === 1 && vias[0].via[0] === MAXT && look.every(st => st.via.length === 0)
+    ? ok(`自检：SCAN 有 1 个折返点（磁道 ${vias[0].via[0]}），LOOK 一个都没有 —— 判据有鉴别力`)
+    : bad(`折返点不对：SCAN ${vias.length} 个，LOOK ${look.filter(st => st.via.length).length} 个`)
+}
+
+
 console.log(failures === 0 ? '新内核：通过' : `新内核：失败 ${failures} 项`)
 process.exit(failures === 0 ? 0 : 1)

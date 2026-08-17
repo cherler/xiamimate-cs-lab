@@ -8,6 +8,7 @@
  */
 import type { FC } from 'react'
 import type { SimDocument } from '@engine/core/document.ts'
+import type { Preset } from '@engine/presets/sequences.ts'
 import type { Kernel } from '@engine/core/kernel.ts'
 
 /** 参数面板的一项 —— 只给离散选项，避免自由输入产生非法配置 */
@@ -24,6 +25,27 @@ export type ToneKey = 'good' | 'bad' | 'idle'
 export type Tone = { key: ToneKey; label: string }
 
 export type Readout = { label: string; value: string; tone?: ToneKey }
+
+/**
+ * 可编辑的驱动序列。
+ * 指向 doc.streams 里的某一条 —— 也就是说，编辑器改的仍然是 DSL，
+ * 没有绕过文档层开后门（验收标准 6）。
+ */
+export type SequenceSpec = {
+  /** doc.streams 里的 name */
+  stream: string
+  label: string
+  /** 十六进制录入与显示（Cache 地址） */
+  radix?: 16
+  hint?: string
+  maxLength?: number
+  /**
+   * 预置序列。数据在引擎侧 `src/presets/sequences.ts`，
+   * 因为每条 note 都是能被证伪的行为主张，得让 tests/presets-claims.test.ts 逐条验。
+   */
+  presets?: Preset[]
+  random?: () => number[]
+}
 
 export type ViewTab = { id: string; label: string }
 
@@ -46,6 +68,8 @@ export interface Experiment<S = never> {
   params: ParamSpec[]
   /** params 为空时，在参数面板里解释这个实验的自由度在哪 */
   paramsNote?: string
+  /** 驱动序列可编辑 —— 参数换不了题面数据，这个才行 */
+  sequence?: SequenceSpec
 
   /** 内容标准 #2：诚实标注失真范围 */
   bounds: string[]

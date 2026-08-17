@@ -13,6 +13,7 @@ import { EXPERIMENTS } from './registry.ts'
 import { AxisBand } from './shell/AxisBand.tsx'
 import { StepLog, ParamPanel, Readouts, Violations, Bounds } from './shell/Panels.tsx'
 import { ProblemPanel } from './shell/ProblemPanel.tsx'
+import { SequenceEditor, parseSequence, formatSequence } from './shell/SequenceEditor.tsx'
 import { problemsFor } from './problems.ts'
 
 export default function App() {
@@ -22,21 +23,50 @@ export default function App() {
   const [tab, setTab] = useState(EXPERIMENTS[0].tabs[0].id)
   const [playing, setPlaying] = useState(false)
   const [problemId, setProblemId] = useState<string | null>(null)
+  /**
+   * 驱动序列拆成两份状态，不能只留文本：
+   *   seqText   输入框里的原文（可能正处在半截的、解析不通过的状态）
+   *   seqValues **上一次解析通过**的结果 —— 真正喂给仿真的就是它
+   * 只留文本的话，一敲坏字符仿真就会跳回原始序列，而不是停在上一次有效的地方。
+   */
+  const [seqText, setSeqText] = useState<Record<string, string | undefined>>({})
+  const [seqValues, setSeqValues] = useState<Record<string, number[] | undefined>>({})
 
   const exp = EXPERIMENTS.find(e => e.id === expId)!
   const problems = useMemo(() => problemsFor(exp.id), [exp])
   const problem = problems.find(p => p.id === problemId) ?? null
 
-  // ── 唯一的真相来源：doc。选了真题就用真题的配置，用户改的参数叠在上面。──
+  // ── 唯一的真相来源：doc。选了真题就用真题的配置，用户改的参数/序列叠在上面。──
   const baseDoc = problem?.doc ?? exp.defaultDoc
-  const doc: SimDocument = useMemo(() => ({
-    ...baseDoc,
-    params: { ...baseDoc.params, ...(overrides[exp.id] ?? {}) },
-  }), [baseDoc, exp.id, overrides])
 
-  // 参数被改得偏离原题时要明说 —— 因为答案是按当前配置算的
-  const drifted = problem !== null &&
-    Object.entries(overrides[exp.id] ?? {}).some(([k, v]) => problem.doc.params[k] !== v)
+  /** 序列编辑器里应当显示的文本：改过就用改过的，没改过就从 baseDoc 现算 */
+  const baseSeq = exp.sequence
+    ? baseDoc.streams.find(s => s.name === exp.sequence!.stream)?.values ?? []
+    : []
+  const seqRaw = seqText[exp.id] ?? (exp.sequence ? formatSequence(baseSeq, exp.sequence) : '')
+  /** 真正喂给仿真的序列：改过且解析通过就用它，否则用 baseDoc 里那条 */
+  const seqLive = seqValues[exp.id]
+  const seqKey = seqLive ? seqLive.join(',') : ''
+
+  const doc: SimDocument = useMemo(() => {
+    const d: SimDocument = {
+      ...baseDoc,
+      params: { ...baseDoc.params, ...(overrides[exp.id] ?? {}) },
+    }
+    if (exp.sequence && seqLive) {
+      const name = exp.sequence.stream
+      d.streams = baseDoc.streams.map(s => (s.name === name ? { ...s, values: seqLive } : s))
+    }
+    return d
+  // seqLive 是数组，按内容做依赖才不会每帧重算
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [baseDoc, exp.id, exp.sequence, overrides, seqKey])
+
+  // 参数或序列被改得偏离原题时要明说 —— 因为答案是按当前配置算的
+  const seqDrifted = problem !== null && exp.sequence !== undefined && seqLive !== undefined &&
+    formatSequence(baseSeq, exp.sequence) !== formatSequence(seqLive, exp.sequence)
+  const drifted = seqDrifted || (problem !== null &&
+    Object.entries(overrides[exp.id] ?? {}).some(([k, v]) => problem.doc.params[k] !== v))
 
   /** 供真题里"改个参数再算一遍"型的题用 */
   const runDoc = useMemo(() => (d: SimDocument) => {
@@ -56,15 +86,32 @@ export default function App() {
   function selectExp(id: string) {
     const e = EXPERIMENTS.find(x => x.id === id)!
     setExpId(id); setTab(e.tabs[0].id); setIndex(0); setPlaying(false); setProblemId(null)
+    setSeqText(t => ({ ...t, [id]: undefined })); setSeqValues(v => ({ ...v, [id]: undefined }))
   }
   function pickProblem(id: string | null) {
     setProblemId(id)
     setOverrides(o => ({ ...o, [exp.id]: {} }))
+    clearSeq()
     setIndex(0); setPlaying(false)
   }
   function restoreProblem() {
     setOverrides(o => ({ ...o, [exp.id]: {} }))
+    clearSeq()
     setIndex(0)
+  }
+  function clearSeq() {
+    setSeqText(t => ({ ...t, [exp.id]: undefined }))
+    setSeqValues(v => ({ ...v, [exp.id]: undefined }))
+  }
+  function editSeq(text: string) {
+    setSeqText(t => ({ ...t, [exp.id]: text }))
+    // 只有解析通过才动仿真；不通过就保持上一次有效的序列
+    const r = exp.sequence ? parseSequence(text, exp.sequence) : null
+    if (r?.ok) { setSeqValues(v => ({ ...v, [exp.id]: r.values })); setIndex(0); setPlaying(false) }
+  }
+  function resetSeq() {
+    clearSeq()
+    setIndex(0); setPlaying(false)
   }
   function setParam(key: string, v: number | string) {
     setOverrides(o => ({ ...o, [exp.id]: { ...(o[exp.id] ?? {}), [key]: v } }))
@@ -122,6 +169,13 @@ export default function App() {
               >{t.label}</button>
             ))}
           </div>
+
+          {exp.sequence && (
+            <SequenceEditor
+              spec={exp.sequence} text={seqRaw}
+              onText={editSeq} onReset={resetSeq}
+            />
+          )}
 
           {violations.length > 0
             ? <Violations items={violations} />

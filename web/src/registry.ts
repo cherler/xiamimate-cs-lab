@@ -22,6 +22,9 @@ import { SchedulerStage } from './stages/SchedulerStage.tsx'
 import { TcpStage } from './stages/TcpStage.tsx'
 import { PageStage } from './stages/PageStage.tsx'
 import { DiskStage } from './stages/DiskStage.tsx'
+import {
+  CACHE_PRESETS, PAGE_PRESETS, DISK_PRESETS, SORT_PRESETS,
+} from '@engine/presets/sequences.ts'
 import type { AnyExperiment, Experiment } from './types.ts'
 
 const pct = (n: number) => (n * 100).toFixed(1) + '%'
@@ -47,6 +50,15 @@ const cache: Experiment<CacheState> = {
     { key: 'associativity', label: '相联度', kind: 'number', options: [1, 2, 4, 8], unit: '路' },
     { key: 'replacement', label: '替换策略', kind: 'enum', options: ['LRU', 'FIFO'] },
   ],
+  sequence: {
+    stream: 'accessSequence',
+    label: '访问序列',
+    radix: 16,
+    hint: '按字节编址的主存地址',
+    maxLength: 40,
+    presets: CACHE_PRESETS,
+    random: () => Array.from({ length: 12 }, () => Math.floor(Math.random() * 16) * 16),
+  },
   bounds: [
     '本仿真不含 TLB，地址即物理地址',
     '假设指令与数据共用同一 Cache',
@@ -184,6 +196,14 @@ const page: Experiment<PageState> = {
     { key: 'algorithm', label: '置换算法', kind: 'enum', options: ['FIFO', 'LRU', 'OPT', 'CLOCK'] },
     { key: 'frames', label: '物理块数', kind: 'number', options: [2, 3, 4, 5], unit: '块' },
   ],
+  sequence: {
+    stream: 'referenceString',
+    label: '页面引用串',
+    hint: '页号序列',
+    maxLength: 40,
+    presets: PAGE_PRESETS,
+    random: () => Array.from({ length: 14 }, () => 1 + Math.floor(Math.random() * 6)),
+  },
   bounds: [
     '只建模页面置换，不含 TLB 与多级页表',
     '所有页面大小相同，不考虑大页',
@@ -224,6 +244,14 @@ const disk: Experiment<DiskState> = {
     { key: 'headStart', label: '磁头初始位置', kind: 'number', options: [0, 53, 100, 150], unit: '号磁道' },
     { key: 'direction', label: '初始方向', kind: 'number', options: [1, -1], unit: '1↑ / -1↓' },
   ],
+  sequence: {
+    stream: 'requests',
+    label: '请求队列',
+    hint: '磁道号，须在 0..最大磁道 之间',
+    maxLength: 20,
+    presets: DISK_PRESETS,
+    random: () => Array.from({ length: 8 }, () => Math.floor(Math.random() * 200)),
+  },
   bounds: [
     '只计寻道距离，不含旋转延迟与传输时间',
     '假设请求队列在调度开始时已全部到达，中途不新增',
@@ -265,6 +293,14 @@ const sort: Experiment<SortState> = {
     { key: 'algorithm', label: '排序算法', kind: 'enum',
       options: ['直接插入', '希尔', '冒泡', '简单选择', '快速', '堆', '归并'] },
   ],
+  sequence: {
+    stream: 'array',
+    label: '待排序数组',
+    hint: '整数，2~24 个',
+    maxLength: 24,
+    presets: SORT_PRESETS,
+    random: () => Array.from({ length: 8 }, () => 1 + Math.floor(Math.random() * 99)),
+  },
   bounds: [
     '快排取区间第一个元素作基准（挖坑法）；换基准选法结果会不同',
     '希尔用 n/2 逐次减半的增量序列；换增量序列趟数与结果都会变',

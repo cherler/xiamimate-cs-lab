@@ -63,7 +63,8 @@ const stageSigs = []
 for (let i = 0; i < EXPS.length; i++) {
   await p.click(`.nav button >> nth=${i}`); await p.waitForTimeout(200)
   stageSigs.push(await p.evaluate(() => {
-    const el = document.querySelector('.col > .card')
+    // 舞台是中列第一个「不是序列编辑器」的卡片 —— 编辑器长得都一样，混进来会误判
+    const el = document.querySelector('.col > .card:not(.seq)')
     return [...el.querySelectorAll('*')].map(x => x.className).filter(Boolean).slice(0, 8).join(',')
   }))
 }
@@ -361,6 +362,121 @@ for (const name of ['排序逐趟', 'Dijkstra', '银行家算法', '滑动窗口
     ? ok(`${name.padEnd(12)} ${nq} 问全部判对 · 答案 [${answers.join(' | ')}]`)
     : bad(`${name} 有问判不对（第 ${answers.length + 1} 问）`)
 }
+
+// ═══ 9. 驱动序列可编辑 ═══════════════════════════════
+console.log('\n【9】驱动序列可编辑：改题面数据，不只是改参数')
+const seqOf = () => p.evaluate(() => ({
+  text: document.querySelector('.seqin')?.value,
+  echo: document.querySelector('.seqecho')?.textContent,
+  err: document.querySelector('.seqerr')?.textContent,
+  bad: !!document.querySelector('.card.seq.bad'),
+  ticks: document.querySelectorAll('.tick').length,
+  presets: document.querySelectorAll('.seqacts button:not(.ghost)').length,
+}))
+const setSeq = async v => {
+  await p.fill('.seqin', v)
+  await p.waitForTimeout(230)
+}
+
+// 四个实验都要有编辑器
+for (const name of ['Cache 命中率', '页面置换', '磁盘调度', '排序逐趟']) {
+  await nav(name)
+  const s = await seqOf()
+  s.text && s.presets >= 3 && !s.bad
+    ? ok(`${name.padEnd(12)} 有编辑器 · ${s.presets} 个预置 · 当前「${s.text.slice(0, 26)}…」`)
+    : bad(`${name} 编辑器不对：${JSON.stringify(s)}`)
+}
+
+// 改序列 → 步数必须跟着变（真的重跑了，不是摆设）
+await nav('页面置换')
+const seqBefore = await seqOf()
+await setSeq('1 2 3 1 2 3')
+const seqAfter = await seqOf()
+seqAfter.ticks === 6 && seqAfter.ticks !== seqBefore.ticks
+  ? ok(`引用串改成 6 项 → 轨迹从 ${seqBefore.ticks} 步变成 ${seqAfter.ticks} 步`)
+  : bad(`改序列没重跑：${seqBefore.ticks} → ${seqAfter.ticks}`)
+
+// 分隔符要宽容：中文逗号、顿号、换行混用
+await setSeq('1，2、3\n4 5,6')
+const mixed = await seqOf()
+mixed.ticks === 6 && !mixed.bad
+  ? ok('分隔符宽容：中文逗号 / 顿号 / 换行 / 英文逗号混用都能解析出 6 项')
+  : bad(`混合分隔符解析失败：${JSON.stringify(mixed)}`)
+
+// 打坏字符 → 必须报错，且仿真停在上一次有效的序列（不能跳回原始串）
+await setSeq('1 2 abc 4')
+const broken = await seqOf()
+broken.bad && broken.err?.includes('第 3 项') && broken.ticks === 6
+  ? ok(`敲坏字符：报「${broken.err.split('——')[0].trim()}」，轨迹仍停在上一次有效的 6 步`)
+  : bad(`坏输入处理不对：${JSON.stringify(broken)}`)
+
+// 修好 → 立刻恢复
+await setSeq('1 2 3 4')
+const fixed = await seqOf()
+!fixed.bad && fixed.ticks === 4
+  ? ok(`改回合法值 → 立刻重跑成 ${fixed.ticks} 步`)
+  : bad(`改回来没恢复：${JSON.stringify(fixed)}`)
+
+// 预置串要真的载入
+await p.click('.seqacts button:not(.ghost) >> nth=0')
+await p.waitForTimeout(240)
+const preset = await seqOf()
+preset.ticks === 12 && preset.text.startsWith('1 2 3 4')
+  ? ok(`点「Belady 经典串」→ 载入 12 项，轨迹 ${preset.ticks} 步`)
+  : bad(`预置没载入：${JSON.stringify(preset)}`)
+
+// 已经规范的十进制输入不该再来一行冗余回显
+await nav('页面置换')
+await setSeq('1 2 3 4')
+const noEcho = await seqOf()
+noEcho.echo === undefined && !noEcho.bad
+  ? ok('输入已规范时不显示回显（输入框自己就是回显，不制造噪音）')
+  : bad(`规范输入仍显示回显：${JSON.stringify(noEcho)}`)
+await setSeq('1，2、3 4')
+const normEcho = await seqOf()
+normEcho.echo?.includes('1') && !normEcho.bad
+  ? ok('用了中文分隔符时显示回显，学生能看见系统理解成了什么')
+  : bad(`归一化后没回显：${JSON.stringify(normEcho)}`)
+
+// 十六进制：回显必须把理解到的值摊出来（学生输 10，十六进制下是 16）
+await nav('Cache 命中率')
+await setSeq('10 20 10')
+const hexEcho = await seqOf()
+hexEcho.echo?.includes('0x10') && !hexEcho.bad
+  ? ok(`十六进制回显：输入「10 20 10」→ 解析为 ${hexEcho.echo.replace('解析为', '').trim()}`)
+  : bad(`十六进制回显不对：${JSON.stringify(hexEcho)}`)
+
+// 越界值要被验证器拦住，而且编辑器必须还在（否则学生改坏了就再也改不回来）
+await nav('磁盘调度')
+await setSeq('10 20 9999')
+const oob = await p.evaluate(() => ({
+  viol: document.querySelectorAll('.viol').length,
+  msg: document.querySelector('.viol p')?.textContent,
+  editorStillThere: !!document.querySelector('.seqin'),
+}))
+oob.viol > 0 && oob.editorStillThere
+  ? ok(`磁道 9999 越界被拦下（${oob.msg?.trim().slice(0, 32)}），且编辑器仍在，改得回来`)
+  : bad(`越界处理不对：${JSON.stringify(oob)}`)
+await p.click('.seqacts button.ghost:has-text("恢复默认")')
+await p.waitForTimeout(240)
+const restored = await p.evaluate(() => ({
+  viol: document.querySelectorAll('.viol').length,
+  ticks: document.querySelectorAll('.tick').length,
+}))
+restored.viol === 0 && restored.ticks === 8
+  ? ok(`点「恢复默认」→ 回到 ${restored.ticks} 步，违规清零`)
+  : bad(`恢复默认失效：${JSON.stringify(restored)}`)
+
+// 选了真题再改序列 → 必须提示偏离原题
+await nav('页面置换')
+await p.click('.probpick button >> nth=1')
+await p.waitForTimeout(300)
+const beforeDrift = await p.evaluate(() => !!document.querySelector('.probdrift'))
+await setSeq('1 2 3 4 5')
+const afterDrift = await p.evaluate(() => !!document.querySelector('.probdrift'))
+!beforeDrift && afterDrift
+  ? ok('选了真题后改引用串 → 提示「配置已被改动」（答案按当前序列算）')
+  : bad(`序列偏离没提示：改前 ${beforeDrift} 改后 ${afterDrift}`)
 
 console.log(`\n${'─'.repeat(50)}`)
 console.log(errs.length ? `控制台错误 ${errs.length} 条：\n  ` + errs.slice(0, 4).join('\n  ') : '控制台无错误')

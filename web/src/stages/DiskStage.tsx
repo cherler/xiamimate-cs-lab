@@ -16,12 +16,27 @@ export function DiskStage({ doc, trace, index, state, tab }: StageProps<DiskStat
 function Path({ trace, index, maxTrack, start }: {
   trace: DiskState[]; index: number; maxTrack: number; start: number
 }) {
-  const rows = trace.length + 1
+  /**
+   * 纵轴一行 = 磁头的一段行程。
+   * 折返点也要单独占一行 —— 挤在同一行里的话，"走到 199 再折回 14" 会被压成一条近乎直线，
+   * 又变回"数字对、图看不出"。
+   */
+  const rows = 1 + trace.reduce((n, s) => n + 1 + s.via.length, 0)
   const xOf = (t: number) => (t / maxTrack) * 100
   const yOf = (r: number) => (r / Math.max(1, rows - 1)) * 100
 
-  const pts = [{ x: xOf(start), y: yOf(0), t: start, i: -1 }]
-    .concat(trace.map((s, i) => ({ x: xOf(s.head), y: yOf(i + 1), t: s.head, i })))
+  /**
+   * 折点要包含途经的边界。
+   * 只画 from → head 的话，SCAN"先走到边界再掉头"那 209 个磁道会被画成一条直线 ——
+   * 数字对，但图上完全看不出它绕了远路。
+   */
+  type Pt = { x: number; y: number; t: number; i: number; via?: boolean }
+  const pts: Pt[] = [{ x: xOf(start), y: yOf(0), t: start, i: -1 }]
+  let row = 0
+  trace.forEach((s, i) => {
+    for (const v of s.via) pts.push({ x: xOf(v), y: yOf(++row), t: v, i, via: true })
+    pts.push({ x: xOf(s.head), y: yOf(++row), t: s.head, i })
+  })
 
   return (
     <div className="card">
@@ -43,16 +58,18 @@ function Path({ trace, index, maxTrack, start }: {
               fill="none" stroke="var(--now)" strokeWidth={1.6}
               strokeLinejoin="round" vectorEffect="non-scaling-stroke" opacity={0.5} />
             <polyline
-              points={pts.slice(0, index + 2).map(p => `${p.x},${p.y}`).join(' ')}
+              points={pts.filter(p => p.i <= index).map(p => `${p.x},${p.y}`).join(' ')}
               fill="none" stroke="var(--now)" strokeWidth={2.4}
               strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
           </svg>
           {pts.map((p, k) => (
             <div
               key={k}
-              className={`dnode ${p.i === index ? 'cur' : ''} ${p.i < 0 ? 'start' : ''} ${p.i > index ? 'future' : ''}`}
+              className={`dnode ${p.via ? 'via' : ''} ${p.x > 88 ? 'rt' : ''} ${p.i === index ? 'cur' : ''} ${p.i < 0 ? 'start' : ''} ${p.i > index ? 'future' : ''}`}
               style={{ left: `${p.x}%`, top: `${p.y}%` }}
-              title={p.i < 0 ? `起始磁道 ${p.t}` : `第 ${p.i + 1} 个：磁道 ${p.t}`}
+              title={p.via
+                ? `途经磁道 ${p.t}（没有请求，纯粹空跑）`
+                : p.i < 0 ? `起始磁道 ${p.t}` : `第 ${p.i + 1} 个：磁道 ${p.t}`}
             >
               <em>{p.t}</em>
             </div>
