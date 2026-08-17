@@ -19,6 +19,7 @@ const SUITES = [
   ['第二批内核 · 排序 / Dijkstra / 银行家 / ARQ', 'round2-kernels.test.ts'],
   ['第三批内核 · 浮点 / 流水线 / 虚存 / 乘除', 'round3-arch.test.ts'],
   ['第四批内核 · CRC / 海明码 / 子网 / 握手', 'round4-net.test.ts'],
+  ['第五批内核 · AVL / 散列 / 哈夫曼 / KMP', 'round5-ds.test.ts'],
   ['预置串的说法必须为真', 'presets-claims.test.ts'],
 ] as const
 

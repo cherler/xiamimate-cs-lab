@@ -28,6 +28,12 @@ import type { CrcState } from '@engine/kernels/crc.ts'
 import type { HammingState } from '@engine/kernels/hamming.ts'
 import type { SubnetState } from '@engine/kernels/subnet.ts'
 import type { HsState } from '@engine/kernels/handshake.ts'
+import type { AvlState } from '@engine/kernels/avl.ts'
+import type { HashState } from '@engine/kernels/hashtable.ts'
+import type { HuffState } from '@engine/kernels/huffman.ts'
+import type { KmpState } from '@engine/kernels/kmp.ts'
+import { asl } from '@engine/kernels/hashtable.ts'
+import { trueHeight, NIL } from '@engine/core/tree.ts'
 
 /** 跑任意配置，供"改个参数再算一遍"型的题用 —— 仍然不手写答案 */
 export type RunDoc = (doc: SimDocument) => unknown[]
@@ -950,11 +956,202 @@ const hsProblems: Problem[] = [
   },
 ]
 
+// ═══ AVL ═══════════════════════════════════════════════
+const avlProblems: Problem[] = [
+  {
+    id: 'avl-1',
+    experimentId: 'avl',
+    source: '典型题型 · AVL 树的插入与调整',
+    statement:
+      '依次将 10、20、30、40、50、25 插入一棵初始为空的平衡二叉树（AVL 树），'
+      + '每次插入后若失衡则立即调整。',
+    doc: {
+      kind: 'avl', params: { mode: 'avl' }, entities: [],
+      streams: [{ name: 'keys', values: [10, 20, 30, 40, 50, 25] }],
+    },
+    questions: [
+      q<AvlState>({
+        prompt: '整个过程共发生几次旋转？', unit: '次',
+        answer: t => String(last(t).rotations),
+        revealStep: t => t.findIndex(s => s.act === 'rotate'),
+      }),
+      q<AvlState>({
+        prompt: '第一次旋转是哪种类型？（填 LL / RR / LR / RL）', kind: 'text',
+        answer: t => t.find(s => s.act === 'rotate')?.rotation ?? '无',
+        revealStep: t => t.findIndex(s => s.act === 'rotate'),
+      }),
+      q<AvlState>({
+        prompt: '最终树的根结点是哪个键？',
+        answer: t => {
+          const l = last(t)
+          return l.root === NIL ? '空' : String(l.nodes[l.root].key)
+        },
+        revealStep: t => t.length - 1,
+      }),
+      q<AvlState>({
+        prompt: '最终树高是多少？', unit: '层',
+        answer: t => String(trueHeight(last(t).nodes, last(t).root)),
+        revealStep: t => t.length - 1,
+      }),
+      q<AvlState>({
+        prompt: '若关掉旋转（普通 BST），最终树高会是多少？', unit: '层',
+        hint: '把右侧「模式」切到 bst',
+        answer: (_t, d, runDoc) => {
+          const t = runDoc({ ...d, params: { ...d.params, mode: 'bst' } }) as AvlState[]
+          const l = t[t.length - 1]
+          return String(trueHeight(l.nodes, l.root))
+        },
+      }),
+    ],
+  },
+]
+
+// ═══ 散列表 ════════════════════════════════════════════
+const hashProblems: Problem[] = [
+  {
+    id: 'hash-1',
+    experimentId: 'hash',
+    source: '典型题型 · 线性探测与 ASL',
+    statement:
+      '将关键字 19、14、23、1、68、20、84、27、55、11 依次插入长度为 13 的散列表，'
+      + '散列函数 H(key) = key mod 13，用线性探测法处理冲突。',
+    doc: {
+      kind: 'hash', params: { size: 13, method: '线性探测', rehashStep: 3 }, entities: [],
+      streams: [{ name: 'keys', values: [19,14,23,1,68,20,84,27,55,11] }],
+    },
+    questions: [
+      q<HashState>({
+        prompt: '关键字 19 的初始散列地址是多少？',
+        answer: t => String(t[0].home),
+        revealStep: () => 0,
+      }),
+      q<HashState>({
+        prompt: '第一个发生冲突的关键字是哪个？',
+        hint: '第一次探查次数大于 1 的那个',
+        answer: t => String((t.find(s => s.collided) ?? t[0]).key),
+        revealStep: t => Math.max(0, t.findIndex(s => s.collided)),
+      }),
+      q<HashState>({
+        prompt: '关键字 27 最终落在哪个槽？', unit: '号槽',
+        answer: t => String((t.find(s => s.key === 27) ?? t[0]).slot),
+        revealStep: t => Math.max(0, t.findIndex(s => s.key === 27)),
+      }),
+      q<HashState>({
+        prompt: '查找成功的平均查找长度 ASL 是多少（保留三位小数）？', kind: 'text',
+        hint: '各元素查找长度之和 ÷ 元素个数',
+        answer: (t, d) => asl(last(t).table, d.params.size as number,
+          String(d.params.method), d.params.rehashStep as number).success.toFixed(3),
+        revealStep: t => t.length - 1,
+      }),
+      q<HashState>({
+        prompt: '改用拉链法，ASL 成功变成多少（保留三位小数）？', kind: 'text',
+        hint: '把「冲突处理」切到拉链',
+        answer: (_t, d, runDoc) => {
+          const t = runDoc({ ...d, params: { ...d.params, method: '拉链' } }) as HashState[]
+          return asl(t[t.length - 1].table, d.params.size as number, '拉链').success.toFixed(3)
+        },
+      }),
+    ],
+  },
+]
+
+// ═══ 哈夫曼 ════════════════════════════════════════════
+const huffProblems: Problem[] = [
+  {
+    id: 'huff-1',
+    experimentId: 'huffman',
+    source: '典型题型 · 哈夫曼树与 WPL',
+    statement:
+      '设有 8 个字符 A~H，权值分别为 5、29、7、8、14、23、3、11。'
+      + '构造哈夫曼树并求带权路径长度 WPL。',
+    doc: {
+      kind: 'huffman', params: {}, entities: [],
+      streams: [{ name: 'weights', values: [5,29,7,8,14,23,3,11] }],
+    },
+    questions: [
+      q<HuffState>({
+        prompt: '构造过程共需要合并多少次？', unit: '次',
+        hint: 'n 个叶子合并 n−1 次',
+        answer: (_t, d) => String((d.streams.find(x => x.name === 'weights')?.values ?? []).length - 1),
+      }),
+      q<HuffState>({
+        prompt: '第一次合并产生的新结点权值是多少？',
+        answer: t => {
+          const m = t.find(s => s.act === 'merge')
+          return m ? String(m.nodes[m.merged].w) : '—'
+        },
+        revealStep: t => t.findIndex(s => s.act === 'merge'),
+      }),
+      q<HuffState>({
+        prompt: '带权路径长度 WPL 是多少？',
+        answer: t => String(last(t).wpl),
+        revealStep: t => t.length - 1,
+      }),
+      q<HuffState>({
+        prompt: '权值最大的字符 B（29）的编码有几位？', unit: '位',
+        hint: '权值越大编码越短',
+        answer: t => String((last(t).codes['B'] ?? '').length),
+        revealStep: t => t.length - 1,
+      }),
+      q<HuffState>({
+        prompt: '权值最小的字符 G（3）的编码有几位？', unit: '位',
+        answer: t => String((last(t).codes['G'] ?? '').length),
+        revealStep: t => t.length - 1,
+      }),
+    ],
+  },
+]
+
+// ═══ KMP ═══════════════════════════════════════════════
+const kmpProblems: Problem[] = [
+  {
+    id: 'kmp-1',
+    experimentId: 'kmp',
+    source: '典型题型 · KMP 的 next 数组',
+    statement:
+      '模式串为 "ababd"，主串为 "ababcabcabababd"。'
+      + '求模式串的 next 数组，并用 KMP 算法完成匹配。',
+    doc: {
+      kind: 'kmp',
+      params: { text: 'ababcabcabababd', pattern: 'ababd', showMatch: 1 },
+      entities: [], streams: [],
+    },
+    questions: [
+      q<KmpState>({
+        prompt: 'next 数组是多少？（空格分隔，如 0 0 1 2 0）', kind: 'text',
+        hint: 'next[j] = 前 j+1 个字符里最长的相等前后缀长度',
+        answer: t => last(t).next.join(' '),
+        revealStep: t => t.findIndex(s => s.phase !== 'next'),
+      }),
+      q<KmpState>({
+        prompt: '模式串在主串中第一次匹配成功的起始下标是？', unit: '下标',
+        answer: t => String(last(t).found[0] ?? -1),
+        revealStep: t => Math.max(0, t.findIndex(s => s.phase === 'found')),
+      }),
+      q<KmpState>({
+        prompt: '整个匹配过程中，主串指针一共前进了多少次？', unit: '次',
+        hint: '这个数不会超过主串长度 —— KMP 是线性的',
+        answer: t => String(last(t).textAdvances),
+        revealStep: t => t.length - 1,
+      }),
+      q<KmpState>({
+        prompt: '把模式串换成 "aaaa"，它的 next 数组是？（空格分隔）', kind: 'text',
+        hint: '在右侧把「模式串」切到 aaaa',
+        answer: (_t, d, runDoc) => {
+          const t = runDoc({ ...d, params: { ...d.params, pattern: 'aaaa' } }) as KmpState[]
+          return t[t.length - 1].next.join(' ')
+        },
+      }),
+    ],
+  },
+]
+
 export const PROBLEMS: Problem[] = [
   ...cacheProblems, ...pageProblems, ...schedProblems, ...tcpProblems, ...diskProblems,
   ...sortProblems, ...dijkstraProblems, ...bankerProblems, ...arqProblems,
   ...floatProblems, ...pipeProblems, ...vmProblems, ...mulProblems,
   ...crcProblems, ...hammingProblems, ...subnetProblems, ...hsProblems,
+  ...avlProblems, ...hashProblems, ...huffProblems, ...kmpProblems,
 ]
 
 export const problemsFor = (experimentId: string) =>

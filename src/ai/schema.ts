@@ -214,6 +214,10 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   hamming: { operation: 'string', errorAt: 'number', evenParity: 'number' },
   subnet: { operation: 'string', prefix: 'number', splitBits: 'number' },
   handshake: { scenario: 'string', clientSeq: 'number', serverSeq: 'number' },
+  avl: { mode: 'string' },
+  hash: { size: 'number', method: 'string', rehashStep: 'number' },
+  huffman: {},
+  kmp: { text: 'string', pattern: 'string', showMatch: 'number' },
 }
 
 /** 同名参数在不同 kind 下取值不同 —— 所以按 kind 分表，不能只按字段名 */
@@ -231,6 +235,8 @@ const ENUMS: Record<string, Record<string, string[]>> = {
   hamming:   { operation: ['encode', 'check'] },
   subnet:    { operation: ['subnet', 'lpm'] },
   handshake: { scenario: ['connect', 'close', 'both'] },
+  avl:       { mode: ['avl', 'bst'] },
+  hash:      { method: ['拉链', '线性探测', '平方探测', '再散列'] },
 }
 
 /**
@@ -599,6 +605,53 @@ export function validateDocument(raw: SimDocument): Violation[] {
       if (!Number.isInteger(nth) || nth < 1)
         err(`entities.${e.id}.nth`, '丢失的报文段序号从 1 起', e.attrs.nth)
     }
+  }
+
+  if (doc.kind === 'avl') {
+    const k = doc.streams.find(s => s.name === 'keys')
+    if (!k) err('streams', '缺少 keys')
+    else if (k.values.length === 0) err('streams.keys', '插入序列为空')
+    else if (k.values.some(v => typeof v !== 'number' || !Number.isInteger(v)))
+      err('streams.keys', '键必须是整数')
+    else if (k.values.length > 20) err('streams.keys', '超过 20 个键树会画不下', k.values.length)
+  }
+
+  if (doc.kind === 'hash') {
+    const size = doc.params.size as number
+    if (size < 1) err('params.size', '表长至少为 1', size)
+    else if (size > 31) err('params.size', '表长超过 31 槽位表会看不过来', size)
+    const step = doc.params.rehashStep as number
+    if (step < 1) err('params.rehashStep', '再散列步长至少为 1', step)
+    //  步长与表长不互质时，再散列探查不到所有槽 —— 这是个真实的坑
+    else if (doc.params.method === '再散列') {
+      const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b))
+      if (gcd(step, size) !== 1)
+        err('params.rehashStep', `步长 ${step} 与表长 ${size} 不互质，探查不到所有槽`, step)
+    }
+    const k = doc.streams.find(s => s.name === 'keys')
+    if (!k) err('streams', '缺少 keys')
+    else if (k.values.length === 0) err('streams.keys', '键序列为空')
+    else if (k.values.some(v => typeof v !== 'number' || v < 0)) err('streams.keys', '键必须是非负整数')
+    else if (doc.params.method !== '拉链' && k.values.length > size)
+      err('streams.keys', `开放定址下键数 ${k.values.length} 超过表长 ${size}，必然装不下`, k.values.length)
+  }
+
+  if (doc.kind === 'huffman') {
+    const w = doc.streams.find(s => s.name === 'weights')
+    if (!w) err('streams', '缺少 weights')
+    else if (w.values.length === 0) err('streams.weights', '权值不能为空')
+    else if (w.values.some(v => typeof v !== 'number' || v <= 0))
+      err('streams.weights', '权值必须为正数')
+    else if (w.values.length > 12) err('streams.weights', '超过 12 个叶子树会画不下', w.values.length)
+  }
+
+  if (doc.kind === 'kmp') {
+    const t = String(doc.params.text)
+    const p = String(doc.params.pattern)
+    if (p.length === 0) err('params.pattern', '模式串不能为空')
+    else if (p.length > 24) err('params.pattern', '模式串过长，next 表会看不过来', p.length)
+    if (t.length === 0) err('params.text', '主串不能为空')
+    else if (t.length > 48) err('params.text', '主串过长，对齐图会看不过来', t.length)
   }
 
   if (doc.kind === 'tcp') {

@@ -34,6 +34,18 @@ import {
   CRC_PRESETS, HAMMING_PRESETS, SUBNET_PRESETS,
 } from '@engine/presets/sequences.ts'
 import { ROUTE_PRESETS, HS_PRESETS } from '@engine/presets/entities.ts'
+import {
+  AVL_PRESETS, HASH_PRESETS, HUFF_PRESETS,
+} from '@engine/presets/sequences.ts'
+import { avlKernel, type AvlState } from '@engine/kernels/avl.ts'
+import { hashKernel, asl, type HashState } from '@engine/kernels/hashtable.ts'
+import { huffmanKernel, type HuffState } from '@engine/kernels/huffman.ts'
+import { kmpKernel, type KmpState } from '@engine/kernels/kmp.ts'
+import { trueHeight } from '@engine/core/tree.ts'
+import { AvlStage } from './stages/AvlStage.tsx'
+import { HashStage } from './stages/HashStage.tsx'
+import { HuffmanStage } from './stages/HuffmanStage.tsx'
+import { KmpStage } from './stages/KmpStage.tsx'
 import { crcKernel, type CrcState } from '@engine/kernels/crc.ts'
 import { hammingKernel, type HammingState } from '@engine/kernels/hamming.ts'
 import { subnetKernel, type SubnetState } from '@engine/kernels/subnet.ts'
@@ -1085,9 +1097,206 @@ const handshake: Experiment<HsState> = {
   ],
 }
 
+// ═══ AVL ═══════════════════════════════════════════════
+const avl: Experiment<AvlState> = {
+  id: 'avl',
+  group: '数据结构',
+  title: 'AVL 平衡二叉树',
+  subtitle: 'LL · RR · LR · RL 四种旋转',
+  kernel: avlKernel,
+  defaultDoc: {
+    kind: 'avl', params: { mode: 'avl' }, entities: [],
+    streams: [{ name: 'keys', values: AVL_PRESETS[3].values }],
+  },
+  params: [
+    { key: 'mode', label: '模式', kind: 'enum', options: ['avl', 'bst'] },
+  ],
+  sequence: {
+    stream: 'keys', label: '插入序列', hint: '整数，按顺序依次插入',
+    maxLength: 20, presets: AVL_PRESETS,
+    random: () => {
+      const pool = Array.from({ length: 30 }, (_, k) => k + 1)
+      for (let i = pool.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [pool[i], pool[j]] = [pool[j], pool[i]]
+      }
+      return pool.slice(0, 8)
+    },
+  },
+  bounds: [
+    '只做插入，不做删除 —— 删除的旋转情形更复杂，另开一个实验更合适',
+    '不存重复键；插入已有的键会被跳过',
+    '「bst 模式」只是关掉旋转做对照，不是标准的二叉排序树实现',
+    '平衡因子按「左高 − 右高」定义，与部分教材相反的约定不同',
+  ],
+  tabs: [{ id: 'tree', label: '树形' }, { id: 'rotations', label: '四种失衡' }],
+  Stage: AvlStage,
+  tone: s => (s.act === 'rotate' ? { key: 'bad', label: `${s.rotation} 旋转` }
+    : s.act === 'insert' ? { key: 'good', label: '插入' }
+    : s.act === 'done' ? { key: 'good', label: '完成' }
+    : { key: 'idle', label: s.act === 'descend' ? '下降' : '回溯' }),
+  metric: (s, _i) => {
+    const n = s.nodes.length || 1
+    return s.inserted / n
+  },
+  tickLabel: s => (s.act === 'rotate' ? s.rotation : `${s.key}`),
+  readouts: (s, doc) => [
+    { label: '已插入', value: `${s.inserted} / ${(doc.streams.find(x => x.name === 'keys')?.values ?? []).length}` },
+    { label: '当前键', value: String(s.key) },
+    { label: '树高', value: String(trueHeight(s.nodes, s.root)) },
+    { label: '旋转次数', value: String(s.rotations), tone: s.rotations > 0 ? 'bad' : undefined },
+    { label: '本步动作', value: { descend: '比较下降', insert: '挂上新结点',
+      update: '回溯更新高度', rotate: `${s.rotation} 型旋转`, done: '完成' }[s.act] },
+  ],
+}
+
+// ═══ 散列表 ════════════════════════════════════════════
+const hash: Experiment<HashState> = {
+  id: 'hash',
+  group: '数据结构',
+  title: '散列表',
+  subtitle: '冲突处理 · 平均查找长度',
+  kernel: hashKernel,
+  defaultDoc: {
+    kind: 'hash', params: { size: 13, method: '线性探测', rehashStep: 3 }, entities: [],
+    streams: [{ name: 'keys', values: HASH_PRESETS[0].values }],
+  },
+  params: [
+    { key: 'method', label: '冲突处理', kind: 'enum',
+      options: ['拉链', '线性探测', '平方探测', '再散列'] },
+    { key: 'size', label: '表长', kind: 'number', options: [7, 11, 13, 16], unit: '槽' },
+    { key: 'rehashStep', label: '再散列步长', kind: 'number', options: [1, 3, 5], unit: '仅再散列用' },
+  ],
+  sequence: {
+    stream: 'keys', label: '待插入的键', hint: '非负整数',
+    maxLength: 16, presets: HASH_PRESETS,
+    random: () => Array.from({ length: 8 }, () => Math.floor(Math.random() * 90) + 1),
+  },
+  bounds: [
+    '散列函数固定为 H(key) = key mod 表长，不含平方取中、折叠等其它构造法',
+    '平方探测用 +1²、−1²、+2²… 的常见约定；不同教材的序列可能不同',
+    '只做插入与查找长度统计，不做删除（开放定址的删除要用墓碑标记）',
+    'ASL 失败按「从每个初始地址探到空槽为止」计，与教材主流口径一致',
+  ],
+  tabs: [{ id: 'table', label: '槽位表' }, { id: 'asl', label: '平均查找长度' }],
+  Stage: HashStage,
+  tone: s => (s.slot < 0 ? { key: 'bad', label: '装不下' }
+    : s.collided ? { key: 'bad', label: '冲突' }
+    : { key: 'good', label: '一次落位' }),
+  metric: (s, i) => Math.min(1, s.compares / 6),
+  tickLabel: s => `${s.key}→槽${s.slot}`,
+  readouts: (s, doc) => {
+    const size = doc.params.size as number
+    const method = String(doc.params.method)
+    const a = asl(s.table, size, method, doc.params.rehashStep as number)
+    return [
+      { label: '本次键', value: String(s.key) },
+      { label: '初始地址', value: `${s.key} mod ${size} = ${s.home}` },
+      { label: '探查次数', value: String(s.compares), tone: s.compares > 1 ? 'bad' : 'good' },
+      { label: '已装入', value: `${s.count} / ${size}` },
+      { label: '装填因子 α', value: (s.count / size).toFixed(3) },
+      { label: 'ASL 成功', value: a.success.toFixed(3) },
+      { label: 'ASL 失败', value: a.fail.toFixed(3) },
+    ]
+  },
+}
+
+// ═══ 哈夫曼 ════════════════════════════════════════════
+const huffman: Experiment<HuffState> = {
+  id: 'huffman',
+  group: '数据结构',
+  title: '哈夫曼树与编码',
+  subtitle: '逐次合并 · WPL · 前缀码',
+  kernel: huffmanKernel,
+  defaultDoc: {
+    kind: 'huffman', params: {}, entities: [],
+    streams: [{ name: 'weights', values: HUFF_PRESETS[0].values }],
+  },
+  params: [],
+  paramsNote: '哈夫曼树的构造完全由权值决定，没有可调参数 —— 改下面的权值序列就行。',
+  sequence: {
+    stream: 'weights', label: '各字符的权值', hint: '正整数，字符自动标为 A B C…',
+    maxLength: 12, presets: HUFF_PRESETS,
+    random: () => Array.from({ length: 6 }, () => Math.floor(Math.random() * 20) + 1),
+  },
+  bounds: [
+    '权值相同时取先出现的那个，保证结果可复现 —— 教材里这时结果可能不唯一',
+    '左子树记 0、右子树记 1；反过来约定会得到另一组编码，但 WPL 相同',
+    '只做等长权值的静态哈夫曼编码，不含自适应哈夫曼',
+    '不建模实际压缩里的码表存储开销',
+  ],
+  tabs: [{ id: 'forest', label: '森林' }, { id: 'codes', label: '编码表与 WPL' }],
+  Stage: HuffmanStage,
+  tone: s => (s.act === 'merge' ? { key: 'good', label: '合并' }
+    : s.act === 'done' ? { key: 'good', label: '完成' }
+    : { key: 'idle', label: '初始' }),
+  metric: (s, _i) => {
+    const total = s.nodes.filter(n => n.left === -1 && n.right === -1).length || 1
+    return s.forest.length ? 1 - (s.forest.length - 1) / total : 1
+  },
+  tickLabel: s => (s.act === 'merge' ? `合并 ${s.nodes[s.merged]?.w ?? ''}` : s.act),
+  readouts: (s, doc) => {
+    const n = (doc.streams.find(x => x.name === 'weights')?.values ?? []).length
+    return [
+      { label: '字符个数', value: String(n) },
+      { label: '森林剩余', value: `${s.forest.length} 棵` },
+      { label: '已合并', value: `${Math.max(0, n - s.forest.length)} / ${Math.max(0, n - 1)} 次` },
+      { label: 'WPL', value: s.wpl > 0 ? String(s.wpl) : '走到最后一步才有' },
+      { label: '本步合并', value: s.picked.length === 2
+          ? `${s.nodes[s.picked[0]].w} + ${s.nodes[s.picked[1]].w}` : '—' },
+    ]
+  },
+}
+
+// ═══ KMP ═══════════════════════════════════════════════
+const kmp: Experiment<KmpState> = {
+  id: 'kmp',
+  group: '数据结构',
+  title: 'KMP 字符串匹配',
+  subtitle: 'next 数组 · 主串永不回退',
+  kernel: kmpKernel,
+  defaultDoc: {
+    kind: 'kmp',
+    params: { text: 'ababcabcabababd', pattern: 'ababd', showMatch: 1 },
+    entities: [], streams: [],
+  },
+  params: [
+    { key: 'pattern', label: '模式串', kind: 'enum',
+      options: ['ababd', 'ababaca', 'aaaa', 'abcabc', 'abababca'] },
+    { key: 'text', label: '主串', kind: 'enum',
+      options: ['ababcabcabababd', 'aaaaaaa', 'abcabcabcabc', 'xyzxyzxyz'] },
+    { key: 'showMatch', label: '是否演示匹配', kind: 'number', options: [1, 0], unit: '1 是 / 0 只求 next' },
+  ],
+  bounds: [
+    'next 数组按「最长相等前后缀长度」定义（从 0 开始）；部分教材用「下标从 1 开始且整体加 1」的 nextval 约定',
+    '不含 nextval 优化（把相同字符的回退再压一层）',
+    '只做单模式串匹配，不含 AC 自动机等多模式算法',
+    '主串与模式串限定为 ASCII 字符，不处理多字节字符',
+  ],
+  tabs: [{ id: 'next', label: 'next 数组' }, { id: 'match', label: '匹配对齐' }],
+  Stage: KmpStage,
+  tone: s => (s.phase === 'found' ? { key: 'good', label: '找到' }
+    : s.eq === true ? { key: 'good', label: '相等' }
+    : s.eq === false ? { key: 'bad', label: '失配' }
+    : { key: 'idle', label: s.phase === 'done' ? '完成' : '推导' }),
+  metric: (s, _i) => {
+    const n = s.next.length || 1
+    return s.phase === 'next' ? (s.j + 1) / n : 1
+  },
+  tickLabel: s => (s.phase === 'next' ? `next[${s.j}]` : s.phase === 'done' ? '完成' : `i=${s.ti} j=${s.pj}`),
+  readouts: (s, doc) => [
+    { label: '阶段', value: { next: '求 next 数组', match: '匹配', found: '找到一处', done: '完成' }[s.phase] },
+    { label: 'next 数组', value: s.next.map(v => (v < 0 ? '?' : v)).join(' ') },
+    { label: '主串指针 i', value: s.ti >= 0 ? String(s.ti) : '—' },
+    { label: '模式指针 j', value: s.pj >= 0 ? String(s.pj) : '—' },
+    { label: '已找到', value: s.found.length ? s.found.join('、') : '暂无' },
+    { label: '主串前进次数', value: `${s.textAdvances}（长 ${String(doc.params.text).length}，永不回退）` },
+  ],
+}
+
 export const EXPERIMENTS = [
   cache, float, multiply, pipeline, vm,
   page, scheduler, disk, banker,
-  sort, dijkstra,
+  sort, dijkstra, avl, hash, huffman, kmp,
   tcp, arq, crc, hamming, subnet, handshake,
 ] as unknown as AnyExperiment[]

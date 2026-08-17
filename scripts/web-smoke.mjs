@@ -53,6 +53,10 @@ const EXPS = [
   ['银行家算法', 'banker'],
   ['排序逐趟', 'sort'],
   ['Dijkstra 最短路', 'dijkstra'],
+  ['AVL 平衡二叉树', 'avl'],
+  ['散列表', 'hash'],
+  ['哈夫曼树与编码', 'huffman'],
+  ['KMP 字符串匹配', 'kmp'],
   ['TCP 拥塞窗口', 'tcp'],
   ['滑动窗口 ARQ', 'arq'],
   ['CRC 循环冗余校验', 'crc'],
@@ -344,7 +348,8 @@ Number(srTx) < Number(gbnTx) && Number(gbnTx) > 0
 console.log('\n【8】四个新实验的真题都能判对（答案从轨迹派生）')
 for (const name of ['排序逐趟', 'Dijkstra', '银行家算法', '滑动窗口',
                      'IEEE 754', '指令流水线', '虚地址转换', '定点乘除',
-                     'CRC', '海明码', '子网划分', 'TCP 连接管理']) {
+                     'CRC', '海明码', '子网划分', 'TCP 连接管理',
+                     'AVL', '散列表', '哈夫曼', 'KMP']) {
   await nav(name)
   const picks = await p.evaluate(() => document.querySelectorAll('.probpick button').length)
   if (picks < 2) { bad(`${name} 没有真题可选`); continue }
