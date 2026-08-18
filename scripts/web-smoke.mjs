@@ -823,6 +823,94 @@ await p.waitForSelector('.tick')
     : bad(`清空没生效：已掌握 ${sum}`)
 }
 
+
+// ═══ 13 · 讲解卡片：30 个实验一个不少，而且提到的旋钮真的存在 ═══
+console.log('\n【13】讲解：每个实验都有"这是什么"，且导览提到的旋钮真的在页面上')
+{
+  const names = await p.$$eval('.nav button', bs => bs.map(b => b.textContent.trim()))
+  const missing = []
+  const stray = []
+  for (const name of names) {
+    await nav(name)
+    const r = await p.evaluate(() => {
+      const card = document.querySelector('.guide')
+      if (!card) return null
+      return {
+        q: card.querySelector('.gq')?.textContent?.trim() ?? '',
+        read: card.querySelectorAll('.glist:not(.try) li').length,
+        tries: card.querySelectorAll('.glist.try li').length,
+        /**
+         * 导览里点名要拧的旋钮（`data-param`），以及参数面板上真实存在的旋钮。
+         * 两边都从**渲染出来的 DOM** 上取 —— 不从源码取，也不往 window 上挂全局。
+         */
+        wants: [...card.querySelectorAll('.glist.try li')]
+          .map(li => li.dataset.param).filter(Boolean),
+        wantPresets: [...card.querySelectorAll('.glist.try li')]
+          .map(li => li.dataset.preset).filter(Boolean),
+        params: [...document.querySelectorAll('.param>.k')].map(k => k.textContent.trim()),
+        //  序列与实体表的预置按钮（`.seqacts` / `.entacts` 里，排除「随机」「恢复默认」那两个 ghost）
+        presets: [...document.querySelectorAll('.seqacts button:not(.ghost), .entacts button:not(.ghost)')]
+          .map(b => b.textContent.trim()),
+      }
+    })
+    if (!r || !r.q || r.read < 2 || r.tries < 2) { missing.push(name); continue }
+    /**
+     * **导览提到的旋钮必须真的在参数面板上。**
+     *
+     * 这是这一组唯一有难度的判据：文本会漂，参数会改名或被删，而
+     * "把相联度调到 1"读起来永远像对的 —— 只有拿页面上真实的参数名比一次才知道。
+     */
+    for (const want of r.wants) {
+      if (!r.params.some(x => x.startsWith(want))) {
+        stray.push(`${name}：导览说旋钮「${want}」，面板上只有 ${r.params.join(' / ') || '(没有参数)'}`)
+      }
+    }
+    for (const want of r.wantPresets) {
+      if (!r.presets.includes(want)) {
+        stray.push(`${name}：导览说预置「${want}」，页面上只有 ${r.presets.join(' / ') || '(没有预置)'}`)
+      }
+    }
+  }
+  missing.length === 0
+    ? ok(`${names.length} 个实验都有讲解卡片（问题句 + ≥2 条"哪块是什么" + ≥2 条"先拧什么"）`)
+    : bad(`讲解卡片缺失或不完整：${missing.join('、')}`)
+  stray.length === 0
+    ? ok('导览里点名的旋钮与预置，在对应实验的页面上全都找得到')
+    : bad(`导览提到了不存在的旋钮：\n     ${stray.join('\n     ')}`)
+
+  //  自检：这条判据得会红 —— 拿一个必然不存在的旋钮名去查，必须查不到
+  await nav('Cache 命中率')
+  const params = await p.$$eval('.param>.k', ks => ks.map(k => k.textContent.trim()))
+  params.some(x => x.startsWith('根本没有这个旋钮'))
+    ? bad('自检失败：编出来的旋钮名居然也匹配上了')
+    : ok('自检：编一个不存在的旋钮名，确实匹配不上 —— 上一条判据有鉴别力')
+
+  // 名词卡点得开
+  const chip = await p.$('.gchips button')
+  if (chip) {
+    await chip.click(); await p.waitForTimeout(120)
+    const gloss = await p.evaluate(() => document.querySelector('.ggloss')?.textContent?.trim() ?? '')
+    gloss.length > 15 ? ok(`点名词就地展开解释（${gloss.slice(0, 18)}…）`) : bad('点名词没有展开解释')
+  } else bad('Cache 那一屏没有名词按钮')
+
+  // 「页面怎么用」展得开
+  await p.click('.gtourbtn'); await p.waitForTimeout(120)
+  const tour = await p.evaluate(() => document.querySelectorAll('.gtour .glist li').length)
+  tour >= 5 ? ok(`「页面怎么用」展开 ${tour} 条`) : bad(`页面导览只展开了 ${tour} 条`)
+
+  // 收起之后刷新还是收起的，且仍留着问题句
+  await p.click('.guide .gx'); await p.waitForTimeout(120)
+  const afterCollapse = await p.evaluate(() => !!document.querySelector('button.guide.collapsed'))
+  await p.reload({ waitUntil: 'networkidle' }); await p.waitForTimeout(500)
+  const stillCollapsed = await p.evaluate(() => !!document.querySelector('button.guide.collapsed'))
+  afterCollapse && stillCollapsed
+    ? ok('收起之后刷新仍是收起的 —— 学会了的人不用每次关一遍')
+    : bad(`收起没生效或没记住：收起后 ${afterCollapse}、刷新后 ${stillCollapsed}`)
+  const q = await p.evaluate(() => document.querySelector('button.guide.collapsed .gq')?.textContent?.trim() ?? '')
+  q.endsWith('？') ? ok('收起态仍然留着"这一屏在问什么"') : bad(`收起态没留问题句：「${q}」`)
+  await p.click('button.guide.collapsed'); await p.waitForTimeout(150)
+}
+
 console.log(`\n${'─'.repeat(50)}`)
 console.log(errs.length ? `控制台错误 ${errs.length} 条：\n  ` + errs.slice(0, 4).join('\n  ') : '控制台无错误')
 console.log(fail === 0 ? '视图层冒烟：通过' : `视图层冒烟：失败 ${fail} 项`)

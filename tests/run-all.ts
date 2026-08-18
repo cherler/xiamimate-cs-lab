@@ -25,6 +25,7 @@ const SUITES = [
   ['预置串的说法必须为真', 'presets-claims.test.ts'],
   ['学习进度的规则', 'progress-rules.test.ts'],
   ['跨设备合并的规则', 'sync-merge.test.ts'],
+  ['讲解层的内容规则', 'guide-content.test.ts'],
 ] as const
 
 let failed = 0

@@ -18,6 +18,8 @@ import { EntityEditor } from './shell/EntityEditor.tsx'
 import { problemsFor, PROBLEMS } from './problems.ts'
 import { ProgressPanel } from './shell/ProgressPanel.tsx'
 import { ChromeHeader, ChromeFooter } from './shell/PlatformChrome.tsx'
+import { GuidePanel } from './shell/GuidePanel.tsx'
+import { GUIDES } from './guide.ts'
 import * as progress from './progress.ts'
 import * as sync from './sync.ts'
 
@@ -267,6 +269,8 @@ export default function App() {
               >{t.label}</button>
             ))}
           </div>
+
+          {GUIDES[exp.id] && <GuidePanel guide={GUIDES[exp.id]!} title={exp.title} />}
 
           {exp.sequence && (
             <SequenceEditor
