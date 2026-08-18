@@ -65,23 +65,31 @@ export type TryStep = {
 export type Guide = {
   /** 这个实验回答什么问题 —— 一句话，看完知道要不要点进来 */
   question: string
-  /** 屏幕上每块是什么 */
-  read: { at: string; is: string }[]
+  /**
+   * 屏幕上每块是什么。`anchor` 是**这块东西在页面上的 CSS 选择器** ——
+   * 悬浮卡拿它做两件事：讲到这一条时把那块高亮起来，以及反过来，
+   * 用户点了页面上那块就跳到这一条。
+   *
+   * ⚠️ 选择器只保证在**默认页签**上匹配得到。讲别的页签上的东西时，
+   * 锚到 `.tabs`（"去点那个页签"本身就是要说的话）。
+   * 冒烟第 13 组逐个核对它们真的匹配得到元素 —— 舞台改了 class，这里会红。
+   */
+  read: { at: string; is: string; anchor?: string }[]
   /** 先拧什么、看什么 */
   try: TryStep[]
   /** 这一屏会用到的名词 */
   terms: string[]
 }
 
-/** 页面本身怎么用 —— 与具体实验无关，写一次 */
-export const TOUR: { at: string; is: string }[] = [
-  { at: '左边', is: '30 个实验，按四门课分组。点一个就换一整屏。' },
-  { at: '中间', is: '舞台 —— 这个算法此刻的样子。上面几个页签是同一件事的不同看法。' },
-  { at: '中间偏下的「轴」', is: '整条推演被切成了一步一步。点任意一格跳到那一步，柱子高低是那一步的某个量。' },
-  { at: '再往下', is: '逐步日志，每一步一句话。点某一行也能跳过去。' },
-  { at: '最下面', is: '真题。选一道，实验会自动切成题目的配置；答完能跳回轨迹里看为什么。' },
-  { at: '右边', is: '参数（改了立刻重跑）和读数（当前这一步的关键数字）。' },
-  { at: '最底下的「边界」', is: '这个仿真**没有**模拟什么 —— 免得你拿它当全部事实。' },
+/** 页面本身怎么用 —— 与具体实验无关，写一次。锚点跟 read 项同一套用法。 */
+export const TOUR: { at: string; is: string; anchor?: string }[] = [
+  { at: '左边', is: '30 个实验，按四门课分组。点一个就换一整屏。', anchor: '.nav' },
+  { at: '中间', is: '舞台 —— 这个算法此刻的样子。上面几个页签是同一件事的不同看法。', anchor: '.stagewrap' },
+  { at: '中间偏下的「轴」', is: '整条推演被切成了一步一步。点任意一格跳到那一步，柱子高低是那一步的某个量。', anchor: '.axis' },
+  { at: '再往下', is: '逐步日志，每一步一句话。点某一行也能跳过去。', anchor: '.card.log' },
+  { at: '最下面', is: '真题。选一道，实验会自动切成题目的配置；答完能跳回轨迹里看为什么。', anchor: '.card.prob' },
+  { at: '右边', is: '参数（改了立刻重跑）和读数（当前这一步的关键数字）。', anchor: '.body.params' },
+  { at: '最底下的「边界」', is: '这个仿真**没有**模拟什么 —— 免得你拿它当全部事实。', anchor: '.bounds' },
 ]
 
 /**
@@ -174,9 +182,9 @@ export const GUIDES: Record<string, Guide> = {
   cache: {
     question: '同一串内存地址，Cache 怎么摆能少跑几趟内存？',
     read: [
-      { at: '上面那条彩色的位串', is: '当前访问的地址被切成三段：标记 / 组号 / 块内偏移。' },
-      { at: '中间的格子矩阵', is: 'Cache 本身。竖着是组，横着是组内的路。虚线箭头指向这次落到哪一组。' },
-      { at: '轴上的柱子', is: '到这一步为止的滚动命中率 —— 绿格命中、红格缺失。' },
+      { at: '上面那条彩色的位串', is: '当前访问的地址被切成三段：标记 / 组号 / 块内偏移。', anchor: '.bitrow' },
+      { at: '中间的格子矩阵', is: 'Cache 本身。竖着是组，横着是组内的路。虚线箭头指向这次落到哪一组。', anchor: '.sets' },
+      { at: '轴上的柱子', is: '到这一步为止的滚动命中率 —— 绿格命中、红格缺失。', anchor: '.axis' },
     ],
     try: [
       { act: '把相联度从 2 调到 1', watch: '地址拆分里组号变长、标记变短；同组冲突的那几个地址开始互相挤，命中率掉下来。', param: '相联度' },
@@ -188,9 +196,9 @@ export const GUIDES: Record<string, Guide> = {
   scheduler: {
     question: '同一批进程，换个调度算法，谁先跑完、平均等多久？',
     read: [
-      { at: '甘特图每一行', is: '一个进程。深色格是它在 CPU 上跑，浅色是就绪等待。' },
-      { at: '进程表', is: '题面数据：到达时刻和服务时间。可以直接改，也可以加一行。' },
-      { at: '右边读数', is: '当前时刻在跑谁、就绪队列里排着谁、还剩多少。' },
+      { at: '甘特图每一行', is: '一个进程。深色格是它在 CPU 上跑，浅色是就绪等待。', anchor: '.gantt' },
+      { at: '进程表', is: '题面数据：到达时刻和服务时间。可以直接改，也可以加一行。', anchor: '.enttab' },
+      { at: '右边读数', is: '当前时刻在跑谁、就绪队列里排着谁、还剩多少。', anchor: '.readouts' },
     ],
     try: [
       { act: '装上「护航效应」预置，在 FCFS 和 SJF 之间切', watch: '长作业排在前面时 FCFS 的平均周转明显吃亏 —— 后面一串短作业全被它堵着。', param: '调度算法', preset: '护航效应' },
@@ -202,8 +210,8 @@ export const GUIDES: Record<string, Guide> = {
   tcp: {
     question: '一条 TCP 连接遇到丢包，发送窗口是怎么涨、怎么砍的？',
     read: [
-      { at: '锯齿曲线', is: '实线是 cwnd，虚线是 ssthresh。竖的红虚线是丢包事件。' },
-      { at: '状态机页签', is: '当前处在慢启动、拥塞避免还是快恢复，以及这一档的涨法。' },
+      { at: '锯齿曲线', is: '实线是 cwnd，虚线是 ssthresh。竖的红虚线是丢包事件。', anchor: '.curve' },
+      { at: '状态机页签', is: '当前处在慢启动、拥塞避免还是快恢复，以及这一档的涨法。', anchor: '.tabs' },
     ],
     try: [
       { act: '把丢包事件表里的类型改成 timeout', watch: 'cwnd 直接掉回 1、回到慢启动 —— 比三次重复 ACK 惨得多。' },
@@ -214,8 +222,8 @@ export const GUIDES: Record<string, Guide> = {
   page: {
     question: '同一串页面引用，哪种置换算法缺页少？多给物理块一定更好吗？',
     read: [
-      { at: '置换表', is: '每一列是一次引用，格子里是当时各物理块装着谁，红色表示这次缺页。' },
-      { at: '引用串输入框', is: '题面数据，可以直接改。' },
+      { at: '置换表', is: '每一列是一次引用，格子里是当时各物理块装着谁，红色表示这次缺页。', anchor: '.ptable' },
+      { at: '引用串输入框', is: '题面数据，可以直接改。', anchor: '.seqin' },
     ],
     try: [
       { act: '选 FIFO，把物理块数从 3 调到 4，用「Belady 经典串」那条预置', watch: '缺页次数不降反升 —— 这就是 Belady 异常，LRU 和 OPT 换过去就不会。', param: '物理块数', preset: 'Belady 经典串' },
@@ -226,8 +234,8 @@ export const GUIDES: Record<string, Guide> = {
   disk: {
     question: '一队磁道请求，磁头按什么顺序走最省？',
     read: [
-      { at: '轨迹图', is: '横轴是磁道号，折线是磁头走过的路。空心虚线圈是"只是路过或掉头"的折返点。' },
-      { at: '右边读数', is: '这一步移动了多少磁道、累计多少。' },
+      { at: '轨迹图', is: '横轴是磁道号，折线是磁头走过的路。空心虚线圈是"只是路过或掉头"的折返点。', anchor: '.dplot' },
+      { at: '右边读数', is: '这一步移动了多少磁道、累计多少。', anchor: '.readouts' },
     ],
     try: [
       { act: '在 SCAN 和 LOOK 之间切', watch: '差别只在最后：SCAN 会一直走到磁盘边界才掉头，LOOK 走到最远的那个请求就掉头。', param: '调度算法' },
@@ -239,9 +247,9 @@ export const GUIDES: Record<string, Guide> = {
   sort: {
     question: '七种排序，每一趟之后数组长什么样？哪些位置是真定了？',
     read: [
-      { at: '柱状数组', is: '当前状态。深色是**已确定最终位置**，浅色只是**暂时有序、后面还会动**。' },
-      { at: '空出来的那一格', is: '挖坑法：手里正端着一个值，坑还没填上 —— 所以数组看起来会"少一个"。' },
-      { at: '逐趟结果页签', is: '每一趟结束时的快照，考试问的常常就是这个。' },
+      { at: '柱状数组', is: '当前状态。深色是**已确定最终位置**，浅色只是**暂时有序、后面还会动**。', anchor: '.sbars' },
+      { at: '空出来的那一格', is: '挖坑法：手里正端着一个值，坑还没填上 —— 所以数组看起来会"少一个"。', anchor: '.sbars' },
+      { at: '逐趟结果页签', is: '每一趟结束时的快照，考试问的常常就是这个。', anchor: '.tabs' },
     ],
     try: [
       { act: '切到直接插入，再切到冒泡', watch: '插入的前缀只是"暂时有序"，冒泡的后缀才是"真的定了" —— 两者在图上颜色不同。', param: '排序算法' },
@@ -252,8 +260,8 @@ export const GUIDES: Record<string, Guide> = {
   dijkstra: {
     question: '从一个点出发，到每个点的最短路是怎么一步步定下来的？',
     read: [
-      { at: '图', is: '结点上的数字是当前记录的最短距离，加粗的边是最短路径树。' },
-      { at: '逐轮距离表', is: '每一轮：选中谁、松弛了谁、哪些距离被改小了。' },
+      { at: '图', is: '结点上的数字是当前记录的最短距离，加粗的边是最短路径树。', anchor: '.gvwrap' },
+      { at: '逐轮距离表', is: '每一轮：选中谁、松弛了谁、哪些距离被改小了。', anchor: '.tabs' },
     ],
     try: [
       { act: '换源点', watch: '最短路径树整棵变样 —— 它是"从这个源点看"的树，不是图的固有属性。', param: '源点' },
@@ -264,9 +272,9 @@ export const GUIDES: Record<string, Guide> = {
   banker: {
     question: '现在把资源分出去，会不会走进死锁？',
     read: [
-      { at: '资源矩阵', is: 'Max 是声明的最大需求，Allocation 是已经给的，Need 是还差的（自动算，不用填）。' },
-      { at: '安全性检查页签', is: '逐轮找"Need 能被当前可用量满足"的进程，找到就假设它跑完并归还。' },
-      { at: '最后一步', is: '找得到全排列就是安全，并给出安全序列；卡住就是不安全。' },
+      { at: '资源矩阵', is: 'Max 是声明的最大需求，Allocation 是已经给的，Need 是还差的（自动算，不用填）。', anchor: '.enttab' },
+      { at: '安全性检查页签', is: '逐轮找"Need 能被当前可用量满足"的进程，找到就假设它跑完并归还。', anchor: '.tabs' },
+      { at: '最后一步', is: '找得到全排列就是安全，并给出安全序列；卡住就是不安全。', anchor: '.card.log' },
     ],
     try: [
       { act: '把某个进程的 Max 调大', watch: 'Need 跟着变大，可能就再也凑不出安全序列了 —— 结论从"安全"翻成"不安全"。' },
@@ -277,8 +285,8 @@ export const GUIDES: Record<string, Guide> = {
   arq: {
     question: '帧丢了之后，回退 N 和选择重传各要重发多少个？',
     read: [
-      { at: '时空图', is: '左边是发送方、右边是接收方。斜线是帧，红色是丢掉的。' },
-      { at: '窗口状态页签', is: '发送窗口此刻滑到哪儿、哪些已确认。' },
+      { at: '时空图', is: '左边是发送方、右边是接收方。斜线是帧，红色是丢掉的。', anchor: '.aplot' },
+      { at: '窗口状态页签', is: '发送窗口此刻滑到哪儿、哪些已确认。', anchor: '.tabs' },
     ],
     try: [
       { act: '在 GBN 和 SR 之间切（同一组丢包事件）', watch: 'GBN 把丢的那个后面全部重发一遍，SR 只补那一个 —— 传输次数差出来的就是代价。' },
@@ -289,8 +297,8 @@ export const GUIDES: Record<string, Guide> = {
   float: {
     question: '一个十进制小数，怎么变成 32 位里的那一串 0 和 1？',
     read: [
-      { at: '位域拆解', is: '符号 1 位 / 阶码 8 位 / 尾数 23 位（单精度）。鼠标停在某段能看到它的值。' },
-      { at: '推导链页签', is: '七步：定符号、转二进制、规格化、算阶码、取尾数、拼起来、验证。' },
+      { at: '位域拆解', is: '符号 1 位 / 阶码 8 位 / 尾数 23 位（单精度）。鼠标停在某段能看到它的值。', anchor: '.bfrow' },
+      { at: '推导链页签', is: '七步：定符号、转二进制、规格化、算阶码、取尾数、拼起来、验证。', anchor: '.tabs' },
     ],
     try: [
       { act: '把数改成 0.1', watch: '二进制是无限循环的，尾数只能截断 —— 这就是浮点误差的来源，验证那一步会显示回读的真实值。' },
@@ -302,8 +310,8 @@ export const GUIDES: Record<string, Guide> = {
   pipeline: {
     question: '有数据冒险的时候，五段流水线要停几拍？前递能省下几拍？',
     read: [
-      { at: '时空图', is: '横轴是周期，每一行是一条指令，格子里是它这个周期在哪一段。' },
-      { at: '带斜纹的格子', is: '停顿（气泡）。它后面的指令跟着一起停。' },
+      { at: '时空图', is: '横轴是周期，每一行是一条指令，格子里是它这个周期在哪一段。', anchor: '.ptab.pipe' },
+      { at: '带斜纹的格子', is: '停顿（气泡）。它后面的指令跟着一起停。', anchor: '.pipe' },
     ],
     try: [
       { act: '把数据前递从 0 切到 1', watch: '停顿的格子少掉一批，总周期数明显下降 —— 省下来的就是前递的价值。', param: '数据前递' },
@@ -314,8 +322,8 @@ export const GUIDES: Record<string, Guide> = {
   vm: {
     question: '一个虚地址，要走几步、访问几次内存，才变成物理地址？',
     read: [
-      { at: '转换链', is: '拆地址 → 查 TLB →（没中就）查页表 → 拼物理地址。' },
-      { at: '位域', is: '低位是页内偏移，高位是页号。偏移原样搬过去，只有页号被翻译。' },
+      { at: '转换链', is: '拆地址 → 查 TLB →（没中就）查页表 → 拼物理地址。', anchor: '.vmchain' },
+      { at: '位域', is: '低位是页内偏移，高位是页号。偏移原样搬过去，只有页号被翻译。', anchor: '.bfrow' },
     ],
     try: [
       { act: '把页大小从 4096 改成 1024', watch: '偏移从 12 位缩到 10 位，页号变长 —— 页表项也就更多。', param: '页大小' },
@@ -326,8 +334,8 @@ export const GUIDES: Record<string, Guide> = {
   multiply: {
     question: '乘法和除法在硬件里是怎么一位一位做出来的？',
     read: [
-      { at: '寄存器视图', is: '每一轮之后各寄存器的值，加粗的是这一轮变了的。' },
-      { at: '逐轮表', is: '每一轮判断了什么、做了加还是减、移了几位。' },
+      { at: '寄存器视图', is: '每一轮之后各寄存器的值，加粗的是这一轮变了的。', anchor: '.mregs' },
+      { at: '逐轮表', is: '每一轮判断了什么、做了加还是减、移了几位。', anchor: '.tabs' },
     ],
     try: [
       { act: '在三种算法之间切', watch: '原码一位乘要先取绝对值最后再定符号；Booth 直接处理带符号数；加减交替是除法。', param: '算法' },
@@ -338,8 +346,8 @@ export const GUIDES: Record<string, Guide> = {
   crc: {
     question: '发过去的一串位被改了一位，CRC 能不能查出来？',
     read: [
-      { at: '竖式', is: '模 2 除法，每一步都是异或，不进位不借位。' },
-      { at: '结果那一行', is: '余数就是校验位，附在数据后面构成码字。' },
+      { at: '竖式', is: '模 2 除法，每一步都是异或，不进位不借位。', anchor: '.crcdiv' },
+      { at: '结果那一行', is: '余数就是校验位，附在数据后面构成码字。', anchor: '.crcdiv .crow:last-of-type' },
     ],
     try: [
       { act: '把码字里任意一位翻转', watch: '收端再除一次，余数不为 0 —— 检出。这个实验对每一位都试过一遍。' },
@@ -350,8 +358,8 @@ export const GUIDES: Record<string, Guide> = {
   hamming: {
     question: '海明码怎么做到"算出来的数就是出错的位号"？',
     read: [
-      { at: '位序表', is: '2 的幂次位（1、2、4、8…）放校验位，其余放数据位。' },
-      { at: '每个校验位那一行', is: '它负责哪些位 —— 规律是"位号的二进制里那一位是 1"。' },
+      { at: '位序表', is: '2 的幂次位（1、2、4、8…）放校验位，其余放数据位。', anchor: '.hgrid' },
+      { at: '每个校验位那一行', is: '它负责哪些位 —— 规律是"位号的二进制里那一位是 1"。', anchor: '.hrow' },
     ],
     try: [
       { act: '翻转任意一个数据位', watch: '收端算出的校验子（二进制）恰好等于出错位的位号，直接指出来。' },
@@ -362,8 +370,8 @@ export const GUIDES: Record<string, Guide> = {
   subnet: {
     question: '给一个网段和掩码，能划几个子网、每个能放多少台机器？',
     read: [
-      { at: '位域', is: '32 位地址里，掩码的 1 划出网络号、0 是主机号。' },
-      { at: '子网表', is: '每个子网的网络地址、可用主机范围、广播地址。' },
+      { at: '位域', is: '32 位地址里，掩码的 1 划出网络号、0 是主机号。', anchor: '.bfrow' },
+      { at: '子网表', is: '每个子网的网络地址、可用主机范围、广播地址。', anchor: '.tabs' },
     ],
     try: [
       { act: '把掩码从 /24 改成 /26', watch: '子网数 ×4、每个子网的主机数 ÷4 —— 借几位就翻几倍。' },
@@ -374,8 +382,8 @@ export const GUIDES: Record<string, Guide> = {
   handshake: {
     question: '建立和断开一条 TCP 连接，两端的状态各自怎么变？',
     read: [
-      { at: '时序图', is: '左右两条竖线是两端，斜箭头是报文，上面标着标志位和序号。' },
-      { at: '两侧的状态标签', is: '每收发一个报文之后各自处在什么状态。' },
+      { at: '时序图', is: '左右两条竖线是两端，斜箭头是报文，上面标着标志位和序号。', anchor: '.hsplot' },
+      { at: '两侧的状态标签', is: '每收发一个报文之后各自处在什么状态。', anchor: '.hsside' },
     ],
     try: [
       { act: '走完四次挥手', watch: '主动关闭方进 TIME_WAIT 要等 2MSL 才真正关掉 —— 这一段在图上是有长度的。' },
@@ -386,8 +394,8 @@ export const GUIDES: Record<string, Guide> = {
   avl: {
     question: '往二叉搜索树里插入，什么时候会失衡？该怎么转？',
     read: [
-      { at: '树形', is: '结点上的小数字是平衡因子（左高 − 右高）。' },
-      { at: '标红的结点', is: '失衡点 —— 从插入位置往上找到的第一个 |bf| > 1 的结点。' },
+      { at: '树形', is: '结点上的小数字是平衡因子（左高 − 右高）。', anchor: '.tvbox' },
+      { at: '标红的结点', is: '失衡点 —— 从插入位置往上找到的第一个 |bf| > 1 的结点。', anchor: '.tvbox' },
     ],
     try: [
       { act: '切到 bst 模式插同一串', watch: '不做旋转，树会长成一条链，查找退化成 O(n)。这就是 AVL 要解决的问题。', param: '模式' },
@@ -398,8 +406,8 @@ export const GUIDES: Record<string, Guide> = {
   hash: {
     question: '冲突了怎么办？四种处理方式的平均查找长度差多少？',
     read: [
-      { at: '槽位表', is: '每个槽装着谁。虚线框是探测路过但没停下的槽。' },
-      { at: 'ASL 页签', is: '每个关键字查到它要比较几次，平均下来就是 ASL。' },
+      { at: '槽位表', is: '每个槽装着谁。虚线框是探测路过但没停下的槽。', anchor: '.hslots' },
+      { at: 'ASL 页签', is: '每个关键字查到它要比较几次，平均下来就是 ASL。', anchor: '.tabs' },
     ],
     try: [
       { act: '在拉链和线性探测之间切', watch: '拉链的 ASL 只跟链长有关；线性探测会堆积成一片，后来的要探很远。', param: '冲突处理' },
@@ -410,8 +418,8 @@ export const GUIDES: Record<string, Guide> = {
   huffman: {
     question: '给一组权值，怎么合并才能让总编码最短？',
     read: [
-      { at: '森林', is: '每一步取最小的两棵合并成一棵，权值相加当新根。' },
-      { at: '编码表', is: '左 0 右 1 走到叶子。所有编码都在叶子上，所以互不为前缀。' },
+      { at: '森林', is: '每一步取最小的两棵合并成一棵，权值相加当新根。', anchor: '.tv' },
+      { at: '编码表', is: '左 0 右 1 走到叶子。所有编码都在叶子上，所以互不为前缀。', anchor: '.tabs' },
     ],
     try: [
       { act: '改几个权值', watch: '树形整个变样，但 WPL 始终等于所有内部结点权值之和 —— 可以拿来验算。' },
@@ -422,8 +430,8 @@ export const GUIDES: Record<string, Guide> = {
   kmp: {
     question: 'next 数组是怎么求的？失配时模式串到底滑多远？',
     read: [
-      { at: 'next 数组页签', is: '模式串每个位置的"最长相等前后缀"长度。' },
-      { at: '匹配对齐页签', is: '主串和模式串当前怎么对齐的，红色是失配的那一位。' },
+      { at: 'next 数组页签', is: '模式串每个位置的"最长相等前后缀"长度。', anchor: '.tabs' },
+      { at: '匹配对齐页签', is: '主串和模式串当前怎么对齐的，红色是失配的那一位。', anchor: '.tabs' },
     ],
     try: [
       { act: '把模式串换成 ababaca', watch: 'next 值明显大于 0，失配时能滑好几位 —— 重复越多，KMP 省得越多。', param: '模式串' },
@@ -434,8 +442,8 @@ export const GUIDES: Record<string, Guide> = {
   mst: {
     question: 'Prim 和 Kruskal 挑边的顺序不同，最后的树一样吗？',
     read: [
-      { at: '图', is: '加粗的是已选进生成树的边，灰的是被否掉的。' },
-      { at: '边表页签', is: '每一步考虑了哪条边、为什么要（或不要）。' },
+      { at: '图', is: '加粗的是已选进生成树的边，灰的是被否掉的。', anchor: '.gvwrap' },
+      { at: '边表页签', is: '每一步考虑了哪条边、为什么要（或不要）。', anchor: '.tabs' },
     ],
     try: [
       { act: '在 Prim 和 Kruskal 之间切', watch: '挑边的顺序完全不同，但**总权值必然相同** —— 树形可能不一样，代价一定一样。', param: '算法' },
@@ -446,8 +454,8 @@ export const GUIDES: Record<string, Guide> = {
   topo: {
     question: '这个工程最短要多久？哪些环节拖不得？',
     read: [
-      { at: '图', is: '点是事件、边是活动，边上的数字是工期。' },
-      { at: '表格页签', is: '每个事件的 ve（最早）和 vl（最迟），以及每个活动的余量。' },
+      { at: '图', is: '点是事件、边是活动，边上的数字是工期。', anchor: '.gvwrap' },
+      { at: '表格页签', is: '每个事件的 ve（最早）和 vl（最迟），以及每个活动的余量。', anchor: '.tabs' },
     ],
     try: [
       { act: '切到 critical', watch: '余量为 0 的活动被标出来，串起来就是关键路径 —— 它决定总工期。', param: '做什么' },
@@ -458,8 +466,8 @@ export const GUIDES: Record<string, Guide> = {
   partition: {
     question: '同一串内存请求，四种放置策略会分到哪儿？谁更碎？',
     read: [
-      { at: '内存条', is: '横着一整条内存，深色是已分配、浅色是空闲。' },
-      { at: '分区表', is: '每块的起址、大小、归谁。' },
+      { at: '内存条', is: '横着一整条内存，深色是已分配、浅色是空闲。', anchor: '.membar' },
+      { at: '分区表', is: '每块的起址、大小、归谁。', anchor: '.tabs' },
     ],
     try: [
       { act: '装上「四策略全分开」预置，在四种策略之间切', watch: '这串请求被特意挑过：作业 7 在四种策略下落在四个不同的起址。', param: '放置策略', preset: '四策略全分开' },
@@ -470,8 +478,8 @@ export const GUIDES: Record<string, Guide> = {
   inode: {
     question: '读文件某个字节，要先访问几次磁盘？',
     read: [
-      { at: '寻址链', is: '从逻辑块号开始，判断落在直接、一级间址还是二级间址，一层层往下。' },
-      { at: '分级结构页签', is: '每一级能覆盖多少块 —— 决定了分界点在哪儿。' },
+      { at: '寻址链', is: '从逻辑块号开始，判断落在直接、一级间址还是二级间址，一层层往下。', anchor: '.inchain' },
+      { at: '分级结构页签', is: '每一级能覆盖多少块 —— 决定了分界点在哪儿。', anchor: '.tabs' },
     ],
     try: [
       { act: '把块大小从 1024 改成 4096', watch: '一个间址块能装的指针数翻两番，直接地址覆盖不到的分界点整个往后挪。', param: '块大小' },
@@ -482,8 +490,8 @@ export const GUIDES: Record<string, Guide> = {
   bplus: {
     question: '往 B+ 树里插入，什么时候分裂？提上去的是哪个键？',
     read: [
-      { at: '树形', is: '内部结点只当路标，**真正的键全在叶子层**，叶子之间还串成链。' },
-      { at: '标红的结点', is: '这一步装满了、正在分裂。' },
+      { at: '树形', is: '内部结点只当路标，**真正的键全在叶子层**，叶子之间还串成链。', anchor: '.bpt' },
+      { at: '标红的结点', is: '这一步装满了、正在分裂。', anchor: '.bpt' },
     ],
     try: [
       { act: '把阶从 3 调到 5', watch: '每个结点能装的键变多，分裂次数下降，树变矮 —— B+ 树就是靠"矮"来省磁盘访问。', param: '阶' },
@@ -494,8 +502,8 @@ export const GUIDES: Record<string, Guide> = {
   traverse: {
     question: 'DFS 和 BFS 的访问顺序为什么不同？辅助结构装着什么？',
     read: [
-      { at: '图', is: '已访问的结点变色，加粗的边是生成树。' },
-      { at: '栈 / 队列页签', is: '当前辅助结构里排着谁 —— DFS 用栈、BFS 用队列，差别全在这儿。' },
+      { at: '图', is: '已访问的结点变色，加粗的边是生成树。', anchor: '.gvwrap' },
+      { at: '栈 / 队列页签', is: '当前辅助结构里排着谁 —— DFS 用栈、BFS 用队列，差别全在这儿。', anchor: '.tabs' },
     ],
     try: [
       { act: '在 DFS 和 BFS 之间切', watch: '同一个图、同一个起点，访问顺序完全不同；生成树的形状也不同。' },
@@ -506,9 +514,9 @@ export const GUIDES: Record<string, Guide> = {
   semaphore: {
     question: 'P 操作的顺序写反了，到底会怎么死？',
     read: [
-      { at: '缓冲区', is: '几个格子，生产者往里放、消费者往外取。' },
-      { at: '两段代码页签', is: '生产者和消费者的代码，高亮的是当前执行到的那一行。' },
-      { at: '线程状态', is: '谁在跑、谁被阻塞在哪个信号量上。' },
+      { at: '缓冲区', is: '几个格子，生产者往里放、消费者往外取。', anchor: '.sbuf' },
+      { at: '两段代码页签', is: '生产者和消费者的代码，高亮的是当前执行到的那一行。', anchor: '.tabs' },
+      { at: '线程状态', is: '谁在跑、谁被阻塞在哪个信号量上。', anchor: '.thrs' },
     ],
     try: [
       { act: '把 P 的顺序切成 wrong', watch: '先 P(mutex) 再 P(empty) —— 抱着锁去睡觉，另一个也进不来，**真的死给你看**。', param: 'P 的顺序' },
@@ -519,8 +527,8 @@ export const GUIDES: Record<string, Guide> = {
   bitmap: {
     question: '位示图里第几个字第几位，对应哪个盘块？',
     read: [
-      { at: '位阵', is: '每一行是一个字，每一格是一位。0 空闲、1 已用。' },
-      { at: '换算公式页签', is: '盘块号 ↔ (字号, 位号) 的两个方向，以及为什么是这么算的。' },
+      { at: '位阵', is: '每一行是一个字，每一格是一位。0 空闲、1 已用。', anchor: '.bmgrid' },
+      { at: '换算公式页签', is: '盘块号 ↔ (字号, 位号) 的两个方向，以及为什么是这么算的。', anchor: '.tabs' },
     ],
     try: [
       { act: '把字长从 8 改成 32', watch: '同样的盘块号落到完全不同的 (字号, 位号) —— 考试就爱在这儿设坑。', param: '字长' },
@@ -531,8 +539,8 @@ export const GUIDES: Record<string, Guide> = {
   csma: {
     question: '两台机器同时发，冲突之后各自等多久？',
     read: [
-      { at: '时间轴', is: '每一行是一个站点，红色格是冲突发生的时刻。' },
-      { at: '退避表', is: '第几次冲突、退避区间是多少、随机挑中了几。' },
+      { at: '时间轴', is: '每一行是一个站点，红色格是冲突发生的时刻。', anchor: '.csma' },
+      { at: '退避表', is: '第几次冲突、退避区间是多少、随机挑中了几。', anchor: '.ptab' },
     ],
     try: [
       { act: '看退避区间怎么变', watch: '第 k 次冲突从 0..2^k−1 里挑 —— 区间随冲突次数指数变宽，这就是"二进制指数退避"。' },
@@ -541,3 +549,62 @@ export const GUIDES: Record<string, Guide> = {
     terms: ['csma', 'backoff'],
   },
 }
+
+// ═══════════════════════════════════════════════════════════════
+//  导览：把上面这些内容摊成一串**有序的卡**
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * 悬浮卡里的一页。
+ *
+ * 顺序就是「‹ 1/N ›」翻页的顺序，也是新手真实的卡壳顺序：
+ * 这一屏在问什么 → 屏幕上每块是什么 → 先拧什么看什么 → 名词。
+ */
+export type Card = {
+  id: string
+  title: string
+  body: string
+  /** 讲到这一页时高亮页面上的哪块；反过来，点了那块也跳到这一页 */
+  anchor?: string
+  /** 高亮参数面板里的某一项（按 `.k` 的文字前缀找，选择器表达不了） */
+  param?: string
+  /** 高亮某个预置按钮（按按钮文字精确匹配） */
+  preset?: string
+  /** 这一页提到的名词 —— 渲染成可点的链接，跳到对应的名词页 */
+  see?: string[]
+}
+
+const termCardId = (id: string) => `term:${id}`
+
+/**
+ * 摊平成卡片序列。**不另存一份数据**：卡是从上面那三块（question / read / try / terms）
+ * 现算出来的，所以内容只有一处真源 —— 改导览不用记得同步改卡。
+ */
+export function cardsOf(expId: string): Card[] {
+  const g = GUIDES[expId]
+  if (!g) return []
+  const cards: Card[] = [
+    { id: 'intro', title: '这一屏在问什么', body: g.question, anchor: '.stagewrap', see: g.terms.slice(0, 3) },
+    ...g.read.map((r, i) => ({
+      id: `read${i}`, title: r.at, body: r.is, anchor: r.anchor,
+    })),
+    ...g.try.map((t, i) => ({
+      id: `try${i}`, title: `试一试 · ${t.act}`, body: t.watch,
+      ...(t.param ? { param: t.param } : {}),
+      ...(t.preset ? { preset: t.preset } : {}),
+      ...(!t.param && !t.preset ? { anchor: '.stagewrap' } : {}),
+    })),
+    ...g.terms.map(id => {
+      const t = TERMS.find(x => x.id === id)!
+      return { id: termCardId(id), title: t.term, body: t.gloss }
+    }),
+  ]
+  return cards
+}
+
+/** 页面导览（跟实验无关的那一套），单独一串 */
+export function tourCards(): Card[] {
+  return TOUR.map((r, i) => ({ id: `tour${i}`, title: r.at, body: r.is, anchor: r.anchor }))
+}
+
+export { termCardId }

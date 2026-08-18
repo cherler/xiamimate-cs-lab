@@ -11,7 +11,7 @@
  * 所以「够不够 30 个实验」这条也归浏览器那边 —— 它在那儿反而更强：
  * 数的是**页面上真的列出来的**实验，不是源码里写了几条。
  */
-import { GUIDES, TERMS, TOUR } from '../web/src/guide.ts'
+import { GUIDES, TERMS, TOUR, cardsOf, tourCards } from '../web/src/guide.ts'
 
 let failures = 0
 const ok = (m: string) => console.log(`  ✅ ${m}`)
@@ -71,6 +71,51 @@ console.log('\n【引用】')
 
   const dupTerms = Object.entries(GUIDES).filter(([, g]) => new Set(g.terms).size !== g.terms.length)
   dupTerms.length === 0 ? ok('同一实验里没有重复引用') : bad(`重复引用：${dupTerms.map(([k]) => k).join(', ')}`)
+}
+
+console.log('\n【卡片序列】')
+{
+  //  摊平之后的 id 必须唯一 —— 重复的 id 会让"点元素跳到那一页"跳错地方
+  const clash: string[] = []
+  for (const id of Object.keys(GUIDES)) {
+    const ids = cardsOf(id).map(c => c.id)
+    if (new Set(ids).size !== ids.length) clash.push(id)
+  }
+  clash.length === 0 ? ok('每个实验的卡片 id 都不重复') : bad(`卡片 id 重复：${clash.join(', ')}`)
+
+  const short = Object.keys(GUIDES).filter(id => cardsOf(id).length < 5)
+  short.length === 0
+    ? ok(`最短的一串也有 ${Math.min(...Object.keys(GUIDES).map(id => cardsOf(id).length))} 张卡`)
+    : bad(`卡片太少：${short.join(', ')}`)
+
+  //  锚点得是**非空**的选择器。写成空串比不写更糟：不写是"这一页不高亮"，
+  //  空串会让 querySelector 抛，而抛在渲染里就是整块白屏。
+  const emptyAnchor: string[] = []
+  for (const id of Object.keys(GUIDES)) {
+    for (const c of cardsOf(id)) {
+      if (c.anchor !== undefined && !c.anchor.trim()) emptyAnchor.push(`${id}/${c.id}`)
+      if (c.param !== undefined && !c.param.trim()) emptyAnchor.push(`${id}/${c.id}`)
+    }
+  }
+  emptyAnchor.length === 0 ? ok('没有空的锚点') : bad(`空锚点：${emptyAnchor.join(', ')}`)
+
+  //  「先拧什么」那几张要么锚到参数/预置、要么锚到舞台 —— 不能什么都不锚，
+  //  否则翻到那一页时屏幕上没有任何东西亮起来，用户不知道该看哪儿。
+  const noAnchor: string[] = []
+  for (const id of Object.keys(GUIDES)) {
+    for (const c of cardsOf(id)) {
+      if (!c.anchor && !c.param && !c.preset && !c.id.startsWith('term:')) {
+        noAnchor.push(`${id}/${c.id}`)
+      }
+    }
+  }
+  noAnchor.length === 0
+    ? ok('除名词页外，每张卡都锚到了页面上的某个东西')
+    : bad(`这些卡没有锚点，翻到时屏幕上不会有任何反应：${noAnchor.join(', ')}`)
+
+  tourCards().length === TOUR.length && tourCards().every(c => c.anchor)
+    ? ok(`页面导览 ${tourCards().length} 张卡，每张都有锚点`)
+    : bad('页面导览的卡片或锚点不完整')
 }
 
 console.log('\n【页面导览】')

@@ -824,91 +824,138 @@ await p.waitForSelector('.tick')
 }
 
 
-// ═══ 13 · 讲解卡片：30 个实验一个不少，而且提到的旋钮真的存在 ═══
-console.log('\n【13】讲解：每个实验都有"这是什么"，且导览提到的旋钮真的在页面上')
+// ═══ 13 · 讲解浮层：锚点要落得下，点哪讲哪 ═══
+console.log('\n【13】讲解浮层：30 个实验的锚点都落得下，点哪讲哪')
 {
   const names = await p.$$eval('.nav button', bs => bs.map(b => b.textContent.trim()))
-  const missing = []
-  const stray = []
+  const broken = []
+  let cardTotal = 0
   for (const name of names) {
     await nav(name)
-    const r = await p.evaluate(() => {
-      const card = document.querySelector('.guide')
-      if (!card) return null
-      return {
-        q: card.querySelector('.gq')?.textContent?.trim() ?? '',
-        read: card.querySelectorAll('.glist:not(.try) li').length,
-        tries: card.querySelectorAll('.glist.try li').length,
-        /**
-         * 导览里点名要拧的旋钮（`data-param`），以及参数面板上真实存在的旋钮。
-         * 两边都从**渲染出来的 DOM** 上取 —— 不从源码取，也不往 window 上挂全局。
-         */
-        wants: [...card.querySelectorAll('.glist.try li')]
-          .map(li => li.dataset.param).filter(Boolean),
-        wantPresets: [...card.querySelectorAll('.glist.try li')]
-          .map(li => li.dataset.preset).filter(Boolean),
-        params: [...document.querySelectorAll('.param>.k')].map(k => k.textContent.trim()),
-        //  序列与实体表的预置按钮（`.seqacts` / `.entacts` 里，排除「随机」「恢复默认」那两个 ghost）
-        presets: [...document.querySelectorAll('.seqacts button:not(.ghost), .entacts button:not(.ghost)')]
-          .map(b => b.textContent.trim()),
-      }
-    })
-    if (!r || !r.q || r.read < 2 || r.tries < 2) { missing.push(name); continue }
     /**
-     * **导览提到的旋钮必须真的在参数面板上。**
+     * **每张卡的锚点必须在这一屏上找得到。**
      *
-     * 这是这一组唯一有难度的判据：文本会漂，参数会改名或被删，而
-     * "把相联度调到 1"读起来永远像对的 —— 只有拿页面上真实的参数名比一次才知道。
+     * 这是这一组唯一有难度的判据。锚点是 CSS 选择器（`.bitrow`、`.gantt`…），
+     * 舞台的 class 一改它就落空 —— 而落空的表现只是"翻到那一页时屏幕上没反应"，
+     * 没有报错、没有红字，靠看是看不出来的。
+     *
+     * 走法：从第一页翻到最后一页，每页都问"现在页面上有没有 .guide-lit"。
+     * 名词页不锚东西，跳过它们。
      */
-    for (const want of r.wants) {
-      if (!r.params.some(x => x.startsWith(want))) {
-        stray.push(`${name}：导览说旋钮「${want}」，面板上只有 ${r.params.join(' / ') || '(没有参数)'}`)
-      }
-    }
-    for (const want of r.wantPresets) {
-      if (!r.presets.includes(want)) {
-        stray.push(`${name}：导览说预置「${want}」，页面上只有 ${r.presets.join(' / ') || '(没有预置)'}`)
-      }
+    const n = await p.evaluate(() => {
+      const t = document.querySelector('.gnum')?.textContent ?? '0 / 0'
+      return Number(t.split('/')[1])
+    })
+    if (!n) { broken.push(`${name}：没有讲解浮层`); continue }
+    cardTotal += n
+    for (let k = 0; k < n; k++) {
+      const r = await p.evaluate(() => ({
+        title: document.querySelector('.guide h3')?.textContent?.trim() ?? '',
+        lit: document.querySelectorAll('.guide-lit').length,
+        //  这一页自己声明"我该点亮点什么"。名词页是 false —— 那是设计不是 bug。
+        anchored: document.querySelector('aside.guide')?.dataset.anchored === 'true',
+      }))
+      if (r.anchored && r.lit === 0) broken.push(`${name} 第 ${k + 1} 页「${r.title}」：声明了锚点却没落下`)
+      if (k < n - 1) { await p.click('.gfoot .gnav:last-child'); await p.waitForTimeout(70) }
     }
   }
-  missing.length === 0
-    ? ok(`${names.length} 个实验都有讲解卡片（问题句 + ≥2 条"哪块是什么" + ≥2 条"先拧什么"）`)
-    : bad(`讲解卡片缺失或不完整：${missing.join('、')}`)
-  stray.length === 0
-    ? ok('导览里点名的旋钮与预置，在对应实验的页面上全都找得到')
-    : bad(`导览提到了不存在的旋钮：\n     ${stray.join('\n     ')}`)
+  broken.length === 0
+    ? ok(`${names.length} 个实验、共 ${cardTotal} 张卡，锚点全都落得下`)
+    : bad(`锚点落空 ${broken.length} 处：\n     ${broken.slice(0, 8).join('\n     ')}`)
 
-  //  自检：这条判据得会红 —— 拿一个必然不存在的旋钮名去查，必须查不到
+  /**
+   * **翻到最后一页再切实验，页面不许白。**
+   *
+   * 这条是 2026-08-18 真炸出来的：换实验时 `cards` 立刻换新，而"回到第一页"
+   * 是个 effect、要等这一帧渲染完才跑 —— 中间那一帧 `i` 还是旧值，
+   * 从 14 张卡的实验翻到最后再切去 10 张卡的，`cards[13]` 是 undefined，
+   * 读它的 `.title` 直接抛，**整棵 React 树被卸载，白屏**。
+   *
+   * 而那次报出来的是"第 3 个实验点不到" —— 症状与根因隔了一整个实验。
+   * 所以这条判据要直白地问：切完之后，左边那 30 个按钮还在吗。
+   */
+  {
+    await nav('Cache 命中率')
+    const n = await p.evaluate(() => Number((document.querySelector('.gnum')?.textContent ?? '0 / 0').split('/')[1]))
+    for (let k = 0; k < n - 1; k++) { await p.click('.gfoot .gnav:last-child'); await p.waitForTimeout(30) }
+    await nav('IEEE 754 浮点')
+    const alive = await p.evaluate(() => ({
+      navs: document.querySelectorAll('.nav button').length,
+      num: document.querySelector('.gnum')?.textContent?.trim() ?? '(没有浮层)',
+    }))
+    alive.navs === 30 && alive.num.startsWith('1 /')
+      ? ok(`翻到最后一页再切实验：页面还在（${alive.navs} 个实验），浮层回到第 ${alive.num}`)
+      : bad(`切实验把页面弄没了：nav 剩 ${alive.navs} 个、浮层 ${alive.num}`)
+  }
+
+  //  自检：这条判据得会红 —— 把高亮类删掉，同一段代码必须报"没落下"
   await nav('Cache 命中率')
-  const params = await p.$$eval('.param>.k', ks => ks.map(k => k.textContent.trim()))
-  params.some(x => x.startsWith('根本没有这个旋钮'))
-    ? bad('自检失败：编出来的旋钮名居然也匹配上了')
-    : ok('自检：编一个不存在的旋钮名，确实匹配不上 —— 上一条判据有鉴别力')
+  const litBefore = await p.evaluate(() => document.querySelectorAll('.guide-lit').length)
+  await p.evaluate(() => document.querySelectorAll('.guide-lit').forEach(e => e.classList.remove('guide-lit')))
+  const litAfter = await p.evaluate(() => document.querySelectorAll('.guide-lit').length)
+  litBefore > 0 && litAfter === 0
+    ? ok(`自检：手动摘掉高亮类后计数从 ${litBefore} 变成 0 —— 上一条判据量的确实是它`)
+    : bad(`自检失败：摘之前 ${litBefore}、之后 ${litAfter}`)
+}
 
-  // 名词卡点得开
-  const chip = await p.$('.gchips button')
-  if (chip) {
-    await chip.click(); await p.waitForTimeout(120)
-    const gloss = await p.evaluate(() => document.querySelector('.ggloss')?.textContent?.trim() ?? '')
-    gloss.length > 15 ? ok(`点名词就地展开解释（${gloss.slice(0, 18)}…）`) : bad('点名词没有展开解释')
-  } else bad('Cache 那一屏没有名词按钮')
+// 点页面上的东西，卡片跟着跳
+{
+  await nav('Cache 命中率')
+  await p.waitForTimeout(200)
+  const before = await p.evaluate(() => document.querySelector('.gnum')?.textContent?.trim())
+  await p.click('.axis .lbl'); await p.waitForTimeout(220)
+  const after = await p.evaluate(() => ({
+    num: document.querySelector('.gnum')?.textContent?.trim(),
+    title: document.querySelector('.guide h3')?.textContent?.trim(),
+    lit: document.querySelector('.guide-lit')?.className ?? '',
+  }))
+  after.num !== before && after.lit.includes('axis')
+    ? ok(`点页面上的「轴」→ 卡片跳到「${after.title}」（${before} → ${after.num}），并高亮了轴`)
+    : bad(`点轴没跳过去：${before} → ${after.num}，高亮的是 ${after.lit || '(没有)'}`)
 
-  // 「页面怎么用」展得开
-  await p.click('.gtourbtn'); await p.waitForTimeout(120)
-  const tour = await p.evaluate(() => document.querySelectorAll('.gtour .glist li').length)
-  tour >= 5 ? ok(`「页面怎么用」展开 ${tour} 条`) : bad(`页面导览只展开了 ${tour} 条`)
+  //  点参数面板里的某一项，也该跳到那条"试一试"
+  await p.click('.param:has-text("相联度") .k'); await p.waitForTimeout(220)
+  const onParam = await p.evaluate(() => ({
+    title: document.querySelector('.guide h3')?.textContent?.trim(),
+    lit: document.querySelector('.guide-lit')?.className ?? '',
+  }))
+  onParam.title?.startsWith('试一试') && onParam.lit.includes('param')
+    ? ok(`点参数「相联度」→ 跳到「${onParam.title}」并高亮那一项`)
+    : bad(`点参数没跳对：「${onParam.title}」高亮 ${onParam.lit || '(没有)'}`)
+}
 
-  // 收起之后刷新还是收起的，且仍留着问题句
-  await p.click('.guide .gx'); await p.waitForTimeout(120)
-  const afterCollapse = await p.evaluate(() => !!document.querySelector('button.guide.collapsed'))
+// 名词链接 / 「讲页面」/ 关掉之后记住
+{
+  //  ⚠️ 点同一个实验不会让浮层回到第一页（`title` 没变，重置那个 effect 不触发），
+  //  而"名词链接在第一页上"是这条判据的前提。先绕去别的实验再回来。
+  await nav('页面置换'); await nav('Cache 命中率'); await p.waitForTimeout(250)
+  const see = await p.$('.gsee button')
+  if (see) {
+    const word = (await see.textContent())?.trim()
+    await see.click(); await p.waitForTimeout(180)
+    const t = await p.evaluate(() => document.querySelector('.guide h3')?.textContent?.trim())
+    t === word ? ok(`点正文里的名词「${word}」→ 直接翻到那一页`) : bad(`名词链接跳错：点「${word}」到了「${t}」`)
+  } else bad('第一页没有名词链接')
+
+  await p.click('.chip.gchip'); await p.waitForTimeout(200)
+  const tour = await p.evaluate(() => ({
+    chip: document.querySelector('.chip.gchip')?.textContent?.trim(),
+    title: document.querySelector('.guide h3')?.textContent?.trim(),
+    lit: document.querySelector('.guide-lit')?.className ?? '',
+  }))
+  tour.chip === '讲页面' && tour.lit.includes('nav')
+    ? ok(`切到「讲页面」→ 第一页讲「${tour.title}」并高亮左边的实验目录`)
+    : bad(`切讲页面不对：chip「${tour.chip}」高亮 ${tour.lit || '(没有)'}`)
+
+  await p.click('.guide .gx'); await p.waitForTimeout(150)
+  const gone = await p.evaluate(() => !document.querySelector('aside.guide'))
   await p.reload({ waitUntil: 'networkidle' }); await p.waitForTimeout(500)
-  const stillCollapsed = await p.evaluate(() => !!document.querySelector('button.guide.collapsed'))
-  afterCollapse && stillCollapsed
-    ? ok('收起之后刷新仍是收起的 —— 学会了的人不用每次关一遍')
-    : bad(`收起没生效或没记住：收起后 ${afterCollapse}、刷新后 ${stillCollapsed}`)
-  const q = await p.evaluate(() => document.querySelector('button.guide.collapsed .gq')?.textContent?.trim() ?? '')
-  q.endsWith('？') ? ok('收起态仍然留着"这一屏在问什么"') : bad(`收起态没留问题句：「${q}」`)
-  await p.click('button.guide.collapsed'); await p.waitForTimeout(150)
+  const stillGone = await p.evaluate(() => !document.querySelector('aside.guide'))
+  gone && stillGone ? ok('关掉之后刷新仍然是关的') : bad(`关闭没生效或没记住：关后 ${gone}、刷新后 ${stillGone}`)
+
+  await p.click('.chip.gchip'); await p.waitForTimeout(250)
+  const back = await p.evaluate(() => !!document.querySelector('aside.guide'))
+  back ? ok('页眉的「讲解」能把它请回来') : bad('关掉之后请不回来')
 }
 
 console.log(`\n${'─'.repeat(50)}`)

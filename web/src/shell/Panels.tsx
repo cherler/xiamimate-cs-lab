@@ -104,7 +104,7 @@ export function ParamPanel({
 // ── 读数 ──────────────────────────────────────────────
 export function Readouts({ items }: { items: Readout[] }) {
   return (
-    <div className="card">
+    <div className="card readouts">
       <h3>读数</h3>
       <div className="body">
         {items.map((r, i) => (
