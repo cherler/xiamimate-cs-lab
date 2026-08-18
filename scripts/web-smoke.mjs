@@ -1368,6 +1368,57 @@ console.log('\n【15】实验单：四段走通，结论是现算的')
     : bad(`记忆不对：又自己弹出来 ${again.open}、页眉写着「${again.chip}」`)
 }
 
+// ═══ 16 · 播放：走到最后一步就停，不回卷 ═══
+console.log('\n【16】播放走到头会停')
+{
+  /**
+   * 用户报的：「这怎么播放起来不停了？不是应该走完 12 步就自动停吗」。
+   * 原来那行是 `onSeek(index + 1 >= N ? 0 : index + 1)` —— 到头跳回第 0 步接着放。
+   *
+   * 这个坏法**不报错、截图上也看不出来**（画面一直在动，看着很正常），
+   * 只有盯着它看完一整轮的人才会发现数字被悄悄清零了。所以得有人常驻守着。
+   *
+   * 挑步数最少的实验（文件索引寻址 4 步）—— 这一组要真等它放完，越短越好。
+   */
+  await nav('文件索引寻址')
+  const at = () => p.evaluate(() => ({
+    cur: [...document.querySelectorAll('.tick')].findIndex(t => t.classList.contains('cur')),
+    n: document.querySelectorAll('.tick').length,
+    btn: [...document.querySelectorAll('.axis button')].find(b => /播放|暂停/.test(b.textContent))?.textContent.trim() ?? '',
+  }))
+  const a0 = await at()
+  await p.click('.axis button:has-text("播放")')
+  await p.waitForTimeout(900)
+  const mid = await at()
+  //  自检先行：得先证明"它真的在放"，否则下面"停住了"可能只是压根没动
+  mid.cur > a0.cur && mid.btn.includes('暂停')
+    ? ok(`自检：按下 ▶ 之后确实在走（第 ${a0.cur + 1} 步 → 第 ${mid.cur + 1} 步）—— 下面那条量的不是"没启动"`)
+    : bad(`播放没启动：${a0.cur} → ${mid.cur}、按钮「${mid.btn}」`)
+
+  //  等它放完（余下 N 步 × 800ms，再多给两拍）
+  await p.waitForTimeout((a0.n - mid.cur) * 800 + 1600)
+  const end = await at()
+  end.cur === end.n - 1 && end.btn.includes('播放')
+    ? ok(`放到第 ${end.n} 步自动停下，按钮回到「${end.btn}」`)
+    : bad(`没停在末步：停在第 ${end.cur + 1} / ${end.n} 步、按钮「${end.btn}」`)
+
+  //  核心：再等两拍，位置一动不动 —— 老毛病会在这儿回卷到第 1 步
+  await p.waitForTimeout(1800)
+  const still = await at()
+  still.cur === end.cur
+    ? ok(`再等两拍仍停在第 ${still.cur + 1} 步 —— 没有回卷重放`)
+    : bad(`回卷了：停下后又跑到第 ${still.cur + 1} 步`)
+
+  //  停在末态再按 ▶ = 从头放一遍
+  await p.click('.axis button:has-text("播放")')
+  await p.waitForTimeout(900)
+  const again = await at()
+  again.cur < end.cur && again.btn.includes('暂停')
+    ? ok(`停在末态再按 ▶ 从头放（回到第 ${again.cur + 1} 步）`)
+    : bad(`末态按 ▶ 没从头放：到了第 ${again.cur + 1} 步、按钮「${again.btn}」`)
+  await p.click('.axis button:has-text("暂停")').catch(() => {})
+}
+
 console.log(`\n${'─'.repeat(50)}`)
 console.log(errs.length ? `控制台错误 ${errs.length} 条：\n  ` + errs.slice(0, 4).join('\n  ') : '控制台无错误')
 console.log(fail === 0 ? '视图层冒烟：通过' : `视图层冒烟：失败 ${fail} 项`)

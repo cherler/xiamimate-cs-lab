@@ -22,11 +22,18 @@ export function AxisBand({ exp, trace, index, playing, onSeek, onTogglePlay }: P
 
   useEffect(() => {
     if (!playing) return
-    timer.current = window.setInterval(() => {
-      onSeek(index + 1 >= N ? 0 : index + 1)
-    }, 800)
+    /*
+     * 走到最后一步就**停**，不回卷。
+     *
+     * 原来写的是 `index + 1 >= N ? 0 : index + 1` —— 到头了跳回第 0 步接着放，
+     * 于是播放永远停不下来。轨迹是一条**有头有尾的推演**，不是循环动画：
+     * 放完了就该停在末态让人看结果，而不是把屏幕上的数悄悄清零重来。
+     * （想再看一遍，按 ▶ 会从头放 —— 那一步在 App 的 onTogglePlay 里。）
+     */
+    if (index >= N - 1) { onTogglePlay(); return }
+    timer.current = window.setInterval(() => onSeek(index + 1), 800)
     return () => { if (timer.current) clearInterval(timer.current) }
-  }, [playing, index, N, onSeek])
+  }, [playing, index, N, onSeek, onTogglePlay])
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {

@@ -396,7 +396,11 @@ export default function App() {
                     exp={exp} trace={trace} index={clamped}
                     playing={playing}
                     onSeek={seek}
-                    onTogglePlay={() => setPlaying(p => !p)}
+                    //  停在末态时再按 ▶ = 从头放一遍（自动停之后最想做的就是这个）
+                    onTogglePlay={() => {
+                      if (!playing && clamped >= trace.length - 1) setIndex(0)
+                      setPlaying(p => !p)
+                    }}
                   />
                 </>
               : <div className="viol"><div className="t">无轨迹</div><p>当前配置跑不出任何一步。</p></div>}
