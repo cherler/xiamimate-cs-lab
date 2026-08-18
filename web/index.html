@@ -6,6 +6,22 @@
   <title>计算机专业课实验室</title>
   <!-- 内联 favicon：省掉一次必然 404 的 /favicon.ico 请求 -->
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2314141C'/%3E%3Crect x='6' y='9' width='7' height='14' rx='1.5' fill='%235B7FD4'/%3E%3Crect x='14' y='9' width='5' height='14' rx='1.5' fill='%239B6FCC'/%3E%3Crect x='20' y='9' width='6' height='14' rx='1.5' fill='%234E7C8F'/%3E%3C/svg%3E" />
+  <!--
+    外观：随系统 / 白天 / 黑夜。真源是平台的 localStorage["xm-theme"]
+    （主站 lib/theme.ts），主站、虾米看股、虾米看AI 都照它走。
+
+    **必须内联、必须在 <head> 里、必须同步执行。** React 挂载时浏览器已经画过
+    一帧了 —— 那一帧用的是默认的浅色，于是选了黑夜的人每翻一页都要先被闪一下白，
+    而闪白正是这个功能要消灭的东西。
+
+    **只读手动选的那一档。** 「随系统」= 把标记删掉，不是在这里算出一个 light/dark
+    写进去 —— 算出来的是一张拍下来那一刻的快照，系统入夜自动转深色时页面反而不跟了。
+    跟随系统由 CSS 的 prefers-color-scheme 直接管住，不需要 JS。
+
+    这段与主站 lib/theme.ts 的 THEME_BOOT_SCRIPT 是同一段；子应用各自内联一份拷贝，
+    因为它们构建时拿不到主站的模块。改那边要改这边。
+  -->
+  <script>try{var t=localStorage.getItem("xm-theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
 </head>
 <body>
   <div id="root"></div>

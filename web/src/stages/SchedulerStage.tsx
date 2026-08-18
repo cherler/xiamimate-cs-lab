@@ -2,7 +2,14 @@
 import type { SchedState } from '@engine/kernels/scheduler.ts'
 import type { StageProps } from '../types.ts'
 
-const HUES = ['#5B7FD4', '#45B39A', '#9B6FCC', '#E2884A', '#4E9FBF', '#C7658F']
+/**
+ * 进程配色**走 CSS 变量，不写死色号**。
+ *
+ * 这几个色既当甘特图的色块、又当左边的进程名（`.glbl` 是纯文字）。
+ * 写死的那一版在浅色主题下当场露馅：`#45B39A` 压在白纸上只有 **2.57:1**，
+ * P2 那一行基本看不见。色号定义在 styles.css 的令牌里，深浅各一套。
+ */
+const HUES = ['var(--p1)', 'var(--p2)', 'var(--p3)', 'var(--p4)', 'var(--p5)', 'var(--p6)']
 
 export function SchedulerStage({ doc, trace, index, state, tab }: StageProps<SchedState>) {
   const procs = doc.entities.filter(e => e.type === 'process')

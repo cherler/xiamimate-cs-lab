@@ -34,7 +34,8 @@ npm run demo:tcp
 | base | `/` | `/lab/` |
 | 平台页眉页脚 | 无 | 有（加载主站 `/chrome` 制品） |
 | 学习进度 | 只存本机 | 登录后与账号双向合并 |
-| 冒烟 | `node scripts/web-smoke.mjs http://127.0.0.1:5178/` | `node scripts/platform-smoke.mjs` |
+| 外观 | 跟随系统 | 跟平台的「随系统 / 白天 / 黑夜」 |
+| 冒烟 | `npm run smoke -- http://127.0.0.1:5178/` | `npm run smoke:platform` |
 
 **并入形态的本机入口是 `http://127.0.0.1:3000/lab`**，与虾米看股、虾米看AI 一致 ——
 主站的 `next.config.ts` 把 `/lab/*` 转给本仓的 dev server。
@@ -66,6 +67,24 @@ npm run web:build:lab
 node scripts/local-gateway.mjs --lab=static --main=static
 node scripts/platform-smoke.mjs http://127.0.0.1:8090
 ```
+
+## 外观（随系统 / 白天 / 黑夜）
+
+真源是平台的 `localStorage["xm-theme"]`（主站 `lib/theme.ts`），
+主站、虾米看股、虾米看AI 都照它走，本仓也一样。**本仓不自己做开关** ——
+设置在账户中心那一处，多一个入口就等于多一份要同步的状态。
+
+深浅两套色号写在 `web/src/styles.css` 的令牌块里，深色那份全部收在 `--dk-*`。
+浅色的强调色是**另一套色号**，不是同一个色号调亮度：琥珀 `#F0B429` 压在白纸上
+只有 1.86:1，它本来就是为暗底选的。
+
+```bash
+npm run contrast   # 两套外观 × 30 个实验，逐个元素量**合成之后**的对比度
+```
+
+门槛是：**浅色 0 处不达标**；深色只要求「欠账不比改浅色之前多」——
+深色那批 9~12px 的小字一直是 2.5~4.2:1，是既有欠账，要不要一起修是另一件事。
+
 并入的整体做法见 [虾米看股并入虾米伙伴](../wiki/27-stock-lab-platform-integration.md)，
 本仓的差异见 [logs/2026-08-18-platform-integration.md](logs/2026-08-18-platform-integration.md)。
 

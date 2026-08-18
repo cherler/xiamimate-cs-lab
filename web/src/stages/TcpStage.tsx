@@ -7,10 +7,11 @@ const PHASE_CN: Record<string, string> = {
   congestionAvoidance: '拥塞避免',
   fastRecovery: '快恢复',
 }
+/** 阶段配色走 CSS 变量，深浅各一套 —— 理由同 SchedulerStage 的 HUES。 */
 const PHASE_COLOR: Record<string, string> = {
-  slowStart: '#5B7FD4',
-  congestionAvoidance: '#45B39A',
-  fastRecovery: '#9B6FCC',
+  slowStart: 'var(--p1)',
+  congestionAvoidance: 'var(--p2)',
+  fastRecovery: 'var(--p3)',
 }
 
 export function TcpStage({ trace, index, state, tab }: StageProps<TcpState>) {

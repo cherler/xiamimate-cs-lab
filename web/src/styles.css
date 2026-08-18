@@ -9,25 +9,125 @@
  * | `--xm-chrome-h` / `--xm-chrome-pad-x` | ✅ 布局用 | 平台横条的几何，硬编码过一次就会跟主站漂开 |
  * | `--xm-brand*`（青绿） | ❌ 不用 | 本仓的强调色是琥珀 `--now`，它有**语义**：只标"当前步"。 |
  * | `--xm-fs-*` / `--xm-font-scale` | ❌ 不用 | 见下 |
- * | `surface` / `ink` 一族 | ❌ 不用 | 本仓是深色仪表台，主站是浅色平台页 —— 令牌文件自己就说不统一这些 |
+ * | `surface` / `ink` 一族 | ❌ 不用 | 配色是自己的两套，但**深浅这一档跟平台走**，见下一段 |
  *
  * **字号缩放旋钮在本仓不生效，这是明说的、不是漏做的。** 本仓 253 处字号是手调的
  * 硬编码 px（10px 的等宽标签、9.5px 的分组名…），密度是这套仪表盘的设计本身；
  * 把它们逐个改成 `calc(N * var(--xm-font-scale))` 会得到 253 行噪声，
  * 换来一个没人要求过的旋钮。要做就整套重排字阶，不是加一层乘法。
+ *
+ * ────────────────────────────────────────────────────────────────
+ *
+ * ## 外观：随系统 / 白天 / 黑夜
+ *
+ * 真源是平台的 `localStorage["xm-theme"]`（主站 `lib/theme.ts`），
+ * 主站、虾米看股、虾米看AI 都照它走，本仓也一样：
+ *
+ *   `<html data-theme>`   light | dark | （不写 = 随系统）
+ *
+ * **本仓不自己做开关。** 设置在账户中心那一处，多一个入口就等于多一份要同步的状态。
+ * 首屏那一帧由 `web/index.html` 里的内联脚本定 —— React 挂载时浏览器已经画过一帧了，
+ * 选了黑夜的人每翻一页都要先被闪一下白。
+ *
+ * ### 两条选择路径
+ *
+ * 媒体查询管**没有 JS / 首屏那一帧**，`[data-theme]` 管**用户手动选的**。
+ * 手动选浅色时 `:not([data-theme="light"])` 让系统深色让位 —— 否则用户按了没反应。
+ *
+ * ### 深色的那份值只写一处
+ *
+ * 全部收在 `--dk-*` 里，下面两块都引用它，改深色配色只改一个地方。
+ * 这也让「深色主题没被这次改动碰过」这件事可证明：`--dk-*` 的每个值都与
+ * 改版前的字面量逐字相同（`--sunk-1/3` 是三合一、二合一，差值在深底上 ≤ 1 个 RGB 阶）。
+ *
+ * ### 浅色的强调色是另一套色号，不是同一个色号调亮度
+ *
+ * 琥珀 `#F0B429` 压在白纸上只有 **1.86:1** —— 它是为暗底选的。
+ * 六个强调色在浅色下全部换成加深版，每个都实测过 ≥4.5:1（正文档 AA）。
+ * 这跟平台令牌里那条「同一个色号不能既当色块又当小字」是同一件事。
+ *
+ * 但**色块的底色不换**：`#F0B429xx` 这类半透明色块仍用原色号 —— 浅底上是一层
+ * 淡淡的琥珀，暗底上是一层暗琥珀，两边都成立。要换的只有**当文字用**的那一档。
  */
 :root{
-  --void:#14141C; --panel:#1C1C27; --panel-2:#232331; --line:#2E2E3F;
-  --ink:#E8E6F2; --dim:#8E8BA6; --faint:#5D5A73;
-  --now:#F0B429;                 /* 琥珀：只给"当前步"用 */
-  --hit:#45B39A; --miss:#E2664A;
-  --f-tag:#5B7FD4; --f-idx:#9B6FCC; --f-off:#4E7C8F;
+  /* ── 浅色（默认档；随系统时系统亮就是它） ── */
+  --void:#E9EDF3; --panel:#FFFFFF; --panel-2:#F1F4F8; --line:#D5DBE4;
+  --ink:#1B2430; --dim:#526071; --faint:#5B6878;
+  --now:#8A5A00;                 /* 琥珀加深版：白纸上 5.93:1 */
+  --hit:#0E7561; --miss:#B33B25;
+  --f-tag:#3A5FB8; --f-idx:#7B4CB0; --f-off:#356274;
+  /* 流水线段落色块**上面的字**：色块是半透明原色，字要跟底反着来 */
+  --f-tag-on:#2C4B98; --f-idx-on:#623A90; --f-off-on:#274C5B;
+  /* 比 faint 更弱的一档，专给"空/还没轮到"这类占位文字 —— 刻意不抢眼 */
+  --ghost:#A2ABB8;
+  /* 进程 / TCP 阶段的调色板。**放这里而不是放 tsx 里**：它既当文字色又当色块，
+     浅底上必须换一套加深版；写在组件里就换不了，第一版就是那样 ——
+     甘特图的进程名 P2 在白纸上只有 2.57:1。 */
+  --p1:#3A5FB8; --p2:#0E7561; --p3:#7B4CB0; --p4:#8F5410; --p5:#2A6B85; --p6:#963A61;
+  /* 灰蓝的图形色（磁盘请求点、等待格），不承载文字 */
+  --wan:#8E9AAC; --wan-soft:#8E9AAC44;
+  /* 凹陷层：比所在面板更深的一层（输入框、表格格子、轨道）。
+     名字里的数字是**深色主题下的黑色透明度**，这样这张表能逐条对回原来的字面量。 */
+  --sunk-1:#14203308; --sunk-2:#1420330f; --sunk-3:#14203314; --sunk-4:#1420331c;
+  --line-soft:#D5DBE480;
+  --shadow:#1b243026;             /* 浮层投影：浅底上要淡，深底上要浓 */
+  --scrim:#1b243066;             /* 弹层遮罩 */
+
+  /* ── 深色的那一份值，只写这一处 ── */
+  --dk-void:#14141C; --dk-panel:#1C1C27; --dk-panel-2:#232331; --dk-line:#2E2E3F;
+  --dk-ink:#E8E6F2; --dk-dim:#8E8BA6; --dk-faint:#5D5A73;
+  --dk-now:#F0B429; --dk-hit:#45B39A; --dk-miss:#E2664A;
+  --dk-f-tag:#5B7FD4; --dk-f-idx:#9B6FCC; --dk-f-off:#4E7C8F;
+  --dk-f-tag-on:#8FA9E4; --dk-f-idx-on:#B999DD; --dk-f-off-on:#7FAFC0;
+  --dk-ghost:#4A4860;
+  --dk-p1:#5B7FD4; --dk-p2:#45B39A; --dk-p3:#9B6FCC;
+  --dk-p4:#E2884A; --dk-p5:#4E9FBF; --dk-p6:#C7658F;
+  --dk-wan:#5D6480; --dk-wan-soft:#5D648033;
+  --dk-sunk-1:#00000024; --dk-sunk-2:#00000030; --dk-sunk-3:#00000038; --dk-sunk-4:#00000055;
+  --dk-line-soft:#2E2E3F80;
+  --dk-shadow:#00000080;
+  --dk-scrim:#000000b8;
+
   --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
   /* 兜底值留着：单文件产物里 brand-tokens.css 也会被内联，但万一将来
      谁把 import 顺序弄丢了，字体退回一个像样的栈，而不是退回 Times。 */
   --sans:var(--xm-font-sans,
     -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif);
 }
+
+/* `color-scheme` 不是装饰：滚动条、输入框、下拉的原生外观都跟它走。
+   不设的话页面是暗的、滚动条还是亮白的一条。 */
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --void:var(--dk-void); --panel:var(--dk-panel); --panel-2:var(--dk-panel-2); --line:var(--dk-line);
+    --ink:var(--dk-ink); --dim:var(--dk-dim); --faint:var(--dk-faint);
+    --now:var(--dk-now); --hit:var(--dk-hit); --miss:var(--dk-miss);
+    --f-tag:var(--dk-f-tag); --f-idx:var(--dk-f-idx); --f-off:var(--dk-f-off);
+    --f-tag-on:var(--dk-f-tag-on); --f-idx-on:var(--dk-f-idx-on); --f-off-on:var(--dk-f-off-on);
+    --ghost:var(--dk-ghost); --wan:var(--dk-wan); --wan-soft:var(--dk-wan-soft);
+    --p1:var(--dk-p1); --p2:var(--dk-p2); --p3:var(--dk-p3);
+    --p4:var(--dk-p4); --p5:var(--dk-p5); --p6:var(--dk-p6);
+    --sunk-1:var(--dk-sunk-1); --sunk-2:var(--dk-sunk-2);
+    --sunk-3:var(--dk-sunk-3); --sunk-4:var(--dk-sunk-4);
+    --line-soft:var(--dk-line-soft); --scrim:var(--dk-scrim); --shadow:var(--dk-shadow);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --void:var(--dk-void); --panel:var(--dk-panel); --panel-2:var(--dk-panel-2); --line:var(--dk-line);
+  --ink:var(--dk-ink); --dim:var(--dk-dim); --faint:var(--dk-faint);
+  --now:var(--dk-now); --hit:var(--dk-hit); --miss:var(--dk-miss);
+  --f-tag:var(--dk-f-tag); --f-idx:var(--dk-f-idx); --f-off:var(--dk-f-off);
+  --f-tag-on:var(--dk-f-tag-on); --f-idx-on:var(--dk-f-idx-on); --f-off-on:var(--dk-f-off-on);
+  --ghost:var(--dk-ghost); --wan:var(--dk-wan); --wan-soft:var(--dk-wan-soft);
+  --p1:var(--dk-p1); --p2:var(--dk-p2); --p3:var(--dk-p3);
+  --p4:var(--dk-p4); --p5:var(--dk-p5); --p6:var(--dk-p6);
+  --sunk-1:var(--dk-sunk-1); --sunk-2:var(--dk-sunk-2);
+  --sunk-3:var(--dk-sunk-3); --sunk-4:var(--dk-sunk-4);
+  --line-soft:var(--dk-line-soft); --scrim:var(--dk-scrim); --shadow:var(--dk-shadow);
+}
+:root[data-theme="light"]{ color-scheme:light; }
 *{box-sizing:border-box}
 html,body{height:100%}
 /* **min-height 而不是 height。** 并入主站后 #root 里多了平台页眉与页脚两个兄弟，
@@ -46,16 +146,20 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{
 /* ── 平台页眉/页脚 ──
  *
  * 只有并入主站时才存在（见 shell/PlatformChrome.tsx：取不到制品就整个不渲染）。
- * 制品自带全部样式，这里**只补一件本仓特有的事**：
+ * 制品自带全部样式，这里**只补一件事**：给页脚一块自己的底色。
  *
- * 平台页脚没有自己的背景色（主站与虾米看股的正文都是浅色，它靠继承就够了），
- * 而本仓整页是 #14141C 的深色仪表台 —— 直接挂上去就是**深底 + 深灰字，读不出来**。
+ * ⚠️ 这条补丁**换过一次理由**，旧理由已经不成立了，留着会误导：
+ * 加它的时候本仓还是永远深色、而平台制品永远浅色，页脚挂上去就是
+ * 「深底 + 深灰字」读不出来。现在本仓跟着平台一起换深浅，那种情况不会发生了。
  *
- * 补背景时取 `var(--surface-card)` 而不是抄一个色号：那个变量由制品的 CSS
- * 定义在页脚根元素（`.xm-embedded-chrome`）自己身上，所以在这条选择器里解得到，
- * 而且主站改了配色它跟着变。抄色号则会静静漂开。
+ * 现在留着它是**另一个理由**：页脚是平台的横条，不是实验室的一部分。
+ * 给它一块与正文不同的底，「这是虾米伙伴」和「这是实验室」在视觉上就分开了 ——
+ * 顶上的页眉本来就是这样（它自己写了 `background:var(--surface-card)`），
+ * 底下这条跟着对齐。顺带把页脚小字的对比度从 4.03:1 提到 4.73:1。
  *
- * 页眉不用补 —— 它自己就写了 `background:var(--surface-card)`。 */
+ * 取 `var(--surface-card)` 而不是抄一个色号：那个变量由制品的 CSS 定义在页脚根元素
+ * （`.xm-embedded-chrome`）自己身上，所以在这条选择器里解得到，**而且它自己就分深浅**
+ * —— 抄色号则会在换主题时留下一块永远白的横条。 */
 #xm-chrome-footer>.site-footer{background:var(--surface-card)}
 
 /* ── 页眉 ── */
@@ -111,12 +215,12 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{
 .axis .head .metric{font-family:var(--mono);font-size:10px;color:var(--faint)}
 .ticks{display:flex;gap:2px;margin-bottom:8px;align-items:flex-end}
 .tick{flex:1;min-width:6px;height:40px;border-radius:2px;border:0;cursor:pointer;
-  position:relative;padding:0;overflow:hidden;background:#00000038;
+  position:relative;padding:0;overflow:hidden;background:var(--sunk-3);
   display:flex;flex-direction:column;justify-content:flex-end}
 .tick i{display:block;width:100%;border-radius:1px 1px 0 0;transition:height .1s}
 .tick.good i{background:var(--hit)}
 .tick.bad i{background:var(--miss)}
-.tick.idle i{background:#5D6480}
+.tick.idle i{background:var(--wan)}
 .tick:hover i{filter:brightness(1.35)}
 .tick.cur{outline:2px solid var(--now);outline-offset:1px;z-index:1}
 .tick .no{position:absolute;top:2px;left:0;right:0;text-align:center;

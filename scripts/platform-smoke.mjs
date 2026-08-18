@@ -86,7 +86,7 @@ async function fresh() {
 }
 
 // ══ 1 · 外观：平台页眉页脚真的挂上了 ══════════════════════
-console.log('\n【外观】')
+console.log('\n【外观 · 页眉页脚】')
 const { ctx, page, errs } = await fresh()
 await page.goto(LAB, { waitUntil: 'networkidle' })
 await page.waitForTimeout(800)
@@ -119,11 +119,11 @@ await page.waitForTimeout(800)
     r >= 4.5
       ? ok(`页脚读得出来：对比度 ${r.toFixed(2)}:1（底 ${f.bg} 字 ${f.fg}，高 ${f.h}px）`)
       : bad(`页脚字读不出来：对比度只有 ${r.toFixed(2)}:1`)
-    //  自检：这条判据得会红 —— 把补上去的背景拿掉（退回本仓的深色底），
+    //  自检：这条判据得会红 —— 把补上去的背景拿掉（页脚退回坐在正文的底上），
     //  同一个算式必须给出不合格的数。否则它只是在复述"页脚有背景"。
     const naive = contrast(f.page, f.fg)
     naive < 4.5
-      ? ok(`自检：不补背景的话对比度只有 ${naive.toFixed(2)}:1 —— 上一条判据有鉴别力`)
+      ? ok(`自检：不补背景的话（页脚坐在正文底 ${f.page} 上）只有 ${naive.toFixed(2)}:1 —— 上一条判据有鉴别力`)
       : bad(`自检失败：不补背景也是 ${naive.toFixed(2)}:1，上一条说明不了问题`)
   }
 }
@@ -251,6 +251,68 @@ console.log('\n【跨设备合并】')
     ? ok('错题本合并后有 2 条，页眉红点也是 2')
     : bad(`错题本 ${queue} 条、页眉红点「${dot}」—— 应该都是 2`)
   await two.close()
+}
+
+// ══ 5 · 外观：跟平台的「随系统 / 白天 / 黑夜」联动 ═══════
+console.log('\n【外观 · 深浅两套】')
+{
+  /** 开一个新上下文，指定平台偏好与系统偏好，返回页面与页眉各自的底色 */
+  async function look({ pref, system }) {
+    const c = await browser.newContext({ colorScheme: system })
+    if (pref) await c.addInitScript(t => localStorage.setItem('xm-theme', t), pref)
+    const pg = await c.newPage()
+    await pg.goto(LAB, { waitUntil: 'networkidle' })
+    await pg.waitForTimeout(700)
+    const r = await pg.evaluate(() => {
+      const dark = (css) => {
+        const [r, g, b] = css.match(/\d+/g).map(Number)
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b < 110      // 亮度过半就算浅色
+      }
+      const head = document.querySelector('.xm-embedded-chrome.topbar')
+      return {
+        attr: document.documentElement.dataset.theme ?? '(没写)',
+        pageDark: dark(getComputedStyle(document.body).backgroundColor),
+        headDark: head ? dark(getComputedStyle(head).backgroundColor) : null,
+        scheme: getComputedStyle(document.documentElement).colorScheme,
+      }
+    })
+    await c.close()
+    return r
+  }
+
+  const cases = [
+    { pref: null, system: 'light', want: false, name: '随系统 + 系统亮' },
+    { pref: null, system: 'dark', want: true, name: '随系统 + 系统暗' },
+    { pref: 'light', system: 'dark', want: false, name: '手动选白天（压过系统的暗）' },
+    { pref: 'dark', system: 'light', want: true, name: '手动选黑夜（压过系统的亮）' },
+  ]
+  for (const c of cases) {
+    const r = await look(c)
+    r.pageDark === c.want
+      ? ok(`${c.name} → 页面${r.want === undefined && r.pageDark ? '深' : r.pageDark ? '深' : '浅'}色（data-theme=${r.attr}，color-scheme=${r.scheme}）`)
+      : bad(`${c.name} → 页面是${r.pageDark ? '深' : '浅'}色，应该是${c.want ? '深' : '浅'}色`)
+    //  **页眉必须跟页面同一档。** 制品的深色规则挂在 `html[data-theme]` 与
+    //  媒体查询上，本仓不写 data-theme 的话页眉永远是浅色 —— 那正是并入前的样子：
+    //  深色的正文顶着一条白页眉。
+    r.headDark === null
+      ? bad('页眉没挂上，这一档验不了')
+      : r.headDark === r.pageDark
+        ? ok(`  └ 平台页眉跟着一起${r.headDark ? '变深' : '变浅'} —— 两块没有各走各的`)
+        : bad(`  └ 页眉与页面不同档：页眉${r.headDark ? '深' : '浅'}、页面${r.pageDark ? '深' : '浅'}`)
+  }
+
+  //  自检：这组判据得会红。把首屏脚本读的那个键换成别的，「手动选黑夜」就该失败 ——
+  //  否则它只是在复述"系统是暗的"。
+  const c = await browser.newContext({ colorScheme: 'light' })
+  await c.addInitScript(() => localStorage.setItem('xm-theme-WRONGKEY', 'dark'))
+  const pg = await c.newPage()
+  await pg.goto(LAB, { waitUntil: 'networkidle' })
+  await pg.waitForTimeout(500)
+  const stray = await pg.evaluate(() => document.documentElement.dataset.theme ?? '(没写)')
+  await c.close()
+  stray === '(没写)'
+    ? ok('自检：键名写错时 data-theme 不写 —— 说明上面那两档真的是这个键在起作用')
+    : bad(`自检失败：键名都写错了还读到了 ${stray}`)
 }
 
 await ctx.close()

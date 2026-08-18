@@ -23,7 +23,9 @@
     "web:build:lab": "VITE_BASE=/lab/ vite build --config web/vite.config.ts web",
     "gateway": "node scripts/local-gateway.mjs",
     "sync:tokens": "node scripts/sync-brand-tokens.mjs",
-    "smoke": "node scripts/web-smoke.mjs"
+    "smoke": "node scripts/web-smoke.mjs",
+    "smoke:platform": "node scripts/platform-smoke.mjs",
+    "contrast": "node scripts/theme-contrast.mjs --all"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
