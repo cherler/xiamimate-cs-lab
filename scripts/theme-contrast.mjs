@@ -40,23 +40,22 @@ const DELIBERATELY_FAINT = {
 }
 
 /**
- * 深色主题的**既有欠账**基线。
+ * 深色主题的欠账基线 —— **已经还清，所以是 0。**
  *
- * 本仓的深色配色一直有一批 9~12px 的小字压在 2.5~4.2:1 —— `--faint` 在
- * `--panel` 上只有 2.55:1。**这次做浅色没有碰它**，而"没碰"这件事要能证明，
- * 不能靠我说：把 `git show 66e30cb:web/src/*.css`（以及两个舞台的 tsx）换回去、
- * 用**同一个脚本**量一遍 —— 改动前后都是 **617**，且逐条比对**没有一处新增的失败位置**
- * （`--all`，2026-08-18）。
+ * 这个数的历史值得留着：做浅色那一轮，深色有 **617** 处 9~12px 的小字压在
+ * 2.5~4.2:1（`--faint` 在 `--panel` 上只有 2.55:1）。当时判据写成"不许比 617 多"，
+ * 因为把深色一起改会动到一个用户已经看惯的界面，要单独拍板。
+ * 后来拍了板：整条字阶往上挪，层级改由字号 / 字距 / 大小写承担 → 617 归零。
  *
- * ⚠️ 这个数被我写错过两次，两次都是判据自己的毛病，不是页面的：
+ * ⚠️ 617 这个数被我写错过两次，两次都是判据自己的毛病，不是页面的：
  *   · 第一次按印象填 51（拿总数减去页眉那几处心算的）—— **没量过的数别写**；
  *   · 第二次量出 99 / 100，看着像"改坏一处"，实际是去重键漏了实验名，
  *     两处不相干的 `em` 撞在同一个 2.67 上（见下面 uniq 的注释）。
  *
- * 判据是「不许变多」而不是「必须为 0」：把深色一起改会动到一个用户已经看惯的
- * 界面，那是另一件事、要另外拍板。要重新取基线就照上面那句话再跑一遍。
+ * 要重新取基线：把 `git show <某个提交>:web/src/*.css` 换回去，用同一个脚本
+ * 跑 `--all`，读「以上 N 处」那一行。
  */
-const DARK_DEBT_BASELINE = 617
+const DARK_DEBT_BASELINE = 0
 
 const MEASURE = ({ deliberate, min }) => {
   const parse = (c) => {
@@ -133,8 +132,19 @@ const MEASURE = ({ deliberate, min }) => {
     if (s.visibility === 'hidden' || s.opacity === '0') continue
     const fg = parse(s.color)
     if (!fg || fg[3] === 0) continue
+    /**
+     * **element opacity 必须算进去。**
+     *
+     * 第一版只在 `opacity === '0'` 时跳过，其余一律按 `color` 的原值算 ——
+     * 于是 `.ptab td.future{opacity:.34}` 被量成 4.14:1，而它实际接近 1.5:1。
+     * 本仓有九处用 opacity 表示"还没轮到 / 不适用"，全都被高估了。
+     *
+     * 自己和祖先的 opacity 要连乘：一个 .5 套一个 .4 是 .2，不是 .5。
+     */
+    let fade = 1
+    for (let n = el; n; n = n.parentElement) fade *= parseFloat(getComputedStyle(n).opacity)
     const bg = groundOf(el)
-    const k = ratio(over(fg, bg), bg)
+    const k = ratio(over([fg[0], fg[1], fg[2], fg[3] * fade], bg), bg)
     const px = parseFloat(s.fontSize)
     const big = px >= 24 || (px >= 18.66 && +s.fontWeight >= 700)
     const need = big ? 3 : min
@@ -145,6 +155,10 @@ const MEASURE = ({ deliberate, min }) => {
         ? '.' + el.className.trim().split(/\s+/).join('.') : '')).slice(0, 60),
       text: (el.textContent || '').trim().slice(0, 18),
       px, k: Math.round(k * 100) / 100, need, exempt: hit ?? null,
+      //  被 opacity 压淡的：本仓用它表示"还没轮到 / 不适用"（未来的步、空的槽、
+      //  禁用的按钮）。那是**语义**，不是"这条不重要" —— 单列一栏报出来，
+      //  跟"该看清却看不清"的问题分开数。
+      faded: Math.round(fade * 100) / 100,
       //  平台页眉页脚是**主站的制品**，颜色定在 tools-frontend 的 globals.css 里，
       //  本仓一行都改不动。混在一起报会让人以为是本仓的问题，
       //  而且它在深浅两套下是同一批数字 —— 那正说明它跟本仓的主题无关。
@@ -203,7 +217,8 @@ for (const theme of ['light', 'dark']) {
       seen.add(k); return true
     })
   }
-  const mine = uniq(bad.filter(x => !x.exempt && !x.chrome))
+  const mine = uniq(bad.filter(x => !x.exempt && !x.chrome && x.faded >= 0.999))
+  const faded = uniq(bad.filter(x => !x.exempt && !x.chrome && x.faded < 0.999))
   const chrome = uniq(bad.filter(x => !x.exempt && x.chrome))
   exempted += bad.filter(x => x.exempt).length
 
@@ -222,6 +237,11 @@ for (const theme of ['light', 'dark']) {
     }
   }
 
+  if (faded.length) {
+    console.log(`  ◌ 另有 ${faded.length} 处是被 opacity 压淡的（"还没轮到 / 不适用"）：`)
+    for (const x of faded.slice(0, 40)) console.log(`     ${x.k}:1（透明度 ${x.faded}）${x.sel}  「${x.text}」`)
+    console.log('     这是语义不是疏忽 —— 未来的步、空的槽、禁用的按钮本来就该退到后面。')
+  }
   if (chrome.length) {
     console.log(`  ⚙️ 另有 ${chrome.length} 处在**平台页眉页脚**里（主站制品，本仓改不动）：`)
     for (const x of chrome.slice(0, 4)) console.log(`     ${x.k}:1  ${x.sel}  「${x.text}」`)

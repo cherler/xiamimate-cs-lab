@@ -111,20 +111,28 @@ await page.waitForTimeout(800)
     const el = document.querySelector('#xm-chrome-footer > .site-footer')
     if (!el) return null
     const s = getComputedStyle(el)
+    const head = document.querySelector('.xm-embedded-chrome.topbar')
     return { bg: s.backgroundColor, fg: s.color, h: Math.round(el.getBoundingClientRect().height),
-             page: getComputedStyle(document.body).backgroundColor }
+             page: getComputedStyle(document.body).backgroundColor,
+             head: head ? getComputedStyle(head).backgroundColor : null }
   })
   if (!f) { bad('平台页脚没挂上') } else {
     const r = contrast(f.bg, f.fg)
     r >= 4.5
       ? ok(`页脚读得出来：对比度 ${r.toFixed(2)}:1（底 ${f.bg} 字 ${f.fg}，高 ${f.h}px）`)
       : bad(`页脚字读不出来：对比度只有 ${r.toFixed(2)}:1`)
-    //  自检：这条判据得会红 —— 把补上去的背景拿掉（页脚退回坐在正文的底上），
-    //  同一个算式必须给出不合格的数。否则它只是在复述"页脚有背景"。
-    const naive = contrast(f.page, f.fg)
-    naive < 4.5
-      ? ok(`自检：不补背景的话（页脚坐在正文底 ${f.page} 上）只有 ${naive.toFixed(2)}:1 —— 上一条判据有鉴别力`)
-      : bad(`自检失败：不补背景也是 ${naive.toFixed(2)}:1，上一条说明不了问题`)
+    /**
+     * 页脚的底必须**跟正文的底不是一个色**，也跟页眉是同一个色 ——
+     * 那才是这块补丁真正在做的事（把平台横条和实验室分开）。
+     *
+     * ⚠️ 这里原来验的是"不补背景就会不合格"。那条判据后来自己失效了：
+     * 主站的 `--text-5` 重排之后，页脚小字坐在正文底上也有 4.94:1 ——
+     * 补丁对可读性已经不再是必需的。**判据得跟着理由走**，
+     * 否则它是在验一个已经不存在的问题（而且会红，红得毫无意义）。
+     */
+    f.bg !== f.page && f.bg === f.head
+      ? ok(`页脚与页眉同底（${f.bg}）、与正文底（${f.page}）分开 —— 平台横条自成一块`)
+      : bad(`页脚的底不对：页脚 ${f.bg} / 页眉 ${f.head} / 正文 ${f.page}`)
   }
 }
 {
