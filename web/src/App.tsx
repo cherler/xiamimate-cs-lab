@@ -21,6 +21,8 @@ import { ChromeHeader, ChromeFooter } from './shell/PlatformChrome.tsx'
 import { Dock } from './shell/Dock.tsx'
 import { GuideOverlay } from './shell/GuideOverlay.tsx'
 import { FitBox } from './shell/FitBox'
+import { Brief } from './shell/Brief'
+import { briefFor } from './brief.ts'
 import { TipLayer } from './shell/Tip.tsx'
 import { cardsOf } from './guide.ts'
 import * as progress from './progress.ts'
@@ -127,12 +129,59 @@ export default function App() {
     try { return run(exp.kernel.compile(d)) as unknown[] } catch { return [] }
   }, [exp])
 
+  /**
+   * 实验单的两点状态：押的哪个、有没有出去动过手。
+   *
+   * 记在 localStorage，**不进后端同步** —— 同步的是学习成果（错题本、已掌握），
+   * "我当时猜的是哪个"跨设备搬过去没有意义，还会把 sync.ts 里验过的合并规则搅浑。
+   */
+  const brief = briefFor(exp.id)
+  const [briefRecs, setBriefRecs] = useState<Record<string, { guess: number | null; tried: boolean }>>(() => {
+    try { return JSON.parse(localStorage.getItem('cslab.brief') ?? '{}') } catch { return {} }
+  })
+  const [briefOpen, setBriefOpen] = useState(false)
+  //  只在**换实验**时决定要不要自动弹：第一次见才弹，之后靠页眉那颗按钮请回来
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { setBriefOpen(!!briefFor(expId) && !briefRecs[expId]) }, [expId])
+  const briefRec = briefRecs[exp.id] ?? { guess: null, tried: false }
+  /*
+   * 实验单摊开时把讲解浮层收起来。
+   *
+   * 两块解释同时在屏幕上，正是用户抱怨的那种"看不懂" —— 实验单答的是
+   * "这实验是什么、要我做什么"，讲解答的是"屏幕上这块是什么"，
+   * 头一回进来只该看见前者。走 body 上的一个属性而不是给浮层加 prop：
+   * 浮层一卸载就会丢掉翻到第几页，而这里只是想让它先让开。
+   */
+  useEffect(() => {
+    document.body.toggleAttribute('data-brief-open', briefOpen)
+    return () => document.body.removeAttribute('data-brief-open')
+  }, [briefOpen])
+  const saveBrief = (patch: Partial<{ guess: number | null; tried: boolean }>) => {
+    setBriefRecs(m => {
+      const next = { ...m, [exp.id]: { ...(m[exp.id] ?? { guess: null, tried: false }), ...patch } }
+      try { localStorage.setItem('cslab.brief', JSON.stringify(next)) } catch { /* 隐私模式 */ }
+      return next
+    })
+  }
+
   const violations = useMemo(() => validateDocument(doc), [doc])
 
   const trace = useMemo(() => {
     if (violations.length > 0) return []
     try { return run(exp.kernel.compile(doc)) as never[] } catch { return [] }
   }, [exp, doc, violations])
+
+  /**
+   * ④ 的结论**现算** —— 拿用户此刻的配置重跑，不是一句写死的话。
+   * 这是整个仓库的规矩（`docs/standards.md`）：屏幕上每个数都从验过的轨迹派生。
+   */
+  const verdict = useMemo(() => {
+    if (!brief) return null
+    //  实验单不认识 SimDocument（它要能被 node 里的内容测试 import），
+    //  两边在 `unknown` 上握手，重跑的活还是 runDoc 自己干
+    try { return brief.verdict({ doc: doc as never, trace, runDoc: runDoc as (d: unknown) => unknown[] }) }
+    catch { return null }
+  }, [brief, doc, trace, runDoc])
 
   const clamped = Math.min(index, Math.max(0, trace.length - 1))
   const state = trace[clamped]
@@ -259,6 +308,11 @@ export default function App() {
             : <span className="chip">{trace.length} 步</span>}
           {problem && <span className="chip on">{problem.source}</span>}
           <span className="chip">{EXPERIMENTS.length} 个实验</span>
+          {brief && (
+            <button className="chip bchip" onClick={() => setBriefOpen(true)}>
+              实验单{briefRec.tried ? ' · 看结论' : ''}
+            </button>
+          )}
           <button className="chip act" onClick={() => setShowProgress(true)}>
             进度 {mastered} / {totalQ}
             {reviewCount > 0 && <b className="dot">{reviewCount}</b>}
@@ -289,6 +343,20 @@ export default function App() {
 
         {/* 中：舞台 + 轴 + 日志 */}
         <div className="col">
+          {/*
+            实验单盖的是**整个中列**，不只是舞台。
+            四段文字放在舞台那块高度里，实测藏掉一半还多（276px 的框装 570px 的内容）——
+            而"看不见后面还有什么"正是这一层要治的病。
+            反正没动手之前，页签、编辑器、轴也都还没有意义。
+          */}
+          {brief && briefOpen && (
+            <Brief
+              brief={brief} guess={briefRec.guess} verdict={verdict} unlocked={briefRec.tried}
+              onGuess={n => saveBrief({ guess: n })}
+              onStart={() => { saveBrief({ tried: true }); setBriefOpen(false) }}
+              onClose={() => { saveBrief({}); setBriefOpen(false) }}
+            />
+          )}
           <div className="tabs" role="tablist">
             {exp.tabs.map(t => (
               <button

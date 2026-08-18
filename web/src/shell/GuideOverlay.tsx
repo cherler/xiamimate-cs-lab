@@ -148,6 +148,12 @@ export function GuideOverlay({ cards, title, onRequestClose, onReopen, closedRef
     const onClick = (e: MouseEvent) => {
       //  点卡片自己不算
       if (box.current?.contains(e.target as Node)) return
+      /*
+       * 点**实验单**也不算。它跟讲解卡一样是"解释层"，不是实验本身 ——
+       * 在上面押注、翻看、关掉，都不该改变讲解正指着哪儿。
+       * （不写这一条，光是关实验单那一下就会把高亮撤掉：和坞页签同一类的坑。）
+       */
+      if ((e.target as HTMLElement)?.closest?.('.brief')) return
       /**
        * **点实验目录里的按钮不算。**
        *

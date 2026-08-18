@@ -28,6 +28,14 @@ let fail = 0
 const nav = async name => {
   await p.click(`.nav button:has-text("${name}")`)
   await p.waitForTimeout(260)
+  /*
+   * 实验单第一次进某个实验会自动弹出来盖住中列 —— 它是给人看的，
+   * 不是这一组要测的东西，而且它会挡住底下的按钮（浮层压住东西的老病）。
+   * 用 `$` 先问在不在，别用带超时的 click：navs 有两百来次，
+   * 每次白等几百毫秒会把整套冒烟拖垮。
+   */
+  const bf = await p.$('.brief .bfx')
+  if (bf) { await bf.click(); await p.waitForTimeout(90) }
 }
 /**
  * 日志 / 真题 / 边界现在收在底部坞里，同一时刻只露一块（为了「一屏装下一个实验」）。
@@ -67,6 +75,15 @@ await p.goto(URL, { waitUntil: 'networkidle' })
  * 真人可以拖开它（标题栏是把手），自动化不该去猜它今天停在哪。
  * 所以这里先收起来，第 13 组再从 ? 按钮把它请回来 —— 顺带也验证了收起是有效的。
  */
+/*
+ * ⚠️ 顺序不能反：实验单摊开时讲解浮层是 `display:none` 的（同一屏不摆两块解释），
+ * 先去点浮层的 ✕ 会点了个寂寞 —— 而 `.catch` 会把这个失败悄悄咽掉，
+ * 结果是浮层一路开着，第 1~12 组全被它挡。先收实验单，再收浮层。
+ */
+{
+  const bf = await p.$('.brief .bfx')
+  if (bf) { await bf.click(); await p.waitForTimeout(120) }
+}
 await p.click('.guide .gx:last-of-type').catch(() => {})
 await p.waitForTimeout(140)
 await p.waitForSelector('.tick')
@@ -1272,6 +1289,83 @@ console.log('\n【14】一屏装得下：30 个实验 × 两档窗口')
 
   await p.setViewportSize({ width: 1280, height: 720 })
   await p.waitForTimeout(250)
+}
+
+// ═══ 15 · 实验单：这个实验是什么、要做什么、为什么做 ═══
+console.log('\n【15】实验单：四段走通，结论是现算的')
+{
+  /**
+   * 用户原话：「实验是什么？我还是不知道。不知道要做什么？为什么要做？」——
+   * 说这话的是个计算机研究生。这一组守的就是那四段。
+   *
+   * 最要紧的一条是最后一条：**结论必须跟着配置变**。
+   * 一句写死的"相联度越高命中率越高"读起来永远像对的，而它是假的 ——
+   * 换一串地址就露馅。所以判据不是"④ 有字"，是"换了地址，④ 里的数不一样了"。
+   */
+  await p.evaluate(() => localStorage.removeItem('cslab.brief'))
+  await p.reload({ waitUntil: 'networkidle' }); await p.waitForTimeout(600)
+
+  const shot = () => p.evaluate(() => {
+    const steps = [...document.querySelectorAll('.bfstep')]
+    return {
+      open: !!document.querySelector('.brief'),
+      n: steps.length,
+      off: steps.map(s => s.className.includes('off')),
+      go: document.querySelector('.bfgo')?.textContent?.trim(),
+      goOff: document.querySelector('.bfgo')?.disabled,
+      opts: [...document.querySelectorAll('.bfopt')].map(b => b.textContent.trim()),
+      hidden: (() => { const e = document.querySelector('.bfbody'); return e ? e.scrollHeight - e.clientHeight : -1 })(),
+    }
+  })
+
+  const a = await shot()
+  a.open && a.n === 4 && a.off[0] === false && a.off[2] === true && a.off[3] === true && a.goOff
+    ? ok(`头一回进来自动摊开：四段齐全，③④ 先压暗，「${a.go}」点不动（选项 ${a.opts.join(' / ')}）`)
+    : bad(`头一回进来不对：开了 ${a.open}、${a.n} 段、压暗 ${JSON.stringify(a.off)}、按钮「${a.go}」禁用 ${a.goOff}`)
+
+  await p.click('.bfopt >> nth=2'); await p.waitForTimeout(220)
+  const b2 = await shot()
+  !b2.off[2] && !b2.goOff && b2.off[3]
+    ? ok(`押完注：③ 亮起来、「${b2.go}」能点了，④ 仍然扣着 —— 先动手再揭晓`)
+    : bad(`押注后不对：③ 压暗 ${b2.off[2]}、按钮禁用 ${b2.goOff}、④ 压暗 ${b2.off[3]}`)
+
+  await p.click('.bfgo'); await p.waitForTimeout(300)
+  const gone = await p.evaluate(() => !document.querySelector('.brief') && !!document.querySelector('.sets'))
+  gone ? ok('点「开始动手」→ 实验单收起，中列让出来') : bad('点了「开始动手」中列没让出来')
+
+  await p.click('.chip.bchip'); await p.waitForTimeout(400)
+  const v1 = await p.evaluate(() => ({
+    judge: document.querySelector('.bfjudge')?.textContent?.trim(),
+    say: document.querySelector('.bfverdict p:nth-of-type(2)')?.textContent?.trim() ?? '',
+    stars: document.querySelector('.bfverdict')?.textContent?.includes('**'),
+  }))
+  const nums = s => (s.match(/[\d.]+%/g) ?? [])
+  v1.judge && nums(v1.say).length >= 2 && !v1.stars
+    ? ok(`从页眉请回来，④ 揭晓：「${v1.judge}」· ${nums(v1.say).join(' vs ')}；**粗体**已渲染成粗体`)
+    : bad(`④ 不对：判语「${v1.judge}」、数 ${JSON.stringify(nums(v1.say))}、还剩星号 ${v1.stars}`)
+
+  /*
+   * 本组的核心判据：换一串地址，结论里的数必须跟着变。
+   * 这条同时也是它自己的自检 —— 写死的话两次会一模一样。
+   */
+  await p.click('.brief .bfx'); await p.waitForTimeout(200)
+  await p.click('.seqacts button:has-text("同组冲突")'); await p.waitForTimeout(400)
+  await p.click('.chip.bchip'); await p.waitForTimeout(400)
+  const v2 = await p.evaluate(() =>
+    document.querySelector('.bfverdict p:nth-of-type(2)')?.textContent?.trim() ?? '')
+  nums(v2).length >= 2 && nums(v2).join() !== nums(v1.say).join()
+    ? ok(`换成「同组冲突」，结论跟着变：${nums(v1.say).join(' vs ')} → ${nums(v2).join(' vs ')} —— 数是现算的，不是写死的`)
+    : bad(`结论没跟着变：换序列前 ${JSON.stringify(nums(v1.say))}、换序列后 ${JSON.stringify(nums(v2))}`)
+
+  await p.click('.brief .bfx'); await p.waitForTimeout(150)
+  await p.reload({ waitUntil: 'networkidle' }); await p.waitForTimeout(600)
+  const again = await p.evaluate(() => ({
+    open: !!document.querySelector('.brief'),
+    chip: document.querySelector('.chip.bchip')?.textContent?.trim(),
+  }))
+  !again.open && again.chip?.includes('看结论')
+    ? ok(`刷新后不再自来 —— 页眉留着「${again.chip}」`)
+    : bad(`记忆不对：又自己弹出来 ${again.open}、页眉写着「${again.chip}」`)
 }
 
 console.log(`\n${'─'.repeat(50)}`)

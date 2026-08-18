@@ -26,6 +26,7 @@ const SUITES = [
   ['学习进度的规则', 'progress-rules.test.ts'],
   ['跨设备合并的规则', 'sync-merge.test.ts'],
   ['讲解层的内容规则', 'guide-content.test.ts'],
+  ['实验单的内容规则', 'brief-content.test.ts'],
 ] as const
 
 let failed = 0
