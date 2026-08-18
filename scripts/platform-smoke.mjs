@@ -212,6 +212,8 @@ await page.waitForTimeout(900)
 
 // 答一道题（故意答错，错题本才有东西可验），等防抖推上去
 {
+  //  真题收进底部坞了，同一时刻只露一格 —— 先把那一格切出来才点得着
+  await page.click('.dockbar button:has-text("真题")'); await page.waitForTimeout(160)
   await page.click('.probpick button >> nth=1')          // 选第一道真题
   await page.waitForTimeout(300)
   await page.fill('.qlist li:first-child input', '这肯定不对')

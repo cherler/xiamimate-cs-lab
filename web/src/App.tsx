@@ -18,7 +18,9 @@ import { EntityEditor } from './shell/EntityEditor.tsx'
 import { problemsFor, PROBLEMS } from './problems.ts'
 import { ProgressPanel } from './shell/ProgressPanel.tsx'
 import { ChromeHeader, ChromeFooter } from './shell/PlatformChrome.tsx'
+import { Dock } from './shell/Dock.tsx'
 import { GuideOverlay } from './shell/GuideOverlay.tsx'
+import { FitBox } from './shell/FitBox'
 import { TipLayer } from './shell/Tip.tsx'
 import { cardsOf } from './guide.ts'
 import * as progress from './progress.ts'
@@ -57,6 +59,9 @@ export default function App() {
 
   /** 从错题本跳过来时要高亮的那一问 */
   const [focusQ, setFocusQ] = useState<number | null>(null)
+  /** 底部坞：同一时刻只露一块（日志 / 真题 / 边界），以及收不收起 */
+  const [dock, setDock] = useState('log')
+  const [dockFolded, setDockFolded] = useState(false)
   /** 实体表的改动；undefined = 没改过，用 baseDoc.entities */
   const [entities, setEntities] = useState<Record<string, Entity[] | undefined>>({})
 
@@ -219,6 +224,8 @@ export default function App() {
     setEntities(e => ({ ...e, [experimentId]: undefined }))
     setIndex(0); setPlaying(false)
     setShowProgress(false)
+    //  真题现在在底部坞里 —— 跳过去得把那一格露出来，否则"跳到某一问"跳了个寂寞
+    setDock('prob'); setDockFolded(false)
     setFocusQ(qi)
   }
 
@@ -252,18 +259,6 @@ export default function App() {
             : <span className="chip">{trace.length} 步</span>}
           {problem && <span className="chip on">{problem.source}</span>}
           <span className="chip">{EXPERIMENTS.length} 个实验</span>
-          {/* **不要借用 `.chip.act`。** 那个类此刻已经等同于"进度那颗 chip" ——
-              冒烟里有五处 `.chip.act` 就是冲着它去的。多一个同类名的按钮，
-              选择器立刻变歧义，而表现是"点开的不是想点的那个"，
-              报出来却是三十秒后另一个元素找不到。自己的东西给自己的类名。 */}
-          <button className={`chip gchip${guideOff ? '' : ' on'}`}
-                  onClick={() => {
-                    const next = !guideOff
-                    setGuideOff(next)
-                    try { localStorage.setItem('cslab.guide.closed', next ? '1' : '0') } catch { /* 隐私模式 */ }
-                  }}>
-            讲解{guideOff ? '' : '中'}
-          </button>
           <button className="chip act" onClick={() => setShowProgress(true)}>
             进度 {mastered} / {totalQ}
             {reviewCount > 0 && <b className="dot">{reviewCount}</b>}
@@ -325,23 +320,15 @@ export default function App() {
                   {/* 舞台外面套一层稳定容器：测试要认出"哪块是舞台"，
                       不能靠"中列第几张卡片"猜 —— 每加一个编辑器就会误判一次 */}
                   <div className="stagewrap">
-                    <exp.Stage doc={doc} trace={trace} index={clamped} state={state} tab={tab} />
+                    <FitBox>
+                      <exp.Stage doc={doc} trace={trace} index={clamped} state={state} tab={tab} />
+                    </FitBox>
                   </div>
                   <AxisBand
                     exp={exp} trace={trace} index={clamped}
                     playing={playing}
                     onSeek={seek}
                     onTogglePlay={() => setPlaying(p => !p)}
-                  />
-                  <StepLog exp={exp} trace={trace} index={clamped} onSeek={seek} />
-                  <ProblemPanel
-                    problems={problems} activeId={problemId} trace={trace} doc={doc}
-                    runDoc={runDoc} drifted={drifted}
-                    onPick={id => { pickProblem(id); setFocusQ(null) }}
-                    onRestore={restoreProblem} onSeek={seek}
-                    onAnswer={recordAnswer}
-                    statusOf={(pid, qi) => progress.statusOf(store.q[progress.keyOf(pid, qi)])}
-                    focusQ={focusQ}
                   />
                 </>
               : <div className="viol"><div className="t">无轨迹</div><p>当前配置跑不出任何一步。</p></div>}
@@ -355,7 +342,36 @@ export default function App() {
         </div>
       </div>
 
-      <Bounds items={exp.bounds} />
+      {/* 底部坞：日志 / 真题 / 边界 三选一。
+          改之前这三块竖着摞在舞台下面，光它们就 369px —— 而它们的共同点是
+          「都在看完舞台之后才用」，谁也不需要跟舞台同时盯着。 */}
+      <Dock
+        tabs={[
+          { id: 'log', label: '逐步日志' },
+          { id: 'prob', label: '真题', badge: problems.length },
+          { id: 'bounds', label: '边界' },
+        ]}
+        active={dock} onPick={setDock}
+        folded={dockFolded} onToggle={() => setDockFolded(f => !f)}
+      >
+        <div className="dockpane" data-dock-tab="log" hidden={dock !== 'log'}>
+          {state && <StepLog exp={exp} trace={trace} index={clamped} onSeek={seek} />}
+        </div>
+        <div className="dockpane" data-dock-tab="prob" hidden={dock !== 'prob'}>
+          <ProblemPanel
+            problems={problems} activeId={problemId} trace={trace} doc={doc}
+            runDoc={runDoc} drifted={drifted}
+            onPick={id => { pickProblem(id); setFocusQ(null) }}
+            onRestore={restoreProblem} onSeek={seek}
+            onAnswer={recordAnswer}
+            statusOf={(pid, qi) => progress.statusOf(store.q[progress.keyOf(pid, qi)])}
+            focusQ={focusQ}
+          />
+        </div>
+        <div className="dockpane" data-dock-tab="bounds" hidden={dock !== 'bounds'}>
+          <Bounds items={exp.bounds} />
+        </div>
+      </Dock>
 
       {showProgress && (
         <ProgressPanel
@@ -383,6 +399,7 @@ export default function App() {
       title={exp.title}
       closedRef={guideOff}
       onRequestClose={() => setGuideOff(true)}
+      onReopen={() => setGuideOff(false)}
     />
     <TipLayer />
     <ChromeFooter />

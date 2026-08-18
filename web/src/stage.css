@@ -461,7 +461,20 @@
 .entacts button:hover{color:var(--ink);border-color:var(--faint);background:var(--sunk-2)}
 .entacts button.ghost{background:none;color:var(--faint);margin-left:auto}
 .entacts button.ghost:hover{color:var(--ink)}
-.stagewrap{display:contents}
+/* 舞台的外壳。
+ *
+ * ⚠️ 原来是 `display:contents` —— 一个**不生成盒子**的透明壳，当初套它只为让
+ * 测试认出"哪块是舞台"。改成一屏布局之后这一条正好挡路：
+ * `flex:1` 落在一个不存在的盒子上，量出来高度是 0，中列于是溢出、
+ * 轴压到了底部坞上面。**"不占位"的东西没法参与布局。**
+ *
+ * 现在它是真盒子：吃掉中列剩下的全部高度，内容超了在自己框里滚。
+ *
+ * ⚠️ **布局那几条（flex / min-height）全在 styles.css，这里只留形态。**
+ * 两个文件都写 `.stagewrap` 时，stage.css 后加载、同样是单类选择器 ——
+ * 它把 styles.css 里的 `min-height:180px` 覆盖回 0，舞台又被压没了。
+ * 一个元素的同一族属性只该有一个出处。 */
+.stagewrap{display:flex;flex-direction:column;gap:11px;overflow:auto}
 .entscroll.chunked{display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start;max-height:none}
 
 /* ═══ 共享位域视觉（浮点 / 虚存 / 后续的 CRC、海明码、子网）═══ */
@@ -1014,6 +1027,39 @@
 /* 讲解那颗 chip：开着的时候点亮，一眼能看出讲解在不在 */
 .chip.gchip.on{color:var(--f-tag);border-color:var(--f-tag);background:#5B7FD414}
 
+/* ═══ 底部坞 ═══
+ *
+ * 高度定死，内容多了在里面滚 —— **不让配角改主角的尺寸**。
+ * 收起时只剩一条页签栏（32px），把整个高度让给舞台。
+ */
+.dock{flex:0 0 auto;display:flex;flex-direction:column;
+  background:var(--panel);border:1px solid var(--line);border-radius:6px;
+  height:var(--dock-h);overflow:hidden;
+  /*  右端留给讲解浮层，理由见 GuideOverlay 里 --guide-w 那段 */
+  padding-right:var(--guide-w,0px)}
+.dock.folded{height:auto}
+@media(max-height:820px){:root{--dock-h:148px}}
+@media(max-height:720px){:root{--dock-h:126px}}
+.dockbar{display:flex;align-items:stretch;gap:1px;border-bottom:1px solid var(--line);
+  flex:0 0 auto;background:var(--line)}
+.dock.folded .dockbar{border-bottom:0}
+.dockbar button{background:var(--panel);border:0;color:var(--faint);cursor:pointer;
+  padding:7px 14px;font-family:var(--mono);font-size:10px;letter-spacing:.14em;
+  display:inline-flex;align-items:center;gap:6px}
+.dockbar button:hover{color:var(--ink)}
+.dockbar button.on{color:var(--ink);background:var(--panel-2);
+  box-shadow:inset 0 -2px 0 var(--now)}
+.dbadge{font-family:var(--sans);font-size:9.5px;color:var(--faint);font-weight:500;
+  letter-spacing:0}
+.dockfold{margin-left:auto;font-size:12px!important;letter-spacing:0!important}
+.dockbody{flex:1;min-height:0;overflow-y:auto}
+/* 坞里的卡片不再自己画边框 —— 坞就是它的框；
+   标题也去掉：页签上已经写着「逐步日志」「真题」了，再写一遍白占 28px
+   （坞总共才 172px）。「N 道」那个数已经在页签的角标上。 */
+.dockbody>.card{border:0;border-radius:0;background:none}
+.dockbody>.card>h3{display:none}
+.dockbody>.bounds{margin:0;border:0;border-radius:0}
+
 /* 字段级悬停说明。**一行能说完的东西不占一张卡。**
    带点提示的字段给一条虚下划线 + help 光标（跟 Transformer Explainer 一样），
    否则没人知道这儿能悬停。 */
@@ -1031,13 +1077,19 @@
  * 钉在右下角，**不占版面** —— 它讲的是页面上的东西，把页面顶下去就本末倒置了。
  * 宽度定死 380px：再宽会盖住中列的舞台，而舞台正是要看的那个东西。
  */
-.guide{position:fixed;right:18px;bottom:18px;width:380px;max-width:calc(100vw - 36px);
+.guide{position:fixed;right:18px;bottom:12px;width:min(380px,34vw);max-width:calc(100vw - 36px);
+  max-height:calc(var(--dock-h) - 16px);
   background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--f-tag);
   border-radius:8px;box-shadow:0 12px 36px var(--shadow);
-  display:flex;flex-direction:column;gap:9px;padding:13px 15px 11px;z-index:40}
-@media(max-width:560px){.guide{left:12px;right:12px;width:auto;bottom:12px}}
+  display:flex;flex-direction:column;gap:9px;padding:13px 15px 11px;z-index:40;overflow:hidden}
+/*  高度被坞的厚度封住（矮屏上只有 110px），**滚的必须是正文** ——
+    不封 overflow 的话 flex 子项不缩，翻页栏会被挤到视口外面去点不着。 */
+.guide .gbody{overflow-y:auto;min-height:0}
+.guide .ghead,.guide .gfoot{flex:0 0 auto}
+@media(max-width:560px){.guide{left:12px;right:12px;width:auto}}
 
-.ghead{display:flex;align-items:baseline;gap:10px}
+.ghead{display:flex;align-items:baseline;gap:10px;cursor:grab;touch-action:none}
+.ghead:active{cursor:grabbing}
 .ghead h3{margin:0;font-size:13.5px;font-weight:650;color:var(--ink);line-height:1.5}
 .gx{background:none;border:0;color:var(--faint);cursor:pointer;
   font-size:13px;line-height:1;padding:2px 4px;flex:0 0 auto}
@@ -1059,6 +1111,17 @@
 .gbar i{display:block;height:100%;background:var(--f-tag);transition:width .18s}
 .gnum{font-family:var(--mono);font-size:10.5px;color:var(--faint);white-space:nowrap}
 
+/* 关掉之后留在原地的那颗按钮 —— **东西从哪儿没的，就从哪儿找回来**。
+   钉在跟浮层同一个角上，不是藏进页眉那排看着像标签的 chip 里。 */
+.guide-fab{position:fixed;right:18px;bottom:12px;z-index:40;display:inline-flex;
+  align-items:center;gap:7px;padding:8px 14px;border-radius:999px;cursor:pointer;
+  background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--f-tag);
+  color:var(--dim);font-family:inherit;font-size:12.5px;
+  box-shadow:0 8px 24px var(--shadow)}
+.guide-fab:hover{color:var(--ink);border-color:var(--f-tag)}
+.gq-mark{display:grid;place-items:center;width:17px;height:17px;border-radius:50%;
+  background:var(--f-tag);color:var(--panel);font-size:11px;font-weight:700;line-height:1}
+
 /* 讲到哪儿，页面上那块就描一圈。
  *
  * **虚线、不填充。** 第一版是实线 + 蓝色底 —— 那正是这套界面里「被选中」的长相，
@@ -1076,3 +1139,8 @@
 .guide-able.guide-lit:hover{outline:2px dashed var(--f-tag);outline-offset:3px}
 
 @media(prefers-reduced-motion:reduce){.gbar i{transition:none}}
+
+/*  舞台的等比缩放容器，理由见 shell/FitBox.tsx */
+.fit{flex:1 1 auto;min-height:0;overflow:auto;position:relative}
+.fitpad{position:relative;width:100%}
+.fitin{position:absolute;inset:0 0 auto 0;transform-origin:top center}

@@ -7,7 +7,16 @@ import { chromium } from 'playwright'
 
 const URL = process.argv[2] ?? 'http://localhost:5178/'
 const b = await chromium.launch({ channel: 'chrome' })
-const p = await b.newPage({ viewportSize: { width: 1460, height: 1080 }, deviceScaleFactor: 2 })
+/*
+ * ⚠️ 这里原来写的是 `viewportSize` —— **`newPage` 不认这个名字**（那是
+ * `page.setViewportSize()` 的参数），于是整套冒烟一直跑在 Chrome 的默认
+ * 1280×720 上，而我一路按"1460×1080"在读数、还照着这个数下过结论。
+ * 参数名打错不报错，只是静静地量错 —— 「调参前先确认量对了」。
+ *
+ * 现在明写 1280×720：这是三个候选尺寸里最紧的一个（720 比 768 矮、
+ * 1280 比 1366 窄），一屏装得下的判据就该在最紧的那一档上量。
+ */
+const p = await b.newPage({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 2 })
 
 const errs = []
 p.on('pageerror', e => errs.push('pageerror: ' + e.message))
@@ -19,6 +28,15 @@ let fail = 0
 const nav = async name => {
   await p.click(`.nav button:has-text("${name}")`)
   await p.waitForTimeout(260)
+}
+/**
+ * 日志 / 真题 / 边界现在收在底部坞里，同一时刻只露一块（为了「一屏装下一个实验」）。
+ * 三块都挂在 DOM 上，所以**读**得到；但非当前的那两块是 `hidden`，**点**不着。
+ * 要跟它们交互，先把那一格切出来。
+ */
+const dock = async label => {
+  await p.click(`.dockbar button:has-text("${label}")`)
+  await p.waitForTimeout(140)
 }
 const ok = m => console.log(`  ✅ ${m}`)
 const bad = m => { fail++; console.log(`  ❌ ${m}`) }
@@ -39,6 +57,18 @@ const snap = () => p.evaluate(() => ({
 }))
 
 await p.goto(URL, { waitUntil: 'networkidle' })
+/**
+ * 前 12 组测的是实验本身，讲解浮层不该在场。
+ *
+ * 它是**浮**的 —— 改成一屏布局之后页面上没有空地了，它必然压住某块内容。
+ * 实测在银行家算法压住了时间轴右端的刻度，点击直接报
+ * "…subtree intercepts pointer events"，卡满 30 秒。
+ *
+ * 真人可以拖开它（标题栏是把手），自动化不该去猜它今天停在哪。
+ * 所以这里先收起来，第 13 组再从 ? 按钮把它请回来 —— 顺带也验证了收起是有效的。
+ */
+await p.click('.guide .gx:last-of-type').catch(() => {})
+await p.waitForTimeout(140)
 await p.waitForSelector('.tick')
 
 /*
@@ -69,7 +99,9 @@ for (let i = 0; i < EXPS.length; i++) {
   stageSigs.push(await p.evaluate(() => {
     //  认舞台自己的容器，不靠"中列第几张卡片"猜 ——
     //  之前每加一个编辑器（序列 / 实体）这条就会误报一次
-    const el = document.querySelector('.stagewrap > .card')
+    //  ⚠️ 不写 `.stagewrap > .card`：舞台外面套了 FitBox（.fit > .fitpad > .fitin），
+    //  直接子代选择器一加中间层就断，而断了的表现是"整组测试崩在 null 上"。
+    const el = document.querySelector('.stagewrap .fitin > .card') ?? document.querySelector('.stagewrap .card')
     /*
      * 两处一直有问题，一起修在根因上：
      * 1) `.className` 对 SVG 元素返回 SVGAnimatedString 对象，一律 stringify 成
@@ -160,7 +192,7 @@ sweep.bars >= 3
 console.log('\n【6】真题：选题 → 载入配置 → 判题 → 跳到那一步')
 await nav('页面置换')                          // 有 Belady 那道题
 const probBefore = await snap()
-await p.click('.probpick button >> nth=1')     // 第一道真题
+await dock('真题'); await p.click('.probpick button >> nth=1')     // 第一道真题
 await p.waitForTimeout(300)
 const probAfter = await p.evaluate(() => ({
   statement: document.querySelector('.probstate')?.textContent?.slice(0, 24),
@@ -353,7 +385,7 @@ for (const name of ['排序逐趟', 'Dijkstra', '银行家算法', '滑动窗口
   await nav(name)
   const picks = await p.evaluate(() => document.querySelectorAll('.probpick button').length)
   if (picks < 2) { bad(`${name} 没有真题可选`); continue }
-  await p.click('.probpick button >> nth=1')
+  await dock('真题'); await p.click('.probpick button >> nth=1')
   await p.waitForTimeout(320)
   const nq = await p.evaluate(() => document.querySelectorAll('.qlist li').length)
   // 每一问都先故意填错拿到答案，再填回去 —— 验证答案确实是算出来的
@@ -484,7 +516,7 @@ restored.viol === 0 && restored.ticks === 8
 
 // 选了真题再改序列 → 必须提示偏离原题
 await nav('页面置换')
-await p.click('.probpick button >> nth=1')
+await dock('真题'); await p.click('.probpick button >> nth=1')
 await p.waitForTimeout(300)
 const beforeDrift = await p.evaluate(() => !!document.querySelector('.probdrift'))
 await setSeq('1 2 3 4 5')
@@ -710,7 +742,7 @@ const closePg = async () => { await p.click('.pgx'); await p.waitForTimeout(200)
 
 // 故意答错一问 → 必须进错题本
 await nav('页面置换')
-await p.click('.probpick button >> nth=1')
+await dock('真题'); await p.click('.probpick button >> nth=1')
 await p.waitForTimeout(300)
 await p.fill('.qlist li:nth-child(1) input', '__zzz__')
 await p.click('.qlist li:nth-child(1) .qrow button')
@@ -838,13 +870,24 @@ const pageToEnd = async () => {
     const [a, b] = t.split('/').map(x => Number(x.trim()))
     return { cur: a || 0, total: b || 0 }
   })
-  for (let k = cur; k < total; k++) { await p.click('.gfoot .gnav:last-child'); await p.waitForTimeout(30) }
+  /*
+   * 不按 total-cur 硬点 —— 页码是渲染出来的数，按钮的禁用态才是真源，
+   * 两者只要差一格就会撞上禁用按钮卡满 30 秒（第三次栽在这上面了）。
+   */
+  for (let k = 0; k < total + 2; k++) {
+    const more = await p.$('.gfoot .gnav:last-child:not([disabled])')
+    if (!more) break
+    await more.click(); await p.waitForTimeout(30)
+  }
   return total
 }
 
 // ═══ 13 · 讲解浮层：锚点要落得下，点哪讲哪 ═══
 console.log('\n【13】讲解浮层：30 个实验的锚点都落得下，点哪讲哪')
 {
+  //  第 1 组把它收起来了，这里请回来
+  await p.click('.guide-fab').catch(() => {})
+  await p.waitForTimeout(250)
   const names = await p.$$eval('.nav button', bs => bs.map(b => b.textContent.trim()))
   const broken = []
   let cardTotal = 0
@@ -944,15 +987,17 @@ console.log('\n【13】讲解浮层：30 个实验的锚点都落得下，点哪
     ['.sets .cell', '中间的格子矩阵', '舞台里的格子'],
     ['.bitrow', '上面那条彩色的位串', '位域'],
     ['.axis .lbl', '轴上的柱子', '轴'],
-    ['.card.log h3', '页面 · 逐步日志', '逐步日志'],
+    //  日志/真题/边界收进底部坞了，同一时刻只露一块 —— 第四个字段是"先切哪一格"
+    ['.card.log h3', '页面 · 逐步日志', '逐步日志', '逐步日志'],
     ['.card.readouts h3', '页面 · 读数', '读数'],
-    ['.card.prob h3', '页面 · 真题', '真题'],
-    ['.bounds', '页面 · 最底下的「边界」', '边界栏'],
+    ['.card.prob h3', '页面 · 真题', '真题', '真题'],
+    ['.bounds', '页面 · 最底下的「边界」', '边界栏', '边界'],
     ['.nav .grp', '页面 · 左边的目录', '左边的目录'],
     ['.tabs button:last-child', '页面 · 上面的页签', '页签（放最后，它会换视图）'],
   ]
   const wrong = []
-  for (const [sel, want, what] of cases) {
+  for (const [sel, want, what, tab] of cases) {
+    if (tab) await dock(tab)
     await p.click(sel, { timeout: 4000 }).catch(() => {})
     await p.waitForTimeout(230)
     const got = await p.evaluate(() => document.querySelector('.guide h3')?.textContent?.trim())
@@ -1012,6 +1057,55 @@ console.log('\n【13】讲解浮层：30 个实验的锚点都落得下，点哪
       : bad(`悬停提示不对：${n} 个字段、内容「${t1.slice(0, 20)}」、移开消失 ${gone}、还剩星号 ${stars}`)
   }
 
+
+  /**
+   * **浮层不许压住任何点得着的东西。**
+   *
+   * 这条是被一个真 bug 逼出来的：悬停提示"失灵"，查下去发现鼠标压根没落到读数上，
+   * 落在了 `.gbody` 上 —— 浮层盖着右下角那一整块。看得见、点不着，
+   * 而这种坏法**不报错、截图上也看不出来**（卡片本来就该在那儿）。
+   *
+   * 量法不能是"矩形相交"：被自己的滚动容器裁掉的元素仍然有几何位置，
+   * 光比矩形会把"早就看不见的东西"算成"被压住"（我第一版就是这么量的，
+   * 冤枉了一个读数）。改成两次 `elementFromPoint`：先把浮层设成
+   * `visibility:hidden` 问一遍"这个点上本来是谁"，再问一遍"现在是谁"。
+   * 本来就不在的不算，本来在、现在变成浮层的才算。
+   */
+  const probeCover = () => p.evaluate(() => {
+    const guide = document.querySelector('aside.guide')
+    if (!guide) return { cov: ['没有浮层'], n: 0 }
+    const targets = [...document.querySelectorAll('button, input, [data-tip], .cell, .tick, .pr .k, .bounds')]
+      .filter(e => !e.closest('.guide') && e.getBoundingClientRect().width > 0)
+    const pt = e => { const q = e.getBoundingClientRect(); return [q.left + q.width / 2, q.top + q.height / 2] }
+    guide.style.visibility = 'hidden'
+    const bare = targets.map(e => { const [x, y] = pt(e); const t = document.elementFromPoint(x, y); return !!t && (e.contains(t) || t.contains(e)) })
+    guide.style.visibility = ''
+    const cov = []
+    targets.forEach((e, i) => {
+      if (!bare[i]) return
+      const [x, y] = pt(e)
+      if (x < 0 || y < 0 || x > innerWidth || y > innerHeight) return
+      if (document.elementFromPoint(x, y)?.closest('.guide')) cov.push((e.textContent || e.tagName).trim().slice(0, 10))
+    })
+    return { n: targets.length, cov }
+  })
+  {
+    await nav('Cache 命中率'); await p.waitForTimeout(250)
+    const c = await probeCover()
+    c.cov.length === 0
+      ? ok(`浮层没压住任何点得着的东西（这一屏 ${c.n} 个可点元素逐个探过）`)
+      : bad(`浮层压住 ${c.cov.length} 处：${c.cov.join('、')}`)
+    //  自检：把它挪回"悬在坞上方"的老位置，这条判据必须变红
+    await p.evaluate(() => { document.querySelector('aside.guide').style.bottom = 'calc(var(--dock-h) + 26px)' })
+    await p.waitForTimeout(120)
+    const c2 = await probeCover()
+    await p.evaluate(() => { document.querySelector('aside.guide').style.bottom = '' })
+    await p.waitForTimeout(120)
+    c2.cov.length > 0
+      ? ok(`自检：挪回老位置立刻压住 ${c2.cov.length} 处（${c2.cov.slice(0, 3).join('、')}）—— 这条判据会红`)
+      : bad('自检失败：挪到老位置也说没压住，这条判据量不出东西')
+  }
+
   //  折叠：正文收起、标题与翻页留着（折叠不是隐藏）
   {
     //  ⚠️ 第三次栽在"假设起点"上了 —— 折叠这段原来写死"翻一下应该到第 2 页"，
@@ -1032,15 +1126,152 @@ console.log('\n【13】讲解浮层：30 个实验的锚点都落得下，点哪
     await p.click('.gx:first-of-type'); await p.waitForTimeout(150)
   }
 
-  await p.click('.guide .gx:last-of-type'); await p.waitForTimeout(150)
+  /**
+   * 关掉之后**要在同一个角上留一颗按钮**。
+   *
+   * 用户第一句话就是"我把说明卡 x 掉后，怎么找回来？" —— 那时的入口藏在页眉
+   * 那排 chip 里，而那排东西看着全是被动标签。东西从哪儿没的，就该从哪儿找回来。
+   */
+  const wasAt = await p.evaluate(() => document.querySelector('.gnum')?.textContent?.trim())
+  //  卡在哪个角上，请回来的按钮就该在哪个角上 —— 底部坞占了下沿，"贴着屏幕底"已经不是判据了
+  const wasCorner = await p.evaluate(() => {
+    const r = document.querySelector('aside.guide').getBoundingClientRect()
+    return { right: Math.round(innerWidth - r.right), bottom: Math.round(innerHeight - r.bottom) }
+  })
+  await p.click('.guide .gx:last-of-type'); await p.waitForTimeout(200)
+  const fab = await p.evaluate(() => {
+    const e = document.querySelector('.guide-fab')
+    if (!e) return null
+    const r = e.getBoundingClientRect()
+    return { text: e.textContent.trim(), right: Math.round(innerWidth - r.right), bottom: Math.round(innerHeight - r.bottom) }
+  })
   const gone = await p.evaluate(() => !document.querySelector('aside.guide'))
-  await p.reload({ waitUntil: 'networkidle' }); await p.waitForTimeout(500)
-  const stillGone = await p.evaluate(() => !document.querySelector('aside.guide'))
-  gone && stillGone ? ok('关掉之后刷新仍然是关的') : bad(`关闭没生效或没记住：关后 ${gone}、刷新后 ${stillGone}`)
+  gone && fab && Math.abs(fab.right - wasCorner.right) <= 4 && Math.abs(fab.bottom - wasCorner.bottom) <= 4
+    ? ok(`关掉后原地留下「${fab.text}」（和卡片同一个角 ${fab.right}/${fab.bottom}px）`)
+    : bad(`关掉后没在原地留按钮：卡没了 ${gone}、按钮 ${JSON.stringify(fab)}、卡在 ${JSON.stringify(wasCorner)}`)
 
-  await p.click('.chip.gchip'); await p.waitForTimeout(250)
-  const back = await p.evaluate(() => !!document.querySelector('aside.guide'))
-  back ? ok('页眉的「讲解」能把它请回来') : bad('关掉之后请不回来')
+  /*
+   * ⚠️ 第四次栽在"假设起点"上。这两条判据原来是夹着一次刷新写的：
+   * 关掉前记下页码 → 刷新 → 请回来 → 要求"还在关掉前那一页"。
+   * 刷新本来就会把页码归零，这条只在关掉前恰好停在第 1 页时才成立 ——
+   * 之前一直绿是**运气**，改了别处让它停在第 14 页，它才露出来。
+   * 拆开：先在不刷新的前提下验"回到原页"，再单独验"刷新后仍是关的"。
+   */
+  await p.click('.guide-fab'); await p.waitForTimeout(250)
+  const back = await p.evaluate(() => ({
+    open: !!document.querySelector('aside.guide'),
+    at: document.querySelector('.gnum')?.textContent?.trim(),
+  }))
+  back.open && back.at === wasAt
+    ? ok(`点按钮请回来，且回到关掉前那一页（${back.at}）—— 组件不卸载，翻页位置留着`)
+    : bad(`请回来不对：开了 ${back.open}、停在 ${back.at}（关前是 ${wasAt}）`)
+
+  await p.click('.guide .gx:last-of-type'); await p.waitForTimeout(200)
+  await p.reload({ waitUntil: 'networkidle' }); await p.waitForTimeout(500)
+  const stillGone = await p.evaluate(() => !document.querySelector('aside.guide') && !!document.querySelector('.guide-fab'))
+  stillGone ? ok('刷新后仍是关的，按钮还在（关闭状态记在 localStorage）') : bad('关闭状态没记住')
+}
+
+// ═══ 14 · 一屏装得下：窗口不滚、舞台看得全 ═══
+console.log('\n【14】一屏装得下：30 个实验 × 两档窗口')
+{
+  /**
+   * 用户的原话是"一个实验要一页窗口把内容全放下，而不要让用户滑动窗口
+   * 才能看到剩余内容"。这条要拆成两问，而且**第一问差点被我写成永远绿的**：
+   *
+   * 一问"窗口滚不滚"。外壳是 `#root{height:100dvh;overflow:hidden}` ——
+   * 于是 `scrollHeight > innerHeight` **永远不成立**：装不下的东西不会撑出
+   * 滚动条，它会被**裁掉**。往页面里塞 400px 自检，判据纹丝不动，
+   * 这才发现量的是个恒真式。改成量"有没有东西被 overflow:hidden 裁掉"。
+   *
+   * 二问"舞台看得全不全"。窗口不滚很容易做到 —— 把滚动挪进舞台里就行，
+   * 那对用户是同一件事。所以还要量舞台自己还差多少才装得下。
+   */
+  const FLOOR = 180
+  /**
+   * 舞台缺口的**基线**，按窗口分档。
+   *
+   * 不写死"必须为 0"：图密的那几个实验（图的遍历、拓扑排序…）内容本身就比
+   * 1280×720 能给的地方多，缩到下限 0.58 仍差一截，再缩字就没法看了 ——
+   * 那是内容与窗口的矛盾，不是版面的 bug，写成 0 只会逼出一个假绿灯。
+   *
+   * 所以判据是**不许变大**：记下今天的数，谁把版面改回去了，这条立刻红。
+   */
+  const BASE = { '1280x720': 149, '1440x900': 71 }
+  const probe = () => p.evaluate(() => {
+    const cut = []
+    for (const el of document.querySelectorAll('#root, .app, .app *')) {
+      const st = getComputedStyle(el)
+      if (st.overflowY === 'hidden' && el.scrollHeight - el.clientHeight > 2)
+        cut.push(`${el.className || el.id} 裁掉 ${el.scrollHeight - el.clientHeight}px`)
+    }
+    const fit = document.querySelector('.fit')
+    return {
+      cut,
+      stage: Math.round(document.querySelector('.stagewrap')?.getBoundingClientRect().height ?? 0),
+      gap: fit ? Math.max(0, fit.scrollHeight - fit.clientHeight) : 0,
+      scale: Number(document.querySelector('.fitin')?.dataset.fit ?? 1),
+    }
+  })
+  const names = await p.$$eval('.nav button', bs => bs.map(b => b.textContent.trim()))
+  for (const [w, h] of [[1280, 720], [1440, 900]]) {
+    await p.setViewportSize({ width: w, height: h })
+    await p.waitForTimeout(300)
+    const cut = [], thin = [], gaps = []
+    for (const name of names) {
+      await nav(name)
+      await p.waitForTimeout(180)          //  等 FitBox 的 ResizeObserver 落定
+      const m = await probe()
+      if (m.cut.length) cut.push(`${name}：${m.cut[0]}`)
+      if (m.stage < FLOOR) thin.push(`${name} 舞台只有 ${m.stage}px`)
+      if (m.gap > 0) gaps.push([name, m.gap])
+    }
+    const base = BASE[`${w}x${h}`] ?? 0
+    const over = gaps.filter(([, g]) => g > base + 10)
+    cut.length === 0 && thin.length === 0 && over.length === 0
+      ? ok(`${w}×${h}：没有内容被裁掉，舞台都不低于 ${FLOOR}px；`
+         + `${names.length - gaps.length} 个实验的图完整落在一屏上，`
+         + `其余 ${gaps.length} 个最多还差 ${Math.max(0, ...gaps.map(g => g[1]))}px（基线 ${base}px）`)
+      : bad(`${w}×${h}：裁掉 ${cut.length} 处、舞台过矮 ${thin.length} 个、缺口超出基线 ${base}px 的 ${over.length} 个\n     `
+         + [...cut, ...thin, ...over.map(([n, g]) => `${n} 差 ${g}px`)].slice(0, 5).join('\n     '))
+  }
+  /*
+   * 两条自检，各打各的那一问：
+   * 塞一块 400px 进去 → 必须量到"被裁掉"；把坞撑厚 → 舞台必须被挤破缺口。
+   */
+  await p.evaluate(() => {
+    const d = document.createElement('div')
+    /*
+     * 挑 `.dock` 塞，不塞 `.app`。
+     *
+     * `.app` 和 `#root` 都是纵向 flex，里面的 `.grid` 是 `flex:1;min-height:0` ——
+     * 多塞 400px 进去，网格自己让开就完了，谁也没被裁。自检因此一直是绿的，
+     * 而它本该证明"裁剪量得出来"。`.dock` 高度写死、overflow:hidden，塞进去就真的裁。
+     */
+    d.id = '__probe'; d.style.cssText = 'height:400px;flex:0 0 400px'
+    document.querySelector('.dock').appendChild(d)
+  })
+  await p.waitForTimeout(250)
+  const cutProbe = await probe()
+  await p.evaluate(() => document.getElementById('__probe')?.remove())
+  cutProbe.cut.length > 0
+    ? ok(`自检：塞进一块 400px 的东西，立刻量到「${cutProbe.cut[0]}」—— 裁剪那一条会红`)
+    : bad('自检失败：塞了 400px 进去也说没东西被裁，裁剪判据量不出东西')
+
+  //  舞台那一条的自检：挑一个图最密的实验，把坞撑厚，缺口必须明显变大
+  await nav('图的遍历'); await p.waitForTimeout(300)
+  const before = (await probe()).gap
+  await p.evaluate(() => document.documentElement.style.setProperty('--dock-h', '520px'))
+  await p.waitForTimeout(450)
+  const squeeze = await probe()
+  await p.evaluate(() => document.documentElement.style.removeProperty('--dock-h'))
+  await p.waitForTimeout(300)
+  squeeze.gap > before + 50
+    ? ok(`自检：把底部坞撑到 520px，图的遍历的缺口从 ${before}px 涨到 ${squeeze.gap}px —— 舞台那一条会红`)
+    : bad(`自检失败：坞撑到 520px，缺口只从 ${before}px 变成 ${squeeze.gap}px`)
+
+  await p.setViewportSize({ width: 1280, height: 720 })
+  await p.waitForTimeout(250)
 }
 
 console.log(`\n${'─'.repeat(50)}`)

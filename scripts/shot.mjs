@@ -1,6 +1,6 @@
 import { chromium } from 'playwright'
 const b = await chromium.launch({ channel: 'chrome' })
-const p = await b.newPage({ viewportSize: { width: 1440, height: 1000 }, deviceScaleFactor: 2 })
+const p = await b.newPage({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 2 })
 const errs = []
 p.on('pageerror', e => errs.push('pageerror: ' + e.message))
 p.on('console', m => { if (m.type() === 'error') errs.push('console: ' + m.text()) })
