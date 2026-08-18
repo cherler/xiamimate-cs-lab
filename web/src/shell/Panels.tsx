@@ -8,12 +8,33 @@ export function StepLog({
   exp, trace, index, onSeek,
 }: { exp: AnyExperiment; trace: never[]; index: number; onSeek: (i: number) => void }) {
   const ref = useRef<HTMLLIElement | null>(null)
-  useEffect(() => { ref.current?.scrollIntoView({ block: 'nearest' }) }, [index])
+  const box = useRef<HTMLDivElement | null>(null)
+
+  /**
+   * 让当前步进入可视范围 —— **只滚日志自己那个框，不许动整页。**
+   *
+   * 原来写的是 `scrollIntoView({ block: 'nearest' })`。`nearest` 听起来很克制，
+   * 其实它会把**每一层**可滚动祖先都调整到位，包括视口本身：
+   * 日志卡片在首屏之下时，浏览器就把整页往下滚一段。
+   *
+   * 单看本仓时这只是"开页面自己往下挪了 28px"，没人在意。并入主站之后
+   * 挪的量变成 80px（多出来的正好是平台页眉那 52px）—— **打开 /lab/ 的第一眼，
+   * 平台页眉已经被滚出屏幕了**，而它存在的全部意义就是让人一眼看出这是虾米伙伴。
+   *
+   * 所以改成自己算：只加减 `box.scrollTop`，窗口一次都不碰。
+   */
+  useEffect(() => {
+    const li = ref.current, b = box.current
+    if (!li || !b) return
+    const l = li.getBoundingClientRect(), r = b.getBoundingClientRect()
+    if (l.top < r.top) b.scrollTop += l.top - r.top
+    else if (l.bottom > r.bottom) b.scrollTop += l.bottom - r.bottom
+  }, [index])
 
   const model = exp.kernel.compile(exp.defaultDoc)
 
   return (
-    <div className="card log">
+    <div className="card log" ref={box}>
       <h3>逐步日志 <span className="hint">点击跳到该步</span></h3>
       <ul>
         {trace.map((s, i) => {

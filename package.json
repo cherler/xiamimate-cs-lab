@@ -8,7 +8,7 @@
     "test": "tsx tests/run-all.ts",
     "test:phase0": "tsx tests/phase0-convergence.test.ts",
     "test:sweep": "tsx tests/parameter-axis.test.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p web/tsconfig.json",
     "demo:cache": "tsx src/reference/cache.ts",
     "demo:sched": "tsx src/reference/scheduler.ts",
     "demo:tcp": "tsx src/reference/tcp.ts",
@@ -18,7 +18,12 @@
     "test:l2": "tsx tests/compose-l2.test.ts",
     "web": "vite --config web/vite.config.ts web",
     "web:build": "vite build --config web/vite.config.ts web",
-    "web:single": "npm run web:build && node scripts/bundle-single.mjs"
+    "web:single": "npm run web:build && node scripts/bundle-single.mjs",
+    "web:lab": "VITE_BASE=/lab/ vite --config web/vite.config.ts web",
+    "web:build:lab": "VITE_BASE=/lab/ vite build --config web/vite.config.ts web",
+    "gateway": "node scripts/local-gateway.mjs",
+    "sync:tokens": "node scripts/sync-brand-tokens.mjs",
+    "smoke": "node scripts/web-smoke.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",

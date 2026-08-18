@@ -16,13 +16,58 @@ npm install
 npm test          # 跑全部测试
 npm run typecheck # tsc --noEmit
 
-npm run web          # 起视图层（30 个实验都能跑）
+npm run web          # 起视图层（30 个实验都能跑）·「独立形态」
 npm run web:single   # 打成一个自包含 HTML
 
 npm run demo:cache   # 单看 Cache 参考实现的轨迹
 npm run demo:sched
 npm run demo:tcp
 ```
+
+## 两种形态
+
+本仓同一份代码有两种跑法，**区别只由挂载路径决定**（见 `web/src/platform.ts`）：
+
+| | 独立形态 | 并入形态 |
+|---|---|---|
+| 起法 | `npm run web` | `npm run web:lab` + `npm run gateway` |
+| base | `/` | `/lab/` |
+| 平台页眉页脚 | 无 | 有（加载主站 `/chrome` 制品） |
+| 学习进度 | 只存本机 | 登录后与账号双向合并 |
+| 冒烟 | `node scripts/web-smoke.mjs http://127.0.0.1:5178/` | `node scripts/platform-smoke.mjs` |
+
+**并入形态的本机入口是 `http://127.0.0.1:3000/lab`**，与虾米看股、虾米看AI 一致 ——
+主站的 `next.config.ts` 把 `/lab/*` 转给本仓的 dev server。
+**不要直接开 `:5178`**：那儿拿不到 `/chrome` 也拿不到 `/v1`，
+两个「看起来都对」的地址只有一个是并入后的样子。
+
+```bash
+# 终端 1（本仓）        VITE_BASE=/lab/ 的 dev server（:5178）
+npm run web:lab
+# 终端 2（tools-frontend）主站 :3000，rewrites 负责分流
+npm run dev
+# 终端 3（tools-backend）账号与进度接口 :8200
+bash scripts/dev.sh
+# 然后开 http://127.0.0.1:3000/lab
+```
+
+⚠️ **必须用 `npm run web:lab`，不能用 `npm run web`。** 后者挂在根上，
+HTML 里写的是 `src="/src/main.tsx"`，经 :3000 转过去落到主站身上 ——
+**页面回 200，内容却是空的**。冒烟脚本的前置检查专门查这一条。
+
+### 另一条入口：本地网关（验静态形态）
+
+`:3000` 走的是 Next dev 的 rewrites，方便，但**不是线上的形状**。
+网关把线上那套单域名分流搬到本机，规则与 `deploy/caddy-snippet.conf` 一一对应
+（**改一边要改另一边**），能验到「不存在的资源回不回 404」这类只有静态托管才成立的事：
+
+```bash
+npm run web:build:lab
+node scripts/local-gateway.mjs --lab=static --main=static
+node scripts/platform-smoke.mjs http://127.0.0.1:8090
+```
+并入的整体做法见 [虾米看股并入虾米伙伴](../wiki/27-stock-lab-platform-integration.md)，
+本仓的差异见 [logs/2026-08-18-platform-integration.md](logs/2026-08-18-platform-integration.md)。
 
 ## 目录
 

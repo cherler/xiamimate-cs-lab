@@ -5,7 +5,7 @@
  *   参数 / 选中实验 / 当前步  →  重算 doc → 校验 → 编译 → 跑出轨迹 → 所有视图从轨迹派生
  * 视图之间从不互相写。改一个状态，五块地方一起变。
  */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { run } from '@engine/core/kernel.ts'
 import { validateDocument } from '@engine/ai/schema.ts'
 import type { SimDocument, Entity } from '@engine/core/document.ts'
@@ -17,7 +17,9 @@ import { SequenceEditor, parseSequence, formatSequence } from './shell/SequenceE
 import { EntityEditor } from './shell/EntityEditor.tsx'
 import { problemsFor, PROBLEMS } from './problems.ts'
 import { ProgressPanel } from './shell/ProgressPanel.tsx'
+import { ChromeHeader, ChromeFooter } from './shell/PlatformChrome.tsx'
 import * as progress from './progress.ts'
+import * as sync from './sync.ts'
 
 export default function App() {
   const [expId, setExpId] = useState(EXPERIMENTS[0].id)
@@ -34,8 +36,13 @@ export default function App() {
    */
   const [seqText, setSeqText] = useState<Record<string, string | undefined>>({})
   const [seqValues, setSeqValues] = useState<Record<string, number[] | undefined>>({})
-  /** 学习进度（只存本地）；懒加载一次，之后全在内存里 */
+  /**
+   * 学习进度。**本地那份始终是权威的读写目标**；登录后再跟云端主本合并
+   * （见 sync.ts）。懒加载一次，之后全在内存里。
+   */
   const [store, setStore] = useState<progress.Store>(() => progress.load())
+  /** 云端状态：没主站 / 没登录 / 已同步 / 正在写 / 写失败 —— 面板上如实显示 */
+  const [cloud, setCloud] = useState<sync.CloudState>({ kind: 'unknown' })
   const [showProgress, setShowProgress] = useState(false)
   /** 从错题本跳过来时要高亮的那一问 */
   const [focusQ, setFocusQ] = useState<number | null>(null)
@@ -151,9 +158,33 @@ export default function App() {
     setStore(s => {
       const next = progress.record(s, progress.keyOf(problemId, qi), correct)
       progress.save(next)
+      //  **先落本地再推云端。** 本地那份是权威的读写目标，云端只是主本 ——
+      //  网断了、没登录、后端挂了，都不该让用户少记一道题。
+      if (cloud.kind === 'synced' || cloud.kind === 'saving' || cloud.kind === 'error') {
+        sync.schedulePush(next, setCloud)
+      }
       return next
     })
   }
+  /**
+   * 开页面时跟云端对一次。
+   *
+   * `useRef` 守着只跑一次：StrictMode 下 effect 会被故意执行两遍，
+   * 两次 firstSync 会各拉一次、各推一次 —— 第二次必然撞 409 再合并一轮。
+   * 结果虽然是对的，但那是一整套并发路径在开发环境里每次都跑，
+   * **真出问题时反而分不清是 bug 还是 StrictMode**。
+   */
+  const synced = useRef(false)
+  useEffect(() => {
+    if (synced.current) return
+    synced.current = true
+    void sync.firstSync(progress.load()).then(({ store: merged, state }) => {
+      setCloud(state)
+      //  合并结果要落回本地：下次离线打开时看到的就是合并过的那份。
+      if (state.kind === 'synced') { progress.save(merged); setStore(merged) }
+    })
+  }, [])
+
   /** 从错题本跳到某实验的某道题的某一问 */
   function jumpToQuestion(experimentId: string, problemId: string, qi: number) {
     if (experimentId !== expId) selectExp(experimentId)
@@ -183,6 +214,10 @@ export default function App() {
   }, {})
 
   return (
+    <>
+    {/* 平台横条在 .app 外面：它要通栏，而 .app 是 1420px 居中的。
+        没并入主站时这两个组件什么都不渲染（连占位的空 div 都不留）。 */}
+    <ChromeHeader />
     <div className="app">
       <header className="top">
         <h1>{exp.title}</h1>
@@ -291,9 +326,23 @@ export default function App() {
           store={store} experiments={EXPERIMENTS}
           onJump={jumpToQuestion}
           onClose={() => setShowProgress(false)}
-          onClear={() => { progress.clearAll(); setStore(progress.load()) }}
+          cloud={cloud}
+          onClear={() => {
+            progress.clearAll()
+            setStore(progress.load())
+            //  已同步的话云端那份也要清 —— 只清本地的话，下次开页面
+            //  firstSync 会把云端那份原样拉回来，用户会觉得"清了个寂寞"。
+            if (cloud.kind === 'synced' || cloud.kind === 'saving' || cloud.kind === 'error') {
+              const at = cloud.rev
+              void sync.clearCloud()
+                .then(r => setCloud({ kind: 'synced', rev: r, at: Date.now() }))
+                .catch(e => setCloud({ kind: 'error', message: String(e), rev: at }))
+            }
+          }}
         />
       )}
     </div>
+    <ChromeFooter />
+    </>
   )
 }

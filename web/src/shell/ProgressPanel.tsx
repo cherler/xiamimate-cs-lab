@@ -7,16 +7,19 @@
 import { useMemo, useState } from 'react'
 import type { Store } from '../progress.ts'
 import { keyOf, reviewQueue, statOf, STATUS_LABEL, MASTER_STREAK } from '../progress.ts'
+import type { CloudState } from '../sync.ts'
 import { PROBLEMS } from '../problems.ts'
 import type { AnyExperiment } from '../types.ts'
 
 type Slot = { problemId: string; qi: number }
 
 export function ProgressPanel({
-  store, experiments, onJump, onClose, onClear,
+  store, experiments, cloud, onJump, onClose, onClear,
 }: {
   store: Store
   experiments: AnyExperiment[]
+  /** 记录存在哪儿 —— 面板上如实说，不要让用户以为换台机器还在 */
+  cloud: CloudState
   /** 跳到某道题的某一问 */
   onJump: (experimentId: string, problemId: string, qi: number) => void
   onClose: () => void
@@ -61,6 +64,7 @@ export function ProgressPanel({
           <span className="pgsum">
             已掌握 <b>{total.mastered}</b> / {total.total} 问
           </span>
+          <CloudTag cloud={cloud} />
           <button className="pgx" onClick={onClose} aria-label="关闭">✕</button>
         </header>
 
@@ -135,9 +139,17 @@ export function ProgressPanel({
           <section className="pgfoot">
             <p className="pgnote">
               一次做对就算掌握；<b>错过的题要连续答对两次</b>才算真掌握。
-              记录只存在这台机器的浏览器里，换设备不会同步。
               <b>改动了实验配置时不记账</b> —— 配置一改答案就变了另一道题，记进去是假账。
             </p>
+            <p className="pgnote">{STORAGE_NOTE[cloud.kind]}</p>
+            {(cloud.kind === 'synced' || cloud.kind === 'saving' || cloud.kind === 'error') && (
+              <p className="pgnote dim">
+                跨设备合并的口径：同一问在两台设备上都做过时，<b>次数取较大值而不是相加</b>
+                （两边带着同一段历史，相加会把一次作答数成两次）；
+                「最近答对没有」取更近的那一次。因此分头做题时次数会少算 ——
+                这个数字只用来挑该复习的题，不是统计报表。
+              </p>
+            )}
             {confirming ? (
               <div className="pgconfirm">
                 <span>确定清空全部记录？这一步撤不回来。</span>
@@ -151,6 +163,34 @@ export function ProgressPanel({
         </div>
       </div>
     </div>
+  )
+}
+
+/**
+ * 记录存在哪儿 —— **五种状态各说各的，不合并成一句含糊的话。**
+ *
+ * 「只存在本机」和「登录后可跨设备」是两条不同的下一步：前者没有下一步，
+ * 后者的下一步是点右上角登录。合成一句「可能不同步」等于两边都没说清。
+ */
+const STORAGE_NOTE: Record<CloudState['kind'], string> = {
+  unknown: '正在确认记录存在哪里…',
+  standalone: '记录只存在这台机器的浏览器里，换设备不会同步。',
+  anon: '记录只存在这台机器的浏览器里。右上角登录之后会自动同步到账号，换设备也在。',
+  synced: '已同步到你的虾米伙伴账号，换设备也在。',
+  saving: '正在同步到你的虾米伙伴账号…',
+  error: '同步到账号失败了 —— 这台机器上的记录是完整的，联网后改动会自动补推。',
+}
+
+const CLOUD_TAG: Record<CloudState['kind'], string | null> = {
+  unknown: null, standalone: null, anon: '仅本机',
+  synced: '已同步', saving: '同步中…', error: '同步失败',
+}
+
+function CloudTag({ cloud }: { cloud: CloudState }) {
+  const text = CLOUD_TAG[cloud.kind]
+  if (!text) return null
+  return (
+    <span className={`pgcloud ${cloud.kind}`} title={STORAGE_NOTE[cloud.kind]}>{text}</span>
   )
 }
 

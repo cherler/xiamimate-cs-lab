@@ -984,6 +984,15 @@
   flex-direction:column;gap:10px}
 .pgnote{margin:0;font-size:11px;color:var(--faint);line-height:1.9}
 .pgnote b{color:var(--dim)}
+/* 合并口径那段：是注脚的注脚，压一档，别跟规则本身抢 */
+.pgnote.dim{font-size:10.5px;opacity:.78}
+
+/* 记录存在哪儿。**颜色只分「同步失败」和其它** —— 「仅本机」不是错误状态，
+   染成橙色会让一个完全正常的用法看起来像出了问题。 */
+.pgcloud{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;padding:2px 7px;
+  border:1px solid var(--line);border-radius:8px;color:var(--faint);white-space:nowrap}
+.pgcloud.synced{color:var(--hit);border-color:#45B39A44}
+.pgcloud.error{color:var(--miss);border-color:#E2664A55}
 .pgclear{align-self:flex-start;background:none;border:1px solid var(--line);color:var(--faint);
   border-radius:4px;padding:4px 12px;cursor:pointer;font-size:11.5px}
 .pgclear:hover{color:var(--miss);border-color:#E2664A66}
