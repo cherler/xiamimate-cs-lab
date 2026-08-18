@@ -19,7 +19,8 @@ import { problemsFor, PROBLEMS } from './problems.ts'
 import { ProgressPanel } from './shell/ProgressPanel.tsx'
 import { ChromeHeader, ChromeFooter } from './shell/PlatformChrome.tsx'
 import { GuideOverlay } from './shell/GuideOverlay.tsx'
-import { cardsOf, tourCards } from './guide.ts'
+import { TipLayer } from './shell/Tip.tsx'
+import { cardsOf } from './guide.ts'
 import * as progress from './progress.ts'
 import * as sync from './sync.ts'
 
@@ -47,25 +48,32 @@ export default function App() {
   const [cloud, setCloud] = useState<sync.CloudState>({ kind: 'unknown' })
   const [showProgress, setShowProgress] = useState(false)
   /**
-   * 讲解浮层。`guideOff` 是"用户关掉了"，`tour` 是"现在讲的是页面本身还是这个实验"。
-   * 关掉的状态存 localStorage —— 学会了的人不该每换一个实验就再关一次。
+   * 讲解浮层开关。关掉的状态存 localStorage —— 学会了的人不该每换一个实验就再关一次。
+   * 「页面各区域」那一串已经并进每个实验的卡片序列里，所以不再有"讲实验/讲页面"两档。
    */
   const [guideOff, setGuideOff] = useState(() => {
     try { return localStorage.getItem('cslab.guide.closed') === '1' } catch { return false }
   })
-  const [tour, setTour] = useState(false)
-  /**
-   * **必须 memo。** `cardsOf()` 每次调用都造一个新数组，而 App 在播放时每秒重渲染
-   * 几十次 —— 浮层那几个 effect 的依赖里有 cards，新数组会让它们每帧都
-   * 退订再订阅一遍 document 的事件。功能上看不出来，但那是白烧的。
-   */
-  const guideCards = useMemo(() => (tour ? tourCards() : cardsOf(expId)), [tour, expId])
+
   /** 从错题本跳过来时要高亮的那一问 */
   const [focusQ, setFocusQ] = useState<number | null>(null)
   /** 实体表的改动；undefined = 没改过，用 baseDoc.entities */
   const [entities, setEntities] = useState<Record<string, Entity[] | undefined>>({})
 
   const exp = EXPERIMENTS.find(e => e.id === expId)!
+
+  /**
+   * **必须 memo。** `cardsOf()` 每次调用都造一个新数组，而 App 在播放时每秒重渲染
+   * 几十次 —— 浮层那几个 effect 的依赖里有 cards，新数组会让它们每帧都
+   * 退订再订阅一遍 document 的事件。功能上看不出来，但那是白烧的。
+   */
+  const guideCards = useMemo(() => cardsOf(expId, {
+    params: exp.params,
+    seqPresets: exp.sequence?.presets,
+    entPresets: exp.entitySpec?.presets,
+    hasSequence: !!exp.sequence,
+    hasEntities: !!exp.entitySpec,
+  }), [expId, exp])
   const problems = useMemo(() => problemsFor(exp.id), [exp])
   const problem = problems.find(p => p.id === problemId) ?? null
 
@@ -250,12 +258,11 @@ export default function App() {
               报出来却是三十秒后另一个元素找不到。自己的东西给自己的类名。 */}
           <button className={`chip gchip${guideOff ? '' : ' on'}`}
                   onClick={() => {
-                    //  关着就打开讲这个实验；开着就在"讲实验 / 讲页面"之间换
-                    if (guideOff) { setGuideOff(false); setTour(false) }
-                    else setTour(t => !t)
-                    try { localStorage.setItem('cslab.guide.closed', '0') } catch { /* 隐私模式 */ }
+                    const next = !guideOff
+                    setGuideOff(next)
+                    try { localStorage.setItem('cslab.guide.closed', next ? '1' : '0') } catch { /* 隐私模式 */ }
                   }}>
-            {guideOff ? '讲解' : tour ? '讲页面' : '讲实验'}
+            讲解{guideOff ? '' : '中'}
           </button>
           <button className="chip act" onClick={() => setShowProgress(true)}>
             进度 {mastered} / {totalQ}
@@ -373,10 +380,11 @@ export default function App() {
     </div>
     <GuideOverlay
       cards={guideCards}
-      title={tour ? '页面怎么用' : exp.title}
+      title={exp.title}
       closedRef={guideOff}
       onRequestClose={() => setGuideOff(true)}
     />
+    <TipLayer />
     <ChromeFooter />
     </>
   )

@@ -1,6 +1,7 @@
 /** 共享面板：逐步日志 · 参数 · 读数 · 违规 · 边界 */
 import { useEffect, useRef } from 'react'
 import type { Violation } from '@engine/core/verify.ts'
+import { tipFor } from '../guide.ts'
 import type { AnyExperiment, ParamSpec, Readout } from '../types.ts'
 
 // ── 逐步日志：跟轴联动 ─────────────────────────────────
@@ -80,7 +81,9 @@ export function ParamPanel({
       <div className="body params">
         {specs.map(sp => (
           <div className="param" key={sp.key}>
-            <div className="k">
+            {/* 有一行说得清的就挂 data-tip，悬停时给一句；没有的不挂 ——
+                把名字重念一遍的提示比没有提示更烦。 */}
+            <div className="k" data-tip={tipFor(sp.label) ?? undefined}>
               <span>{sp.label}</span>
               {sp.kind === 'number' && sp.unit && <span className="u">{sp.unit}</span>}
             </div>
@@ -109,7 +112,7 @@ export function Readouts({ items }: { items: Readout[] }) {
       <div className="body">
         {items.map((r, i) => (
           <div className="pr" key={i}>
-            <span className="k">{r.label}</span>
+            <span className="k" data-tip={tipFor(r.label) ?? undefined}>{r.label}</span>
             <span className={`v ${r.tone ?? ''}`}>{r.value}</span>
           </div>
         ))}

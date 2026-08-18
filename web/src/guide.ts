@@ -81,14 +81,28 @@ export type Guide = {
   terms: string[]
 }
 
-/** 页面本身怎么用 —— 与具体实验无关，写一次。锚点跟 read 项同一套用法。 */
-export const TOUR: { at: string; is: string; anchor?: string }[] = [
-  { at: '左边', is: '30 个实验，按四门课分组。点一个就换一整屏。', anchor: '.nav' },
-  { at: '中间', is: '舞台 —— 这个算法此刻的样子。上面几个页签是同一件事的不同看法。', anchor: '.stagewrap' },
-  { at: '中间偏下的「轴」', is: '整条推演被切成了一步一步。点任意一格跳到那一步，柱子高低是那一步的某个量。', anchor: '.axis' },
-  { at: '再往下', is: '逐步日志，每一步一句话。点某一行也能跳过去。', anchor: '.card.log' },
-  { at: '最下面', is: '真题。选一道，实验会自动切成题目的配置；答完能跳回轨迹里看为什么。', anchor: '.card.prob' },
-  { at: '右边', is: '参数（改了立刻重跑）和读数（当前这一步的关键数字）。', anchor: '.body.params' },
+/**
+ * 页面各区域 —— 与具体实验无关，写一次，**并进每个实验的卡片序列里**。
+ *
+ * 这一串就是"点哪儿都有说明"的骨架：轴、日志、读数、真题、边界…
+ * 不管在哪个实验下点它们，都讲得出话来。
+ *
+ * `need` 是"这一块不是每个实验都有"：没有参数的实验（银行家、哈夫曼）
+ * 渲染的是一段说明而不是 `.body.params`，没有序列的实验没有 `.seqin`。
+ * **锚到一个不存在的元素，就是一张永远点不到、翻到也没反应的卡** ——
+ * 冒烟第 13 组会当场把它报出来。
+ */
+export const TOUR: { at: string; is: string; anchor: string; need?: 'params' | 'sequence' | 'entities' }[] = [
+  { at: '左边的目录', is: '30 个实验，按四门课分组。点一个就换一整屏。', anchor: '.nav' },
+  { at: '上面的页签', is: '同一件事的几种看法 —— 换页签不会重跑，只是换个角度看同一条轨迹。', anchor: '.tabs' },
+  { at: '中间的舞台', is: '这个算法此刻的样子。它永远只画"当前这一步"，往前往后都由下面那条轴决定。', anchor: '.stagewrap' },
+  { at: '轴', is: '整条推演被切成一步一步。点任意一格跳到那一步；柱子高低是那一步的某个量，柱子上方写着量的是什么。', anchor: '.axis' },
+  { at: '逐步日志', is: '每一步一句话，说清这一步发生了什么。点某一行也能跳过去。', anchor: '.card.log' },
+  { at: '真题', is: '选一道，实验会自动切成题目的配置。答完能跳回轨迹里看为什么；答错的会进错题本。', anchor: '.card.prob' },
+  { at: '参数', is: '改了立刻重跑整条轨迹 —— 不是改画面，是换一个题面重新算一遍。', anchor: '.body.params', need: 'params' },
+  { at: '读数', is: '当前这一步的关键数字。它们全部从轨迹派生，不是另算的 —— 所以跟舞台上看到的必然一致。', anchor: '.card.readouts' },
+  { at: '访问序列', is: '驱动这个实验的那串数据，可以直接改。半截的、不合法的输入不会喂给仿真，仿真停在上一次有效的地方。', anchor: '.seqin', need: 'sequence' },
+  { at: '实体表', is: '题面数据（进程表 / 边表 / 资源矩阵…），可以改、可以加减行。改完立刻重算。', anchor: '.enttab', need: 'entities' },
   { at: '最底下的「边界」', is: '这个仿真**没有**模拟什么 —— 免得你拿它当全部事实。', anchor: '.bounds' },
 ]
 
@@ -577,34 +591,218 @@ export type Card = {
 const termCardId = (id: string) => `term:${id}`
 
 /**
- * 摊平成卡片序列。**不另存一份数据**：卡是从上面那三块（question / read / try / terms）
- * 现算出来的，所以内容只有一处真源 —— 改导览不用记得同步改卡。
+ * 摊平时用得上的运行期信息 —— 参数规格与预置清单都在注册表里，
+ * 而这个文件不能 import 注册表（它拖着 `@engine/*` 与 .tsx，纯 node 的单元测试进不来）。
+ * 所以由 App 在渲染时喂进来。
  */
-export function cardsOf(expId: string): Card[] {
+export type GuideContext = {
+  params?: { key: string; label: string; options: readonly (string | number)[]; unit?: string }[]
+  seqPresets?: readonly { label: string; note: string }[]
+  entPresets?: readonly { label: string; note: string }[]
+  hasSequence?: boolean
+  hasEntities?: boolean
+}
+
+/**
+ * 摊平成卡片序列。**不另存一份数据**：卡是从上面那三块现算出来的，
+ * 内容只有一处真源。
+ *
+ * ## 覆盖面是这里的第一目标
+ *
+ * 用户要的是「点哪儿都有说明」。所以除了手写的那几张，还**派生**出三类：
+ *
+ *   预置按钮 → 直接用它的 `note`。那句话本来就是一个**能被证伪的行为主张**
+ *              （`tests/presets-claims.test.ts` 逐条验过），拿来当讲解比另写一份强：
+ *              按钮上写什么、讲解里说什么、测试验什么，是同一句话。
+ *   参数旋钮 → 没有手写"试一试"覆盖到的，补一张说清选项与它改的是什么。
+ *   页面区域 → 轴 / 日志 / 读数 / 真题 / 边界…（就是 TOUR 那一串），
+ *              合进每个实验的序列里，于是这些地方在**任何实验下**都点得到。
+ *
+ * 再加上「简介卡锚在 `.stagewrap` 上」这一条：舞台里任何一处点下去，
+ * 往上找总能落到简介 —— **不会出现"点了没反应"**。
+ */
+export function cardsOf(expId: string, ctx: GuideContext = {}): Card[] {
   const g = GUIDES[expId]
   if (!g) return []
+
+  //  手写的"试一试"已经覆盖到的旋钮与预置，不再重复派生一张
+  const coveredParams = new Set(g.try.map(t => t.param).filter(Boolean) as string[])
+  const coveredPresets = new Set(g.try.map(t => t.preset).filter(Boolean) as string[])
+
   const cards: Card[] = [
     { id: 'intro', title: '这一屏在问什么', body: g.question, anchor: '.stagewrap', see: g.terms.slice(0, 3) },
-    ...g.read.map((r, i) => ({
-      id: `read${i}`, title: r.at, body: r.is, anchor: r.anchor,
-    })),
+    ...g.read.map((r, i) => ({ id: `read${i}`, title: r.at, body: r.is, anchor: r.anchor })),
     ...g.try.map((t, i) => ({
       id: `try${i}`, title: `试一试 · ${t.act}`, body: t.watch,
       ...(t.param ? { param: t.param } : {}),
       ...(t.preset ? { preset: t.preset } : {}),
       ...(!t.param && !t.preset ? { anchor: '.stagewrap' } : {}),
     })),
+    ...(ctx.seqPresets ?? []).filter(x => !coveredPresets.has(x.label)).map(x => ({
+      id: `preset:${x.label}`, title: `预置 · ${x.label}`, body: x.note, preset: x.label,
+    })),
+    ...(ctx.entPresets ?? []).filter(x => !coveredPresets.has(x.label)).map(x => ({
+      id: `epreset:${x.label}`, title: `预置 · ${x.label}`, body: x.note, preset: x.label,
+    })),
+    ...(ctx.params ?? []).filter(x => !coveredParams.has(x.label)).map(x => ({
+      id: `param:${x.key}`, title: `参数 · ${x.label}`,
+      body: `可选 ${x.options.join(' / ')}${x.unit ? ' ' + x.unit : ''}。改了立刻重跑整条轨迹 —— 轴、读数、逐步日志都会跟着变。`,
+      param: x.label,
+    })),
     ...g.terms.map(id => {
       const t = TERMS.find(x => x.id === id)!
       return { id: termCardId(id), title: t.term, body: t.gloss }
     }),
   ]
+
+  //  页面各区域并进来：这些地方在任何实验下都点得到。
+  //  锚点已经被上面用掉的（比如 `.stagewrap`）跳过 —— 同一个元素挂两张卡，
+  //  点它只会跳到前面那张，后一张永远到不了，摆着是骗人。
+  const used = new Set(cards.map(c => c.anchor).filter(Boolean))
+  const has = {
+    params: (ctx.params?.length ?? 0) > 0,
+    sequence: !!ctx.hasSequence,
+    entities: !!ctx.hasEntities,
+  }
+  for (const [i, r] of TOUR.entries()) {
+    if (used.has(r.anchor)) continue
+    if (r.need && !has[r.need]) continue
+    cards.push({ id: `tour${i}`, title: `页面 · ${r.at}`, body: r.is, anchor: r.anchor })
+  }
   return cards
 }
 
-/** 页面导览（跟实验无关的那一套），单独一串 */
-export function tourCards(): Card[] {
-  return TOUR.map((r, i) => ({ id: `tour${i}`, title: r.at, body: r.is, anchor: r.anchor }))
+export { termCardId }
+
+// ═══════════════════════════════════════════════════════════════
+//  第二层：字段级的悬停说明
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * **一行能说完的东西不该占一张卡。**
+ *
+ * 用户的原话：「有些字段比较简单，可以在鼠标移动上去的时候展示标签说明就可以了。」
+ * 对的 —— 读数栏里「Work」「装填因子 α」「ssthresh」这种，要的是一句话，
+ * 不是把讲解卡翻过去。
+ *
+ * 这跟 Transformer Explainer 的分层是同一套：它有两个层次 ——
+ * `Tooltip`（悬停，一行，比如那个 `Q · K^T` 气泡）和
+ * `TextbookTooltip`（点开，把讲解卡翻到那一页）。前者管"这是什么"，
+ * 后者管"这为什么重要"。
+ *
+ * ## 写哪些、不写哪些
+ *
+ * **只写名字自己说不清的。**「命中」「缺失」「轮次」不用写 —— 给一个把名字
+ * 重念一遍的提示，比没有提示更烦。写的是 `Work`、`校验子`、`带权周转` 这类
+ * 术语，以及那些**看着眼熟但含义有坑**的（「已定位」和「局部有序」差在哪）。
+ *
+ * 值以 `@` 开头时引用词表里的解释 —— 同一句话不写两遍。
+ */
+export const TIPS: Record<string, string> = {
+  // ── 通用 / 组成原理 ──
+  '命中率': '命中次数 ÷ 总访问次数，是**到这一步为止**的滚动值，不是最终值。',
+  'tag': '@tagidx',
+  '组号': '@tagidx',
+  '块内偏移': '@tagidx',
+  '被挤掉': '这一步为了腾位置而被换出去的那一块。命中时没有人被挤掉。',
+  '本步结果': '这一步是命中还是缺失。轴上那一格的颜色就是它。',
+  '相联度': '@setassoc',
+  '替换策略': '@lru',
+  '精度': 'single 是 32 位（阶码 8 + 尾数 23），double 是 64 位（11 + 52）。',
+  '已确定位': '推导到这一步为止，32 位里已经定下来的那些位。',
+  '判断位': 'Booth 看的是相邻两位的组合，靠它决定这一轮加、减还是只移位。',
+  '部分积': '逐位乘法的中间结果，每轮累加并右移一位，最后就是乘积。',
+  '本周期停顿': '这一拍有几条指令因为数据冒险停着不动（气泡）。',
+  '本周期前递': '这一拍有没有把还没写回的结果直接送给下一段。',
+  '本周期冲刷': '分支猜错时要把已经进流水线的错误指令清掉，清掉几条。',
+  '前递开关': '@forward',
+  'TLB 命中': '@tlb',
+  '查页表': 'TLB 没中才查页表，多一次访存。',
+  '虚页号': '@vaddr',
+  '页内偏移': '@vaddr',
+  '缺页率': '缺页次数 ÷ 访问次数。物理块越多通常越低 —— 但 FIFO 会出反例。',
+  '换出页': '这一步被挤出内存的那一页。',
+
+  // ── 操作系统 ──
+  '当前时刻': '甘特图上的横坐标。每一步推进一个时间单位。',
+  '就绪队列': '已经到达、等着上 CPU 的进程，按当前算法排的序。',
+  '剩余时间': '各进程还差多少服务时间才跑完。',
+  '本步移动': '这一步磁头移动了多少个磁道。',
+  '累计寻道': '@seek',
+  '扫描方向': 'SCAN 一族要靠它决定下一步往哪边走 —— 题目里这个条件不能漏读。',
+  'Work': '银行家算法里"当前可用资源"的工作副本。每假设一个进程跑完，就把它已占的加回来。',
+  '已入序列': '已经被证明"能安全跑完"的那些进程，按被选中的顺序排。',
+  '安全序列': '@safeseq',
+  '本步试探': '这一轮在试哪个进程的 Need 能不能被 Work 满足。',
+  '其中外碎片': '@fragment',
+  '空闲块数': '空闲分区的个数。同样的空闲总量，块数越多越碎。',
+  '每块指针数 K': '一个磁盘块能装下多少个指针 = 块大小 ÷ 指针大小。它决定各级间址能覆盖多少块。',
+  '落在': '这个逻辑块号落在直接地址、一级间址还是二级间址区。',
+  '磁盘访问': '取到这一块要访问几次磁盘 —— 每多一级间址就多一次。',
+  'empty（空位）': '缓冲区还剩几个空格子。生产者 P 它，满了就阻塞。',
+  'full（产品）': '缓冲区里有几件产品。消费者 P 它，空了就阻塞。',
+  'mutex（锁）': '@semaphore',
+  '第一块的字号': '@bitmap',
+  '第一块的位号': '@bitmap',
+
+  // ── 数据结构 ──
+  '已定位': '@settled',
+  '局部有序': '@settled',
+  '手持值': '挖坑法：这一刻手里端着的那个值，坑还没填上 —— 所以数组看起来会少一个。',
+  '划分次序': '快排每次划分把基准放到最终位置，这里记的是第几次划分。',
+  '当前距离': 'Dijkstra 到这一步为止，从源点到各点已知的最短距离（还可能被松弛得更小）。',
+  '是否更新': '这一步的松弛有没有真的改小某个距离。',
+  '平衡因子': '@bf',
+  '旋转次数': '@rotate',
+  '阶 m': '@border',
+  '分裂次数': '结点装满时把中间的键提到父结点，一共分裂了几次。',
+  '装填因子 α': '已装入的关键字数 ÷ 表长。它一上去，所有冲突处理方式的 ASL 都变差。',
+  'ASL 成功': '@asl',
+  'ASL 失败': '查一个**不在表里**的关键字平均要比较几次 —— 通常比成功那个大得多。',
+  '探查次数': '这一次插入/查找一共探了几个槽才停下。',
+  '是否冲突': '算出来的初始地址上已经有人了没有。',
+  'WPL': '@wpl',
+  '森林剩余': '哈夫曼每合并一次，森林里的树就少一棵。剩 1 棵时结束。',
+  'next 数组': '@next',
+  '主串指针 i': '@noback',
+  '模式指针 j': '失配时它按 next 往回退，主串那个不退。',
+  '主串前进次数': 'KMP 相对暴力法省下多少，看的就是它 —— 主串指针只增不减。',
+  '总权值': '@mst',
+  '本步边': '这一步在考虑哪条边，以及要它还是不要（要不要的理由在日志里）。',
+  '树中顶点': 'Prim 已经连上的那一堆点，下一条边只能从这堆往外挑。',
+  '拓扑序列': '@topo',
+  '总工期': '@critical',
+  '关键活动': '@critical',
+  '生成树边数': '遍历过程中"第一次访问某个点"用掉的边。连通图上应当等于顶点数 − 1。',
+  '栈内容': 'DFS 用栈：后进先出，所以它一条路走到黑。',
+
+  // ── 计算机网络 ──
+  'cwnd': '@cwnd',
+  'ssthresh': '@ssthresh',
+  '所处阶段': '@phases',
+  '本轮事件': '这一轮有没有丢包，以及是超时还是三次重复 ACK —— 两者的惩罚差很多。',
+  '发送窗口': '已发出但还没被确认的帧最多能有几个。',
+  '接收方期待': '接收方下一个想收的序号。GBN 只认这个号，别的一律丢。',
+  '信道在途': '此刻正在链路上飞、还没到达的帧。',
+  '其中重传': '累计传输里有多少次是重传的 —— GBN 与 SR 的差距就在这个数上。',
+  '生成多项式': '@crc',
+  '校验位数': '等于生成多项式的次数。',
+  '当前商': '模 2 除法的商，其实用不上 —— CRC 只要余数。',
+  '余数': '模 2 除法的余数就是校验位，附在数据后面构成码字。',
+  '校验子': '@hamming',
+  '码长': '数据位 + 校验位。海明码要求 2^校验位数 ≥ 码长 + 1。',
+  '前缀': '@mask',
+  '客户端状态': '@handshake',
+  '服务器状态': '@handshake',
+  '争用期': '以太网上信号一个来回的时间（2τ）。退避等的就是若干个争用期。',
+  '各站冲突次数': '每个站已经冲突几次 —— 它决定各自的退避区间有多宽。',
+  '已放弃': '@backoff',
 }
 
-export { termCardId }
+/** 取某个字段的一行说明；没有就返回 null（名字自己说得清的不给提示）。 */
+export function tipFor(label: string): string | null {
+  const raw = TIPS[label]
+  if (!raw) return null
+  if (!raw.startsWith('@')) return raw
+  return TERMS.find(t => t.id === raw.slice(1))?.gloss ?? null
+}

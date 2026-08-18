@@ -824,6 +824,24 @@ await p.waitForSelector('.tick')
 }
 
 
+/**
+ * 把讲解浮层翻到最后一页，返回总页数。
+ *
+ * **不假设现在停在第 1 页。** 点「实验目录」本身会跳到目录那张卡，
+ * 点当前已选中的实验又不会触发"回到第一页" —— 起点是不确定的。
+ * 硬从 0 数到 n 就会在末尾撞上禁用的「下一页」，卡满 30 秒
+ * （同一个坑在这一组里栽过两次，所以收成一个函数）。
+ */
+const pageToEnd = async () => {
+  const { cur, total } = await p.evaluate(() => {
+    const t = document.querySelector('.gnum')?.textContent ?? '0 / 0'
+    const [a, b] = t.split('/').map(x => Number(x.trim()))
+    return { cur: a || 0, total: b || 0 }
+  })
+  for (let k = cur; k < total; k++) { await p.click('.gfoot .gnav:last-child'); await p.waitForTimeout(30) }
+  return total
+}
+
 // ═══ 13 · 讲解浮层：锚点要落得下，点哪讲哪 ═══
 console.log('\n【13】讲解浮层：30 个实验的锚点都落得下，点哪讲哪')
 {
@@ -842,13 +860,16 @@ console.log('\n【13】讲解浮层：30 个实验的锚点都落得下，点哪
      * 走法：从第一页翻到最后一页，每页都问"现在页面上有没有 .guide-lit"。
      * 名词页不锚东西，跳过它们。
      */
-    const n = await p.evaluate(() => {
+    //  起点不确定，理由见 pageToEnd 的注释；这里逐页看，所以自己走
+    const pos = await p.evaluate(() => {
       const t = document.querySelector('.gnum')?.textContent ?? '0 / 0'
-      return Number(t.split('/')[1])
+      const [a, b] = t.split('/').map(x => Number(x.trim()))
+      return { cur: a || 0, total: b || 0 }
     })
+    const n = pos.total
     if (!n) { broken.push(`${name}：没有讲解浮层`); continue }
     cardTotal += n
-    for (let k = 0; k < n; k++) {
+    for (let k = pos.cur - 1; k < n; k++) {
       const r = await p.evaluate(() => ({
         title: document.querySelector('.guide h3')?.textContent?.trim() ?? '',
         lit: document.querySelectorAll('.guide-lit').length,
@@ -876,16 +897,21 @@ console.log('\n【13】讲解浮层：30 个实验的锚点都落得下，点哪
    */
   {
     await nav('Cache 命中率')
-    const n = await p.evaluate(() => Number((document.querySelector('.gnum')?.textContent ?? '0 / 0').split('/')[1]))
-    for (let k = 0; k < n - 1; k++) { await p.click('.gfoot .gnav:last-child'); await p.waitForTimeout(30) }
+    await pageToEnd()
     await nav('IEEE 754 浮点')
     const alive = await p.evaluate(() => ({
       navs: document.querySelectorAll('.nav button').length,
       num: document.querySelector('.gnum')?.textContent?.trim() ?? '(没有浮层)',
     }))
+    /**
+     * 两件事一起验：页面没白，而且**回到第 1 页**。
+     *
+     * 后半条不是锦上添花：点实验按钮的意思是"去那个实验"，而实验目录本身也挂着一张卡 ——
+     * 两者撞车时若讲解赢了，点任何一个实验都会停在「页面 · 左边的目录」上。
+     */
     alive.navs === 30 && alive.num.startsWith('1 /')
       ? ok(`翻到最后一页再切实验：页面还在（${alive.navs} 个实验），浮层回到第 ${alive.num}`)
-      : bad(`切实验把页面弄没了：nav 剩 ${alive.navs} 个、浮层 ${alive.num}`)
+      : bad(`切实验后不对：nav 剩 ${alive.navs} 个、浮层停在 ${alive.num}（应回到第 1 页）`)
   }
 
   //  自检：这条判据得会红 —— 把高亮类删掉，同一段代码必须报"没落下"
@@ -898,30 +924,61 @@ console.log('\n【13】讲解浮层：30 个实验的锚点都落得下，点哪
     : bad(`自检失败：摘之前 ${litBefore}、之后 ${litAfter}`)
 }
 
-// 点页面上的东西，卡片跟着跳
+/**
+ * **点哪儿都有说明** —— 用户明确要的就是这个。
+ *
+ * 逐个点十二处，每处都比对**跳到的是不是该跳的那一张**（只看"标题变了"不够：
+ * 上一处的高亮还亮着时，标题不变也可能被当成"有反应"）。
+ *
+ * ⚠️ 页签放最后点。它会换视图，而 `.sets` / `.bitrow` 这些只在第一个视图上 ——
+ * 先点它，后面两处就不是"点了没反应"，是**那两个元素根本不在页面上了**。
+ * 我自己在这儿栽过一次，查了半天以为是应用的 bug。
+ */
 {
-  await nav('Cache 命中率')
-  await p.waitForTimeout(200)
-  const before = await p.evaluate(() => document.querySelector('.gnum')?.textContent?.trim())
-  await p.click('.axis .lbl'); await p.waitForTimeout(220)
-  const after = await p.evaluate(() => ({
-    num: document.querySelector('.gnum')?.textContent?.trim(),
-    title: document.querySelector('.guide h3')?.textContent?.trim(),
-    lit: document.querySelector('.guide-lit')?.className ?? '',
-  }))
-  after.num !== before && after.lit.includes('axis')
-    ? ok(`点页面上的「轴」→ 卡片跳到「${after.title}」（${before} → ${after.num}），并高亮了轴`)
-    : bad(`点轴没跳过去：${before} → ${after.num}，高亮的是 ${after.lit || '(没有)'}`)
+  await nav('Cache 命中率'); await p.waitForTimeout(250)
+  const cases = [
+    ['.seqacts button:has-text("局部性好")', '预置 · 局部性好', '预置按钮（讲解取自它的 note）'],
+    ['.param:has-text("替换策略") .k', '参数 · 替换策略', '参数旋钮'],
+    ['.param:has-text("相联度") .k', '试一试 · 把相联度从 2 调到 1', '手写"试一试"覆盖到的旋钮'],
+    ['.seqin', '页面 · 访问序列', '序列输入框'],
+    ['.sets .cell', '中间的格子矩阵', '舞台里的格子'],
+    ['.bitrow', '上面那条彩色的位串', '位域'],
+    ['.axis .lbl', '轴上的柱子', '轴'],
+    ['.card.log h3', '页面 · 逐步日志', '逐步日志'],
+    ['.card.readouts h3', '页面 · 读数', '读数'],
+    ['.card.prob h3', '页面 · 真题', '真题'],
+    ['.bounds', '页面 · 最底下的「边界」', '边界栏'],
+    ['.nav .grp', '页面 · 左边的目录', '左边的目录'],
+    ['.tabs button:last-child', '页面 · 上面的页签', '页签（放最后，它会换视图）'],
+  ]
+  const wrong = []
+  for (const [sel, want, what] of cases) {
+    await p.click(sel, { timeout: 4000 }).catch(() => {})
+    await p.waitForTimeout(230)
+    const got = await p.evaluate(() => document.querySelector('.guide h3')?.textContent?.trim())
+    if (got !== want) wrong.push(`${what}：跳到「${got}」，应为「${want}」`)
+  }
+  wrong.length === 0
+    ? ok(`点哪儿都有说明：${cases.length} 处逐个点过，跳到的都是该跳的那一张`)
+    : bad(`点击没跳对 ${wrong.length} 处：\n     ${wrong.join('\n     ')}`)
 
-  //  点参数面板里的某一项，也该跳到那条"试一试"
-  await p.click('.param:has-text("相联度") .k'); await p.waitForTimeout(220)
-  const onParam = await p.evaluate(() => ({
-    title: document.querySelector('.guide h3')?.textContent?.trim(),
-    lit: document.querySelector('.guide-lit')?.className ?? '',
-  }))
-  onParam.title?.startsWith('试一试') && onParam.lit.includes('param')
-    ? ok(`点参数「相联度」→ 跳到「${onParam.title}」并高亮那一项`)
-    : bad(`点参数没跳对：「${onParam.title}」高亮 ${onParam.lit || '(没有)'}`)
+  //  自检：这条判据得会红 —— 点一处**没有任何卡**锚到的地方，标题不该变
+  await nav('Cache 命中率'); await p.waitForTimeout(250)
+  const t0 = await p.evaluate(() => document.querySelector('.guide h3')?.textContent?.trim())
+  await p.click('.top h1'); await p.waitForTimeout(200)
+  const t1 = await p.evaluate(() => document.querySelector('.guide h3')?.textContent?.trim())
+  t0 === t1
+    ? ok('自检：点一处没挂卡的地方（页眉标题）标题不变 —— 上一条量的确实是"跳没跳"')
+    : bad(`自检失败：点没挂卡的地方也跳了（${t0} → ${t1}）`)
+
+  //  做了别的事之后，高亮要撤掉 —— 否则"点这个"的手指会继续指着一个已经被绕过去的按钮
+  await p.click('.seqacts button:has-text("同组冲突")'); await p.waitForTimeout(220)
+  const litOn = await p.evaluate(() => document.querySelector('.guide-lit')?.textContent?.trim())
+  await p.click('.top h1'); await p.waitForTimeout(200)
+  const litOff = await p.evaluate(() => document.querySelectorAll('.guide-lit').length)
+  litOn === '同组冲突' && litOff === 0
+    ? ok('点了别处，高亮自动撤掉 —— 不会继续指着一个已经绕过去的按钮')
+    : bad(`高亮没撤：点前高亮「${litOn}」，点后还剩 ${litOff} 个`)
 }
 
 // 名词链接 / 「讲页面」/ 关掉之后记住
@@ -937,17 +994,45 @@ console.log('\n【13】讲解浮层：30 个实验的锚点都落得下，点哪
     t === word ? ok(`点正文里的名词「${word}」→ 直接翻到那一页`) : bad(`名词链接跳错：点「${word}」到了「${t}」`)
   } else bad('第一页没有名词链接')
 
-  await p.click('.chip.gchip'); await p.waitForTimeout(200)
-  const tour = await p.evaluate(() => ({
-    chip: document.querySelector('.chip.gchip')?.textContent?.trim(),
-    title: document.querySelector('.guide h3')?.textContent?.trim(),
-    lit: document.querySelector('.guide-lit')?.className ?? '',
-  }))
-  tour.chip === '讲页面' && tour.lit.includes('nav')
-    ? ok(`切到「讲页面」→ 第一页讲「${tour.title}」并高亮左边的实验目录`)
-    : bad(`切讲页面不对：chip「${tour.chip}」高亮 ${tour.lit || '(没有)'}`)
+  /**
+   * 字段级悬停说明：**一行能说完的东西不占一张卡**（用户原话）。
+   * 只验它真的出得来、内容对得上、移开会消失 —— 覆盖多少个字段不判死，
+   * 那是内容量的问题，`TIPS` 里加一条就多一个。
+   */
+  {
+    await nav('Cache 命中率'); await p.waitForTimeout(220)
+    const n = await p.evaluate(() => document.querySelectorAll('[data-tip]').length)
+    await p.hover('.pr:has-text("命中率") .k'); await p.waitForTimeout(280)
+    const t1 = await p.evaluate(() => document.querySelector('.tip')?.textContent?.trim() ?? '')
+    await p.hover('.top h1'); await p.waitForTimeout(280)
+    const gone = await p.evaluate(() => !document.querySelector('.tip'))
+    const stars = t1.includes('**')
+    n >= 5 && t1.includes('滚动值') && gone && !stars
+      ? ok(`悬停「命中率」出一行说明（这一屏 ${n} 个字段带提示），移开就收；**粗体**已渲染成粗体`)
+      : bad(`悬停提示不对：${n} 个字段、内容「${t1.slice(0, 20)}」、移开消失 ${gone}、还剩星号 ${stars}`)
+  }
 
-  await p.click('.guide .gx'); await p.waitForTimeout(150)
+  //  折叠：正文收起、标题与翻页留着（折叠不是隐藏）
+  {
+    //  ⚠️ 第三次栽在"假设起点"上了 —— 折叠这段原来写死"翻一下应该到第 2 页"，
+    //  而这时候卡片停在哪儿取决于上面几步。期望值按当前页现算。
+    const cur0 = await p.evaluate(() => Number((document.querySelector('.gnum')?.textContent ?? '1 /').split('/')[0].trim()))
+    const h0 = await p.evaluate(() => Math.round(document.querySelector('aside.guide').getBoundingClientRect().height))
+    await p.click('.gx:first-of-type'); await p.waitForTimeout(200)
+    const r = await p.evaluate(() => ({
+      h: Math.round(document.querySelector('aside.guide').getBoundingClientRect().height),
+      body: !!document.querySelector('.gbody'),
+      nav: !!document.querySelector('.gfoot .gnav'),
+    }))
+    await p.click('.gfoot .gnav:last-child'); await p.waitForTimeout(180)
+    const paged = await p.evaluate(() => document.querySelector('.gnum')?.textContent?.trim())
+    r.h < h0 && !r.body && r.nav && paged?.startsWith(`${cur0 + 1} `)
+      ? ok(`折叠：${h0}px → ${r.h}px，正文收起但标题与翻页还在（折叠着也翻得动，现在 ${paged}）`)
+      : bad(`折叠不对：${h0}→${r.h}px、正文 ${r.body}、翻页 ${r.nav}、翻到 ${paged}`)
+    await p.click('.gx:first-of-type'); await p.waitForTimeout(150)
+  }
+
+  await p.click('.guide .gx:last-of-type'); await p.waitForTimeout(150)
   const gone = await p.evaluate(() => !document.querySelector('aside.guide'))
   await p.reload({ waitUntil: 'networkidle' }); await p.waitForTimeout(500)
   const stillGone = await p.evaluate(() => !document.querySelector('aside.guide'))

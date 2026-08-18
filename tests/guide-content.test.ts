@@ -11,7 +11,7 @@
  * 所以「够不够 30 个实验」这条也归浏览器那边 —— 它在那儿反而更强：
  * 数的是**页面上真的列出来的**实验，不是源码里写了几条。
  */
-import { GUIDES, TERMS, TOUR, cardsOf, tourCards } from '../web/src/guide.ts'
+import { GUIDES, TERMS, TOUR, cardsOf } from '../web/src/guide.ts'
 
 let failures = 0
 const ok = (m: string) => console.log(`  ✅ ${m}`)
@@ -113,16 +113,29 @@ console.log('\n【卡片序列】')
     ? ok('除名词页外，每张卡都锚到了页面上的某个东西')
     : bad(`这些卡没有锚点，翻到时屏幕上不会有任何反应：${noAnchor.join(', ')}`)
 
-  tourCards().length === TOUR.length && tourCards().every(c => c.anchor)
-    ? ok(`页面导览 ${tourCards().length} 张卡，每张都有锚点`)
-    : bad('页面导览的卡片或锚点不完整')
+  //  页面各区域已经并进每个实验的序列里 —— 验的是"并进去了"，不是另有一串
+  const merged = cardsOf('cache', { params: [{ key: 'a', label: '相联度', options: [1, 2] }] })
+  const tourIn = merged.filter(c => c.id.startsWith('tour')).length
+  tourIn >= 5
+    ? ok(`页面各区域并进了实验序列（cache 下并进 ${tourIn} 张）`)
+    : bad(`页面各区域没并进去，只有 ${tourIn} 张`)
+
+  //  带 need 的那几条：条件不满足时不许并进来 —— 否则就是一张锚到不存在元素的卡
+  const bare = cardsOf('cache', {})
+  const hasSeqCard = bare.some(c => c.anchor === '.seqin')
+  const hasParamCard = bare.some(c => c.anchor === '.body.params')
+  !hasSeqCard && !hasParamCard
+    ? ok('没有序列 / 没有参数时，那两张页面卡不并进来（否则会锚到不存在的元素）')
+    : bad(`条件卡漏了过滤：seqin ${hasSeqCard}、params ${hasParamCard}`)
 }
 
-console.log('\n【页面导览】')
+console.log('\n【页面各区域】')
 {
-  TOUR.length >= 5 && TOUR.every(r => r.at.trim() && r.is.trim())
-    ? ok(`页面导览 ${TOUR.length} 条，都填了`)
-    : bad('页面导览不完整')
+  TOUR.length >= 8 && TOUR.every(r => r.at.trim() && r.is.trim() && r.anchor.trim())
+    ? ok(`${TOUR.length} 个共享区域，文字与锚点都填了`)
+    : bad('页面各区域不完整')
+  const dup = TOUR.map(r => r.anchor).filter((x, i, a) => a.indexOf(x) !== i)
+  dup.length === 0 ? ok('共享区域的锚点不重复') : bad(`锚点重复：${dup.join(', ')}`)
 }
 
 console.log('\n【自检】')

@@ -1014,6 +1014,18 @@
 /* 讲解那颗 chip：开着的时候点亮，一眼能看出讲解在不在 */
 .chip.gchip.on{color:var(--f-tag);border-color:var(--f-tag);background:#5B7FD414}
 
+/* 字段级悬停说明。**一行能说完的东西不占一张卡。**
+   带点提示的字段给一条虚下划线 + help 光标（跟 Transformer Explainer 一样），
+   否则没人知道这儿能悬停。 */
+[data-tip]{cursor:help;text-decoration:underline;text-decoration-style:dotted;
+  text-underline-offset:3px;text-decoration-color:var(--faint)}
+.tip{position:fixed;transform:translate(-50%,-100%);z-index:60;pointer-events:none;
+  max-width:280px;background:var(--panel);color:var(--dim);border:1px solid var(--line);
+  border-radius:6px;padding:7px 10px;font-size:11.5px;line-height:1.75;
+  box-shadow:0 6px 20px var(--shadow)}
+.tip.below{transform:translate(-50%,0)}
+.tip b{color:var(--ink)}
+
 /* ═══ 讲解浮层 ═══
  *
  * 钉在右下角，**不占版面** —— 它讲的是页面上的东西，把页面顶下去就本末倒置了。
@@ -1027,8 +1039,9 @@
 
 .ghead{display:flex;align-items:baseline;gap:10px}
 .ghead h3{margin:0;font-size:13.5px;font-weight:650;color:var(--ink);line-height:1.5}
-.gx{margin-left:auto;background:none;border:0;color:var(--faint);cursor:pointer;
-  font-size:14px;line-height:1;padding:2px 4px;flex:0 0 auto}
+.gx{background:none;border:0;color:var(--faint);cursor:pointer;
+  font-size:13px;line-height:1;padding:2px 4px;flex:0 0 auto}
+.gx:first-of-type{margin-left:auto}
 .gx:hover{color:var(--ink)}
 .gbody{margin:0;font-size:12.5px;line-height:1.85;color:var(--dim)}
 
@@ -1048,8 +1061,18 @@
 
 /* 讲到哪儿，页面上那块就描一圈。
  *
- * **只描边、不压暗其余部分。** 遮罩看着更"专业"，但它会把上下文一起盖掉 ——
- * 而讲解恰恰要你同时看见"这一块"和"它旁边是什么"。 */
-.guide-lit{outline:2px solid var(--f-tag);outline-offset:2px;border-radius:4px;
-  background:#5B7FD40f;transition:outline-color .15s}
-@media(prefers-reduced-motion:reduce){.guide-lit,.gbar i{transition:none}}
+ * **虚线、不填充。** 第一版是实线 + 蓝色底 —— 那正是这套界面里「被选中」的长相，
+ * 于是「换成「同组冲突」预置」把那颗按钮点亮之后，看着像"它已经被选上了"。
+ * 虚线读作"讲解正在说这个"，跟"这个被选中了"分得开。
+ *
+ * 也**不压暗其余部分**：遮罩会把上下文一起盖掉，而讲解恰恰要你同时看见
+ * "这一块"和"它旁边是什么"。 */
+.guide-lit{outline:2px dashed var(--f-tag);outline-offset:3px;border-radius:4px}
+
+/* 点得出说明的地方，悬停时露一条虚线 —— 覆盖面做满之后，
+   得让人知道它做满了，否则只会点两下作罢。 */
+.guide-able{cursor:help}
+.guide-able:hover{outline:1px dashed var(--faint);outline-offset:2px;border-radius:4px}
+.guide-able.guide-lit:hover{outline:2px dashed var(--f-tag);outline-offset:3px}
+
+@media(prefers-reduced-motion:reduce){.gbar i{transition:none}}

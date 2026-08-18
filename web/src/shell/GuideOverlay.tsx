@@ -20,10 +20,20 @@
  *   元素 → 卡：点了那个元素，找出第一张锚到它的卡，翻过去
  * 两个方向共用同一份定义，所以不会出现"点得到但讲不了"或反过来。
  *
- * ## 高亮为什么是描边不是遮罩
+ * ## 高亮为什么是**虚线描边**，而且会自己撤掉
  *
- * 遮罩（把其余部分压暗）看着更"专业"，但它会**把上下文一起盖掉** ——
- * 而讲解恰恰要你同时看见"这一块"和"它旁边是什么"。所以只描边 + 轻微提亮。
+ * 遮罩（把其余部分压暗）会把上下文一起盖掉 —— 而讲解恰恰要你同时看见
+ * "这一块"和"它旁边是什么"。所以只描边。
+ *
+ * 但第一版描的是**实线 + 蓝色填充**，用户当场指出问题：那正是这套界面里
+ * 「被选中」的长相。于是「试一试：换成「同组冲突」预置」把那颗按钮点亮之后，
+ * 看起来像"同组冲突 已经被选上了"；而用户去点了「局部性好」，
+ * **高亮还钉在同组冲突上** —— 界面在说谎。
+ *
+ * 两处修：
+ *   1. 改成**虚线、不填充** —— 读作"讲解正在说这个"，不是"这个被选中了"；
+ *   2. **用户做了别的事，高亮就撤掉**。点到有卡的东西就跟过去，
+ *      点到别处就把手指放下 —— 那句"点这个"已经不指着现在的状态了。
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Card } from '../guide.ts'
@@ -73,6 +83,9 @@ export function GuideOverlay({ cards, title, onRequestClose, closedRef }: {
   closedRef: boolean
 }) {
   const [i, setI] = useState(0)
+  const [folded, setFolded] = useState(false)
+  /** 用户点了别处 —— 高亮先撤掉，翻页时再回来 */
+  const [dropped, setDropped] = useState(false)
   const box = useRef<HTMLDivElement>(null)
 
   /**
@@ -89,10 +102,17 @@ export function GuideOverlay({ cards, title, onRequestClose, closedRef }: {
   const idx = Math.min(i, Math.max(0, cards.length - 1))
 
   //  换实验时回到第一页 —— 停在上一个实验的第 7 页毫无意义
-  useEffect(() => { setI(0) }, [title])
+  useEffect(() => {
+    setI(0)
+    //  **`dropped` 也要复位。** 它记的是"用户刚才点了别处，先把手指放下"，
+    //  换了实验就是另一回事了 —— 不复位的话新实验的第一页不高亮，
+    //  看起来跟"锚点落空"一模一样（冒烟就是这么报的）。
+    setDropped(false)
+  }, [title])
 
   const go = useCallback((n: number) => {
     setI(Math.max(0, Math.min(cards.length - 1, n)))
+    setDropped(false)
   }, [cards.length])
 
   /**
@@ -107,8 +127,23 @@ export function GuideOverlay({ cards, title, onRequestClose, closedRef }: {
     const onClick = (e: MouseEvent) => {
       //  点卡片自己不算
       if (box.current?.contains(e.target as Node)) return
+      /**
+       * **点实验目录里的按钮不算。**
+       *
+       * 那个动作的意思是"去那个实验"，不是"讲讲目录是什么"。而且它会把整串卡换掉 ——
+       * 于是"跳到目录那张卡"和"换实验后回到第 1 页"两件事撞在一起，
+       * 实测是前者赢（React 会在这次事件里先把 effect 冲掉，document 上的监听后跑），
+       * 结果点任何一个实验，讲解都停在「页面 · 左边的目录」上。
+       *
+       * 讲解是**附加**在交互上的，控件自己的语义优先。目录那张卡仍然点得到 ——
+       * 点分组标题那些不带动作的地方就行。
+       */
+      if ((e.target as HTMLElement)?.closest?.('.nav button')) return
       const n = cardIndexAt(e.target, cards)
-      if (n >= 0) setI(n)
+      if (n >= 0) { setI(n); setDropped(false) }
+      //  点到没有卡的东西：不跳，但把高亮撤掉 ——
+      //  否则"点这个"的手指会继续指着一个用户已经绕过去的按钮。
+      else setDropped(true)
     }
     document.addEventListener('click', onClick)
     return () => document.removeEventListener('click', onClick)
@@ -116,12 +151,32 @@ export function GuideOverlay({ cards, title, onRequestClose, closedRef }: {
 
   /** 高亮当前这一页锚到的元素 */
   useEffect(() => {
-    if (closedRef) return
+    if (closedRef || dropped) return
     const el = elementOf(cards[idx] ?? { id: '', title: '', body: '' })
     if (!el) return
     el.classList.add('guide-lit')
     return () => el.classList.remove('guide-lit')
-  }, [idx, cards, closedRef])
+  }, [idx, cards, closedRef, dropped])
+
+  /**
+   * 给所有"点得出说明"的元素打个记号，CSS 只在悬停时显出来。
+   *
+   * 覆盖面做满之后更需要这个：用户不知道自己点哪儿有用，就只会点两下作罢。
+   * 悬停时一条虚线，等于告诉他"这儿有话说"。
+   *
+   * `.stagewrap` 不打记号 —— 它是整块舞台，悬停时描一圈太吵，
+   * 而且它本来就是"点舞台里任何地方的兜底"，不需要被发现。
+   */
+  useEffect(() => {
+    if (closedRef) return
+    const marked: HTMLElement[] = []
+    for (const c of cards) {
+      if (c.anchor === '.stagewrap') continue
+      const el = elementOf(c)
+      if (el && !marked.includes(el)) { el.classList.add('guide-able'); marked.push(el) }
+    }
+    return () => marked.forEach(el => el.classList.remove('guide-able'))
+  }, [cards, closedRef])
 
   //  ← → 翻页。输入框里不抢键：那儿的左右键是移动光标。
   useEffect(() => {
@@ -147,12 +202,14 @@ export function GuideOverlay({ cards, title, onRequestClose, closedRef }: {
            data-anchored={String(!!(card.anchor || card.param || card.preset))}>
       <header className="ghead">
         <h3>{card.title}</h3>
-        <button className="gx" onClick={() => { writeClosed(true); onRequestClose() }} aria-label="关闭讲解">✕</button>
+        <button className="gx" onClick={() => setFolded(f => !f)}
+                aria-label={folded ? '展开讲解' : '折叠讲解'}>{folded ? '▴' : '▾'}</button>
+        <button className="gx" onClick={() => { writeClosed(true); onRequestClose() }} aria-label="隐藏讲解">✕</button>
       </header>
 
-      <p className="gbody">{card.body}</p>
+      {!folded && <p className="gbody">{card.body}</p>}
 
-      {card.see && card.see.length > 0 && (
+      {!folded && card.see && card.see.length > 0 && (
         <div className="gsee">
           {card.see.map(id => {
             const t = TERMS.find(x => x.id === id)
