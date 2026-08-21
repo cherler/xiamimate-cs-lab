@@ -1,5 +1,5 @@
 /**
- * AI 助手（虾米君）大脑。
+ * AI 助手（咕噜）大脑。
  * 铁律：求解器算，助手只翻译现象、提可检验的猜想、指下一步——**绝不自己算、不编造事实里没有的数字**。
  * 只在"认知节点"被调用（进副本、扫出异常、选变量前、破案、结冰示警），不进 60fps 机械回路。
  */
@@ -23,7 +23,7 @@ export interface PartnerBrain {
   react(facts: Facts): Promise<Line | null>
 }
 
-const WHO = '虾米君'
+const WHO = '咕噜'
 
 /** V0 兜底：确定性脚本。不联网、不花钱、不会胡说；数字只从 readings 取。 */
 export class ScriptedPartner implements PartnerBrain {
@@ -72,7 +72,7 @@ export class ModelPartner implements PartnerBrain {
   private cfg: ModelConfig
   constructor(cfg: ModelConfig) { this.cfg = cfg }
   async react(f: Facts): Promise<Line | null> {
-    const sys = '你是维修工的 AI 搭档「虾米君」，口语、俏皮、简短。下面的数字是仿真求解器算的事实，绝不自己编数字。只说一句话，不超过 35 字。'
+    const sys = '你是维修工的 AI 搭档「咕噜」，口语、俏皮、简短。下面的数字是仿真求解器算的事实，绝不自己编数字。只说一句话，不超过 35 字。'
     const facts = JSON.stringify(f.readings ?? {})
     try {
       // baseUrl 约定以 /v1 结尾（OpenAI 兼容），这里补 /chat/completions
@@ -84,7 +84,7 @@ export class ModelPartner implements PartnerBrain {
           model: this.cfg.model, max_tokens: 1024, temperature: 0.7,
           messages: [
             { role: 'system', content: sys },
-            { role: 'user', content: `情境：${NODE_CONTEXT[f.node]}\n数据：${facts}\n以虾米君的口吻说一句。` },
+            { role: 'user', content: `情境：${NODE_CONTEXT[f.node]}\n数据：${facts}\n以咕噜的口吻说一句。` },
           ],
         }),
       })
@@ -92,7 +92,7 @@ export class ModelPartner implements PartnerBrain {
       const j = await r.json() as { choices?: { message?: { content?: string } }[] }
       // 剥掉推理块，只留正文；模型不给正文就返回 null（脚本兜底）
       const text = j.choices?.[0]?.message?.content?.replace(/<think>[\s\S]*?<\/think>/g, '').trim()
-      return text ? { who: '虾米君', text } : null
+      return text ? { who: '咕噜', text } : null
     } catch {
       return null
     }

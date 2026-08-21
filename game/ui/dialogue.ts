@@ -17,7 +17,7 @@ export function createDialogue(scene: Phaser.Scene, x: number, y: number, w: num
   const m = scene.add.circle(cx, cy, r, 0xffffff).setVisible(false)
   av.setMask(m.createGeometryMask())
   const ring = scene.add.circle(cx, cy, r + 2).setStrokeStyle(3, 0xffcb7a)
-  const name = scene.add.text(x + 20 + 2 * r + 16, y + 14, '助手', {
+  const name = scene.add.text(x + 20 + 2 * r + 16, y + 14, '咕噜', {
     fontFamily: 'sans-serif', fontSize: '12px', color: '#ffcb7a',
   })
   const txt = scene.add.text(x + 20 + 2 * r + 16, y + 34, '', {

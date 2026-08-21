@@ -24,7 +24,7 @@ function setPartnerLine(setLine: (text: string) => void, text: string) {
 }
 
 /**
- * 在认知节点让虾米君说话。
+ * 在认知节点让咕噜说话。
  *
  * **先秒显脚本兜底**（脚本是同步的、立即返回，画面不卡），
  * 再后台请真模型；模型回来了、且比兜底更自然，就替换。

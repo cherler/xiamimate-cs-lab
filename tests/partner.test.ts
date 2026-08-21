@@ -8,7 +8,7 @@ export async function run() {
   // 每个认知节点都有话说
   for (const node of ['enter', 'anomaly', 'before-pick', 'cracked', 'freeze-warn'] as const) {
     const line = await sp.react({ chapter: 'fridge', node })
-    ok(line != null && line.who === '虾米君' && line.text.length > 0, `节点 ${node} 有台词`)
+    ok(line != null && line.who === '咕噜' && line.text.length > 0, `节点 ${node} 有台词`)
   }
 
   // 引用的数字来自 readings（不是编的）
