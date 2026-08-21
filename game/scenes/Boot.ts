@@ -1,15 +1,13 @@
 import * as Phaser from 'phaser'
+import townUrl from '../../web/assets/xiami-town-dusk.png'
 
-/** 启动场景 —— 先证 Phaser 真的画得出东西（不是白屏）。 */
+/** 预载场景：把资源读进来，再进小镇。 */
 export class Boot extends Phaser.Scene {
   constructor() { super('Boot') }
+  preload() {
+    this.load.image('town', townUrl)
+  }
   create() {
-    this.add
-      .text(this.scale.width / 2, this.scale.height / 2, '虾米镇', {
-        fontFamily: 'sans-serif',
-        fontSize: '48px',
-        color: '#e8e2d6',
-      })
-      .setOrigin(0.5)
+    this.scene.start('Town')
   }
 }
