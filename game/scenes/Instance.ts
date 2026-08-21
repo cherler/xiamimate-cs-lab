@@ -1,5 +1,4 @@
 import * as Phaser from 'phaser'
-import { markFixed } from '../save.ts'
 import { FRIDGE } from '../../chapters/fridge/index.ts'
 
 /** 副本·冷藏柜（C1：大空间 + 热成像工具）。C2/C3 再加对照实验和修复链。 */
@@ -50,13 +49,6 @@ export class Instance extends Phaser.Scene {
       fontFamily: 'sans-serif', fontSize: '15px', color: '#e8e2d6',
     }).setOrigin(0.5)
     btn.on('pointerdown', () => this.toggleThermal())
-
-    // 临时"完成修复"（保住闭环；C3 换成真修复链）
-    const done = this.add.rectangle(W / 2, H - 30, 200, 40, 0x4a4038).setInteractive({ useHandCursor: true })
-    this.add.text(W / 2, H - 30, '完成修复（临时）', {
-      fontFamily: 'sans-serif', fontSize: '14px', color: '#cfc9bd',
-    }).setOrigin(0.5)
-    done.on('pointerdown', () => { markFixed('clinic'); this.scene.start('Town') })
 
     this.render()
     this.expose()

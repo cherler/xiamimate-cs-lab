@@ -98,7 +98,7 @@ export class Experiment extends Phaser.Scene {
     const c = this.add.container(0, 0)
     const btn = this.add.rectangle(760, 620, 240, 46, 0xc0603a).setInteractive({ useHandCursor: true })
     const t = this.add.text(760, 620, '看懂了，回去修 →', { fontFamily: 'sans-serif', fontSize: '16px', color: '#141210', fontStyle: 'bold' }).setOrigin(0.5)
-    btn.on('pointerdown', () => this.scene.start('Instance'))
+    btn.on('pointerdown', () => this.scene.start('Repair'))
     c.add([btn, t])
     return c
   }
