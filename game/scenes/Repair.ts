@@ -1,4 +1,5 @@
 import * as Phaser from 'phaser'
+import { coverBg } from '../ui/bg.ts'
 import { markFixed } from '../save.ts'
 import { solveControl } from '../../solvers/control.ts'
 import { speak } from '../partner.ts'
@@ -22,9 +23,8 @@ export class Repair extends Phaser.Scene {
   constructor() { super('Repair') }
 
   create() {
-    const W = this.scale.width, H = this.scale.height
     this.cleaned = false; this.windowSafe = false
-    this.add.rectangle(W / 2, H / 2, W, H, 0x14171f)
+    coverBg(this, 'coils')
     this.add.text(40, 30, '修复 · 散热片 + 温控', { fontFamily: 'sans-serif', fontSize: '22px', color: '#e8e2d6' })
     this.hint = this.add.text(40, 74, '先把散热片的积灰清了——热才搬得出去。', { fontFamily: 'sans-serif', fontSize: '15px', color: '#ffcb7a' })
 

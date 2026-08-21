@@ -1,4 +1,5 @@
 import * as Phaser from 'phaser'
+import { coverBg } from '../ui/bg.ts'
 import { FRIDGE } from '../../chapters/fridge/index.ts'
 import { speak } from '../partner.ts'
 
@@ -22,9 +23,8 @@ export class Experiment extends Phaser.Scene {
   constructor() { super('Experiment') }
 
   create() {
-    const W = this.scale.width, H = this.scale.height
     this.chosen = ''; this.ran = false; this.understood = false; this.varBtns = []; this.endLabels = []
-    this.add.rectangle(W / 2, H / 2, W, H, 0x14171f)
+    coverBg(this, 'coils')
     this.add.text(40, 30, '对照实验 · 散热片', { fontFamily: 'sans-serif', fontSize: '22px', color: '#e8e2d6' })
     this.hint = this.add.text(40, 74, '先猜：把散热片弄通，柜里会变凉，还是没区别？挑一个变量，只改它，跑一遍。', {
       fontFamily: 'sans-serif', fontSize: '15px', color: '#ffcb7a',
