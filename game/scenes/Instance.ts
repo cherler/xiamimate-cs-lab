@@ -98,6 +98,7 @@ export class Instance extends Phaser.Scene {
       this.drilled = id
       this.hint.setText('钻进散热片…（对照实验在下一步 C2）')
       this.expose()
+      this.scene.start('Experiment')
     }
   }
 

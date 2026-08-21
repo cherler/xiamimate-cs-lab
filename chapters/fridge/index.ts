@@ -18,4 +18,19 @@ export const FRIDGE = {
     if (id === 'condenser') return s.condenserTemp
     return (s.Tinside + s.condenserTemp) / 2
   },
+  experiment: {
+    correctVar: 'Rcond',
+    vars: [
+      { id: 'Rcond',    name: '散热热阻', patchA: { Rcond: 0.5 } as Partial<ThermalInput>,   patchB: { Rcond: 0.05 } as Partial<ThermalInput>,  labelA: '堵着', labelB: '通着' },
+      { id: 'Tambient', name: '环境温度', patchA: { Tambient: 30 } as Partial<ThermalInput>, patchB: { Tambient: 42 } as Partial<ThermalInput>, labelA: '30℃', labelB: '42℃' },
+      { id: 'load',     name: '柜内负荷', patchA: { load: 0 } as Partial<ThermalInput>,      patchB: { load: 40 } as Partial<ThermalInput>,     labelA: '空',   labelB: '塞满' },
+    ],
+  },
+  /** 跑一次对照：只改选中的变量，其余锁死初始态；两组的柜内温度都从求解器取 */
+  runExperiment(varId: string): { endA: number; endB: number; labelA: string; labelB: string; name: string } {
+    const v = this.experiment.vars.find(x => x.id === varId)!
+    const endA = solveThermal({ ...this.initial, ...v.patchA }).Tinside
+    const endB = solveThermal({ ...this.initial, ...v.patchB }).Tinside
+    return { endA, endB, labelA: v.labelA, labelB: v.labelB, name: v.name }
+  },
 }
