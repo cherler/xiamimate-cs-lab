@@ -13,6 +13,7 @@ export type ThermalSolved = {
   Tinside: number       // 稳态柜内温度 ℃
   pumpWatts: number     // 原样带出，供"两组泵功率一样"这类断言
   rejected: number      // 实际排出的热 W
+  condenserTemp: number // 散热片温度 ℃：泵进来的热全从这儿的热阻出去→堵了就烫
   notes: string[]
 }
 export function solveThermal(i: ThermalInput): ThermalSolved {
@@ -22,10 +23,11 @@ export function solveThermal(i: ThermalInput): ThermalSolved {
   const drop = net * 0.3 / (1 + 4 * i.Rcond)
   const Tinside = i.Tambient - drop
   const rejected = drop / i.Rcond
+  const condenserTemp = i.Tambient + i.pumpWatts * i.Rcond
   const notes = [
     `压缩机搬热 ${i.pumpWatts} W，散热热阻 ${i.Rcond} ℃/W。`,
     `稳态柜内 ${Tinside.toFixed(1)} ℃（环境 ${i.Tambient} ℃）。`,
   ]
   if (Tinside > i.Tambient - 2) notes.push('热搬不出去，柜内压不下来——不是电的事，是散热堵了。')
-  return { Tinside, pumpWatts: i.pumpWatts, rejected, notes }
+  return { Tinside, pumpWatts: i.pumpWatts, rejected, condenserTemp, notes }
 }

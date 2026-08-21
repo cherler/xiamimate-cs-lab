@@ -14,4 +14,9 @@ export function run() {
   const a = solveThermal({ pumpWatts: 90, Rcond: 0.05, Tambient: 30, load: 0 })
   const b = solveThermal({ pumpWatts: 90, Rcond: 0.05, Tambient: 42, load: 0 })
   ok(b.Tinside > a.Tinside, '环境更热 → 柜内更热（单变量对照可复现）')
+  // 散热片温度：堵了就烫——这是热成像工具扫出"通红"的依据（来自求解器，不是手绘）
+  const clearS = solveThermal({ pumpWatts: 90, Rcond: 0.05, Tambient: 30, load: 0 })
+  const blockedS = solveThermal({ pumpWatts: 90, Rcond: 0.5, Tambient: 30, load: 0 })
+  ok(blockedS.condenserTemp > clearS.condenserTemp + 20, `堵塞时散热片明显更烫（${clearS.condenserTemp.toFixed(1)}→${blockedS.condenserTemp.toFixed(1)}）`)
+  ok(blockedS.condenserTemp > 60, `堵塞散热片烫到 60℃ 以上（${blockedS.condenserTemp.toFixed(1)}）——通红`)
 }

@@ -23,7 +23,7 @@ ok(await p.evaluate(() => window.__game?.scene.isActive('Instance')) === true, '
 ok(await p.evaluate(() => window.__game?.scene.isActive('Town')) === false, '离开了小镇(Town 已停)')
 
 // 完成修复 → 回镇
-await p.mouse.click(640, 420); await p.waitForTimeout(450)
+await p.mouse.click(640, 690); await p.waitForTimeout(450)
 ok(await p.evaluate(() => window.__game?.scene.isActive('Town')) === true, '修完回到小镇')
 ok(await p.evaluate(() => window.__townState?.clinicFixed) === true, '诊所变"已恢复"')
 
