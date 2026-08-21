@@ -1,5 +1,6 @@
 import * as Phaser from 'phaser'
 import { PLACES, COMMISSION } from '../data/town.ts'
+import { isFixed } from '../save.ts'
 
 /** 小镇场景：像素背景 + 可点地点 + 委托板。 */
 export class Town extends Phaser.Scene {
@@ -14,19 +15,24 @@ export class Town extends Phaser.Scene {
 
     // 地点标记 + 标签；只有 interactive 的能点
     for (const pl of PLACES) {
-      const dot = this.add.circle(pl.x, pl.y, 10, pl.interactive ? 0xffcb7a : 0x6f6759)
+      const fixed = pl.id === 'clinic' && isFixed('clinic')
+      const dotColor = fixed ? 0x6fbf73 : (pl.interactive ? 0xffcb7a : 0x6f6759)
+      const dot = this.add.circle(pl.x, pl.y, 10, dotColor)
         .setStrokeStyle(2, 0x141210)
-      const label = `${pl.name}${pl.note ? ' · ' + pl.note : ''}`
+      const note = fixed ? '已恢复' : pl.note
+      const label = `${pl.name}${note ? ' · ' + note : ''}`
       this.add.text(pl.x + 16, pl.y - 10, label, {
         fontFamily: 'sans-serif', fontSize: '15px', color: '#e8e2d6',
         backgroundColor: 'rgba(20,18,15,0.7)', padding: { x: 6, y: 3 },
       })
       if (pl.interactive) {
         dot.setInteractive({ useHandCursor: true })
-        // "!" 提示
-        this.add.text(pl.x - 4, pl.y - 34, '!', {
-          fontFamily: 'sans-serif', fontSize: '22px', color: '#ff8a5b', fontStyle: 'bold',
-        })
+        // "!" 提示（已修复不再显示）
+        if (!fixed) {
+          this.add.text(pl.x - 4, pl.y - 34, '!', {
+            fontFamily: 'sans-serif', fontSize: '22px', color: '#ff8a5b', fontStyle: 'bold',
+          })
+        }
         dot.on('pointerdown', () => this.openBoard())
       }
     }
@@ -35,7 +41,7 @@ export class Town extends Phaser.Scene {
     this.board.setVisible(false)
 
     // 给冒烟读真实状态
-    ;(window as unknown as { __townState: object }).__townState = { boardOpen: false, commission: '', enterClicked: false }
+    ;(window as unknown as { __townState: object }).__townState = { boardOpen: false, commission: '', enterClicked: false, clinicFixed: isFixed('clinic') }
   }
 
   private openBoard() {
@@ -68,8 +74,7 @@ export class Town extends Phaser.Scene {
       fontFamily: 'sans-serif', fontSize: '16px', color: '#141210', fontStyle: 'bold',
     }).setOrigin(0.5)
     btn.on('pointerdown', () => {
-      ;(window as unknown as { __townState: { enterClicked: boolean } }).__townState.enterClicked = true
-      // B3 将在此处 this.scene.start('Instance')
+      this.scene.start('Instance')
     })
     c.add([btn, btnT])
     return c
