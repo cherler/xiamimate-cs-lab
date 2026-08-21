@@ -1,6 +1,7 @@
 import * as Phaser from 'phaser'
 import { FRIDGE } from '../../chapters/fridge/index.ts'
 import { speak } from '../partner.ts'
+import { createDialogue, type Dialogue } from '../ui/dialogue.ts'
 
 /**
  * 副本·冷藏柜 —— 大空间。
@@ -25,7 +26,7 @@ export class Instance extends Phaser.Scene {
   private drilled = ''
   private sx = 1; private ox = 0; private oy = 0
   private chips: { id: string; chip: Phaser.GameObjects.Text }[] = []
-  private hint!: Phaser.GameObjects.Text
+  private dlg!: Dialogue
   private subtitle!: Phaser.GameObjects.Text
   private modeBtnT!: Phaser.GameObjects.Text
   private toolGlow!: Phaser.GameObjects.Rectangle
@@ -62,11 +63,8 @@ export class Instance extends Phaser.Scene {
     this.buildParts()
     this.buildToolbar(W)
 
-    this.hint = this.add.text(40, H - 78, '', {
-      fontFamily: 'sans-serif', fontSize: '15px', color: '#ffcb7a',
-      backgroundColor: 'rgba(8,12,20,0.82)', padding: { x: 10, y: 6 },
-    })
-    speak(t => this.hint.setText(t), { chapter: 'fridge', node: 'enter' })
+    this.dlg = createDialogue(this, 30, H - 116, 640)
+    speak(t => this.dlg.setText(t), { chapter: 'fridge', node: 'enter' })
 
     this.render()
     this.expose()
@@ -108,7 +106,7 @@ export class Instance extends Phaser.Scene {
     this.subtitle.setText(this.thermalMode
       ? '热全堆在散热片上出不去——点那块通红的，钻进去。'
       : '柜子通着电，里面却是热的。热往哪儿去了？')
-    speak(t => this.hint.setText(t), this.thermalMode
+    speak(t => this.dlg.setText(t), this.thermalMode
       ? { chapter: 'fridge', node: 'anomaly', readings: { condenser: FRIDGE.tempOfPart('condenser', FRIDGE.initial) } }
       : { chapter: 'fridge', node: 'enter' })
     this.render()
