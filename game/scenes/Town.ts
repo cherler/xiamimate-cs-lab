@@ -10,8 +10,10 @@ export class Town extends Phaser.Scene {
 
   create() {
     const W = this.scale.width, H = this.scale.height
-    // 背景铺满
-    this.add.image(W / 2, H / 2, 'town').setDisplaySize(W, H)
+    // 背景 cover 铺满（新图 1536x1024，保持比例居中裁切）
+    const iw = 1536, ih = 1024
+    const s = Math.max(W / iw, H / ih)
+    this.add.image(W / 2, H / 2, 'town').setDisplaySize(iw * s, ih * s)
 
     // 地点标记 + 标签；只有 interactive 的能点
     for (const pl of PLACES) {

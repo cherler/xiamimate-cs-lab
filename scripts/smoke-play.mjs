@@ -14,7 +14,7 @@ await p.waitForTimeout(1000)
 ok(errs.length === 0, `无控制台报错${errs.length ? '：' + errs[0].slice(0, 140) : ''}`)
 ok(await p.evaluate(() => window.__townState?.clinicFixed) === false, '开局诊所未修')
 // 进副本 → 扫 → 钻散热片 → 对照实验 → 破案
-await p.mouse.click(314, 150); await p.waitForTimeout(250)
+await p.mouse.click(479, 184); await p.waitForTimeout(250)
 await p.mouse.click(1090, 300); await p.waitForTimeout(450)
 await p.mouse.click(1150, 46); await p.waitForTimeout(300)
 await p.mouse.click(1025, 350); await p.waitForTimeout(450)

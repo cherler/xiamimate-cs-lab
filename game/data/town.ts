@@ -2,10 +2,10 @@
 export type Place = { id: string; name: string; note: string; x: number; y: number; interactive: boolean }
 
 export const PLACES: Place[] = [
-  { id: 'clinic',     name: '社区诊所', note: '冷藏柜停了', x: 314, y: 150, interactive: true },
-  { id: 'repair',     name: '阿榕修理铺', note: '实验台',   x: 207, y: 474, interactive: false },
-  { id: 'waterwheel', name: '水车房',   note: '',          x: 972, y: 230, interactive: false },
-  { id: 'greenhouse', name: '温室菜园', note: '',          x: 903, y: 528, interactive: false },
+  { id: 'clinic',     name: '社区诊所', note: '冷藏柜停了', x: 479, y: 184, interactive: true },
+  { id: 'repair',     name: '修理铺',   note: '你的家',     x: 175, y: 285, interactive: false },
+  { id: 'greenhouse', name: '温室菜园', note: '',          x: 760, y: 226, interactive: false },
+  { id: 'arcade',     name: '游戏厅',   note: '',          x: 620, y: 512, interactive: false },
 ]
 
 /** 第一个委托 */

@@ -12,7 +12,7 @@ await p.evaluate(() => localStorage.removeItem('xiami.progress'))
 await p.reload({ waitUntil: 'networkidle' })
 await p.waitForTimeout(1000)
 // 进副本
-await p.mouse.click(314, 150); await p.waitForTimeout(250)
+await p.mouse.click(479, 184); await p.waitForTimeout(250)
 await p.mouse.click(1090, 300); await p.waitForTimeout(450)
 ok(errs.length === 0, `无控制台报错${errs.length ? '：' + errs[0].slice(0, 140) : ''}`)
 ok(await p.evaluate(() => window.__instanceState?.scene) === 'Instance', '进入副本大空间')

@@ -1,5 +1,5 @@
 import * as Phaser from 'phaser'
-import townUrl from '../../web/assets/xiami-town-dusk.png'
+import townUrl from '../../web/assets/gen/town-v2.png'
 import fridgeUrl from '../../web/assets/gen/fridge-concept.png'
 import assistantUrl from '../../web/assets/gen/assistant.png'
 

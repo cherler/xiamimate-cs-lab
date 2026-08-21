@@ -17,7 +17,7 @@ ok(inTown, 'Boot 预载后进入了 Town 场景')
 const before = await p.evaluate(() => window.__townState?.boardOpen)
 ok(before === false, '开局委托板是关的')
 // 点诊所（游戏坐标==屏幕坐标，scale=1）
-await p.mouse.click(314, 150)
+await p.mouse.click(479, 184)
 await p.waitForTimeout(300)
 const after = await p.evaluate(() => window.__townState)
 ok(after?.boardOpen === true, '点诊所后委托板打开')

@@ -11,7 +11,7 @@ await p.goto(URL, { waitUntil: 'networkidle' })
 await p.evaluate(() => localStorage.removeItem('xiami.progress'))
 await p.reload({ waitUntil: 'networkidle' }); await p.waitForTimeout(1000)
 // 进副本 → enter 节点
-await p.mouse.click(314, 150); await p.waitForTimeout(250)
+await p.mouse.click(479, 184); await p.waitForTimeout(250)
 await p.mouse.click(1090, 300); await p.waitForTimeout(450)
 ok(errs.length === 0, `无控制台报错${errs.length ? '：' + errs[0].slice(0, 140) : ''}`)
 ok((await p.evaluate(() => window.__partnerLine))?.length > 0, '进副本时虾米君开口（enter）')
