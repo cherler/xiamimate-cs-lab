@@ -1,9 +1,11 @@
 import { report, ok, _counts, _forgive } from './harness.ts'
 import { run as circuit } from './circuit.test.ts'
 import { run as thermal } from './thermal.test.ts'
+import { run as control } from './control.test.ts'
 
 circuit()
 thermal()
+control()
 
 //  自检：证明这个测试台真的能判红。
 //  一个永远绿的判据比没有判据更糟 —— 它会让你以为验过了。
