@@ -53,12 +53,12 @@ export class Town extends Phaser.Scene {
 
   private buildBoard(): Phaser.GameObjects.Container {
     const c = this.add.container(0, 0)
-    const panel = this.add.rectangle(1090, 210, 300, 320, 0x1a1613, 0.94).setStrokeStyle(1, 0x3a352c)
+    const panel = this.add.rectangle(1090, 210, 300, 320, 0x1a1613, 1).setStrokeStyle(1, 0x3a352c)
     const title = this.add.text(960, 80, COMMISSION.title, {
       fontFamily: 'sans-serif', fontSize: '24px', color: '#e8e2d6', fontStyle: 'bold',
     })
     const brief = this.add.text(960, 118, COMMISSION.brief, {
-      fontFamily: 'sans-serif', fontSize: '14px', color: '#a49b8b', wordWrap: { width: 260 },
+      fontFamily: 'sans-serif', fontSize: '14px', color: '#a49b8b', wordWrap: { width: 250, useAdvancedWrap: true },
     })
     c.add([panel, title, brief])
     // 四步骨架
@@ -77,6 +77,7 @@ export class Town extends Phaser.Scene {
       this.scene.start('Instance')
     })
     c.add([btn, btnT])
+    c.setDepth(100)
     return c
   }
 }

@@ -2,6 +2,8 @@ import * as Phaser from 'phaser'
 import { FRIDGE } from '../../chapters/fridge/index.ts'
 import { speak } from '../partner.ts'
 
+const GLOSS: Record<string, string> = { Rcond: '散热顺不顺', Tambient: '屋里多热', load: '塞多满' }
+
 /** 对照实验台（C2）：选一个变量、跑 A/B、看两条温度曲线分叉。曲线终点来自求解器。 */
 export class Experiment extends Phaser.Scene {
   private chosen = ''
@@ -13,6 +15,7 @@ export class Experiment extends Phaser.Scene {
   private hint!: Phaser.GameObjects.Text
   private conclusion!: Phaser.GameObjects.Text
   private chart!: Phaser.GameObjects.Graphics
+  private placeholder!: Phaser.GameObjects.Text
   private endLabels: Phaser.GameObjects.Text[] = []
   private backBtn!: Phaser.GameObjects.Container
 
@@ -31,7 +34,8 @@ export class Experiment extends Phaser.Scene {
     FRIDGE.experiment.vars.forEach((v, i) => {
       const y = 190 + i * 56
       const rect = this.add.rectangle(160, y, 200, 44, 0x2a2f38).setStrokeStyle(1, 0x565c68).setInteractive({ useHandCursor: true })
-      this.add.text(160, y, v.name, { fontFamily: 'sans-serif', fontSize: '15px', color: '#cfc9bd' }).setOrigin(0.5)
+      this.add.text(160, y - 8, v.name, { fontFamily: 'sans-serif', fontSize: '15px', color: '#cfc9bd' }).setOrigin(0.5)
+      this.add.text(160, y + 12, GLOSS[v.id] ?? '', { fontFamily: 'sans-serif', fontSize: '11px', color: '#7f8da3' }).setOrigin(0.5)
       rect.on('pointerdown', () => this.choose(v.id))
       this.varBtns.push({ id: v.id, rect })
     })
@@ -41,6 +45,7 @@ export class Experiment extends Phaser.Scene {
     runBtn.on('pointerdown', () => this.run())
 
     this.add.rectangle(760, 320, 470, 300, 0x1a1d24).setStrokeStyle(1, 0x3a3f4a)
+    this.placeholder = this.add.text(760, 320, '选个变量，点「跑」，\n这里出对照曲线', { fontFamily: 'sans-serif', fontSize: '14px', color: '#5f6f85', align: 'center' }).setOrigin(0.5)
     this.chart = this.add.graphics()
     this.conclusion = this.add.text(60, 560, '', { fontFamily: 'sans-serif', fontSize: '15px', color: '#cfc9bd', wordWrap: { width: 1120 } })
     this.backBtn = this.buildBack()
@@ -58,6 +63,7 @@ export class Experiment extends Phaser.Scene {
     if (!this.chosen) { this.hint.setText('先挑一个变量。'); return }
     const r = FRIDGE.runExperiment(this.chosen)
     this.endA = r.endA; this.endB = r.endB; this.ran = true
+    this.placeholder.setVisible(false)
     this.understood = this.chosen === FRIDGE.experiment.correctVar && r.endB < 10
     this.drawChart(r.endA, r.endB, r.labelA, r.labelB)
     if (this.understood) {
