@@ -1,5 +1,5 @@
 import { chromium } from 'playwright'
-const URL = 'http://localhost:5180/'
+const URL = 'http://localhost:5180/?scripted=1'
 let pass = 0, fail = 0
 const ok = (c, w) => { if (c) { pass++; console.log('  ✅ ' + w) } else { fail++; console.log('  ❌ ' + w) } }
 const b = await chromium.launch()
