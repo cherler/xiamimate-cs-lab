@@ -1,4 +1,5 @@
 import { makePartner, ScriptedPartner, type Facts } from '../agents/partner.ts'
+import { playLine } from './ui/audio.ts'
 
 // Vite 环境变量注入模型端点；没配就脚本兜底
 const env = (import.meta as unknown as { env?: Record<string, string | undefined> }).env ?? {}
@@ -34,6 +35,7 @@ function setPartnerLine(setLine: (text: string) => void, text: string) {
 export async function speak(setLine: (text: string) => void, facts: Facts): Promise<void> {
   const base = await scripted.react(facts)
   if (base) setPartnerLine(setLine, base.text)
+  playLine(facts.node) // 固定台词配音（静音/无音频则跳过）
   if (partner === scripted) return // 未配模型/强制脚本：到此为止
   const line = await partner.react(facts)
   if (line && line.text !== base?.text) setPartnerLine(setLine, line.text)
