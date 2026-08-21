@@ -1,5 +1,6 @@
 import * as Phaser from 'phaser'
 import { FRIDGE } from '../../chapters/fridge/index.ts'
+import { speak } from '../partner.ts'
 
 /** 对照实验台（C2）：选一个变量、跑 A/B、看两条温度曲线分叉。曲线终点来自求解器。 */
 export class Experiment extends Phaser.Scene {
@@ -25,6 +26,7 @@ export class Experiment extends Phaser.Scene {
     this.hint = this.add.text(40, 74, '先猜：把散热片弄通，柜里会变凉，还是没区别？挑一个变量，只改它，跑一遍。', {
       fontFamily: 'sans-serif', fontSize: '15px', color: '#ffcb7a',
     })
+    speak(t => this.hint.setText(t), { chapter: 'fridge', node: 'before-pick' })
     this.add.text(60, 150, '只改这一个：', { fontFamily: 'sans-serif', fontSize: '14px', color: '#a49b8b' })
     FRIDGE.experiment.vars.forEach((v, i) => {
       const y = 190 + i * 56
@@ -61,6 +63,10 @@ export class Experiment extends Phaser.Scene {
     if (this.understood) {
       this.conclusion.setColor('#6fbf73')
       this.conclusion.setText(`制冷=把热搬出去。把散热片弄通（${r.labelB}），柜里从 ${r.endA.toFixed(1)}℃ 掉到 ${r.endB.toFixed(1)}℃ —— 问题就在散热堵了。`)
+      speak(t => this.hint.setText(t), {
+        chapter: 'fridge', node: 'cracked',
+        readings: { blocked: r.endA, clear: r.endB },
+      })
       this.backBtn.setVisible(true)
     } else {
       this.conclusion.setColor('#cfc9bd')

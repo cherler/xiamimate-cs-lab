@@ -1,5 +1,6 @@
 import * as Phaser from 'phaser'
 import { FRIDGE } from '../../chapters/fridge/index.ts'
+import { speak } from '../partner.ts'
 
 /** 副本·冷藏柜（C1：大空间 + 热成像工具）。C2/C3 再加对照实验和修复链。 */
 export class Instance extends Phaser.Scene {
@@ -43,6 +44,7 @@ export class Instance extends Phaser.Scene {
       fontFamily: 'sans-serif', fontSize: '15px', color: '#ffcb7a',
       backgroundColor: 'rgba(20,18,15,0.7)', padding: { x: 8, y: 5 },
     })
+    speak(t => this.hint.setText(t), { chapter: 'fridge', node: 'enter' })
 
     const btn = this.add.rectangle(W - 130, 46, 180, 40, 0x2f4668).setInteractive({ useHandCursor: true })
     this.modeBtnT = this.add.text(W - 130, 46, '热成像：关', {
@@ -57,9 +59,14 @@ export class Instance extends Phaser.Scene {
   private toggleThermal() {
     this.thermalMode = !this.thermalMode
     this.modeBtnT.setText(this.thermalMode ? '热成像：开' : '热成像：关')
-    this.hint.setText(this.thermalMode
-      ? '看那片散热片——通红。热搬到这儿出不去了。点它钻进去。'
-      : '机器在转，柜里却是热的……拿热成像扫扫看？')
+    if (this.thermalMode) {
+      speak(t => this.hint.setText(t), {
+        chapter: 'fridge', node: 'anomaly',
+        readings: { condenser: FRIDGE.tempOfPart('condenser', FRIDGE.initial) },
+      })
+    } else {
+      speak(t => this.hint.setText(t), { chapter: 'fridge', node: 'enter' })
+    }
     this.render()
     this.expose()
   }

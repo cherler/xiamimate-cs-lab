@@ -1,6 +1,7 @@
 import * as Phaser from 'phaser'
 import { markFixed } from '../save.ts'
 import { solveControl } from '../../solvers/control.ts'
+import { speak } from '../partner.ts'
 
 const PRESETS = [
   { id: 'freezer', name: '冷冻 −18~−15℃', low: -18, high: -15, x: 400 },
@@ -61,6 +62,9 @@ export class Repair extends Phaser.Scene {
   private pickWindow(pr: { low: number; high: number }) {
     const s = solveControl({ setLow: pr.low, setHigh: pr.high, coolingFloor: COOLING_FLOOR })
     this.windowSafe = s.safe
+    if (s.frozen) {
+      speak(t => this.hint.setText(t), { chapter: 'fridge', node: 'freeze-warn' })
+    }
     this.verdict.setColor(s.safe ? '#6fbf73' : '#e0744f')
     this.verdict.setText(s.notes.length ? s.notes[s.notes.length - 1]! : '')
     this.doneBtn.setFillStyle(s.safe ? 0xc0603a : 0x3a4038)
