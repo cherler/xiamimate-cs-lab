@@ -20,7 +20,7 @@ await p.mouse.click(1150, 46); await p.waitForTimeout(300)
 const anom = await p.evaluate(() => window.__partnerLine)
 ok(/75/.test(anom), `扫出异常时台词带求解器的 75℃（「${anom?.slice(0, 24)}…」）`)
 // 钻进去 → 对照实验 before-pick
-await p.mouse.click(860, 400); await p.waitForTimeout(400)
+await p.mouse.click(1025, 350); await p.waitForTimeout(400)
 ok((await p.evaluate(() => window.__partnerLine))?.length > 0, '进实验台时虾米君提示（before-pick）')
 // 挑散热热阻 → 跑 → cracked，台词带 21 与 7.5
 await p.mouse.click(160, 190); await p.waitForTimeout(180)

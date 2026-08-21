@@ -17,7 +17,7 @@ ok(await p.evaluate(() => window.__townState?.clinicFixed) === false, '开局诊
 await p.mouse.click(314, 150); await p.waitForTimeout(250)
 await p.mouse.click(1090, 300); await p.waitForTimeout(450)
 await p.mouse.click(1150, 46); await p.waitForTimeout(300)
-await p.mouse.click(860, 400); await p.waitForTimeout(450)
+await p.mouse.click(1025, 350); await p.waitForTimeout(450)
 await p.mouse.click(160, 190); await p.waitForTimeout(200)
 await p.mouse.click(160, 378); await p.waitForTimeout(350)
 ok(await p.evaluate(() => window.__expState?.understood) === true, '对照实验破案')

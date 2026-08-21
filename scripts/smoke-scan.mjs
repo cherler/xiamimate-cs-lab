@@ -28,7 +28,7 @@ ok(cond > 60, `散热片扫出高温 ${Number(cond).toFixed(0)}℃（通红）`)
 ok(Math.abs(cond - 75) < 0.5, `散热片温度==求解器的 75℃（实测 ${Number(cond).toFixed(1)}）`)
 ok(cond > inside, `散热片(${Number(cond).toFixed(0)}) 比柜内(${Number(inside).toFixed(0)}) 烫——热堆在出口`)
 // 点通红的散热片钻进去（860,400）
-await p.mouse.click(860, 400); await p.waitForTimeout(300)
+await p.mouse.click(1025, 350); await p.waitForTimeout(300)
 ok(await p.evaluate(() => window.__instanceState?.drilled) === 'condenser', '点散热片钻了进去')
 await p.screenshot({ path: 'scripts/shot-scan.png' })
 await b.close()
