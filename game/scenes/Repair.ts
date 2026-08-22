@@ -42,8 +42,8 @@ export class Repair extends Phaser.Scene {
     this.doneT = this.add.text(640, 560, '完成修复', { fontFamily: 'sans-serif', fontSize: '16px', color: '#6f6759' }).setOrigin(0.5)
     this.doneBtn.on('pointerdown', () => {
       if (!this.windowSafe) return
-      markFixed('clinic')
-      this.scene.start('Town')
+      markFixed('fridge')
+      this.scene.start('House')
     })
     this.expose()
   }

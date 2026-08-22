@@ -1,5 +1,5 @@
 import * as Phaser from 'phaser'
-import townUrl from '../../web/assets/gen/town-v2.png'
+import houseUrl from '../../web/assets/gen/house.png'
 import fridgeUrl from '../../web/assets/gen/fridge-concept.png'
 import assistantUrl from '../../web/assets/gen/assistant.png'
 import coilsUrl from '../../web/assets/gen/coils-bg.png'
@@ -8,12 +8,12 @@ import coilsUrl from '../../web/assets/gen/coils-bg.png'
 export class Boot extends Phaser.Scene {
   constructor() { super('Boot') }
   preload() {
-    this.load.image('town', townUrl)
+    this.load.image('house', houseUrl)
     this.load.image('fridge', fridgeUrl)
     this.load.image('assistant', assistantUrl)
     this.load.image('coils', coilsUrl)
   }
   create() {
-    this.scene.start('Town')
+    this.scene.start('House')
   }
 }

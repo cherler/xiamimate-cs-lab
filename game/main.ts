@@ -1,6 +1,6 @@
 import * as Phaser from 'phaser'
 import { Boot } from './scenes/Boot.ts'
-import { Town } from './scenes/Town.ts'
+import { House } from './scenes/House.ts'
 import { Instance } from './scenes/Instance.ts'
 import { Experiment } from './scenes/Experiment.ts'
 import { Repair } from './scenes/Repair.ts'
@@ -16,7 +16,7 @@ const config: Phaser.Types.Core.GameConfig = {
   height: 720,
   backgroundColor: '#0e1524',
   scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
-  scene: [Boot, Town, Instance, Experiment, Repair],
+  scene: [Boot, House, Instance, Experiment, Repair],
 }
 
 const game = new Phaser.Game(config)

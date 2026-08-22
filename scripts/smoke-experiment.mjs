@@ -12,7 +12,7 @@ await p.evaluate(() => localStorage.removeItem('xiami.progress'))
 await p.reload({ waitUntil: 'networkidle' })
 await p.waitForTimeout(1000)
 // 进副本 → 扫 → 钻散热片 → 进对照实验
-await p.mouse.click(479, 184); await p.waitForTimeout(250)
+await p.mouse.click(137, 268); await p.waitForTimeout(250)
 await p.mouse.click(1090, 300); await p.waitForTimeout(450)
 await p.mouse.click(1150, 46); await p.waitForTimeout(300)
 await p.mouse.click(1025, 350); await p.waitForTimeout(450)
