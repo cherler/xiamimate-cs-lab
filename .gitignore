@@ -7,3 +7,5 @@ scripts/shot-*.png
 .env
 .env.local
 .env.*.local
+scripts/ux-*.png
+scripts/ux2-*.png
