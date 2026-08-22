@@ -4,6 +4,7 @@ import { House } from './scenes/House.ts'
 import { Instance } from './scenes/Instance.ts'
 import { Experiment } from './scenes/Experiment.ts'
 import { Repair } from './scenes/Repair.ts'
+import { NetCase } from './scenes/NetCase.ts'
 import { startBgm, toggleMuted, isMuted } from './ui/audio.ts'
 
 // 去掉浏览器默认 body 边距：让 FIT 画布真正铺满 1280×720、scale=1.0、屏幕坐标==游戏坐标
@@ -16,7 +17,7 @@ const config: Phaser.Types.Core.GameConfig = {
   height: 720,
   backgroundColor: '#0e1524',
   scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
-  scene: [Boot, House, Instance, Experiment, Repair],
+  scene: [Boot, House, Instance, Experiment, Repair, NetCase],
 }
 
 const game = new Phaser.Game(config)

@@ -3,6 +3,7 @@ import houseUrl from '../../web/assets/gen/house.png'
 import fridgeUrl from '../../web/assets/gen/fridge-concept.png'
 import assistantUrl from '../../web/assets/gen/assistant.png'
 import coilsUrl from '../../web/assets/gen/coils-bg.png'
+import netUrl from '../../web/assets/gen/net-bg.png'
 
 /** 预载场景：把资源读进来，再进小镇。 */
 export class Boot extends Phaser.Scene {
@@ -12,6 +13,7 @@ export class Boot extends Phaser.Scene {
     this.load.image('fridge', fridgeUrl)
     this.load.image('assistant', assistantUrl)
     this.load.image('coils', coilsUrl)
+    this.load.image('net', netUrl)
   }
   create() {
     this.scene.start('House')

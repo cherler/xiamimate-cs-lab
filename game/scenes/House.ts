@@ -1,5 +1,5 @@
 import * as Phaser from 'phaser'
-import { DEVICES, COMMISSION } from '../data/house.ts'
+import { DEVICES, CASES } from '../data/house.ts'
 import { isFixed } from '../save.ts'
 
 /**
@@ -10,6 +10,7 @@ import { isFixed } from '../save.ts'
  */
 export class House extends Phaser.Scene {
   private board!: Phaser.GameObjects.Container
+  private target = 'fridge'
 
   constructor() { super('House') }
 
@@ -34,7 +35,7 @@ export class House extends Phaser.Scene {
 
       if (d.open) {
         dot.setInteractive({ useHandCursor: true })
-        dot.on('pointerdown', () => this.openBoard())
+        dot.on('pointerdown', () => this.openBoard(d.id))
         // 感叹号：有毛病才挂，招呼点击（不靠台词）
         if (hasIssue) {
           const bang = this.add.text(d.x - 3, d.y - 44, '!', {
@@ -55,24 +56,28 @@ export class House extends Phaser.Scene {
     }
   }
 
-  private openBoard() {
+  private openBoard(deviceId = 'fridge') {
+    this.target = deviceId
+    this.board.destroy(true)
+    this.board = this.buildBoard()
     this.board.setVisible(true)
     const s = (window as unknown as { __houseState: { boardOpen: boolean; commission: string } }).__houseState
     s.boardOpen = true
-    s.commission = COMMISSION.title
+    s.commission = (CASES[this.target] ?? CASES.fridge!).title
   }
 
   private buildBoard(): Phaser.GameObjects.Container {
     const c = this.add.container(0, 0)
+    const CASE = CASES[this.target] ?? CASES.fridge!
     c.add(this.add.rectangle(1090, 210, 300, 320, 0x1a1613, 1).setStrokeStyle(1, 0x3a352c))
-    c.add(this.add.text(960, 80, COMMISSION.title, {
+    c.add(this.add.text(960, 80, CASE.title, {
       fontFamily: 'sans-serif', fontSize: '23px', color: '#e8e2d6', fontStyle: 'bold',
     }))
-    c.add(this.add.text(960, 116, COMMISSION.brief, {
+    c.add(this.add.text(960, 116, CASE.brief, {
       fontFamily: 'sans-serif', fontSize: '14px', color: '#a49b8b',
       wordWrap: { width: 250, useAdvancedWrap: true },
     }))
-    COMMISSION.steps.forEach((st, i) => {
+    CASE.steps.forEach((st, i) => {
       const x = 972 + i * 62
       c.add(this.add.circle(x, 214, 12, 0x2a2620).setStrokeStyle(1, 0x6f6759))
       c.add(this.add.text(x, 212, String(i + 1), { fontSize: '13px', color: '#a49b8b' }).setOrigin(0.5))
@@ -82,7 +87,7 @@ export class House extends Phaser.Scene {
     const btnT = this.add.text(1090, 302, '钻进去看看 →', {
       fontFamily: 'sans-serif', fontSize: '16px', color: '#141210', fontStyle: 'bold',
     }).setOrigin(0.5)
-    btn.on('pointerdown', () => this.scene.start('Instance'))
+    btn.on('pointerdown', () => this.scene.start(this.target === 'router' ? 'NetCase' : 'Instance'))
     c.add([btn, btnT])
     c.setDepth(100)
     return c
