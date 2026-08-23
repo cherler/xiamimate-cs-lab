@@ -2,6 +2,9 @@ import * as Phaser from 'phaser'
 import { DnsSim } from '../../solvers/dns/sim.ts'
 import type { QueryResult, TimelineStep } from '../../solvers/dns/types.ts'
 import { STATIONS, HOME, stationOf } from './layout.ts'
+import { createPredict } from '../ui/predict.ts'
+import { markFixed } from '../save.ts'
+import type { FaultKind } from '../../solvers/dns/state.ts'
 
 /**
  * DNS 活场景（V1 第一块：信使沿链逐跳跑）
@@ -18,7 +21,8 @@ export class DnsScene extends Phaser.Scene {
   private sim!: DnsSim
   private messenger!: Phaser.GameObjects.Container
   private pathG!: Phaser.GameObjects.Graphics
-  private nodeDots = new Map<string, Phaser.GameObjects.Arc>()
+  private nodeSprites = new Map<string, Phaser.GameObjects.Image>()
+  private nodeLabels = new Map<string, Phaser.GameObjects.Text>()
   private playing = false
   private statusText!: Phaser.GameObjects.Text
   private site = 'example.com'
@@ -27,20 +31,30 @@ export class DnsScene extends Phaser.Scene {
   private curHop = ''
   private notes = new Map<string, Phaser.GameObjects.Text>()
   private clockText!: Phaser.GameObjects.Text
+  private levelMode = false
+  private fault: FaultKind = 'none'
+  private guess: string | null = null
+  private winBtn?: Phaser.GameObjects.Rectangle
+  private winT?: Phaser.GameObjects.Text
 
   constructor() { super('DnsScene') }
+
+  init(data: { level?: boolean; seed?: number }) {
+    this.levelMode = data?.level ?? false
+    this.pendingSeed = data?.seed ?? 7
+  }
+  private pendingSeed = 7
 
   create() {
     const W = this.scale.width, H = this.scale.height
     this.sim = new DnsSim()
-    // 氛围底：送信世界概念图，压暗当舞台（活层——线框/信使/记事本——叠在上面才是主体）
-    const iw = 1536, ih = 1024
-    const sc = Math.max(W / iw, H / ih)
-    this.add.image(W / 2, H / 2, 'dns-concept').setDisplaySize(iw * sc, ih * sc)
-    this.add.rectangle(W / 2, H / 2, W, H, 0x0a1018, 0.62)
+    // 机器内部氛围：深色渐变 + 淡网格 + 电路纹。角色精灵才是主体
+    this.add.rectangle(W / 2, H / 2, W, H, 0x0c1420)
+    const grad = this.add.graphics()
+    grad.fillStyle(0x14243a, 0.5); grad.fillRect(0, 0, W, H * 0.5)
     this.drawGrid(W, H)
 
-    this.add.text(40, 26, 'DNS · 送信之路', {
+    this.add.text(40, 26, this.levelMode ? '书房 · 路由器 · 网页打不开' : 'DNS · 送信之路', {
       fontFamily: 'sans-serif', fontSize: '22px', color: COL.ink,
     })
     this.statusText = this.add.text(40, 60, '点「发起查询」，看信使走这一趟。', {
@@ -53,7 +67,17 @@ export class DnsScene extends Phaser.Scene {
     this.buildNotes()
     this.buildControls(W, H)
     this.clockText = this.add.text(W - 40, 30, '', { fontFamily: 'monospace', fontSize: '13px', color: COL.dim }).setOrigin(1, 0)
+
+    if (this.levelMode) {
+      this.fault = this.sim.seedFault(this.pendingSeed, this.site)
+      this.buildWinButton(W, H)
+      this.statusText.setText('网页打不开，可游戏、语音都正常。发起查询，看信使卡在哪。')
+    }
     this.refreshCaches()
+    this.refreshWin()
+    this.expose()
+
+    if (this.levelMode) this.time.delayedCall(450, () => this.askPredict())
 
     this.expose()
   }
@@ -77,21 +101,38 @@ export class DnsScene extends Phaser.Scene {
   }
 
   private drawNodes() {
-    // 电脑（家）
-    this.add.rectangle(HOME.x, HOME.y, 60, 48, 0x2a3a4e).setStrokeStyle(2, COL.nodeLine)
+    // 你的电脑（家）：小桌 + 屏幕
+    this.add.rectangle(HOME.x, HOME.y + 8, 66, 44, 0x2a3a4e).setStrokeStyle(2, COL.nodeLine)
+    this.add.rectangle(HOME.x, HOME.y - 4, 40, 26, 0x1a86c8).setStrokeStyle(1, 0x0e1622)
     this.add.text(HOME.x, HOME.y + 40, '你的电脑', { fontFamily: 'sans-serif', fontSize: '12px', color: COL.dim }).setOrigin(0.5)
-    for (const s of STATIONS) {
-      const dot = this.add.circle(s.x, s.y, 22, COL.node).setStrokeStyle(2, COL.nodeLine)
-      this.add.text(s.x, s.y + 34, s.name, { fontFamily: 'sans-serif', fontSize: '12px', color: COL.dim }).setOrigin(0.5)
-      this.nodeDots.set(s.hop, dot)
+
+    for (const st of STATIONS) {
+      // 站点之间画一段淡淡的路
+      if (st.sprite) {
+        const img = this.add.image(st.x, st.y, st.sprite).setDepth(5)
+        const scale = (st.h ?? 130) / img.height
+        img.setScale(scale).setOrigin(0.5, 1) // 脚底对齐 y
+        img.y = st.y
+        this.nodeSprites.set(st.hop, img)
+      } else {
+        // hosts：一块小牌子（本地写死映射，不是角色）
+        const g = this.add.rectangle(st.x, st.y - 14, 30, 40, 0x3a2e20).setStrokeStyle(2, 0x6b5335)
+        this.add.text(st.x, st.y - 14, 'H', { fontFamily: 'sans-serif', fontSize: '16px', color: '#c9a06a', fontStyle: 'bold' }).setOrigin(0.5)
+        void g
+      }
+      const lbl = this.add.text(st.x, st.y + 12, st.name, {
+        fontFamily: 'sans-serif', fontSize: '12px', color: COL.dim,
+        backgroundColor: 'rgba(8,14,22,0.6)', padding: { x: 4, y: 2 },
+      }).setOrigin(0.5, 0).setDepth(6)
+      this.nodeLabels.set(st.hop, lbl)
     }
   }
 
-  /** 信使：一个小圆身 + 一封信 */
+  /** 信使：精灵 */
   private buildMessenger() {
-    const body = this.add.circle(0, 0, 13, 0xffb057).setStrokeStyle(2, 0x8a5a1e)
-    const env = this.add.rectangle(9, -2, 12, 9, 0xfff4e0).setStrokeStyle(1, 0x8a5a1e)
-    this.messenger = this.add.container(HOME.x, HOME.y, [body, env]).setDepth(20)
+    const img = this.add.image(0, 0, 'dns-messenger')
+    img.setScale(72 / img.height)
+    this.messenger = this.add.container(HOME.x, HOME.y - 30, [img]).setDepth(30)
   }
 
   private buildControls(_W: number, H: number) {
@@ -114,7 +155,7 @@ export class DnsScene extends Phaser.Scene {
       this.add.text(x, my, label, { fontFamily: 'sans-serif', fontSize: '12px', color: COL.dim }).setOrigin(0.5)
       r.on('pointerover', () => r.setFillStyle(0x22303e))
       r.on('pointerout', () => r.setFillStyle(0x141c26, 0.95))
-      r.on('pointerdown', () => { cb(); this.refreshCaches() })
+      r.on('pointerdown', () => { cb(); this.refreshCaches(); this.refreshWin() })
       return r
     }
     mk2(90, '换公共DNS', () => { this.sim.setDns('public'); this.status('换了公共 DNS。') })
@@ -125,13 +166,14 @@ export class DnsScene extends Phaser.Scene {
 
   /** 三个缓存站各挂一块"记事本"，显示缓存条目 + 剩余 TTL */
   private buildNotes() {
+    // 缓存卡片挂在对应角色**头顶上方**——档案柜/门房手里攥着的"当前存了啥"
     for (const hop of ['hosts', 'browser-cache', 'os-cache', 'recursive'] as const) {
       const st = stationOf(hop); if (!st) continue
-      const y = st.hop === 'recursive' ? st.y - 84 : st.y + 56
-      const t = this.add.text(st.x, y, '', {
-        fontFamily: 'monospace', fontSize: '10px', color: '#8fb3d0', align: 'center',
-        backgroundColor: 'rgba(10,16,24,0.7)', padding: { x: 4, y: 3 },
-      }).setOrigin(0.5, 0)
+      const top = st.sprite ? st.y - (st.h ?? 130) - 8 : st.y - 44
+      const t = this.add.text(st.x, top, '', {
+        fontFamily: 'monospace', fontSize: '10px', color: '#bfe0ff', align: 'center', lineSpacing: 1,
+        backgroundColor: 'rgba(8,14,22,0.82)', padding: { x: 5, y: 3 },
+      }).setOrigin(0.5, 1).setDepth(8)
       this.notes.set(hop, t)
     }
   }
@@ -156,7 +198,7 @@ export class DnsScene extends Phaser.Scene {
 
   private rebuild() {
     this.sim = new DnsSim()
-    this.nodeDots.forEach(d => d.setFillStyle(COL.node))
+    this.nodeSprites.forEach(sp => { sp.clearTint(); sp.setAngle(0) })
     this.refreshCaches()
   }
   private status(s: string) { this.statusText.setText(s); }
@@ -165,7 +207,7 @@ export class DnsScene extends Phaser.Scene {
   private runQuery() {
     if (this.playing) return
     this.playing = true
-    this.nodeDots.forEach(d => d.setFillStyle(COL.node)) // 复位站点颜色
+    this.nodeSprites.forEach(sp => { sp.clearTint(); sp.setAngle(0) }) // 复位角色
     const result = this.sim.query(this.site)
     this.lastResult = result
     this.playStep(result, 0)
@@ -197,23 +239,24 @@ export class DnsScene extends Phaser.Scene {
     })
   }
 
-  /** 到站的反馈：命中变绿、miss 灰、卡住闪红 */
+  /** 到站的反馈：发生在角色身上——弹跳/发光/晃动/变红 */
   private reactAtStation(step: TimelineStep) {
-    const dot = this.nodeDots.get(step.hop)
-    if (!dot) return
+    const sp = this.nodeSprites.get(step.hop)
+    const bounce = (obj: Phaser.GameObjects.Image | Phaser.GameObjects.Container, s: number) =>
+      this.tweens.add({ targets: obj, scaleX: obj.scaleX * s, scaleY: obj.scaleY * s, yoyo: true, duration: 160, ease: 'Sine.easeOut' })
+
     if (step.outcome === 'hit' || step.outcome === 'answer') {
-      dot.setFillStyle(0x2f8f4e) // 命中/答案：绿
+      if (sp) { sp.setTint(0xbfffce); bounce(sp, 1.12); this.time.delayedCall(500, () => sp.clearTint()) }
       this.status(step.note)
     } else if (step.outcome === 'unreachable' || step.outcome === 'timeout') {
-      dot.setFillStyle(0xc0402e) // 卡住：红
-      this.tweens.add({ targets: dot, scale: { from: 1, to: 1.5 }, yoyo: true, repeat: 2, duration: 180 })
+      if (sp) { sp.setTint(0xff6a5a); this.tweens.add({ targets: sp, angle: { from: -4, to: 4 }, yoyo: true, repeat: 3, duration: 90, onComplete: () => sp.setAngle(0) }) }
+      bounce(this.messenger, 0.9)
       this.status('⚠ ' + step.note)
     } else if (step.outcome === 'referral' || step.outcome === 'cname') {
-      dot.setFillStyle(0x3f6fa0) // 转介：蓝
+      if (sp) bounce(sp, 1.08)
       this.status(step.note)
-    } else {
-      dot.setFillStyle(0x33404e) // miss：暗
     }
+    // miss：角色不反应（信使继续往下走），这本身就是"这儿没有"的语言
   }
 
   private finishPlay(result: QueryResult) {
@@ -221,13 +264,47 @@ export class DnsScene extends Phaser.Scene {
       // 信使拿着答案跑回家
       this.tweens.add({
         targets: this.messenger, x: HOME.x, y: HOME.y, duration: 420, ease: 'Sine.easeInOut',
-        onComplete: () => { this.status(`✓ 网页打开了：${result.ip}（走了 ${result.timeline.length} 跳，${result.totalMs}ms）`); this.playing = false; this.refreshCaches(); this.expose() },
+        onComplete: () => { this.status(`✓ 网页打开了：${result.ip}（走了 ${result.timeline.length} 跳，${result.totalMs}ms）`); this.playing = false; this.refreshCaches(); this.refreshWin(); this.expose() },
       })
     } else {
       this.status(`✗ 没成：${result.failure}。信使卡住了，网页转圈。`)
       this.playing = false
+      this.refreshWin()
       this.expose()
     }
+  }
+
+  private askPredict() {
+    createPredict(this, {
+      question: '网页打不开，可游戏在线、语音也通。你觉得网断了吗？',
+      anchor: '现状：游戏在线 · 语音正常 · 浏览器打不开 example.com',
+      options: [{ id: 'down', label: '网断了' }, { id: 'other', label: '没断，别的毛病' }],
+      onDone: r => {
+        this.guess = r.picked
+        this.expose()
+        this.status(r.skipped ? '行，那自己拿工具查——发起查询看信使卡哪。' : '押好了。别听我的，发起查询自己看。')
+      },
+    })
+  }
+
+  private buildWinButton(W: number, H: number) {
+    this.winBtn = this.add.rectangle(W - 130, H - 40, 220, 44, 0x3a4038).setInteractive({ useHandCursor: true })
+    this.winT = this.add.text(W - 130, H - 40, '修好了，回房子', {
+      fontFamily: 'sans-serif', fontSize: '15px', color: '#6f6759',
+    }).setOrigin(0.5)
+    this.winBtn.on('pointerdown', () => {
+      if (!this.sim.canOpen(this.site)) return
+      markFixed('router')
+      this.scene.start('House')
+    })
+  }
+
+  /** 修好了就点亮通关钮 */
+  private refreshWin() {
+    if (!this.winBtn || !this.winT) return
+    const ok = this.sim.canOpen(this.site)
+    this.winBtn.setFillStyle(ok ? 0xc0603a : 0x3a4038)
+    this.winT.setColor(ok ? '#141210' : '#6f6759')
   }
 
   private expose() {
@@ -235,6 +312,8 @@ export class DnsScene extends Phaser.Scene {
       scene: 'DnsScene', playing: this.playing, curHop: this.curHop,
       lastIp: this.lastResult?.ip ?? null, lastCorrect: this.lastResult?.correct ?? null,
       timelineLen: this.lastResult?.timeline.length ?? 0,
+      level: this.levelMode, fault: this.fault, guess: this.guess,
+      canOpen: this.sim.canOpen(this.site),
     }
   }
 }
