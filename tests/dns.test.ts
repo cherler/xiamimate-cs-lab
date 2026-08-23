@@ -1,6 +1,6 @@
 import { resolve } from '../solvers/dns/resolve.ts'
 import { initNet } from '../solvers/dns/state.ts'
-import { PUBLIC_DNS, SERVERS } from '../solvers/dns/world.ts'
+import { PUBLIC_DNS } from '../solvers/dns/world.ts'
 import { ok } from './harness.ts'
 
 export function run() {
@@ -30,17 +30,12 @@ export function run() {
 
   //  递归服务器挂了：这一关的密——网没断，但名字翻不出来
   {
-    const brokenRouter = { ...SERVERS.router!, reachable: false }
-    // 用一个不可达的递归服务器
-    const net = initNet({ dnsServer: brokenRouter.ip })
-    // 手动让 router 不可达
-    SERVERS.router!.reachable = false
+    const net = initNet({ serverReachable: false })
     const r = resolve(net, 'example.com')
     ok(r.ip === null && r.failure === 'unreachable', '递归挂了 → 解析失败')
     const last = r.timeline[r.timeline.length - 1]!
     ok(last.hop === 'recursive' && last.outcome === 'unreachable',
        '断点精确落在递归服务器这一跳，不是别处')
-    SERVERS.router!.reachable = true // 复原
   }
 
   //  换公共 DNS 就好了
@@ -182,5 +177,80 @@ export function runS3() {
        `第二次查 www 更快（${first.totalMs}ms → ${second.totalMs}ms）——别名也缓存了`)
     ok(second.timeline.some(s => s.hop.includes('cache') && s.outcome === 'hit'),
        '第二次在缓存命中')
+  }
+}
+
+import { applyFault, randomFault, ALL_REAL_FAULTS } from '../solvers/dns/fault.ts'
+import { currentTrueIp } from '../solvers/dns/resolve.ts'
+
+export function runS4() {
+  console.log('— DNS 故障模型 S4 —')
+
+  //  每种故障：网页打不开（或解析成功却是错的），且断点/命中特征可区分
+  {
+    // server-down：递归 unreachable
+    const n1 = initNet(); applyFault(n1, 'server-down', 'example.com')
+    const r1 = resolve(n1, 'example.com')
+    ok(r1.failure === 'unreachable' && r1.timeline[r1.timeline.length-1]!.outcome === 'unreachable',
+       'server-down：递归不可达，断在递归这跳')
+
+    // server-slow：递归 timeout（不是 unreachable，可区分）
+    const n2 = initNet(); applyFault(n2, 'server-slow', 'example.com')
+    const r2 = resolve(n2, 'example.com')
+    ok(r2.failure === 'timeout' && r2.timeline[r2.timeline.length-1]!.outcome === 'timeout',
+       'server-slow：超时（跟 unreachable 区分开）')
+    // 且"调大超时"能修好——证明是慢不是断
+    const n2b = initNet({ timeoutMs: 8000 }); applyFault(n2b, 'server-slow', 'example.com')
+    ok(resolve(n2b, 'example.com').ip !== null, 'server-slow：等得够久其实能解析（慢≠断）')
+
+    // poisoned-cache：解析"成功"但 IP 错，命中在缓存
+    const n3 = initNet(); applyFault(n3, 'poisoned-cache', 'example.com')
+    const r3 = resolve(n3, 'example.com')
+    ok(r3.ip !== null && !r3.correct, 'poisoned-cache：解析成功却是错的 IP')
+    ok(r3.timeline.some(s => s.hop.includes('cache') && s.outcome === 'hit'),
+       'poisoned-cache：命中在缓存')
+
+    // ttl-too-long：也是缓存命中错IP，但那条记录 TTL 超长（区分 poisoned）
+    const n4 = initNet(); applyFault(n4, 'ttl-too-long', 'example.com')
+    const r4 = resolve(n4, 'example.com')
+    ok(r4.ip !== null && !r4.correct, 'ttl-too-long：拿到的是过时地址，连不上')
+    const badStep = r4.timeline.find(s => s.hop.includes('cache') && s.outcome === 'hit')!
+    ok((badStep.record?.ttl ?? 0) > 86400,
+       `ttl-too-long：那条缓存 TTL 超长（${badStep.record?.ttl}s），跟 poisoned 的正常 TTL 区分`)
+
+    // hosts-hijack：命中在 hosts（不是缓存），清缓存修不了
+    const n5 = initNet(); applyFault(n5, 'hosts-hijack', 'example.com')
+    const r5 = resolve(n5, 'example.com')
+    ok(r5.ip !== null && !r5.correct, 'hosts-hijack：解析成功却是错的')
+    ok(r5.timeline.some(s => s.hop === 'hosts' && s.outcome === 'hit'),
+       'hosts-hijack：命中在 hosts 这跳（不是缓存）')
+  }
+
+  //  换 DNS 修好 server-down / 换不好 poisoned（对症才有用）
+  {
+    const n = initNet(); applyFault(n, 'server-down', 'example.com')
+    n.serverReachable = true // 相当于换了台可达的
+    ok(resolve(n, 'example.com').ip !== null, 'server-down 换台可达服务器 → 好了')
+  }
+
+  //  随机故障：不管随机到哪个，都"真的坏了"且"能被观察到坏在哪"——防刷的地基
+  {
+    for (let seed = 0; seed < 30; seed++) {
+      const f = randomFault(seed)
+      const net = initNet(); applyFault(net, f, 'example.com')
+      const r = resolve(net, 'example.com')
+      const broken = r.ip === null || !r.correct
+      ok(broken, `随机故障 seed=${seed}(${f})：确实让网页打不开/连不上`)
+    }
+    // 覆盖到所有故障种类（不是永远随机到同一个）
+    const seen = new Set(Array.from({ length: 30 }, (_, s) => randomFault(s)))
+    ok(seen.size === ALL_REAL_FAULTS.length, `30 个 seed 覆盖了全部 ${ALL_REAL_FAULTS.length} 种故障`)
+  }
+
+  //  currentTrueIp：ttl-too-long 下"现在的真值"跟缓存里的旧值不同
+  {
+    const n = initNet(); applyFault(n, 'ttl-too-long', 'example.com')
+    ok(currentTrueIp(n, 'example.com') !== '93.184.216.34',
+       'ttl-too-long：权威现在的真值已经变了（所以旧缓存是错的）')
   }
 }

@@ -81,19 +81,24 @@ function resolveOnce(net: NetState, name: string, tl: TimelineStep[]): DnsRecord
 
   // ④ 递归服务器
   const server = Object.values(SERVERS).find(s => s.ip === net.dnsServer)
-  if (!server || !server.reachable) {
+  if (!server || !net.serverReachable) {
     step(tl, 'recursive', name, 'unreachable', net.timeoutMs,
       `递归 DNS ${net.dnsServer} 连不上——名字翻不成 IP。认 IP 的（游戏）没事，认名字的（网页）全废。`)
     return null
   }
+  if (net.serverLatencyMs > net.timeoutMs) {
+    step(tl, 'recursive', name, 'timeout', net.timeoutMs,
+      `递归 DNS ${net.dnsServer} 答得太慢（${net.serverLatencyMs}ms > 超时 ${net.timeoutMs}ms），浏览器等不住放弃了。`)
+    return null
+  }
   const rc = cacheGet(net.recursiveCache, name, 'A', now) ?? cacheGet(net.recursiveCache, name, 'CNAME', now)
   if (rc) {
-    step(tl, 'recursive', name, 'hit', server.latencyMs,
+    step(tl, 'recursive', name, 'hit', net.serverLatencyMs,
       `${server.name} 缓存里有 ${name} → ${rc.value}，直接给你。`, rc)
     writeAllCaches(net, rc, now, false)
     return rc
   }
-  step(tl, 'recursive', name, 'referral', server.latencyMs,
+  step(tl, 'recursive', name, 'referral', net.serverLatencyMs,
     `问 ${server.name}（${server.ip}）：${name} 在哪？它缓存里没有，替你往上问……`)
 
   // ⑤ 递归代问权威
@@ -117,12 +122,14 @@ export function resolve(net: NetState, name: string): QueryResult {
 
     const rec = resolveOnce(net, current, tl)
     if (!rec) {
-      // 区分"递归不可达"和"查无此名"
+      // 区分递归不可达 / 超时 / 查无此名
       const last = tl[tl.length - 1]!
-      return fail(name, tl, last.outcome === 'unreachable' ? 'unreachable' : 'nxdomain')
+      const f = last.outcome === 'unreachable' ? 'unreachable'
+        : last.outcome === 'timeout' ? 'timeout' : 'nxdomain'
+      return fail(name, tl, f)
     }
     if (rec.type === 'A') {
-      return finish(name, tl, rec.value)
+      return finish(name, tl, rec.value, currentTrueIp(net, name))
     }
     if (rec.type === 'CNAME') {
       // 折返：换成真身再查一遍
@@ -144,10 +151,14 @@ function writeAllCaches(net: NetState, rec: DnsRecord, now: number, fromRecursiv
 
 function total(tl: TimelineStep[]): number { return tl.reduce((s, x) => s + x.ms, 0) }
 
-function finish(name: string, tl: TimelineStep[], ip: string | null): QueryResult {
+/** 现在的真值：权威改过就用新值，否则用权威树原值 */
+export function currentTrueIp(net: NetState, name: string): string | null {
+  return net.authorityOverride[name] ?? trueIp(name)
+}
+function finish(name: string, tl: TimelineStep[], ip: string | null, tIp: string | null): QueryResult {
   return {
     name, timeline: tl, ip,
-    correct: ip !== null && ip === trueIp(name),
+    correct: ip !== null && ip === tIp,
     totalMs: total(tl), failure: ip === null ? 'nxdomain' : null,
   }
 }

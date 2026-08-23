@@ -22,6 +22,12 @@ export type NetState = {
   osCache: Cache
   recursiveCache: Cache
   hosts: Record<string, string>
+  /** 递归服务器是否可达（故障 server-down 置 false，不再改全局） */
+  serverReachable: boolean
+  /** 递归服务器应答延迟 ms（故障 server-slow 拉大到超过 timeout） */
+  serverLatencyMs: number
+  /** 权威侧"现在的真值"覆盖：名字→新IP。模拟"权威改了地址"，配合过长 TTL 造 ttl-too-long */
+  authorityOverride: Record<string, string>
   /** 超过这个时间没应答就算超时 */
   timeoutMs: number
   /** 当前故障（可组合留到 S4，先单个） */
@@ -39,6 +45,9 @@ export function initNet(over: Partial<NetState> = {}): NetState {
     osCache: new Map(),
     recursiveCache: new Map(),
     hosts: {},
+    serverReachable: true,
+    serverLatencyMs: 20,
+    authorityOverride: {},
     timeoutMs: 2000,
     fault: 'none',
     now: 0,
