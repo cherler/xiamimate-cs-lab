@@ -33,7 +33,11 @@ export class DnsScene extends Phaser.Scene {
   create() {
     const W = this.scale.width, H = this.scale.height
     this.sim = new DnsSim()
-    this.add.rectangle(W / 2, H / 2, W, H, 0x0e1622)
+    // 氛围底：送信世界概念图，压暗当舞台（活层——线框/信使/记事本——叠在上面才是主体）
+    const iw = 1536, ih = 1024
+    const sc = Math.max(W / iw, H / ih)
+    this.add.image(W / 2, H / 2, 'dns-concept').setDisplaySize(iw * sc, ih * sc)
+    this.add.rectangle(W / 2, H / 2, W, H, 0x0a1018, 0.62)
     this.drawGrid(W, H)
 
     this.add.text(40, 26, 'DNS · 送信之路', {
@@ -56,7 +60,7 @@ export class DnsScene extends Phaser.Scene {
 
   private drawGrid(W: number, H: number) {
     const g = this.add.graphics()
-    g.lineStyle(1, 0x16202e, 1)
+    g.lineStyle(1, 0x2a3a4e, 0.35)
     for (let x = 0; x <= W; x += 44) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, H); g.strokePath() }
     for (let y = 0; y <= H; y += 44) { g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.strokePath() }
   }
