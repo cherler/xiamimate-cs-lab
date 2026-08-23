@@ -308,3 +308,60 @@ export function runS4b() {
     ok(resolve(n, 'example.com').correct, 'server-slow：调大超时才修好（对症）')
   }
 }
+
+import { DnsSim } from '../solvers/dns/sim.ts'
+
+/** S5：门面整层验收——从玩家视角走完整局 */
+export function runS5() {
+  console.log('— DNS 门面 S5（整层验收）—')
+
+  //  门面能发起查询、拿到时间线
+  {
+    const sim = new DnsSim()
+    const r = sim.query('example.com')
+    ok(r.ip === '93.184.216.34' && r.timeline.length > 0, '门面：query 返回时间线')
+    ok(sim.canOpen('example.com'), '门面：canOpen 正常')
+  }
+
+  //  门面能读三级缓存快照（给可视化）
+  {
+    const sim = new DnsSim()
+    sim.query('example.com')
+    const snaps = sim.caches()
+    ok(snaps.length === 3 && snaps.every(s => Array.isArray(s.entries)), '门面：三级缓存快照')
+    const browser = snaps.find(s => s.level === 'browser')!
+    ok(browser.entries.some(e => e.record.name === 'example.com' && e.ttlLeft > 0),
+       '门面：缓存快照里有条目 + 剩余 TTL')
+  }
+
+  //  完整一局：每种随机故障都能"观察→对症修→打开"
+  {
+    // seed 覆盖到全部 5 种故障
+    const applied = new Set<string>()
+    for (let seed = 0; seed < 5; seed++) {
+      const sim = new DnsSim()
+      const fault = sim.seedFault(seed, 'example.com')
+      applied.add(fault)
+      ok(!sim.canOpen('example.com'), `${fault}：施故障后打不开`)
+      // 对症修复（玩家会做的动作，全走门面）
+      if (fault === 'server-down') sim.setDns('public')
+      else if (fault === 'server-slow') sim.setTimeout(8000)
+      else if (fault === 'poisoned-cache') sim.clear('all')
+      else if (fault === 'ttl-too-long') sim.clear('all')
+      else if (fault === 'hosts-hijack') sim.editHosts('example.com', null)
+      ok(sim.canOpen('example.com'), `${fault}：对症修复后能打开`)
+    }
+    ok(applied.size === 5, 'seed 0-4 覆盖了全部 5 种故障')
+  }
+
+  //  推进时钟让缓存过期
+  {
+    const sim = new DnsSim()
+    const cold = sim.query('example.com')
+    const warm = sim.query('example.com')
+    ok(warm.totalMs < cold.totalMs, '门面：第二次命中缓存更快')
+    sim.advance(4000) // 越过 3600s TTL
+    const expired = sim.query('example.com')
+    ok(expired.totalMs > warm.totalMs, '门面：advance 让缓存过期，重查变慢')
+  }
+}
