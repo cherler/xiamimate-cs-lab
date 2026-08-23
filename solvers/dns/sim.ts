@@ -15,7 +15,7 @@ import type { QueryResult, DnsRecord } from './types.ts'
 import { resolve } from './resolve.ts'
 import { applyFault, randomFault } from './fault.ts'
 import { cacheView } from './cache.ts'
-import { SERVERS, PUBLIC_DNS, ROUTER_DNS } from './world.ts'
+import { SERVERS, PUBLIC_DNS, ROUTER_DNS, trueIp } from './world.ts'
 
 export type CacheLevel = 'browser' | 'os' | 'recursive' | 'all'
 
@@ -96,6 +96,31 @@ export class DnsSim {
 
   /** 当前逻辑时钟（秒） */
   clock(): number { return this.net.now / 1000 }
+
+  /**
+   * 【理论内核·间接层】直接拿"名字"去连那台机器——**必然失败**。
+   * 因为机器只认门牌号(IP)，压根不知道 example.com 是谁。
+   * 这是第一关让玩家亲手撞的墙：名字≠地址。
+   */
+  connectByName(name: string): { ok: false; reason: string } {
+    return { ok: false, reason: `那台机器不认识"${name}"这个名字——它只认门牌号（IP）。` }
+  }
+
+  /**
+   * 拿"门牌号"(IP)去连——通。前提是这个 IP 是对的。
+   * 玩家得先把名字翻译成 IP（查号台/DNS），才拿得到这个号。
+   */
+  connectByIp(ip: string, name: string): { ok: boolean; reason: string } {
+    const truth = this.net.authorityOverride[name] ?? trueIp(name)
+    return ip === truth
+      ? { ok: true, reason: `拨通了 ${ip}——这就是 ${name} 那台机器的门牌号。` }
+      : { ok: false, reason: `${ip} 拨过去没人应——这个门牌号不对。` }
+  }
+
+  /** 查号台：把名字翻译成门牌号（就是查一次 DNS，拿最终 IP）。null=查不到 */
+  lookupIp(name: string): string | null {
+    return this.query(name).ip
+  }
 
   /** 一个域名能不能正常打开（解析成功且地址正确） */
   canOpen(name: string): boolean {

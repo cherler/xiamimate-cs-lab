@@ -365,3 +365,29 @@ export function runS5() {
     ok(expired.totalMs > warm.totalMs, '门面：advance 让缓存过期，重查变慢')
   }
 }
+
+/** S6：间接层理论——名字≠地址，中间要翻译（第一关"玩中懂"的核心机制） */
+export function runS6() {
+  console.log('— DNS 间接层理论 S6 —')
+  const sim = new DnsSim()
+
+  //  亲手用名字直连 → 必然撞墙（机器只认门牌号）
+  const byName = sim.connectByName('example.com')
+  ok(byName.ok === false, '用名字直连：连不上（机器不认名字）')
+  ok(byName.reason.includes('门牌号') || byName.reason.includes('IP'), '给出的理由点到"只认门牌号"')
+
+  //  查号台：把名字翻译成门牌号
+  const ip = sim.lookupIp('example.com')
+  ok(ip === '93.184.216.34', '查号台把 example.com 翻译成门牌号 93.184.216.34')
+
+  //  拿翻译来的门牌号去连 → 通
+  const byIp = sim.connectByIp(ip!, 'example.com')
+  ok(byIp.ok === true, '用翻译来的门牌号：拨通了')
+
+  //  拿错的门牌号 → 不通（门牌号得对）
+  ok(sim.connectByIp('1.2.3.4', 'example.com').ok === false, '错的门牌号连不上')
+
+  //  理论对照：同一个目标，名字连不上、号能连上——这就是"间接层"存在的理由
+  ok(sim.connectByName('example.com').ok === false && sim.connectByIp(ip!, 'example.com').ok === true,
+     '同一台机器：名字连不上、门牌号能连上——名字和地址是两回事')
+}
