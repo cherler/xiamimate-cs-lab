@@ -56,6 +56,9 @@ export const AUTHORITY: Zone[] = [
       { name: 'example.com', type: 'A', value: '93.184.216.34', ttl: 3600 },
       // www 是个别名（CNAME），指向真身——查 www 得折返再查一次
       { name: 'www.example.com', type: 'CNAME', value: 'example.com', ttl: 3600 },
+      // 一对互指的别名——造 CNAME 死循环，测环检测
+      { name: 'loop-a.example.com', type: 'CNAME', value: 'loop-b.example.com', ttl: 3600 },
+      { name: 'loop-b.example.com', type: 'CNAME', value: 'loop-a.example.com', ttl: 3600 },
     ],
   },
   {

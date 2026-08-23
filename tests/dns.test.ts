@@ -142,3 +142,45 @@ export function runS2() {
     ok(later[0]!.ttlLeft < view[0]!.ttlLeft, 'TTL 随时间倒数')
   }
 }
+
+export function runS3() {
+  console.log('— DNS 记录类型 + CNAME 折返 S3 —')
+
+  //  CNAME 折返：查 www.example.com → 别名 → 真身 → A
+  {
+    const net = initNet()
+    const r = resolve(net, 'www.example.com')
+    ok(r.ip === '93.184.216.34', 'www.example.com 最终解析到真身的 IP')
+    ok(r.correct, '结果正确')
+    //  时间线里必须出现"拿到 CNAME"和"折返后再查真身"
+    const cnameStep = r.timeline.find(s => s.outcome === 'cname')
+    ok(!!cnameStep, '时间线里出现了 CNAME 那一步')
+    //  权威被问了两次：一次给 CNAME（查 www），一次给 A（查真身）
+    const authSteps = r.timeline.filter(s => s.hop === 'authoritative')
+    ok(authSteps.length === 2, `权威被问了两次（折返再查一遍）——实测 ${authSteps.length} 次`)
+    //  折返后查的名字变成了真身
+    ok(authSteps[1]!.query === 'example.com', '折返后查的是真身 example.com')
+    //  比直连的 example.com 跳数更多（多走了一趟）
+    const direct = resolve(initNet(), 'example.com')
+    ok(r.timeline.length > direct.timeline.length,
+       `CNAME 比直连跳数多（${direct.timeline.length} → ${r.timeline.length}）`)
+  }
+
+  //  CNAME 死循环：a→b→a，检出，不死机
+  {
+    const r = resolve(initNet(), 'loop-a.example.com')
+    ok(r.ip === null && r.failure === 'cname-loop', 'CNAME 死循环被检出为 cname-loop')
+    ok(r.timeline.length < 40, '没有无限展开（时间线有界）')
+  }
+
+  //  CNAME 折返后，别名和真身各自被缓存 → 第二次查 www 更快
+  {
+    const net = initNet()
+    const first = resolve(net, 'www.example.com')
+    const second = resolve(net, 'www.example.com')
+    ok(second.totalMs < first.totalMs,
+       `第二次查 www 更快（${first.totalMs}ms → ${second.totalMs}ms）——别名也缓存了`)
+    ok(second.timeline.some(s => s.hop.includes('cache') && s.outcome === 'hit'),
+       '第二次在缓存命中')
+  }
+}
