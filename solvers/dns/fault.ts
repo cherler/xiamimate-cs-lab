@@ -31,17 +31,23 @@ export function applyFault(net: NetState, fault: FaultKind, name: string): Fault
       net.serverLatencyMs = 5000 // > 默认 timeout 2000 → 超时
       break
     case 'poisoned-cache': {
-      // 系统缓存里塞一条错记录，正常 TTL
+      // 递归缓存（上游）被塞了错记录，正常 TTL。命中会向下回填三级，
+      // 所以修复动作是"清全部缓存"（flush），清一级不够。
       const wrong = { name, type: 'A' as const, value: '10.0.0.66', ttl: 600 }
+      cachePut(net.browserCache, wrong, net.now)
       cachePut(net.osCache, wrong, net.now)
+      cachePut(net.recursiveCache, wrong, net.now)
       break
     }
     case 'ttl-too-long': {
-      // 缓存里是"曾经正确、现在过时"的记录，TTL 超长（一周）不过期；
-      // 同时权威已经把地址改了 → 你一直拿旧的、连不上
+      // 权威已经把地址改成新值；但三级缓存里还压着"旧的、曾经正确的"记录，TTL 超长（一周）不过期。
+      // 于是你一直拿旧值、连不上。清缓存 → 走权威拿到新值 → 修好（这正是故障表宣称的修法）。
       const oldIp = trueIp(name) ?? '93.184.216.34'
-      cachePut(net.osCache, { name, type: 'A', value: oldIp, ttl: 604800 }, net.now)
-      net.authorityOverride[name] = '93.184.216.99' // 权威改了新地址
+      const stale = { name, type: 'A' as const, value: oldIp, ttl: 604800 }
+      cachePut(net.browserCache, stale, net.now)
+      cachePut(net.osCache, stale, net.now)
+      cachePut(net.recursiveCache, stale, net.now)
+      net.authorityOverride[name] = '93.184.216.99' // 权威改了新地址（解析引擎现在真的会读它）
       break
     }
     case 'hosts-hijack':

@@ -2,7 +2,7 @@ import { report, ok, _counts, _forgive } from './harness.ts'
 import { run as circuit } from './circuit.test.ts'
 import { run as thermal } from './thermal.test.ts'
 import { run as control } from './control.test.ts'
-import { run as dns, runS2 as dnsS2, runS3 as dnsS3, runS4 as dnsS4 } from './dns.test.ts'
+import { run as dns, runS2 as dnsS2, runS3 as dnsS3, runS4 as dnsS4, runS4b as dnsS4b } from './dns.test.ts'
 import { run as partner } from './partner.test.ts'
 
 circuit()
@@ -12,6 +12,7 @@ dns()
 dnsS2()
 dnsS3()
 dnsS4()
+dnsS4b()
 await partner()
 
 //  自检：证明这个测试台真的能判红。

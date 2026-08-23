@@ -20,8 +20,15 @@ function step(
   tl.push({ hop, query, outcome, ms, note, record })
 }
 
+/** 权威侧对 A 记录的“现在真值”查询：override（权威改过的新值）优先，否则查静态权威树。 */
+function authLookupA(net: NetState, name: string): DnsRecord | null {
+  const nv = net.authorityOverride[name]
+  if (nv !== undefined) return { name, type: 'A', value: nv, ttl: 3600 }
+  return authLookup(name, 'A')
+}
+
 /** 递归代客户端问权威侧：根 → TLD → 权威。返回权威给的记录（A 或 CNAME）。 */
-function recurseAuthority(tl: TimelineStep[], name: string): DnsRecord | null {
+function recurseAuthority(net: NetState, tl: TimelineStep[], name: string): DnsRecord | null {
   const tld = name.split('.').pop()!
   step(tl, 'root', name, 'referral', 8,
     `根服务器：${name} 归 .${tld} 管，去问 TLD。`,
@@ -32,7 +39,7 @@ function recurseAuthority(tl: TimelineStep[], name: string): DnsRecord | null {
     `.${tld} 权威：${secondLevel} 的权威服务器我知道，去问它。`,
     authLookup(secondLevel, 'NS') ?? undefined)
 
-  const rec = authLookup(name, 'A') ?? authLookup(name, 'CNAME')
+  const rec = authLookupA(net, name) ?? authLookup(name, 'CNAME')
   if (rec) {
     step(tl, 'authoritative', name,
       rec.type === 'CNAME' ? 'cname' : 'answer', 15,
@@ -53,24 +60,8 @@ function recurseAuthority(tl: TimelineStep[], name: string): DnsRecord | null {
 function resolveOnce(net: NetState, name: string, tl: TimelineStep[]): DnsRecord | null {
   const now = net.now
 
-  // ① 浏览器缓存（A 或 CNAME 都可能被缓存）
-  const bc = cacheGet(net.browserCache, name, 'A', now) ?? cacheGet(net.browserCache, name, 'CNAME', now)
-  if (bc) {
-    step(tl, 'browser-cache', name, 'hit', 1, `浏览器缓存命中：${name} → ${bc.value}。`, bc)
-    return bc
-  }
-  step(tl, 'browser-cache', name, 'miss', 1, '浏览器缓存：没有（或已过期）。')
-
-  // ② 系统缓存
-  const oc = cacheGet(net.osCache, name, 'A', now) ?? cacheGet(net.osCache, name, 'CNAME', now)
-  if (oc) {
-    step(tl, 'os-cache', name, 'hit', 1, `系统缓存命中：${name} → ${oc.value}。`, oc)
-    cachePut(net.browserCache, oc, now)
-    return oc
-  }
-  step(tl, 'os-cache', name, 'miss', 1, '系统缓存：没有（或已过期）。')
-
-  // ③ hosts
+  // ① hosts（真实 DNS：nsswitch files→dns，hosts 优先于任何缓存；
+  //     所以 hosts 劫持清缓存没用、只能改 hosts——这个顺序是对抗验证逼出来的修正）
   const h = net.hosts[name]
   if (h !== undefined) {
     const rec: DnsRecord = { name, type: 'A', value: h, ttl: 0 }
@@ -78,6 +69,23 @@ function resolveOnce(net: NetState, name: string, tl: TimelineStep[]): DnsRecord
     return rec
   }
   step(tl, 'hosts', name, 'miss', 1, 'hosts：没有记录。')
+
+  // ② 浏览器缓存
+  const bc = cacheGet(net.browserCache, name, 'A', now) ?? cacheGet(net.browserCache, name, 'CNAME', now)
+  if (bc) {
+    step(tl, 'browser-cache', name, 'hit', 1, `浏览器缓存命中：${name} → ${bc.value}。`, bc)
+    return bc
+  }
+  step(tl, 'browser-cache', name, 'miss', 1, '浏览器缓存：没有（或已过期）。')
+
+  // ③ 系统缓存
+  const oc = cacheGet(net.osCache, name, 'A', now) ?? cacheGet(net.osCache, name, 'CNAME', now)
+  if (oc) {
+    step(tl, 'os-cache', name, 'hit', 1, `系统缓存命中：${name} → ${oc.value}。`, oc)
+    cachePut(net.browserCache, oc, now)
+    return oc
+  }
+  step(tl, 'os-cache', name, 'miss', 1, '系统缓存：没有（或已过期）。')
 
   // ④ 递归服务器
   const server = Object.values(SERVERS).find(s => s.ip === net.dnsServer)
@@ -102,7 +110,7 @@ function resolveOnce(net: NetState, name: string, tl: TimelineStep[]): DnsRecord
     `问 ${server.name}（${server.ip}）：${name} 在哪？它缓存里没有，替你往上问……`)
 
   // ⑤ 递归代问权威
-  const rec = recurseAuthority(tl, name)
+  const rec = recurseAuthority(net, tl, name)
   if (rec) writeAllCaches(net, rec, now, true)
   return rec
 }

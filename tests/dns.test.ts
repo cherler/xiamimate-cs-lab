@@ -254,3 +254,57 @@ export function runS4() {
        'ttl-too-long：权威现在的真值已经变了（所以旧缓存是错的）')
   }
 }
+
+import { clearCache as clearC } from '../solvers/dns/state.ts'
+
+/** S4b：对抗验证挖出的交互 bug，逐条钉成"修复动作真能修好"的守卫 */
+export function runS4b() {
+  console.log('— DNS 故障修复闭环 S4b（对抗验证守卫）—')
+
+  //  【blocker】ttl-too-long：清缓存必须真能修好（之前 override 引擎不读→永远修不好）
+  {
+    const net = initNet(); applyFault(net, 'ttl-too-long', 'example.com')
+    const before = resolve(net, 'example.com')
+    ok(before.ip !== null && !before.correct, 'ttl-too-long：施故障后拿到旧地址、连不上')
+    clearC(net, 'all')
+    const after = resolve(net, 'example.com')
+    ok(after.correct, 'ttl-too-long：清缓存后走权威拿到新值 → 修好（谜题可解）')
+    ok(after.ip === '93.184.216.99', '修好后拿到的是权威改后的新地址')
+  }
+
+  //  【major】hosts-hijack：hosts 优先于缓存 → 就算缓存是暖的，劫持也立刻可见
+  {
+    const net = initNet()
+    resolve(net, 'example.com')                 // 暖三级缓存（正确值）
+    applyFault(net, 'hosts-hijack', 'example.com')
+    const r = resolve(net, 'example.com')
+    ok(r.ip === '10.66.66.66' && !r.correct, 'hosts 劫持：暖缓存也盖不住（hosts 优先）')
+    ok(r.timeline[0]!.hop === 'hosts' && r.timeline[0]!.outcome === 'hit', 'hosts 是第一跳就命中')
+    //  清缓存修不好（是 hosts 的事），删 hosts 才行
+    clearC(net, 'all')
+    ok(!resolve(net, 'example.com').correct, 'hosts 劫持：清缓存没用（符合故障表宣称）')
+    delete net.hosts['example.com']
+    ok(resolve(net, 'example.com').correct, '删掉 hosts 那条 → 修好')
+  }
+
+  //  【major】poisoned-cache：暖浏览器缓存不该掩盖中毒；清全部缓存能修好
+  {
+    const net = initNet()
+    resolve(net, 'example.com')                 // 先暖缓存
+    applyFault(net, 'poisoned-cache', 'example.com') // 毒覆盖三级
+    const r = resolve(net, 'example.com')
+    ok(r.ip === '10.0.0.66' && !r.correct, 'poisoned：暖缓存下仍然中毒可见（不被掩盖）')
+    clearC(net, 'all')
+    ok(resolve(net, 'example.com').correct, 'poisoned：清全部缓存 → 走权威拿到正确值，修好')
+  }
+
+  //  对症才有效：每种故障，只有对症动作能修好，别的不行（防"乱点通关"）
+  {
+    // server-slow：调大超时能修，清缓存不能
+    const n = initNet(); applyFault(n, 'server-slow', 'example.com')
+    clearC(n, 'all')
+    ok(!resolve(n, 'example.com').correct, 'server-slow：清缓存无效（不对症）')
+    n.timeoutMs = 8000
+    ok(resolve(n, 'example.com').correct, 'server-slow：调大超时才修好（对症）')
+  }
+}
