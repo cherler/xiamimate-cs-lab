@@ -2,10 +2,13 @@ import { report, ok, _counts, _forgive } from './harness.ts'
 import { run as circuit } from './circuit.test.ts'
 import { run as thermal } from './thermal.test.ts'
 import { run as control } from './control.test.ts'
+import { run as route, runForward } from './route.test.ts'
 import { run as dns, runS2 as dnsS2, runS3 as dnsS3, runS4 as dnsS4, runS4b as dnsS4b, runS5 as dnsS5, runS6 as dnsS6 } from './dns.test.ts'
 import { run as partner } from './partner.test.ts'
 
 circuit()
+route()
+runForward()
 thermal()
 control()
 dns()
