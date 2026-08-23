@@ -64,3 +64,81 @@ export function run() {
     ok(r.ip === null && r.failure === 'nxdomain', '不存在的名字 → nxdomain')
   }
 }
+
+import { clearCache } from '../solvers/dns/state.ts'
+import { cacheView } from '../solvers/dns/cache.ts'
+
+export function runS2() {
+  console.log('— DNS 缓存 + TTL S2 —')
+
+  //  性质①：同一查询第二次因命中缓存，更快、跳数更少
+  {
+    const net = initNet()
+    const first = resolve(net, 'example.com')
+    const second = resolve(net, 'example.com')
+    ok(first.timeline.length > second.timeline.length,
+       `第二次跳数变少（${first.timeline.length} → ${second.timeline.length}）——命中了缓存`)
+    ok(second.totalMs < first.totalMs,
+       `第二次更快（${first.totalMs}ms → ${second.totalMs}ms）`)
+    ok(second.timeline.some(s => s.hop === 'browser-cache' && s.outcome === 'hit'),
+       '第二次在浏览器缓存就命中了')
+    ok(!second.timeline.some(s => s.hop === 'authoritative'),
+       '第二次根本没惊动权威服务器')
+  }
+
+  //  性质②：清缓存后又变慢（回到全程）——反直觉的密
+  {
+    const net = initNet()
+    resolve(net, 'example.com')                    // 暖缓存
+    const cached = resolve(net, 'example.com')     // 快
+    clearCache(net, 'all')
+    const afterClear = resolve(net, 'example.com') // 又慢
+    ok(afterClear.totalMs > cached.totalMs,
+       `清缓存后反而变慢（${cached.totalMs}ms → ${afterClear.totalMs}ms）——清缓存不是"清理加速"`)
+    ok(afterClear.timeline.some(s => s.hop === 'authoritative'),
+       '清缓存后又得重新惊动权威')
+  }
+
+  //  性质③：TTL 到期后重查变慢；未到期第二次快
+  {
+    const net = initNet()
+    resolve(net, 'example.com')                          // TTL 3600s
+    const beforeExpire = resolve(net, 'example.com')     // 快
+    net.now += 100 * 1000                                // 快进 100s（<3600，未过期）
+    const stillCached = resolve(net, 'example.com')
+    ok(stillCached.totalMs === beforeExpire.totalMs,
+       'TTL 没到期：第二次照样命中、照样快')
+    net.now += 3700 * 1000                               // 再快进，越过 3600s
+    const afterExpire = resolve(net, 'example.com')
+    ok(afterExpire.totalMs > beforeExpire.totalMs,
+       `TTL 过期后重查变慢（${beforeExpire.totalMs}ms → ${afterExpire.totalMs}ms）`)
+    ok(afterExpire.timeline.some(s => s.hop === 'authoritative'),
+       'TTL 过期后又走了全程')
+  }
+
+  //  三级独立：清了浏览器缓存但系统缓存还在 → 仍然比全程快
+  {
+    const net = initNet()
+    resolve(net, 'example.com')            // 三级都暖了
+    clearCache(net, 'browser')             // 只清浏览器
+    const r = resolve(net, 'example.com')
+    ok(r.timeline.some(s => s.hop === 'os-cache' && s.outcome === 'hit'),
+       '浏览器缓存清了，落到系统缓存命中')
+    ok(!r.timeline.some(s => s.hop === 'authoritative'),
+       '系统缓存还在，不用惊动权威')
+  }
+
+  //  缓存视图：能看见没过期的条目 + 剩余 TTL（给可视化用）
+  {
+    const net = initNet()
+    resolve(net, 'example.com')
+    const view = cacheView(net.browserCache, net.now)
+    ok(view.length === 1 && view[0]!.record.name === 'example.com',
+       '缓存视图里有 example.com')
+    ok(view[0]!.ttlLeft > 0 && view[0]!.ttlLeft <= 3600,
+       `剩余 TTL 在合理范围（${view[0]!.ttlLeft}s）`)
+    net.now += 200 * 1000
+    const later = cacheView(net.browserCache, net.now)
+    ok(later[0]!.ttlLeft < view[0]!.ttlLeft, 'TTL 随时间倒数')
+  }
+}

@@ -45,3 +45,11 @@ export function initNet(over: Partial<NetState> = {}): NetState {
     ...over,
   }
 }
+
+import { cacheClear } from './cache.ts'
+/** 清指定级别的缓存 */
+export function clearCache(net: NetState, level: 'browser' | 'os' | 'recursive' | 'all'): void {
+  if (level === 'browser' || level === 'all') cacheClear(net.browserCache)
+  if (level === 'os' || level === 'all') cacheClear(net.osCache)
+  if (level === 'recursive' || level === 'all') cacheClear(net.recursiveCache)
+}
