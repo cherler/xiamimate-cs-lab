@@ -25,6 +25,8 @@ export class DnsScene extends Phaser.Scene {
   /** 冒烟/调试读的当前演出进度 */
   private lastResult: QueryResult | null = null
   private curHop = ''
+  private notes = new Map<string, Phaser.GameObjects.Text>()
+  private clockText!: Phaser.GameObjects.Text
 
   constructor() { super('DnsScene') }
 
@@ -44,7 +46,10 @@ export class DnsScene extends Phaser.Scene {
     this.drawPath()
     this.drawNodes()
     this.buildMessenger()
+    this.buildNotes()
     this.buildControls(W, H)
+    this.clockText = this.add.text(W - 40, 30, '', { fontFamily: 'monospace', fontSize: '13px', color: COL.dim }).setOrigin(1, 0)
+    this.refreshCaches()
 
     this.expose()
   }
@@ -94,12 +99,62 @@ export class DnsScene extends Phaser.Scene {
       r.on('pointerdown', cb)
       return r
     }
+    // 上排：发起 + 演示故障 + 重置
     mk(100, '发起查询', () => this.runQuery())
-    // 施一个故障用来演"卡住"（V1 调试用；正式关卡由 NetCase 施随机故障）
-    mk(262, '（演示）弄坏', () => { this.sim = new DnsSim(); this.sim.setFault('server-down', this.site); this.status('递归服务器被弄挂了，再查一次看信使卡在哪。') })
-    mk(424, '重置', () => { this.sim = new DnsSim(); this.status('已重置。') })
+    mk(262, '（演示）弄坏', () => { this.rebuild(); this.sim.setFault('server-down', this.site); this.status('递归服务器被弄挂了，发起查询看信使卡哪。') })
+    mk(424, '重置', () => { this.rebuild(); this.status('已重置。') })
+    // 下排：玩家旋钮（都走 DnsSim 门面，改完刷新图）
+    const my = H - 92
+    const mk2 = (x: number, label: string, cb: () => void) => {
+      const r = this.add.rectangle(x, my, 132, 38, 0x141c26, 0.95).setStrokeStyle(1, 0x3f5a72).setInteractive({ useHandCursor: true })
+      this.add.text(x, my, label, { fontFamily: 'sans-serif', fontSize: '12px', color: COL.dim }).setOrigin(0.5)
+      r.on('pointerover', () => r.setFillStyle(0x22303e))
+      r.on('pointerout', () => r.setFillStyle(0x141c26, 0.95))
+      r.on('pointerdown', () => { cb(); this.refreshCaches() })
+      return r
+    }
+    mk2(90, '换公共DNS', () => { this.sim.setDns('public'); this.status('换了公共 DNS。') })
+    mk2(232, '清全部缓存', () => { this.sim.clear('all'); this.status('清了三级缓存——下次又得走全程。') })
+    mk2(374, '调大超时', () => { this.sim.setTimeout(8000); this.status('超时放宽到 8s。') })
+    mk2(516, '快进1小时', () => { this.sim.advance(3600); this.status('时钟快进 1 小时——缓存可能过期了。') })
   }
 
+  /** 三个缓存站各挂一块"记事本"，显示缓存条目 + 剩余 TTL */
+  private buildNotes() {
+    for (const hop of ['hosts', 'browser-cache', 'os-cache', 'recursive'] as const) {
+      const st = stationOf(hop); if (!st) continue
+      const y = st.hop === 'recursive' ? st.y - 84 : st.y + 56
+      const t = this.add.text(st.x, y, '', {
+        fontFamily: 'monospace', fontSize: '10px', color: '#8fb3d0', align: 'center',
+        backgroundColor: 'rgba(10,16,24,0.7)', padding: { x: 4, y: 3 },
+      }).setOrigin(0.5, 0)
+      this.notes.set(hop, t)
+    }
+  }
+
+  /** 用 sim.caches() 刷新记事本 + 时钟——图跟着仿真状态走 */
+  private refreshCaches() {
+    const byLevel = Object.fromEntries(this.sim.caches().map(c => [c.level, c.entries]))
+    const put = (hop: string, level: 'browser' | 'os' | 'recursive') => {
+      const t = this.notes.get(hop); if (!t) return
+      const es = byLevel[level] ?? []
+      t.setText(es.length ? es.map(e => `${e.record.name}\n→${e.record.value} ${e.ttlLeft}s`).join('\n') : '（空）')
+      t.setColor(es.length ? '#8fb3d0' : '#4a5a6a')
+    }
+    put('browser-cache', 'browser')
+    put('os-cache', 'os')
+    put('recursive', 'recursive')
+    // hosts 显示写死映射
+    const hostsNote = this.notes.get('hosts')
+    if (hostsNote) hostsNote.setText('（无劫持）').setColor('#4a5a6a')
+    this.clockText.setText(`逻辑时钟 ${this.sim.clock().toFixed(0)}s`)
+  }
+
+  private rebuild() {
+    this.sim = new DnsSim()
+    this.nodeDots.forEach(d => d.setFillStyle(COL.node))
+    this.refreshCaches()
+  }
   private status(s: string) { this.statusText.setText(s); }
 
   /** 发起查询：拿时间线，逐跳演出信使移动 */
@@ -162,7 +217,7 @@ export class DnsScene extends Phaser.Scene {
       // 信使拿着答案跑回家
       this.tweens.add({
         targets: this.messenger, x: HOME.x, y: HOME.y, duration: 420, ease: 'Sine.easeInOut',
-        onComplete: () => { this.status(`✓ 网页打开了：${result.ip}（走了 ${result.timeline.length} 跳，${result.totalMs}ms）`); this.playing = false; this.expose() },
+        onComplete: () => { this.status(`✓ 网页打开了：${result.ip}（走了 ${result.timeline.length} 跳，${result.totalMs}ms）`); this.playing = false; this.refreshCaches(); this.expose() },
       })
     } else {
       this.status(`✗ 没成：${result.failure}。信使卡住了，网页转圈。`)
