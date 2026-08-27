@@ -291,6 +291,7 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   cas: {},
   mesi: {},
   deadlock: {},
+  raft: {},
   astar: {},
   perceptron: {},
   pooling: { kind: 'string' },

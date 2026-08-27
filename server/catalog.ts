@@ -50,6 +50,7 @@ import { isoKernel } from '../src/kernels/iso.ts'
 import { casKernel } from '../src/kernels/cas.ts'
 import { mesiKernel } from '../src/kernels/mesi.ts'
 import { deadlockKernel } from '../src/kernels/deadlock.ts'
+import { raftKernel } from '../src/kernels/raft.ts'
 // 与 registry 同源的预设常量：直接 import 保证 doc 逐字一致（引擎侧，无 React）。
 import { CRC_PRESETS, HAMMING_PRESETS, SUBNET_PRESETS, HUFF_PRESETS, BPLUS_PRESETS } from '../src/presets/sequences.ts'
 import { ROUTE_PRESETS } from '../src/presets/entities.ts'
@@ -839,6 +840,28 @@ export const CATALOG: CatalogEntry[] = [
         kind: 'choice',
         compute: () => ({ answer: '死锁检测', step: 0, evidence: '先让死锁发生、再检测出来；银行家算法才是分配前判断的死锁避免' }),
         distractors: () => ['死锁避免（银行家算法）', '死锁预防', '鸵鸟策略（不处理）'],
+      },
+    ],
+  },
+  {
+    id: 'raft',
+    title: 'Raft 共识',
+    kernel: raftKernel as Kernel<unknown>,
+    doc: trivialDoc('raft'),
+    facts: [
+      {
+        id: 'majority', label: '3 节点集群的多数派门槛',
+        ask: 'Raft 3 节点集群：选主要拿到几票才能当选 Leader、一条日志要复制到几个节点才能提交?',
+        kind: 'number',
+        compute: t => ({ answer: String(last(t).majority), step: t.length - 1, evidence: `多数派 = ⌊3/2⌋+1 = ${last(t).majority}` }),
+        distractors: () => ['3', '1', '4'],
+      },
+      {
+        id: 'commit_rule', label: '日志何时算已提交',
+        ask: 'Raft 里，一条日志什么时候才算「已提交(committed)」、可以安全应用到状态机?',
+        kind: 'choice',
+        compute: () => ({ answer: '被复制到多数派(过半)节点后', step: 0, evidence: '复制到过半即提交；任何两个多数派必有交集，保证不丢' }),
+        distractors: () => ['Leader 写入自己日志后', '所有节点都复制后', '客户端收到确认后'],
       },
     ],
   },

@@ -212,6 +212,8 @@ import { mesiKernel, type MesiState } from '@engine/kernels/mesi.ts'
 import { MesiStage } from './stages/MesiStage.tsx'
 import { deadlockKernel, type DeadlockState } from '@engine/kernels/deadlock.ts'
 import { DeadlockStage } from './stages/DeadlockStage.tsx'
+import { raftKernel, type RaftState } from '@engine/kernels/raft.ts'
+import { RaftStage } from './stages/RaftStage.tsx'
 import { CollisionStage } from './stages/CollisionStage.tsx'
 import { gcnKernel, type GcnState } from '@engine/kernels/gcn.ts'
 import { GcnStage } from './stages/GcnStage.tsx'
@@ -5201,9 +5203,42 @@ const deadlock: Experiment<DeadlockState> = {
   ],
 }
 
+const raft: Experiment<RaftState> = {
+  id: 'raft',
+  group: '分布式系统',
+  title: 'Raft 共识',
+  subtitle: '过半票当选，日志复制到过半即提交',
+  kernel: raftKernel,
+  defaultDoc: { kind: 'raft', params: {}, entities: [], streams: [] },
+  params: [],
+  paramsNote: 'Raft 让多台机器对「谁是主、日志长什么样」达成一致。本例 3 节点、多数派 2：Follower 选举超时→变 Candidate 拉票→拿过半票当选 Leader；客户端命令只发 Leader，复制到过半节点即提交。',
+  bounds: [
+    '3 节点,多数派 = 2;任期号保证一任期至多一主',
+    '选主:超时→Candidate→拿过半票→Leader(可核)',
+    '日志:客户端→Leader→复制到过半→提交',
+    'N1 拿 2/2 票当选;日志复制到 2 份即提交',
+  ],
+  tabs: [{ id: 'consensus', label: '选主+日志复制' }],
+  Stage: RaftStage,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: `已提交 ${s.committed}` }
+    : s.op === 'becomeLeader' ? { key: 'good', label: `N${s.cur} 当选` }
+      : s.op === 'append' && s.committed ? { key: 'good', label: '日志提交' }
+        : s.op === 'timeout' ? { key: 'idle', label: `N${s.cur} 参选` }
+          : { key: 'idle', label: s.msg || '共识中' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 8)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.op === 'becomeLeader' ? '主' : s.op === 'append' && s.committed ? '交' : s.op === 'grantVote' ? '票' : s.op === 'clientCmd' ? '写' : '选'),
+  whyInRail: true,
+  readouts: s => [
+    { label: '任期 term', value: `${s.term}` },
+    { label: '角色', value: s.nodes.map(n => `N${n.id}:${n.role === 'leader' ? '主' : n.role === 'candidate' ? '选' : '从'}`).join(' ') },
+    { label: '候选人票数', value: s.candidate > 0 ? `N${s.candidate} ${s.votes}/${s.majority}` : '—' },
+    { label: '已提交日志', value: `${s.committed} 条`, tone: s.committed ? 'good' : undefined },
+  ],
+}
+
 export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
-  page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock,
+  page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,
@@ -5359,7 +5394,7 @@ export const DISCIPLINES: Discipline[] = [
   {
     key: 'backend', title: '后端', icon: '🖥️', status: 'active',
     sub: '数据库 · 并发 · 分布式',
-    groups: ['数据库系统', '并发编程'],
+    groups: ['数据库系统', '并发编程', '分布式系统'],
     guide: { from: '一次数据库查询', to: '扛住高并发的后端', toIcon: '🖥️' },
   },
   {
@@ -5410,6 +5445,7 @@ export const GROUP_ANCHOR: Record<string, string> = {
   '数据结构': 'software',
   '数据库系统': 'software',
   '并发编程': 'software',
+  '分布式系统': 'internet',
   '计算机网络': 'internet',
   '概率统计原理': 'llm',
   '机器学习基础': 'llm',

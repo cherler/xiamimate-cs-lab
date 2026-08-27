@@ -3773,3 +3773,27 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
   background:color-mix(in srgb, var(--miss) 10%, transparent); }
 .dl-banner { margin:0 0 10px; padding:8px 12px; border-radius:7px; font-size:13px;
   border:1px solid var(--miss); background:color-mix(in srgb, var(--miss) 10%, var(--panel)); color:var(--miss); }
+
+/* ── Raft 共识 ── */
+.raft-nodes { display:flex; gap:10px; margin:6px 0 10px; }
+.raft-node { flex:1; display:flex; flex-direction:column; gap:6px; padding:9px 10px;
+  border:1.5px solid var(--line); border-radius:9px; background:var(--panel); }
+.raft-node.cur { box-shadow:0 0 0 2px var(--now); }
+.raft-node.r-leader { border-color:var(--now); background:color-mix(in srgb, var(--now) 8%, var(--panel)); }
+.raft-node.r-candidate { border-color:var(--f-tag); }
+.raft-head { display:flex; align-items:baseline; gap:6px; flex-wrap:wrap; }
+.raft-nid { font-size:15px; color:var(--ink); }
+.raft-role { font-size:11px; font-weight:700; padding:1px 7px; border-radius:5px; border:1px solid var(--line); color:var(--dim); }
+.raft-role.r-leader { color:var(--now); border-color:var(--now); }
+.raft-role.r-candidate { color:var(--f-tag); border-color:var(--f-tag); }
+.raft-term { font-size:11px; color:var(--faint); font-family:var(--mono); margin-left:auto; }
+.raft-log { display:flex; gap:5px; flex-wrap:wrap; min-height:24px; align-items:center; }
+.raft-logempty { font-size:11px; color:var(--faint); }
+.raft-entry { display:inline-flex; align-items:baseline; gap:3px; font-size:12px; font-family:var(--mono);
+  padding:2px 7px; border-radius:5px; border:1px dashed var(--line); background:var(--sunk-1); color:var(--dim); }
+.raft-entry small { font-size:9.5px; color:var(--faint); }
+.raft-entry.committed { border-style:solid; border-color:var(--hit);
+  background:color-mix(in srgb, var(--hit) 12%, transparent); color:var(--hit); }
+.raft-entry.committed small { color:var(--hit); }
+.raft-client { margin:0 0 10px; padding:6px 11px; font-size:12px; width:fit-content;
+  border-radius:6px; border:1px solid var(--now); color:var(--now); background:color-mix(in srgb, var(--now) 8%, transparent); }
