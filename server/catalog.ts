@@ -21,6 +21,13 @@ import { mergesortKernel } from '../src/kernels/mergesort.ts'
 import { fastpowKernel } from '../src/kernels/fastpow.ts'
 import { nqueensKernel } from '../src/kernels/nqueens.ts'
 import { unionfindKernel } from '../src/kernels/unionfind.ts'
+import { perceptronKernel } from '../src/kernels/perceptron.ts'
+import { kmeansKernel } from '../src/kernels/kmeans.ts'
+import { dtreeKernel } from '../src/kernels/dtree.ts'
+import { gbdtKernel } from '../src/kernels/gbdt.ts'
+import { pcaKernel } from '../src/kernels/pca.ts'
+import { poolingKernel } from '../src/kernels/pooling.ts'
+import { wordvecKernel } from '../src/kernels/wordvec.ts'
 
 // trace 的一帧就是内核的可见状态；出题只读字段，用宽松类型即可。
 type Frame = Record<string, unknown>
@@ -266,6 +273,117 @@ export const CATALOG: CatalogEntry[] = [
         kind: 'number',
         compute: t => ({ answer: String(t[0]!.comps), step: 0, evidence: String(t[0]!.log ?? '') }),
         distractors: numDistractors,
+      },
+    ],
+  },
+
+  // ── AI / 机器学习 / 深度学习 ──
+  {
+    id: 'perceptron',
+    title: '感知机',
+    kernel: perceptronKernel as Kernel<unknown>,
+    doc: trivialDoc('perceptron'),
+    facts: [
+      {
+        id: 'updates', label: '感知机收敛前的权重更新次数',
+        ask: '感知机学到分界线之前，一共做了多少次权重更新(只在分错时才更新)?',
+        kind: 'number',
+        compute: t => ({ answer: String(last(t).updates), step: t.length - 1, evidence: String(last(t).log ?? '') }),
+        distractors: numDistractors,
+      },
+    ],
+  },
+  {
+    id: 'kmeans',
+    title: 'k-means 聚类',
+    kernel: kmeansKernel as Kernel<unknown>,
+    doc: trivialDoc('kmeans'),
+    facts: [
+      {
+        id: 'iters', label: 'k-means 收敛所需迭代轮数',
+        ask: 'k-means(k=3) 迭代几轮后重心不再移动、收敛?',
+        kind: 'number',
+        compute: t => ({ answer: String(last(t).iter), step: t.length - 1, evidence: String(last(t).log ?? '') }),
+        distractors: numDistractors,
+      },
+    ],
+  },
+  {
+    id: 'dtree',
+    title: '决策树',
+    kernel: dtreeKernel as Kernel<unknown>,
+    doc: trivialDoc('dtree'),
+    facts: [
+      {
+        id: 'depth', label: '建好的决策树深度',
+        ask: '这棵决策树按信息增益建好后，深度是多少?',
+        kind: 'number',
+        compute: t => ({ answer: String(last(t).depth), step: t.length - 1, evidence: String(last(t).log ?? '') }),
+        distractors: numDistractors,
+      },
+    ],
+  },
+  {
+    id: 'gbdt',
+    title: '梯度提升树 GBDT',
+    kernel: gbdtKernel as Kernel<unknown>,
+    doc: trivialDoc('gbdt'),
+    facts: [
+      {
+        id: 'rounds', label: 'GBDT boosting 轮数',
+        ask: 'GBDT 一共做了多少轮 boosting(每轮用新树去拟合上一轮的残差)?',
+        kind: 'number',
+        compute: t => ({ answer: String(last(t).round), step: t.length - 1, evidence: String(last(t).log ?? '') }),
+        distractors: numDistractors,
+      },
+    ],
+  },
+  {
+    id: 'pca',
+    title: '主成分分析 PCA',
+    kernel: pcaKernel as Kernel<unknown>,
+    doc: trivialDoc('pca'),
+    facts: [
+      {
+        id: 'var1', label: 'PC1 保留的方差百分比',
+        ask: 'PCA 降维后，第一主成分(PC1)保留了百分之多少的方差?',
+        kind: 'number',
+        compute: t => ({ answer: String(last(t).var1), step: t.length - 1, evidence: String(last(t).log ?? '') }),
+        distractors: numDistractors,
+      },
+    ],
+  },
+  {
+    id: 'pooling',
+    title: '池化 Pooling',
+    kernel: poolingKernel as Kernel<unknown>,
+    // registry 的 defaultDoc 带 params:{kind:'最大'}，必须一致，否则答案≠用户屏幕所见。
+    doc: { kind: 'pooling', params: { kind: '最大' }, entities: [], streams: [] },
+    facts: [
+      {
+        id: 'br_window', label: '右下角 2×2 窗口的最大池化输出',
+        ask: '对这张 4×4 特征图做 2×2 最大池化，右下角(1,1)那个窗口的输出是多少?',
+        kind: 'number',
+        compute: t => {
+          const f = t.find(x => x.wr === 1 && x.wc === 1) ?? last(t)
+          return { answer: String(f.result), step: t.indexOf(f), evidence: String(f.log ?? '') }
+        },
+        distractors: numDistractors,
+      },
+    ],
+  },
+  {
+    id: 'wordvec',
+    title: '词向量 Word2Vec',
+    kernel: wordvecKernel as Kernel<unknown>,
+    doc: trivialDoc('wordvec'),
+    facts: [
+      {
+        id: 'analogy', label: '词向量类比 国王−男人+女人 的最近词',
+        ask: '词向量的经典类比：国王 − 男人 + 女人 ≈ 哪个词(向量运算后最近的那个)?',
+        kind: 'choice',
+        compute: t => ({ answer: String(last(t).nearest), step: t.length - 1, evidence: String(last(t).log ?? '') }),
+        distractors: answer => ['王后', '国王', '男人', '女人'].filter(x => x !== answer).slice(0, 3),
       },
     ],
   },
