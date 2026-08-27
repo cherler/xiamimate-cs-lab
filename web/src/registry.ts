@@ -5522,14 +5522,18 @@ const minikv: Experiment<MiniKVState> = {
   paramsNote: '组合式项目：一条 put/get 流水把五个零件（WAL/memtable跳表/LSM/布隆/一致性哈希）拼成迷你数据库。面试能讲的「我造过 X」。详见讲解卡。',
   bounds: ['put:先WAL→memtable→满了刷SSTable+入布隆', 'get:先问布隆(说没有就不查盘)→memtable→SSTable', 'get(a)走磁盘命中;get(z)被布隆挡下(可核)', '=LevelDB/RocksDB骨架;面试项目叙事'],
   tabs: [{ id: 'kv', label: '写读全流程' }], Stage: MiniKVStage, whyInRail: true,
-  tone: s => (s.phase === 'done' ? { key: 'good', label: 'KV 跑通' } : s.op === 'get' ? (s.result === '不存在' ? { key: 'bad', label: '布隆挡下' } : { key: 'good', label: `读到 ${s.result}` }) : s.op === 'flush' ? { key: 'good', label: '刷盘' } : { key: 'idle', label: `写 ${s.key}` }),
-  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 8)),
-  tickLabel: s => (s.phase === 'done' ? '毕' : s.op === 'get' ? '读' : s.op === 'flush' ? '刷' : '写'),
+  tone: s => (s.phase === 'done' ? { key: 'good', label: 'KV 跑通' }
+    : s.op === 'get' ? (s.result === '不存在' ? { key: 'bad', label: '布隆挡下' } : { key: 'good', label: `读到 ${s.result}` })
+      : s.op === 'compact' ? { key: 'good', label: '压实去旧' }
+        : s.op === 'update' ? { key: 'idle', label: `更新 ${s.key}` }
+          : s.op === 'flush' ? { key: 'good', label: '刷盘' } : { key: 'idle', label: `写 ${s.key}` }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 14)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.op === 'get' ? '读' : s.op === 'flush' ? '刷' : s.op === 'compact' ? '压' : s.op === 'update' ? '改' : '写'),
   readouts: s => [
-    { label: '本步', value: s.op === 'put' ? `put(${s.key},${s.val})` : s.op === 'get' ? `get(${s.key})` : s.op === 'flush' ? '刷 SSTable' : '完成' },
-    { label: 'memtable', value: `[${s.memtable.map(e => e[0]).join(',')}]` },
-    { label: 'SSTable', value: `${s.sstables.length} 个` },
-    { label: 'get 结果', value: s.op === 'get' ? `${s.result}${s.bloomHit ? '' : '(布隆挡下)'}` : '—', tone: s.op === 'get' ? (s.result === '不存在' ? 'bad' : 'good') : undefined },
+    { label: '本步', value: s.op === 'put' ? `put(${s.key},${s.val})` : s.op === 'update' ? `更新 ${s.key}=${s.val}` : s.op === 'get' ? `get(${s.key})` : s.op === 'flush' ? '刷 SSTable' : s.op === 'compact' ? '压实归并' : '完成' },
+    { label: 'memtable', value: `[${s.memtable.map(e => `${e[0]}=${e[1]}`).join(',')}]` },
+    { label: 'SSTable', value: s.sstables.length ? s.sstables.map((x, i) => `SST${i + 1}[${x.map(e => e[0]).join('')}]`).join(' ') : '0 个' },
+    { label: 'get 结果', value: s.op === 'get' ? `${s.result}${s.bloomHit ? ` (在${s.foundIn})` : '(布隆挡下)'}` : '—', tone: s.op === 'get' ? (s.result === '不存在' ? 'bad' : 'good') : undefined },
   ],
 }
 

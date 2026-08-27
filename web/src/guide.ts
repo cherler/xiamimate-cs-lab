@@ -301,13 +301,13 @@ export const GUIDES: Record<string, Guide> = {
   minikv: {
     question: '把学过的零件拼起来，能造一个真能跑的数据库吗？',
     read: [{ at: '五个零件', is: 'WAL/memtable/SSTable/布隆四块 + 当前操作路径。', anchor: '.kv-grid' }, { at: '读数', is: '本步、memtable、SSTable、get 结果。', anchor: '.scdim' }],
-    step: (s: never) => { const st = s as { op: string; key: string; val: number; memtable: [string, number][]; sstables: unknown[]; result: string; bloomHit: boolean; foundIn: string; phase: string }; return [
-      { k: '本步输入', v: st.phase === 'done' ? '一条 put/get 流水跑完' : st.op === 'put' ? `写 put(${st.key}, ${st.val})` : st.op === 'get' ? `读 get(${st.key})` : st.op === 'flush' ? 'memtable 满，刷盘' : '开始' },
-      { k: '判定规则', v: '写：先 WAL(持久)→memtable(跳表)→满了刷 SSTable+入布隆。读：先问布隆(说没有就不查盘)→memtable→从新到旧查 SSTable。' },
-      { k: '本步结果', v: st.op === 'put' ? `memtable=[${st.memtable.map(e => e[0]).join(',')}]，${st.sstables.length} 个 SSTable` : st.op === 'get' ? (st.bloomHit ? `布隆说可能在→查到 ${st.key}=${st.result}(在 ${st.foundIn})` : `布隆说一定不在→直接返回"不存在"，不查盘`) : st.op === 'flush' ? `刷成第 ${st.sstables.length} 个 SSTable` : '五零件就位' },
+    step: (s: never) => { const st = s as { op: string; key: string; val: number; memtable: [string, number][]; sstables: [string, number][][]; result: string; bloomHit: boolean; foundIn: string; phase: string }; return [
+      { k: '本步输入', v: st.phase === 'done' ? '一条 put/更新/get/压实跑完' : st.op === 'put' ? `写 put(${st.key}, ${st.val})` : st.op === 'update' ? `更新 ${st.key}=${st.val}` : st.op === 'get' ? `读 get(${st.key})` : st.op === 'flush' ? 'memtable 满，刷盘' : st.op === 'compact' ? '后台压实' : '开始' },
+      { k: '判定规则', v: '写：先 WAL→memtable→满了刷 SSTable+入布隆；更新只**追加新版本**、旧值不动。读：问布隆→memtable→**从新到旧**查 SSTable(所以读到最新)。压实：归并 SSTable，同键只留最新、丢旧。' },
+      { k: '本步结果', v: st.op === 'put' || st.op === 'update' ? `memtable=[${st.memtable.map(e => `${e[0]}=${e[1]}`).join(',')}]${st.op === 'update' ? '(a 追加新版本,旧 a=1 还在 SSTable)' : ''}` : st.op === 'get' ? (st.bloomHit ? `从新到旧查到 ${st.key}=**${st.result}**(在 ${st.foundIn})` : `布隆说一定不在→不查盘`) : st.op === 'flush' ? `刷成 SSTable${st.sstables.length}` : st.op === 'compact' ? `归并成 [${st.sstables[0]?.map(e => `${e[0]}=${e[1]}`).join(',')}]，旧 a=1 被丢` : '五零件就位' },
     ] },
     verdict: (s: never) => { const st = s as { phase: string; op: string; result: string }; return st.phase === 'done' ? 'KV跑通' : (st.op === 'get' ? (st.result || 'get') : st.op) },
-    try: [{ act: '按「下一步」走 put/get', watch: 'put 先写日志、进内存、满了刷盘；get 先问布隆。' }, { act: '看 get(z)', watch: '布隆说"一定不在"，连磁盘都不查——省 I/O 的关键。' }], terms: [],
+    try: [{ act: '看更新 a=9', watch: '不改旧值，追加新版本；SST1 里 a=1、SST2 里 a=9 同时存在。' }, { act: '看 get(a) 和压实', watch: 'get 从新到旧读到 a=9；压实把旧的 a=1 归并丢掉。' }], terms: [],
   },
   otpreuse: {
     question: '一次一密理论不可破，为什么密钥绝不能重复用？',

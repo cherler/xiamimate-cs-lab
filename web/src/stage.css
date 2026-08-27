@@ -3914,3 +3914,6 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .kv-bloom { font-size:11px; padding:2px 8px; border-radius:10px; font-weight:600; }
 .kv-bloom.hit { color:var(--now); background:color-mix(in srgb, var(--now) 12%, transparent); }
 .kv-bloom.block { color:var(--miss); background:color-mix(in srgb, var(--miss) 12%, transparent); }
+.kv-item.upd { border-color:var(--now); background:color-mix(in srgb, var(--now) 16%, var(--panel)); color:var(--now); font-weight:700; }
+.kv-note { margin:0 0 10px; padding:6px 11px; font-size:12px; border-radius:6px; line-height:1.5;
+  border:1px solid var(--f-tag); background:color-mix(in srgb, var(--f-tag) 8%, var(--panel)); color:var(--t-body); }

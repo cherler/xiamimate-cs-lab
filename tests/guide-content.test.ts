@@ -225,8 +225,8 @@ console.log('\n【「这一步为什么」真的在跟着走】')
   const FIX: Record<string, { doc: unknown; a: unknown; b: unknown }> = {
     minikv: {
       doc: { kind: 'minikv', params: {}, entities: [], streams: [] },
-      a: { op: 'get', key: 'a', val: -1, memtable: [['d', 4]], sstables: [[['a', 1], ['b', 2], ['c', 3]]], bloom: ['a', 'b', 'c', 'd'], result: '1', bloomHit: true, foundIn: 'SSTable1', phase: 'run' },
-      b: { op: 'get', key: 'z', val: -1, memtable: [['d', 4]], sstables: [[['a', 1], ['b', 2], ['c', 3]]], bloom: ['a', 'b', 'c', 'd'], result: '不存在', bloomHit: false, foundIn: 'none', phase: 'run' },
+      a: { op: 'get', key: 'a', val: -1, memtable: [], sstables: [[['a', 1], ['b', 2], ['c', 3]], [['a', 9], ['d', 4], ['e', 5]]], bloom: ['a', 'b', 'c', 'd', 'e'], result: '9', bloomHit: true, foundIn: 'SSTable2', note: '从新到旧查', phase: 'run' },
+      b: { op: 'get', key: 'z', val: -1, memtable: [], sstables: [[['a', 1], ['b', 2], ['c', 3]], [['a', 9], ['d', 4], ['e', 5]]], bloom: ['a', 'b', 'c', 'd', 'e'], result: '不存在', bloomHit: false, foundIn: 'none', note: '', phase: 'run' },
     },
     otpreuse: {
       doc: { kind: 'otpreuse', params: {}, entities: [], streams: [] },

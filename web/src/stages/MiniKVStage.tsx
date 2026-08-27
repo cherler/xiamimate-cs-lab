@@ -3,16 +3,17 @@ import type { MiniKVState } from '@engine/kernels/minikv.ts'
 import type { StageProps } from '../types.ts'
 
 export function MiniKVStage({ state }: StageProps<MiniKVState>) {
-  const { wal, memtable, sstables, bloom, op, key, val, result, bloomHit, foundIn, phase } = state
+  const { wal, memtable, sstables, bloom, op, key, val, result, bloomHit, foundIn, note, phase } = state
   const done = phase === 'done'
   const isGet = op === 'get'
+  const opLabel = op === 'put' ? `put(${key},${val})` : op === 'update' ? `更新 ${key}=${val}` : op === 'get' ? `get(${key})` : op === 'flush' ? '刷盘' : op === 'compact' ? '压实' : '完成'
   return (
     <div className="card">
       <h3>迷你 KV 存储 <span className="hint">WAL+跳表+LSM+布隆 拼成一个数据库</span></h3>
       <div className="body">
         <div className="scdim">
-          <div className="scdk"><span className="scdn hot">{op === 'put' ? `put(${key},${val})` : op === 'get' ? `get(${key})` : op === 'flush' ? '刷盘' : '完成'}</span><span className="scdl">本步操作</span></div>
-          <div className="scdk"><span className="scdn">{isGet ? (bloomHit ? `查:${foundIn}` : '布隆挡下') : `WAL ${wal.length}条`}</span><span className="scdl">路径</span></div>
+          <div className="scdk"><span className="scdn hot">{opLabel}</span><span className="scdl">本步操作</span></div>
+          <div className="scdk"><span className="scdn">{isGet ? (bloomHit ? `查:${foundIn}` : '布隆挡下') : op === 'compact' ? '归并去旧' : `WAL ${wal.length}条`}</span><span className="scdl">路径</span></div>
           <div className="scdk"><span className={`scdn ${isGet && result ? (result === '不存在' ? 'miss' : 'ok') : ''}`}>{isGet ? result : '—'}</span><span className="scdl">get 结果</span></div>
         </div>
 
@@ -20,11 +21,11 @@ export function MiniKVStage({ state }: StageProps<MiniKVState>) {
           <div className="kv-comp"><span className="kv-lbl">① WAL 日志<em>持久</em></span>
             <div className="kv-list">{wal.length ? wal.slice(-3).map((e, i) => <span key={i} className="kv-item mono">{e}</span>) : <span className="kv-empty">空</span>}</div>
           </div>
-          <div className={`kv-comp ${op === 'put' ? 'active' : ''}`}><span className="kv-lbl">② memtable<em>跳表·内存</em></span>
-            <div className="kv-list">{memtable.length ? memtable.map(([k, v]) => <span key={k} className="kv-item">{k}={v}</span>) : <span className="kv-empty">空</span>}</div>
+          <div className={`kv-comp ${op === 'put' || op === 'update' ? 'active' : ''}`}><span className="kv-lbl">② memtable<em>跳表·内存</em></span>
+            <div className="kv-list">{memtable.length ? memtable.map(([k, v]) => <span key={k} className={`kv-item ${op === 'update' && k === key ? 'upd' : ''}`}>{k}={v}</span>) : <span className="kv-empty">空</span>}</div>
           </div>
-          <div className={`kv-comp ${op === 'flush' ? 'active' : ''}`}><span className="kv-lbl">③ SSTable<em>LSM·磁盘</em></span>
-            <div className="kv-list">{sstables.length ? sstables.map((s, i) => <span key={i} className="kv-item sst">SST{i + 1}:[{s.map(e => e[0]).join(',')}]</span>) : <span className="kv-empty">空</span>}</div>
+          <div className={`kv-comp ${op === 'flush' || op === 'compact' ? 'active' : ''}`}><span className="kv-lbl">③ SSTable<em>LSM·磁盘·不可变</em></span>
+            <div className="kv-list">{sstables.length ? sstables.map((s, i) => <span key={i} className="kv-item sst">{op === 'compact' ? '压实后' : `SST${i + 1}`}:[{s.map(e => `${e[0]}=${e[1]}`).join(', ')}]</span>) : <span className="kv-empty">空</span>}</div>
           </div>
           <div className={`kv-comp ${isGet ? 'active' : ''}`}><span className="kv-lbl">④ 布隆过滤器<em>读加速</em></span>
             <div className="kv-list">
@@ -33,6 +34,8 @@ export function MiniKVStage({ state }: StageProps<MiniKVState>) {
             </div>
           </div>
         </div>
+
+        {note && !done && <div className="kv-note">💡 {note.replace(/\*\*/g, '')}</div>}
 
         {done
           ? <p className="scnote">一条 put/get 流水把五个零件咬合起来——WAL 保证不丢、memtable(跳表)吃写、LSM 顺序刷盘、布隆挡住不存在的键、（多机时）一致性哈希分片。这就是 <b>LevelDB/RocksDB 的骨架</b>。<b>面试讲这个项目</b>：写路径为什么快（内存+顺序刷）、读路径为什么用布隆（挡无效磁盘查）、WAL 怎么保证持久——一套讲下来，"懂原理"就变成了"造过系统"。</p>

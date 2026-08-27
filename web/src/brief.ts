@@ -304,10 +304,10 @@ const bitmapFree = (t: unknown[]) => { const s = last<{ freeCount?: Num }>(t)
 
 export const BRIEFS: Record<string, Brief> = {
   minikv: {
-    care: '这不是又一个孤立知识点，而是把前面学的零件**拼成一个真能跑的迷你数据库**——面试里能讲的「我造过 X」。\n\n**写(put)**：① 先写 WAL 日志(持久，崩溃能恢复) → ② 存进内存 memtable(跳表，有序极快) → ③ memtable 满了整块顺序刷成 SSTable(LSM)，同时把键放进布隆过滤器。\n\n**读(get)**：① 先问布隆「这键可能在吗」——说"不在"就直接返回、连磁盘都不查(省 I/O)；说"可能在"再 ② 查 memtable → ③ 从新到旧查各 SSTable。多机时用一致性哈希分片。\n\n这就是 LevelDB/RocksDB/Cassandra 的骨架。',
-    guess: { q: '读 get(k) 时，布隆过滤器说"一定不在"，接下来?', opts: ['直接返回，不查磁盘', '还是要查所有 SSTable', '去问其它节点'] },
-    tasks: [{ act: '按「下一步」走 put/get', watch: 'put 先写日志、进内存、满了刷盘；get 先问布隆。' }, { act: '看 get(z)', watch: '布隆挡下，不查盘——省 I/O 的关键。' }],
-    verdict: ctx => { const t = ctx.trace as { sstables?: unknown[] }[]; const l = t[t.length - 1]; return l ? { pick: 0, say: '五个零件咬合成一个能 put/get 的迷你数据库。', why: '写路径快(内存+顺序刷)、读路径省(布隆挡无效查)、WAL 保证持久——这就是 LevelDB 的骨架。' } : null },
+    care: '**这是一个组合式项目**：把前面单独学的五个零件拼成一个真能跑的迷你 KV 数据库（LevelDB/RocksDB 的骨架），目的是把"懂原理"变成面试能讲的"我造过 X"。\n\n**架构（一句话讲清）**：写走 LSM 路径——先 WAL 落盘保证不丢，再进内存 memtable(跳表，有序)，满了整块顺序刷成不可变 SSTable。读走布隆+分层——先问布隆"可能在吗"，不在就不查盘，在就从新到旧扫 SSTable。更新是追加新版本、不改旧值；后台 compaction 归并去掉旧版本。多机用一致性哈希分片。\n\n**面试怎么讲这个项目**：\n① 写为什么快？——把随机写换成"内存收集 + 顺序刷盘"。\n② 更新/删除怎么处理？——追加新版本(删除写墓碑)，读时从新到旧、最新的赢；旧版本靠 compaction 清。\n③ 读为什么不慢？——布隆挡掉不存在的键(省磁盘 I/O)，分层 + compaction 控制层数。\n④ 怎么保证宕机不丢？——WAL 先落盘，重启重放。\n这四问答下来，就是一个后端候选人该有的系统理解。',
+    guess: { q: 'a 先 put=1、后 put=9(在不同 SSTable)。get(a) 读到几?', opts: ['9（从新到旧，最新赢）', '1（最早写的）', '报错（键冲突）'] },
+    tasks: [{ act: '看更新 a=9', watch: '不改旧值：SST1 里 a=1、SST2 里 a=9 同时存在。' }, { act: '看 get(a) 与压实', watch: 'get 从新到旧读到 a=9；compaction 把旧的 a=1 归并丢掉。' }, { act: '看 get(z)', watch: '布隆说"一定不在"，连磁盘都不查——省 I/O。' }],
+    verdict: ctx => { const t = ctx.trace as { sstables?: [string, number][][] }[]; const l = t[t.length - 1]; return l ? { pick: 0, say: '五个零件咬合成一个能 put/更新/get 的迷你数据库，压实后旧版本被清。', why: '写快(内存+顺序刷)、更新追加+新值优先、读省(布隆)、WAL 持久——LevelDB 的完整骨架，面试能整套讲。' } : null },
   },
   otpreuse: {
     care: '一次一密(OTP)理论上不可破——前提是密钥**真随机、和明文等长、只用一次**。\n\n一旦**同一个密钥加密两条消息**就全垮：c1=m1⊕k、c2=m2⊕k，那么 c1⊕c2 = m1⊕m2⊕(k⊕k) = **m1⊕m2**——密钥被异或抵消了！\n\n攻击者不需要密钥，只要拿到两段密文异或，就得到两条明文的异或关系，再结合语言规律就能还原。这是「密钥只能用一次」的铁律来历，WEP、某些 RC4 用法就栽在这。',

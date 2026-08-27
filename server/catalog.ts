@@ -1102,6 +1102,15 @@ export const CATALOG: CatalogEntry[] = [
         compute: () => ({ answer: '先写 WAL 日志并落盘', step: 0, evidence: '先日志后数据，崩溃可重放' }),
         distractors: () => ['先写进 SSTable', '先更新布隆过滤器', '先分片到其它节点'],
       },
+      {
+        id: 'newest_wins', label: 'LSM 更新后 get 读到哪个版本',
+        ask: 'LSM 存储里，key a 先写 1、后又写 9（两个版本在不同 SSTable）。get(a) 读到几?', kind: 'number',
+        compute: t => {
+          const reads = (t as { op?: string; result?: string }[]).filter(f => f.op === 'get' && f.result && f.result !== '不存在')
+          return { answer: String(reads[0]?.result ?? 9), step: 0, evidence: '读时从新到旧扫 SSTable，最新版本先命中' }
+        },
+        distractors: () => ['1', '报错', '0'],
+      },
     ],
   },
 ]
