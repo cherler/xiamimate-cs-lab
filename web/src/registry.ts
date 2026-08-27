@@ -240,6 +240,14 @@ import { fermatKernel, type FermatState } from '@engine/kernels/fermat.ts'
 import { FermatStage } from './stages/FermatStage.tsx'
 import { saltKernel, type SaltState } from '@engine/kernels/salt.ts'
 import { SaltStage } from './stages/SaltStage.tsx'
+import { tokenbucketKernel, type TokenBucketState } from '@engine/kernels/tokenbucket.ts'
+import { TokenBucketStage } from './stages/TokenBucketStage.tsx'
+import { consistentHashKernel, type ConsistentHashState } from '@engine/kernels/consistenthash.ts'
+import { ConsistentHashStage } from './stages/ConsistentHashStage.tsx'
+import { skiplistKernel, type SkipListState } from '@engine/kernels/skiplist.ts'
+import { SkipListStage } from './stages/SkipListStage.tsx'
+import { twopcKernel, type TwoPCState } from '@engine/kernels/twopc.ts'
+import { TwoPCStage } from './stages/TwoPCStage.tsx'
 import { CollisionStage } from './stages/CollisionStage.tsx'
 import { gcnKernel, type GcnState } from '@engine/kernels/gcn.ts'
 import { GcnStage } from './stages/GcnStage.tsx'
@@ -5421,10 +5429,56 @@ const salt: Experiment<SaltState> = {
   readouts: s => [{ label: '密码', value: `"${s.pw}"` }, { label: '不加盐', value: s.noSaltA >= 0 ? `${s.noSaltA} = ${s.noSaltB}` : '—', tone: s.noSaltA >= 0 ? 'bad' : undefined }, { label: '加盐', value: s.saltedA >= 0 ? `${s.saltedA} ≠ ${s.saltedB}` : '—', tone: s.saltedA >= 0 ? 'good' : undefined }, { label: '盐的作用', value: '打散(防彩虹表)' }],
 }
 
+const tokenbucket: Experiment<TokenBucketState> = {
+  id: 'tokenbucket', group: '分布式系统', title: '令牌桶限流', subtitle: '限住平均速率，又容忍突发',
+  kernel: tokenbucketKernel, defaultDoc: { kind: 'tokenbucket', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '无可调参数。桶容量 5、速率 1/tick，到达 [3,4,2,1,5]：开局突发全放行，之后限到约每 tick 1 个。详见讲解卡。',
+  bounds: ['容量5、速率1/tick;到达[3,4,2,1,5]', '每刻:先补令牌(满溢出),请求拿令牌才放行(可核)', '开局突发3全放,共放行9拒6', '既限均速又容突发;对比漏桶恒定不容突发'],
+  tabs: [{ id: 'rl', label: '补令牌+放行' }], Stage: TokenBucketStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: `放行${s.totalAllowed}拒${s.totalRejected}` } : { key: s.rejected ? 'bad' : 'idle', label: `放${s.allowed}拒${s.rejected}` }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : `${s.allowed}`),
+  readouts: s => [{ label: '桶中令牌', value: `${s.tokens}/${s.cap}` }, { label: '这刻', value: s.tick >= 0 ? `到${s.arrived} 放${s.allowed} 拒${s.rejected}` : '完成' }, { label: '累计放行', value: `${s.totalAllowed}`, tone: 'good' }, { label: '累计拒绝', value: `${s.totalRejected}`, tone: s.totalRejected ? 'bad' : undefined }],
+}
+const consistenthash: Experiment<ConsistentHashState> = {
+  id: 'consistenthash', group: '分布式系统', title: '一致性哈希', subtitle: '加节点只搬一小段键',
+  kernel: consistentHashKernel, defaultDoc: { kind: 'consistenthash', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '无可调参数。环 0..99，节点 A@10/B@40/C@70；加入 D@60 后 4 个键只有 k2 从 C 搬到 D。详见讲解卡。',
+  bounds: ['环0..99,节点A@10/B@40/C@70,4个键', '键归顺时针第一个节点(可核)', '加D@60后只有k2(@55)从C搬到D', '对比hash%N扩容全体失效;Redis Cluster/Cassandra用它'],
+  tabs: [{ id: 'ring', label: '环上分片' }], Stage: ConsistentHashStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: '只搬1键' } : { key: 'idle', label: s.act === 'addnode' ? '加D' : s.act === 'remap' ? '重映射' : s.cur || '布置' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 7)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.act === 'addnode' ? '加' : s.act === 'remap' ? '搬' : s.act === 'assign' ? '分' : '置'),
+  readouts: s => [{ label: '节点数', value: `${s.nodes.length}` }, { label: '本步', value: s.act === 'addnode' ? '新增 D@60' : s.act === 'remap' ? `搬动 ${s.remapped}` : s.act === 'assign' ? `分配 ${s.cur}` : '布置' }, { label: '键归属', value: s.keys.map(k => `${k.id}→${k.node}`).join(' ') || '—' }, { label: '本步搬动', value: s.remapped || '—', tone: s.remapped ? 'good' : undefined }],
+}
+const skiplist: Experiment<SkipListState> = {
+  id: 'skiplist', group: '数据库系统', title: '跳表 Skip List', subtitle: '多层链表，O(log n) 查找',
+  kernel: skiplistKernel, defaultDoc: { kind: 'skiplist', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '无可调参数。三层跳表查 7：从顶层出发，能右就右、右不动就下沉，4 步命中。Redis zset 用它。详见讲解卡。',
+  bounds: ['三层跳表,查7', '本层下一个≤目标就右,否则下沉(可核)', '路径 L0:1→L1:1→L1:5→L2:5→L2:7,4步命中', '平均O(log n);Redis zset/LevelDB memtable用它'],
+  tabs: [{ id: 'search', label: '逐层逼近' }], Stage: SkipListStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: `${s.compares}次命中` } : { key: 'idle', label: `L${s.levels.length - 1 - s.level}:${s.val}` }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.act === 'right' ? '右' : s.act === 'down' ? '下' : s.act === 'found' ? '中' : '始'),
+  readouts: s => [{ label: '目标', value: `${s.target}` }, { label: '当前', value: `L${s.levels.length - 1 - s.level} 值 ${s.val}` }, { label: '比较次数', value: `${s.compares}` }, { label: '路径长', value: `${s.path.length} 步`, tone: s.phase === 'done' ? 'good' : undefined }],
+}
+const twopc: Experiment<TwoPCState> = {
+  id: 'twopc', group: '分布式系统', title: '两阶段提交 2PC', subtitle: '都答能才真提交',
+  kernel: twopcKernel, defaultDoc: { kind: 'twopc', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '无可调参数。协调者+3参与者：阶段一投票（全 Yes），阶段二提交。协调者宕机会让参与者阻塞。详见讲解卡。',
+  bounds: ['1协调者+3参与者', '阶段一Prepare投票,阶段二Commit/Abort(可核)', '全Yes→提交;一个No/超时→全体Abort', '硬伤:协调者阶段二宕机→参与者锁资源阻塞'],
+  tabs: [{ id: '2pc', label: '投票+提交' }], Stage: TwoPCStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: '全提交' } : { key: 'idle', label: s.decision === 'commit' ? '决定Commit' : `${s.yesVotes}/3票` }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 8)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.decision ? '交' : s.yesVotes > 0 ? '票' : '备'),
+  readouts: s => [{ label: '协调者', value: s.coord || '就绪' }, { label: 'Yes 票', value: `${s.yesVotes}/3` }, { label: '决定', value: s.decision || '未决', tone: s.decision === 'commit' ? 'good' : undefined }, { label: '参与者', value: s.parts.map(p => p.state === 'committed' ? '交' : p.state === 'prepared' ? '备' : '空').join('') }],
+}
+
 export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
   caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt,
+  tokenbucket, consistenthash, skiplist, twopc,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,

@@ -223,6 +223,26 @@ console.log('\n【「这一步为什么」真的在跟着走】')
    * 不这么要求的话，最省事的写法（返回一句不看状态的通用话）能一路绿着混过去。
    */
   const FIX: Record<string, { doc: unknown; a: unknown; b: unknown }> = {
+    tokenbucket: {
+      doc: { kind: 'tokenbucket', params: {}, entities: [], streams: [] },
+      a: { cap: 5, rate: 1, tick: 1, tokens: 0, arrived: 4, allowed: 3, rejected: 1, totalAllowed: 6, totalRejected: 1, phase: 'run' },
+      b: { cap: 5, rate: 1, tick: -1, tokens: 0, arrived: 0, allowed: 0, rejected: 0, totalAllowed: 9, totalRejected: 6, phase: 'done' },
+    },
+    consistenthash: {
+      doc: { kind: 'consistenthash', params: {}, entities: [], streams: [] },
+      a: { nodes: [{ id: 'A', pos: 10 }], keys: [{ id: 'k1', pos: 25, node: 'B' }], cur: 'k1', act: 'assign', remapped: '', phase: 'run' },
+      b: { nodes: [{ id: 'A', pos: 10 }, { id: 'D', pos: 60 }], keys: [{ id: 'k2', pos: 55, node: 'D' }], cur: 'k2', act: 'remap', remapped: 'k2', phase: 'run' },
+    },
+    skiplist: {
+      doc: { kind: 'skiplist', params: {}, entities: [], streams: [] },
+      a: { levels: [[1, 9], [1, 5, 9, 11], [1, 3, 5, 7, 9, 11]], target: 7, level: 1, val: 5, act: 'right', compares: 2, path: [{ level: 0, val: 1 }], phase: 'run' },
+      b: { levels: [[1, 9], [1, 5, 9, 11], [1, 3, 5, 7, 9, 11]], target: 7, level: 2, val: 7, act: 'found', compares: 4, path: [{ level: 2, val: 7 }], phase: 'done' },
+    },
+    twopc: {
+      doc: { kind: 'twopc', params: {}, entities: [], streams: [] },
+      a: { parts: [{ id: 'P1', state: 'prepared' }], coord: '阶段一·收票', cur: 'P1', yesVotes: 1, decision: '', phase: 'run' },
+      b: { parts: [{ id: 'P1', state: 'committed' }], coord: '阶段二·提交', cur: 'P1', yesVotes: 3, decision: 'commit', phase: 'run' },
+    },
     crt: {
       doc: { kind: 'crt', params: {}, entities: [], streams: [] },
       a: { ns: [3, 5, 7], as: [2, 3, 2], N: 105, idx: 0, Ni: 35, yi: 2, term: 140, acc: 140, x: -1, phase: 'run' },

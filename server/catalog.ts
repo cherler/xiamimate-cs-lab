@@ -64,6 +64,10 @@ import { merkleKernel } from '../src/kernels/merkle.ts'
 import { crtKernel } from '../src/kernels/crt.ts'
 import { fermatKernel } from '../src/kernels/fermat.ts'
 import { saltKernel } from '../src/kernels/salt.ts'
+import { tokenbucketKernel } from '../src/kernels/tokenbucket.ts'
+import { consistentHashKernel } from '../src/kernels/consistenthash.ts'
+import { skiplistKernel } from '../src/kernels/skiplist.ts'
+import { twopcKernel } from '../src/kernels/twopc.ts'
 // 与 registry 同源的预设常量：直接 import 保证 doc 逐字一致（引擎侧，无 React）。
 import { CRC_PRESETS, HAMMING_PRESETS, SUBNET_PRESETS, HUFF_PRESETS, BPLUS_PRESETS } from '../src/presets/sequences.ts'
 import { ROUTE_PRESETS } from '../src/presets/entities.ts'
@@ -1014,6 +1018,42 @@ export const CATALOG: CatalogEntry[] = [
       ask: '存密码哈希时为什么要「加盐」(每个用户配一个随机盐再哈希)?', kind: 'choice',
       compute: () => ({ answer: '让相同密码的哈希也不同，使彩虹表失效', step: 0, evidence: '盐打散哈希，攻击者必须对每个盐单独暴力' }),
       distractors: () => ['让哈希更快', '让密码更短', '让密码可以解密还原'],
+    }],
+  },
+  {
+    id: 'tokenbucket', title: '令牌桶限流', kernel: tokenbucketKernel as Kernel<unknown>, doc: trivialDoc('tokenbucket'),
+    facts: [{
+      id: 'total', label: '令牌桶放行的请求总数',
+      ask: '令牌桶：容量 5、速率 1/tick，各刻到达 [3,4,2,1,5]。一共放行了多少个请求?', kind: 'number',
+      compute: t => ({ answer: String(last(t).totalAllowed), step: t.length - 1, evidence: `放行 ${last(t).totalAllowed}、拒绝 ${last(t).totalRejected}` }),
+      distractors: () => ['15', '5', '6'],
+    }],
+  },
+  {
+    id: 'consistenthash', title: '一致性哈希', kernel: consistentHashKernel as Kernel<unknown>, doc: trivialDoc('consistenthash'),
+    facts: [{
+      id: 'moved', label: '加节点后需要搬动的键数',
+      ask: '一致性哈希：环上原有 3 个节点、4 个键。加入 1 个新节点后，大约需要搬动多少个键（对比 hash%N 几乎全搬）?', kind: 'choice',
+      compute: () => ({ answer: '只搬一小段（本例 1 个）', step: 0, evidence: '只有新节点到前一节点之间的键需要重新归属' }),
+      distractors: () => ['几乎所有键（和 hash%N 一样）', '全部 4 个', '0 个'],
+    }],
+  },
+  {
+    id: 'skiplist', title: '跳表 Skip List', kernel: skiplistKernel as Kernel<unknown>, doc: trivialDoc('skiplist'),
+    facts: [{
+      id: 'complexity', label: '跳表查找的平均复杂度',
+      ask: '跳表（多层索引链表）查找一个值的平均时间复杂度是?', kind: 'choice',
+      compute: () => ({ answer: 'O(log n)', step: 0, evidence: '高层快车道跳过大段节点，逐层逼近' }),
+      distractors: () => ['O(n)', 'O(1)', 'O(n log n)'],
+    }],
+  },
+  {
+    id: 'twopc', title: '两阶段提交 2PC', kernel: twopcKernel as Kernel<unknown>, doc: trivialDoc('twopc'),
+    facts: [{
+      id: 'commit_cond', label: '2PC 何时提交',
+      ask: '两阶段提交：协调者在阶段二什么情况下才广播 Commit（否则全体 Abort）?', kind: 'choice',
+      compute: () => ({ answer: '所有参与者阶段一都投 Yes', step: 0, evidence: '只要有一个 No 或超时就 Abort' }),
+      distractors: () => ['多数参与者投 Yes', '协调者自己决定', '第一个参与者投 Yes'],
     }],
   },
 ]

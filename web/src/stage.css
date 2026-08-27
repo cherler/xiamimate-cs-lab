@@ -3835,3 +3835,45 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .mk-data-box { display:flex; flex-direction:column; align-items:center; font-size:10px; color:var(--faint);
   padding:4px 9px; border:1px dashed var(--line); border-radius:6px; }
 .mk-data-box b { font-size:14px; color:var(--dim); font-family:var(--mono); }
+
+/* ── 令牌桶 ── */
+.tb-bucket { margin:6px 0 12px; }
+.tb-slots { display:flex; gap:6px; margin-top:5px; }
+.tb-slot { width:24px; height:30px; border-radius:5px; border:1.5px solid var(--line); background:var(--sunk-1); }
+.tb-slot.on { border-color:var(--now); background:color-mix(in srgb, var(--now) 30%, var(--panel)); }
+/* ── 一致性哈希（环用横线表示） ── */
+.ch-ring { position:relative; height:110px; margin:16px 0 12px; border-top:2px solid var(--line); }
+.ch-node { position:absolute; top:-11px; transform:translateX(-50%); display:flex; flex-direction:column; align-items:center; }
+.ch-node-dot { width:12px; height:12px; border-radius:50%; background:var(--now); border:2px solid var(--panel); }
+.ch-node.cur .ch-node-dot { box-shadow:0 0 0 3px color-mix(in srgb, var(--now) 40%, transparent); }
+.ch-node-id { font-size:13px; font-weight:700; color:var(--now); font-family:var(--mono); }
+.ch-node-pos { font-size:9px; color:var(--faint); }
+.ch-key { position:absolute; top:44px; transform:translateX(-50%); display:flex; flex-direction:column; align-items:center;
+  padding:2px 5px; border-radius:5px; border:1px solid var(--line); background:var(--panel); }
+.ch-key.cur { border-color:var(--now); }
+.ch-key.moved { border-color:var(--hit); background:color-mix(in srgb, var(--hit) 14%, var(--panel)); }
+.ch-key-id { font-size:11px; font-family:var(--mono); color:var(--ink); }
+.ch-key-node { font-size:10px; color:var(--dim); }
+.ch-axis { position:absolute; bottom:-2px; width:100%; display:flex; justify-content:space-between; font-size:10px; color:var(--faint); }
+/* ── 跳表 ── */
+.sl-levels { display:flex; flex-direction:column; gap:6px; margin:6px 0 12px; }
+.sl-row { display:flex; align-items:center; gap:8px; }
+.sl-lbl { font-size:11px; color:var(--dim); width:24px; font-family:var(--mono); }
+.sl-nodes { display:flex; gap:8px; }
+.sl-node { min-width:28px; height:28px; display:inline-flex; align-items:center; justify-content:center;
+  font-family:var(--mono); font-size:13px; color:var(--dim); border:1px solid var(--line); border-radius:6px; background:var(--sunk-1); }
+.sl-node.path { color:var(--ink); border-color:var(--f-tag); background:var(--panel); }
+.sl-node.cur { box-shadow:0 0 0 2px var(--now); border-color:var(--now); color:var(--now); }
+.sl-node.target { font-weight:700; }
+/* ── 2PC ── */
+.pc-coord { text-align:center; font-size:12px; font-weight:700; color:var(--now); padding:6px 0; margin-bottom:8px;
+  border:1px solid var(--now); border-radius:8px; background:color-mix(in srgb, var(--now) 7%, var(--panel)); }
+.pc-parts { display:flex; gap:10px; }
+.pc-part { flex:1; display:flex; flex-direction:column; align-items:center; gap:3px; padding:9px 8px;
+  border:1.5px solid var(--line); border-radius:8px; background:var(--panel); }
+.pc-part.cur { box-shadow:0 0 0 2px var(--now); }
+.pc-part.s-prepared { border-color:var(--f-tag); }
+.pc-part.s-committed { border-color:var(--hit); background:color-mix(in srgb, var(--hit) 9%, var(--panel)); }
+.pc-pid { font-size:15px; color:var(--ink); }
+.pc-pstate { font-size:11px; color:var(--dim); }
+.pc-part.s-committed .pc-pstate { color:var(--hit); }

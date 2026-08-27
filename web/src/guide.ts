@@ -298,6 +298,50 @@ export const TERMS: Term[] = [
 
 /** 每个实验一段。**加实验必须加这一段** —— 冒烟会数够不够 30 个。 */
 export const GUIDES: Record<string, Guide> = {
+  tokenbucket: {
+    question: '既想限住平均速率、又想容忍短时突发，怎么做？',
+    read: [{ at: '桶', is: '桶里当前令牌数（满格数=容量）。', anchor: '.tb-bucket' }, { at: '读数', is: '桶中令牌、这刻放行/拒绝、累计。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { rate: number; tick: number; tokens: number; arrived: number; allowed: number; rejected: number; totalAllowed: number; totalRejected: number; phase: string }; return [
+      { k: '本步输入', v: st.phase === 'done' ? '所有时刻处理完' : `t=${st.tick}：桶剩 ${st.tokens} 令牌，来了 ${st.arrived} 个请求` },
+      { k: '判定规则', v: `每刻先匀速补 ${st.rate} 个令牌(满了溢出)，再处理请求：有令牌就放行并消耗一个，没令牌就拒绝。桶容量=允许的突发量。` },
+      { k: '本步结果', v: st.phase === 'done' ? `共放行 ${st.totalAllowed}、拒绝 ${st.totalRejected}` : `放行 ${st.allowed}、拒绝 ${st.rejected}` },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; totalAllowed: number; allowed: number }; return st.phase === 'done' ? `放行${st.totalAllowed}` : `放${st.allowed}` },
+    try: [{ act: '按「下一步」看每刻', watch: '开局突发 3 个全放行（桶满），之后被限到约每 tick 1 个。' }, { act: '想突发', watch: '桶里攒的令牌=突发额度；对比漏桶恒定速率、不容突发。' }], terms: [],
+  },
+  consistenthash: {
+    question: '扩容加一台缓存机，为什么不能用 hash(key)%N？',
+    read: [{ at: '环', is: '环 0..99 上的节点(蓝点)和键(方块→归属)。', anchor: '.ch-ring' }, { at: '读数', is: '节点数、本步、键归属。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { nodes: unknown[]; keys: { id: string; node: string }[]; cur: string; act: string; remapped: string; phase: string }; return [
+      { k: '本步输入', v: st.act === 'nodes' ? '布置 3 个节点' : st.act === 'assign' ? `分配键 ${st.cur}` : st.act === 'addnode' ? '新增节点 D@60' : st.act === 'remap' ? '重新归属' : '完成' },
+      { k: '判定规则', v: '节点和键都哈希到环上；每个键归给**顺时针方向第一个节点**（超过最后一个就绕回环首）。加节点只影响它到前一节点之间的键。' },
+      { k: '本步结果', v: st.act === 'assign' ? `${st.cur} 归给最近节点` : st.act === 'remap' ? `只有 ${st.remapped} 从 C 搬到 D` : st.act === 'addnode' ? '只需搬一小段键' : st.phase === 'done' ? '4 键只搬 1 个' : '布置完成' },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; remapped: string; act: string }; return st.phase === 'done' ? '只搬1键' : (st.remapped || st.act) },
+    try: [{ act: '按「下一步」布节点分键', watch: '每个键归给顺时针最近的节点。' }, { act: '看加节点', watch: '加 D 后只有 k2 搬家，其它不动——扩容抖动极小。' }], terms: [],
+  },
+  skiplist: {
+    question: '有序链表查一个数要 O(n)，怎么加速到 O(log n)？',
+    read: [{ at: '层', is: '多层链表；蓝框=当前、浅色=走过的路。', anchor: '.sl-levels' }, { at: '读数', is: '目标、当前位置、比较次数。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { target: number; levels: number[][]; level: number; val: number; act: string; compares: number; phase: string }; return [
+      { k: '本步输入', v: st.phase === 'done' ? `找到 ${st.target}` : `在 L${st.levels.length - 1 - st.level} 层、节点 ${st.val}，找 ${st.target}` },
+      { k: '判定规则', v: '从最高层最左出发：本层下一个 ≤ 目标就往右；否则下沉一层。高层"快车道"跳过大段节点。' },
+      { k: '本步结果', v: st.act === 'right' ? `往右走` : st.act === 'down' ? `下沉一层` : st.act === 'found' ? `命中 ${st.target}(比较 ${st.compares} 次)` : `从顶层出发` },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; compares: number; act: string }; return st.phase === 'done' ? `${st.compares}次` : st.act },
+    try: [{ act: '按「下一步」查找', watch: '能右就右、右不动就下沉，层层逼近 7。' }, { act: '数比较', watch: '4 次就命中，单层链表要走更多——O(log n)。' }], terms: [],
+  },
+  twopc: {
+    question: '一个事务跨多个库，怎么保证要么全成、要么全败？',
+    read: [{ at: '参与者', is: '3 个参与者的状态（空闲/已准备/已提交）。', anchor: '.pc-parts' }, { at: '读数', is: '协调者阶段、Yes 票、决定。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { coord: string; cur: string; yesVotes: number; decision: string; phase: string }; return [
+      { k: '本步输入', v: st.phase === 'done' ? '事务提交完成' : st.coord },
+      { k: '判定规则', v: '阶段一(投票)：协调者发 Prepare，参与者干到就差落盘、锁资源，回 Yes/No。阶段二：**全 Yes 才 Commit，一个 No 或超时就全体 Abort**。' },
+      { k: '本步结果', v: st.decision === 'commit' && st.cur ? `${st.cur} 落盘提交` : st.decision === 'commit' ? `全 Yes → 决定 Commit` : st.cur ? `${st.cur} 回 Yes(${st.yesVotes}/3)` : '广播 Prepare' },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; decision: string; yesVotes: number }; return st.phase === 'done' ? '全提交' : (st.decision || `${st.yesVotes}/3票`) },
+    try: [{ act: '按「下一步」走两阶段', watch: '先收集投票，全 Yes 才广播提交。' }, { act: '想硬伤', watch: '参与者投 Yes 后锁着资源等；协调者阶段二宕机就一直阻塞。' }], terms: [],
+  },
   crt: {
     question: '除 3 余 2、除 5 余 3、除 7 余 2 的数，怎么系统地求出来？',
     read: [{ at: '条件盒', is: '几个余数条件与最终解 x。', anchor: '.cx-kv' }, { at: '读数', is: '总模、累加和、解 x。', anchor: '.scdim' }],

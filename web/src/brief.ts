@@ -303,6 +303,30 @@ const bitmapFree = (t: unknown[]) => { const s = last<{ freeCount?: Num }>(t)
   return typeof s?.freeCount === 'number' ? s.freeCount : null }
 
 export const BRIEFS: Record<string, Brief> = {
+  tokenbucket: {
+    care: '后端网关最常用的限流算法。一个**桶**，容量 C；每个时间单位匀速放 r 个令牌进去（满了溢出丢弃）；每个请求要拿走 1 个令牌才放行，拿不到就拒绝。\n\n妙处：**既能限住平均速率(=r)，又允许短时突发**（桶里攒的令牌能一次放出去）——这正是真实流量的样子。\n\n对比漏桶（恒定速率、不容突发），令牌桶更适合「平时限速、偶尔放突发」的接口。',
+    guess: { q: '桶容量 5、速率 1/tick，到达 [3,4,2,1,5]，共放行多少？', opts: ['9', '15', '5'] },
+    tasks: [{ act: '按「下一步」看每刻', watch: '开局突发 3 全放行，之后限到约每 tick 1 个。' }, { act: '想突发', watch: '桶里攒的令牌=突发额度。' }],
+    verdict: ctx => { const t = ctx.trace as { totalAllowed?: number; totalRejected?: number }[]; const l = t[t.length - 1]; return l ? { pick: 0, say: `共放行 ${l.totalAllowed}、拒绝 ${l.totalRejected}。`, why: '开局桶满容突发，之后按补令牌速率限流。' } : null },
+  },
+  consistenthash: {
+    care: '分布式缓存/分片要把键分到 N 台机器。最朴素的 **hash(key)%N** 有致命伤：加/减一台机器，N 变了，几乎所有键的归属都变，缓存全体失效、数据大搬家。\n\n**一致性哈希**：把 0..M-1 想成一个**环**，节点和键都哈希到环上某点，每个键归给**顺时针方向第一个节点**。加一个节点，只有它和前一节点之间的那一小段键要搬，其它全不动。\n\n真实系统还加「虚拟节点」让分布更均。Redis Cluster、Cassandra、CDN 分片都用它。',
+    guess: { q: '一致性哈希加一个节点，需要搬动多少键？', opts: ['只搬一小段', '几乎全部（同 hash%N）', '全部'] },
+    tasks: [{ act: '按「下一步」布节点分键', watch: '键归给顺时针最近节点。' }, { act: '看加节点', watch: '加 D 后只有 k2 搬家。' }],
+    verdict: ctx => { const t = ctx.trace as { keys?: { id: string; node: string }[] }[]; const l = t[t.length - 1]; return l ? { pick: 0, say: '加入 D 后，4 个键只有 1 个(k2)需要搬。', why: '只有新节点到前一节点之间的键才重新归属，抖动极小。' } : null },
+  },
+  skiplist: {
+    care: '有序链表查一个数要一个个走 O(n)。**跳表**给它加**多层索引**：底层是完整有序链表，上面每层随机挑一部分节点建"快车道"。\n\n查找从最高层开始：能往右就往右（下一个还 ≤ 目标），到头了就下一层，层层逼近，平均 **O(log n)**。\n\n用空间换时间，还比平衡树好写（插入靠抛硬币定层数，不用旋转）。Redis 的 zset、LevelDB 的 memtable 都用它。',
+    guess: { q: '跳表查找的平均时间复杂度是？', opts: ['O(log n)', 'O(n)', 'O(1)'] },
+    tasks: [{ act: '按「下一步」查找', watch: '能右就右、右不动就下沉，逼近 7。' }, { act: '数比较', watch: '4 次命中——O(log n)。' }],
+    verdict: ctx => { const t = ctx.trace as { compares?: number; target?: number }[]; const l = t[t.length - 1]; return l ? { pick: 0, say: `找到 ${l.target}，只比较 ${l.compares} 次。`, why: '高层快车道跳过大段节点，平均 O(log n)。' } : null },
+  },
+  twopc: {
+    care: '一个事务跨多个库/服务，要么全提交、要么全回滚。**2PC** 由**协调者**统一指挥：\n\n阶段一(投票)：协调者发 Prepare，参与者干到「就差落盘」、锁住资源，回 Yes/No。\n\n阶段二(提交)：**只要有一个 No 或超时就全体 Abort**；全 Yes 才广播 Commit，大家一起落盘。\n\n它保证原子性，但有硬伤：协调者在阶段二**宕机**，参与者会一直锁着资源干等（阻塞）——所以才有 3PC、以及 Raft/Paxos 这类更抗故障的共识。',
+    guess: { q: '2PC 什么情况下才提交？', opts: ['所有参与者都投 Yes', '多数投 Yes', '协调者自己定'] },
+    tasks: [{ act: '按「下一步」走两阶段', watch: '先收票，全 Yes 才广播提交。' }, { act: '想硬伤', watch: '参与者投 Yes 后锁资源等，协调者宕机就阻塞。' }],
+    verdict: ctx => { const t = ctx.trace as { decision?: string }[]; const l = t[t.length - 1]; return l ? { pick: 0, say: `3 票全 Yes → 决定 ${l.decision === 'commit' ? 'Commit' : l.decision}，全体提交。`, why: '只要有一个 No 或超时就 Abort；这保证了原子性。' } : null },
+  },
   crt: {
     care: '「物不知数」：一个数除 3 余 2、除 5 余 3、除 7 余 2，问这数是几？\n\n**中国剩余定理**：只要模两两互质，这组同余式在 0..N-1(N=∏n_i) 内有**唯一解**。\n\n构造：对每个条件算 N_i=N/n_i、它模 n_i 的逆 y_i，则 x = Σ a_i·N_i·y_i mod N——每项只在自己那个模下"生效"、对别的模贡献 0。RSA 解密用 CRT 拆成模 p、模 q 两个小幂，快 3~4 倍。',
     guess: { q: '除 3 余 2、除 5 余 3、除 7 余 2 的数(0~104)是？', opts: ['23', '17', '52'] },
