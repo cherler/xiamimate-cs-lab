@@ -5175,12 +5175,8 @@ export const DISCIPLINES: Discipline[] = [
     guide: { from: '408 地基', to: '大模型推理引擎', toIcon: '🤖', url: 'https://claude.ai/code/artifact/4a5e0921-6a29-4ad8-8ce3-c763b4a20ff5' },
   },
   { key: 'algo', title: '算法', icon: '🧮', sub: '经典 → 机器学习 → 深度学习 → 大模型', groups: ['经典算法', '机器学习算法', '深度学习算法', '大模型算法'], status: 'active', guide: { from: '一次排序', to: '会学习的模型', toIcon: '🧠' } },
-  { key: 'physics', title: '物理', icon: '⚛️', sub: '力/电/热/光 —— 造物背后的第一性', groups: ['力学', '振动与波', '热学', '电磁学', '光学', '现代物理'], status: 'active', guide: { from: '一个小球的运动', to: '造一辆汽车', toIcon: '🚗' } },
-  { key: 'chem', title: '化学', icon: '🧪', sub: '反应/材料 —— 电池、药、材料', groups: [], status: 'planned', guide: { from: '原子与键', to: '一块锂电池', toIcon: '🔋' } },
-  { key: 'bio', title: '生物', icon: '🧬', sub: '细胞/遗传/生态 —— 生命怎么运转', groups: [], status: 'planned', guide: { from: '细胞', to: '一名医生看的病', toIcon: '🩺' } },
-  { key: 'history', title: '历史', icon: '🏛️', sub: '事件/制度 —— 因果与长期变量', groups: [], status: 'planned', guide: { from: '一件史料', to: '一个制度的兴衰', toIcon: '📜' } },
-  { key: 'geo', title: '地理', icon: '🌍', sub: '地形/气候/区位 —— 空间的规律', groups: [], status: 'planned', guide: { from: '地形与气候', to: '一座城市为何在此', toIcon: '🏙️' } },
-  { key: 'chinese', title: '文学', icon: '📜', sub: '中文古籍 · 诗词歌赋 —— 诗人的一生', groups: [], status: 'planned', guide: { from: '一首诗', to: '诗人的一生', toIcon: '🖌️' } },
+  // 转向「计算机全学科」(2026-08-27)：物理与其它非 CS 学科从导航移除。
+  // 物理的碰撞实验代码(kernel/stage)保留不删，仅从这里下线，需要时把这条加回即可。
 ]
 
 export type Anchor = {
