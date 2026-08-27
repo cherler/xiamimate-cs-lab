@@ -40,28 +40,40 @@ export function LabGuide({ discKey, experiments, onPick, onSwitch, onClose }: Pr
         </header>
 
         {groups.length > 0 ? (
-          <div className="lgbody">
+          //  一条线穿起来：地基 → 各子模块(逐层) → 职业目标。学的路径是一条流程，不是并列的清单。
+          <div className="lgbody lgflow">
+            <div className="lgnode lgstart">
+              <span className="lgdot" aria-hidden />
+              <div className="lgnodec"><span className="lgcap">起点 · 地基</span><b className="lgcapv">{disc.guide.from}</b></div>
+            </div>
             {groups.map((g, gi) => {
               const anchor = anchorOfExp(g.items[0])
               return (
-                <section className="lggrp" key={g.name}>
-                  <div className="lggrph">
-                    <span className="lggrpn">{String(gi + 1).padStart(2, '0')}</span>
-                    <span className="lggrpt">{g.name}</span>
-                    {anchor && <span className="lganchor" title={`关联${anchor.kind}`}>{anchor.icon} {anchor.label}</span>}
-                    <span className="lggrpc">{g.items.length}</span>
-                  </div>
-                  <div className="lgchips">
-                    {g.items.map(e => (
-                      <button className="lgchip" key={e.id} onClick={() => { onPick(e.id); onClose() }}
-                        title={e.subtitle}>
-                        {e.title}
-                      </button>
-                    ))}
-                  </div>
-                </section>
+                <div className="lgnode" key={g.name}>
+                  <span className="lgdot" aria-hidden />
+                  <section className="lgnodec lggrp">
+                    <div className="lggrph">
+                      <span className="lggrpn">{String(gi + 1).padStart(2, '0')}</span>
+                      <span className="lggrpt">{g.name}</span>
+                      {anchor && <span className="lganchor" title={`关联${anchor.kind}`}>{anchor.icon} {anchor.label}</span>}
+                      <span className="lggrpc">{g.items.length}</span>
+                    </div>
+                    <div className="lgchips">
+                      {g.items.map(e => (
+                        <button className="lgchip" key={e.id} onClick={() => { onPick(e.id); onClose() }}
+                          title={e.subtitle}>
+                          {e.title}
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+                </div>
               )
             })}
+            <div className="lgnode lgend">
+              <span className="lgdot" aria-hidden />
+              <div className="lgnodec"><span className="lgcap">终点 · 职业目标</span><b className="lgcapv">{disc.guide.toIcon} {disc.guide.to}</b></div>
+            </div>
           </div>
         ) : (
           <div className="lgempty">

@@ -942,6 +942,19 @@ body[data-show][data-tour] *{cursor:none!important}
 .lglede{font-size:14px;color:var(--dim);margin:0;line-height:1.65}
 .lgfull{margin-left:8px;color:var(--now,#4E46D6);font-weight:600;white-space:nowrap}
 .lgbody{display:flex;flex-direction:column;gap:14px}
+/* 流程图形态：一条竖线穿过所有节点(地基→子模块→职业目标)，学习是一条路径不是并列清单 */
+.lgflow{position:relative;gap:0}
+.lgflow::before{content:"";position:absolute;left:11px;top:14px;bottom:14px;width:2px;
+  background:linear-gradient(var(--line),var(--f-tag),var(--line))}
+.lgnode{position:relative;display:flex;gap:16px;padding:7px 0}
+.lgdot{flex:0 0 auto;width:14px;height:14px;margin-top:5px;border-radius:50%;
+  background:var(--panel);border:2px solid var(--f-tag);z-index:1}
+.lgnode.lgstart .lgdot,.lgnode.lgend .lgdot{background:var(--f-tag);width:16px;height:16px;margin-left:-1px}
+.lgnodec{flex:1;min-width:0}
+.lgstart .lgnodec,.lgend .lgnodec{display:flex;flex-direction:column;gap:1px;padding:3px 0}
+.lgcap{font-size:11px;color:var(--faint)}
+.lgcapv{font-size:15px;color:var(--ink);font-weight:600}
+.lgflow .lggrp{border:1px solid var(--line);border-radius:11px;padding:12px 14px;background:var(--panel)}
 .lggrp{border:1px solid var(--line);border-radius:11px;padding:12px 14px;background:var(--panel)}
 .lggrph{display:flex;align-items:center;gap:8px;margin-bottom:9px}
 .lggrpn{font-family:var(--mono);font-size:12px;color:var(--faint)}
