@@ -38,7 +38,7 @@ const SHORT: Record<string, string> = {
 
 export function GuidedNote({
   title, no, question, parts, tone, verdict, tasks, index, total, where,
-  stage, chips, onPrev, onNext, onClose,
+  onClose,
 }: {
   title: string
   /** 目录里的序号（"01"）—— 笔记本上写的是"实验 01" */
@@ -103,16 +103,8 @@ export function GuidedNote({
             </div>
           )}
 
-          <section className="gnstate">
-            <div className="gnsub">当前状态</div>
-            <div className="gnstagebox">{stage}</div>
-          </section>
-
-          <div className="gnplay">
-            <button onClick={onPrev} disabled={index === 0}>◀ 上一步</button>
-            <div className="gnchips">{chips}</div>
-            <button onClick={onNext} disabled={index >= total - 1}>下一步 ▶</button>
-          </div>
+          {/*  舞台/步进器不再嵌在笔记里 —— 笔记现在与实验台**共存**(在它上方),
+              真正的舞台、走带、实验记录都在下面同屏可见,不用关掉笔记才看得到。 */}
 
           {/*  「本次发现」只在**真的算得出来**的时候才写。
                算不出来时留一句空话（"多试几组看看"）比留空更糟：

@@ -1669,9 +1669,11 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 /* ═══ 引导式实验笔记 ═══
    盖在中列上的一屏。跟原来的实验单同一个位置、同一条纪律：
    盖住整列而不是只盖舞台 —— 只盖一块的话，"看不见后面还有什么"这个病没治。 */
-.gnote{position:absolute;inset:0;z-index:12;display:flex;flex-direction:column;
+/*  从「盖住整个中列的浮层」改成「与实验台共存的顶部面板」(用户 2026-08-27 定):
+    不再 position:absolute,而是在流里占一块、限高内部滚,下面的舞台/走带/实验记录同屏可见。 */
+.gnote{position:relative;display:flex;flex-direction:column;max-height:44vh;
   background:var(--panel);border:1px solid var(--f-tag);border-radius:9px;
-  box-shadow:0 10px 30px var(--shadow);overflow:hidden}
+  margin-bottom:12px;overflow:hidden}
 .gnbar{display:flex;align-items:center;gap:14px;padding:9px 14px;
   border-bottom:1px solid var(--line);flex:0 0 auto}
 .gnexp{font-size:var(--t-ui);color:var(--faint)}
