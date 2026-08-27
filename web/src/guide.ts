@@ -7,7 +7,7 @@
  *
  * 1. **它会跟护城河打架。** 本仓的立身之本是「验证器」—— 屏幕上每一个数都从
  *    验过的内核轨迹派生（`docs/standards.md`）。一个大模型在旁边解释
- *    「这一步为什么缺失」，它**可能是错的**，而且错在一个保证正确的答案旁边。
+ *    「本步推演缺失」，它**可能是错的**，而且错在一个保证正确的答案旁边。
  *    那是最坏的位置：学生分不清哪半边可信。
  *
  * 2. **成本地板。** 讲解框是**每个新手都会点**的东西 —— 恰恰是流量最大的那一块。
@@ -37,6 +37,8 @@
  *   导览说"把相联度调到 1"或"换成「同组冲突」预置"，而页面上根本没有那个旋钮 /
  *   那个预置改过名，是最容易发生也最难发现的漂移：那句话读起来永远像对的。
  */
+
+import type { SimDocument } from '@engine/core/document.ts'
 
 export type Term = {
   id: string
@@ -75,6 +77,43 @@ export type Guide = {
    * 冒烟第 13 组逐个核对它们真的匹配得到元素 —— 舞台改了 class，这里会红。
    */
   read: { at: string; is: string; anchor?: string }[]
+  /**
+   * 「本步推演」 —— **拿当前状态现算的四段**，随着轴走而变。
+   *
+   * 段名固定，好让 30 个实验读起来是同一种东西：
+   *   本步输入 → 判定规则 → 本步结果 → 对应画面。
+   *
+   * ## 它不住在讲解卡里
+   *
+   * 一开始写成讲解卡的一张，实测装不下：卡片钉在右下角只有 380×112，
+   * 四段一百多字要五行，而任何屏上都腾不出五行还不压住读数
+   * （1280×720 上讲解卡本来就压着读数下沿）。
+   *
+   * 它讲的是舞台上正在发生的事，就该贴着舞台放 —— 所以渲染在
+   * 舞台与轴之间那条带子里（`shell/WhyBand.tsx`），一整列宽，四段一行摊开。
+   * 讲解卡里只留一张短卡指着它。
+   */
+  step?: (s: never, doc: SimDocument) => WhyPart[]
+  /**
+   * 推演卡底下那条**结论横幅**上写什么（概念图上「⊗ 缺失 · 装入组 0」那一条）。
+   *
+   * 为什么不直接拿 `tone(s).label`：那只有"命中/缺失"两个字，
+   * 而横幅的位置和分量要求它一句把这一步交代完 ——
+   * "缺失"之后紧跟着的"装到哪儿去了"，正是读者下一眼要找的东西。
+   * 不写就退回两个字（见 `WhyRail`），不是必填。
+   */
+  verdict?: (s: never, doc: SimDocument) => string
+  /**
+   * **基础**：动手之前先要认识的那几个词，进主干、排在问句后面。
+   *
+   * 用户原话：「我还想你把基础内容、说明内容尽可能塞进讲解卡呢」。
+   * 这一层原来只活在实验单的 ①（要点开、押完注才往下走），
+   * 而卡片是随时在屏幕上的 —— 名词该跟着它讲的那一屏一起在。
+   *
+   * 写法上跟别的卡一样：一张卡一件事。宁可两张短的，别写一张长的
+   * （卡片高度封在版面里，长了就得滚，滚起来的字等于没写）。
+   */
+  basics?: { title: string; body: string }[]
   /** 先拧什么、看什么 */
   try: TryStep[]
   /** 这一屏会用到的名词 */
@@ -103,7 +142,7 @@ export const TOUR: { at: string; is: string; anchor: string; need?: 'params' | '
   { at: '读数', is: '当前这一步的关键数字。它们全部从轨迹派生，不是另算的 —— 所以跟舞台上看到的必然一致。', anchor: '.card.readouts' },
   { at: '访问序列', is: '驱动这个实验的那串数据，可以直接改。半截的、不合法的输入不会喂给仿真，仿真停在上一次有效的地方。', anchor: '.seqin', need: 'sequence' },
   { at: '实体表', is: '题面数据（进程表 / 边表 / 资源矩阵…），可以改、可以加减行。改完立刻重算。', anchor: '.enttab', need: 'entities' },
-  { at: '最底下的「边界」', is: '这个仿真**没有**模拟什么 —— 免得你拿它当全部事实。', anchor: '.bounds' },
+  { at: '「边界」那一格', is: '这个仿真**没有**模拟什么 —— 免得你拿它当全部事实。', anchor: '.bounds' },
 ]
 
 /**
@@ -112,13 +151,33 @@ export const TOUR: { at: string; is: string; anchor: string; need?: 'params' | '
  * 写法纪律：不抄教科书定义，写"它在这一屏上是哪个东西"。
  * 学生卡住的时候要的是"哦，是屏幕上那个"，不是一句更绕的定义。
  */
+/**
+ * ## 词条怎么写 —— 三条，2026-08-19 定
+ *
+ * 起因：用户（计算机专业毕业）看完「组相联」那条说"还是一脸懵"。原文是
+ * 「把 Cache 分成若干「组」，一块内存只能进固定的那一组，但组内哪一「路」都行。」
+ * 一句话里塞了**四个没解释过的词**（组 / 块 / 路 / "进"），而且是自顶向下的定义式 ——
+ * 可读者此刻正盯着**一个具体地址**在找它去哪儿。
+ *
+ * 1. **先指屏幕上的这一个，再给名字。** 不要先定义概念。
+ *    "看中间那张表：一行就是一个组" 比 "把 Cache 分成若干组" 好，
+ *    因为前者读者能顺着眼睛找到，后者要求他先在脑子里建一个图。
+ * 2. **一句话只引入一个新词。** 用没解释过的词解释词，等于没解释。
+ *    引用别的词条时，那个词条必须也在这一屏的 `terms` 里 —— 有判据盯着（`guide-content.test.ts`）。
+ * 3. **能被数据证伪的话不要写死。**
+ *    「把相联度从 2 调到 1，命中率掉下来」曾经就印在这儿 ——
+ *    而默认那串地址逐档量过是 **1 路 25.0%、2 路 25.0%，根本不变**。
+ *    讲解卡就长在一个保证正确的仿真旁边，说一句用户一试就发现是假的话，
+ *    整层的可信度当场归零。改成**让他去看那个数**。
+ */
 export const TERMS: Term[] = [
   // ── 计算机组成原理 ──
   { id: 'hit', term: '命中 / 缺失', gloss: '要的数据已经在 Cache 里叫命中，不在就是缺失，得从内存搬一块进来。轴上绿色是命中、红色是缺失。' },
-  { id: 'setassoc', term: '组相联', gloss: '把 Cache 分成若干「组」，一块内存只能进固定的那一组，但组内哪一「路」都行。相联度就是每组几路。' },
-  { id: 'direct', term: '直接映射', gloss: '相联度 = 1 的组相联：一块内存只有一个位置可去，冲突就只能挤掉原来的。' },
-  { id: 'fullassoc', term: '全相联', gloss: '相联度 = 总块数：随便放哪儿。命中率最好，但每次都得比对全部标记，硬件最贵。' },
-  { id: 'tagidx', term: 'tag / 组号 / 块内偏移', gloss: '地址被切成三段：最低位选块里第几个字节，中间选进哪一组，剩下的高位当标记存起来，用来认出"是不是我要的那一块"。' },
+  { id: 'setassoc', term: '组相联', gloss: '看右边那张表：**表头写着「组号 / 路 0 / 路 1 / 状态」，一行就是一个「组」，行里并排的每一格就是一条「路」**。地址中间那几位算出去哪一行 —— 行是定死的，进哪一格随便挑。相联度就是一行里有几格。' },
+  { id: 'direct', term: '直接映射', gloss: '相联度 = 1，表里只剩「路 0」一列，每行一格。行号一算出来，位置就唯一了 —— 那一格被别人占着，就只能把它挤掉。' },
+  { id: 'fullassoc', term: '全相联', gloss: '整张表只剩一行，哪一格都行。命中率最好，代价是每次要把**所有格子**的 tag 都比一遍 —— 硬件贵就贵在这儿。' },
+  { id: 'tagidx', term: 'tag / index / offset', gloss: '一个地址切三段，**从右往左**读：最右边 `offset` 选这一块里的第几个字节；中间 `index` 选去哪一**组**；剩下左边那段是 `tag`，跟着块一起存进格子里 —— 下次拿它比一比，就知道格子里现在装的是不是你要的那一块。**tag 是编号不是地址**，所以屏幕上它不带 0x。' },
+  { id: 'blockway', term: '内存块 / 组 / 路', gloss: '**内存块**：主存按"块大小"切成一块块，搬运以它为单位。**组**（set）：Cache 分成若干组，图上一行就是一组，`index` 算出该进哪一组、没得挑。**路**（way）：一组里并排的那几个格子，每格装一个内存块 —— "2 路"就是一组有两个格子，真机常见 4 路、8 路。' },
   { id: 'lru', term: 'LRU / FIFO', gloss: '组满了挤谁走。LRU 挤最久没被用的，FIFO 挤最早进来的。LRU 通常更好，但要记访问时间。' },
   { id: 'locality', term: '局部性', gloss: '刚用过的还会再用（时间局部性）、旁边的马上要用（空间局部性）。Cache 全靠这两条才有意义。' },
   { id: 'exp', term: '阶码', gloss: 'IEEE 754 里表示"小数点挪了几位"的那一段。存的是加过偏置的移码，不是原码。' },
@@ -126,6 +185,8 @@ export const TERMS: Term[] = [
   { id: 'bias', term: '移码 / 偏置', gloss: '阶码存的是「真值 + 127」（单精度）。这样全 0 最小、全 1 最大，比大小可以直接按无符号比。' },
   { id: 'normal', term: '规格化', gloss: '把尾数挪成 1.xxx 的形式，阶码相应加减。加减法对阶之后也要重新规格化。' },
   { id: 'booth', term: 'Booth 算法', gloss: '看相邻两位的组合决定加、减还是只移位，一次处理一位但能直接算带符号数，不用先取绝对值。' },
+  { id: 'complement', term: '补码', gloss: '正数补码就是它本身；负数补码 = 对应正数按位取反再加 1。用补码后，减法能变成加法（A−B = A+(−B)补），而且符号位可以跟数值位一起参与运算，硬件只需一个加法器。' },
+  { id: 'overflow', term: '溢出', gloss: '运算结果超出了这个位数补码能表示的范围（8 位是 −128~127）。判法：进入符号位的进位 ⊕ 移出符号位的进位，不相等就溢出 —— 等价于"同号相加却得到异号"。溢出后机器数是错的。' },
   { id: 'restore', term: '加减交替法', gloss: '也叫不恢复余数法。余数为负时不退回去，下一步改成加法补偿 —— 省掉一次恢复操作。' },
   { id: 'pipeline', term: '流水线 / 段', gloss: '一条指令拆成取指、译码、执行、访存、写回五段，不同指令的不同段同时进行。理想情况下每周期出一条。' },
   { id: 'hazard', term: '数据冒险', gloss: '后一条指令要用的值，前一条还没写回去。只能等，或者用前递把值直接送过去。' },
@@ -159,6 +220,10 @@ export const TERMS: Term[] = [
   { id: 'relax', term: '松弛', gloss: 'Dijkstra 的核心动作：如果"经过刚确定的点再到 v"比现在记的距离短，就更新它。' },
   { id: 'sptree', term: '最短路径树', gloss: '每个点记住"我是从谁那儿被松弛到最短的"，这些边连起来就是一棵树。' },
   { id: 'bf', term: '平衡因子', gloss: '左子树高 − 右子树高。AVL 要求每个结点的绝对值不超过 1，超了就旋转。' },
+  { id: 'inorder', term: '中序遍历与有序性', gloss: '中序 = 左→根→右。对二叉搜索树做中序遍历，输出恰好是从小到大的有序序列 —— 不管插入顺序多乱都成立，是 BST 最常被考的性质。' },
+  { id: 'rpn', term: '后缀式（逆波兰）', gloss: '把运算符写在两个操作数后面，如 3 4 + 2 *。它没有括号、也不需要优先级 —— 运算顺序已经写死在排列里。求值只要从左扫一遍：遇数字压栈、遇运算符弹两个算完压回，一个栈就够。' },
+  { id: 'precedence', term: '优先级与栈', gloss: '中缀转后缀（调度场算法）靠一个运算符栈：遇到新运算符时，把栈里优先级不低于它的先弹出到后缀序列，再压自己。× ÷ 高于 + −，括号最高。栈的"后进先出"正好保证高优先级的运算符先被输出、先参与运算。' },
+  { id: 'stack', term: '遍历的辅助容器', gloss: '前中后序都是"一条路走到底再回退"，靠的是栈（递归就是隐式的栈）；层序一层层铺开，靠的是队列。容器换了，访问的形状就变了。' },
   { id: 'rotate', term: 'LL / RR / LR / RL', gloss: '按"失衡结点往下两步的方向"命名。同向（LL/RR）转一次，异向（LR/RL）要先把下面掰同向再转，一共两次。' },
   { id: 'border', term: 'B+ 树的阶', gloss: 'm 阶最多 m−1 个键，满了就分裂、把中间的键提到父结点。所有真数据都在叶子层，叶子还串成链表。' },
   { id: 'asl', term: 'ASL', gloss: '平均查找长度：把每个关键字查到它所需要比较的次数平均一下。散列表比的就是这个。' },
@@ -188,27 +253,176 @@ export const TERMS: Term[] = [
   { id: 'handshake', term: '三次握手 / 四次挥手', gloss: '建连要三步是因为得双向确认初始序号；断连要四步是因为两个方向各自关，中间可以只关一边。' },
   { id: 'timewait', term: 'TIME_WAIT', gloss: '主动关闭方最后要等 2MSL：一是保证最后那个 ACK 送到，二是让旧连接的迷路报文自然消亡。' },
   { id: 'csma', term: 'CSMA/CD', gloss: '先听后发、边发边听、冲突就停、随机等一会儿再来。只用于共享介质的以太网。' },
+  { id: 'distvec', term: '距离矢量', gloss: '每台路由器维护一张"到各目的地的代价 + 下一跳"表，只跟直连邻居交换整张表。更新式：到某目的地的代价 = min（到邻居的代价 + 邻居声称到目的地的代价）。一轮一轮把最短路扩散到全网，这就是分布式的 Bellman-Ford。' },
+  { id: 'counttoinf', term: '无穷计数', gloss: '链路断了以后，邻居可能把"其实要经过你才到得了"的旧路由又广播回来，路由器信了、加一跳再传，代价就一格格虚长，很慢才发现某处已不可达。RIP 把"无穷"定为 16 来封顶。水平分割 / 毒性逆转就是为了防它。' },
   { id: 'backoff', term: '二进制指数退避', gloss: '第 k 次冲突就从 0 到 2^k−1 里随机挑一个数，等这么多个争用期。冲突越多等得越久，16 次后放弃。' },
+  // ── 大模型推理 ──
+  { id: 'prefixcache', term: '前缀缓存 / KV 复用', gloss: '推理时每个 token 的 K、V 向量算一次可以反复用。多个请求若共享同一段前缀（同一 system prompt），这段前缀的 KV 只需算一次、跨请求复用。用一棵前缀（radix）树存已缓存的 token 路径，新请求沿树匹配，命中的前缀直接复用、不命中的才计算。' },
+  { id: 'prefill', term: 'prefill（预填充）', gloss: '大模型推理分两段：prefill 是把整段输入 prompt 一次性过一遍、算出每个 token 的 KV（算得多、并行度高）；decode 是之后一个一个吐字。前缀缓存省的正是 prefill —— 命中的前缀那段 KV 不用重算，输入越长、共享越多，省得越狠。' },
+  { id: 'paging', term: 'KV 分页', gloss: 'PagedAttention 把操作系统的分页搬到 KV 缓存：KV 不要求连续存放，切成固定大小的块（page），需要空间就从空闲块池拿一块、拿到哪块都行。这样从根上消灭了连续分配的外碎片 —— 和 OS 用分页取代连续内存分配是同一招。' },
+  { id: 'blocktable', term: '块表 / 块级映射', gloss: '每个请求维护一张块表，把它的逻辑块号映射到物理块号 —— 本质就是页表。物理块在池子里跳着分布也没关系，块表负责把它们串回该请求的逻辑顺序。释放时按块归还空闲池，别的请求立刻能复用。' },
+  // ── 机器学习 / 大模型原理 ──
+  { id: 'softmaxdef', term: 'softmax', gloss: '把一串任意实数（logits）压成一个概率分布：每个取 exp、再除以所有 exp 的总和，结果非负且和为 1。exp 保证非负与单调，除以总和保证归一。大模型每吐一个字都对下一个 token 的 logits 做 softmax。' },
+  { id: 'temp', term: '温度 Temperature', gloss: '采样最常调的旋钮，作用是在 softmax 之前先把 logits 除以 T。T 小（→0）差距被放大、分布变尖，越接近只选最大的那个（贪心、确定）；T 大（>1）差距被压平、分布变均匀，越随机、越有创造性。' },
+  { id: 'entropy', term: '熵（bit）', gloss: '衡量一个概率分布有多"不确定"：−Σ p·log₂p。分布越均匀熵越大（越不确定），越集中在一个选项上熵越小（越确定）。温度调高，softmax 分布变平，熵就变大 —— 熵把"更随机"这件事量化成了一个数。' },
+  { id: 'qkv', term: 'Q / K / V', gloss: '自注意力里每个 token 都投影出三个向量：Query（我要找什么）、Key（我能被什么找到）、Value（我携带的信息）。查询用自己的 Q 去和每个 token 的 K 比相似度，决定关注谁；再按关注度把各 token 的 V 加权汇总。真实模型里 Q/K/V 由 embedding 分别乘三个可学习矩阵得到。' },
+  { id: 'scaleddot', term: '缩放点积注意力', gloss: '注意力分数 = Q·K / √d：点积衡量两个向量有多相似（越相似分数越高），除以 √d（向量维度的平方根）是为了防止维度一大点积就过大、softmax 饱和成一个 one-hot。分数再经 softmax 变成和为 1 的注意力权重。' },
+  { id: 'params', term: '参数量', gloss: 'Transformer 的参数量按结构现算：embedding = vocab×d；每层注意力 = 4d²（Q/K/V/O 四个投影）；每层 FFN = 2·ffn·d²（升维+降维）。总数 = embedding + 层数×两者。GPT-2 small 这么一算恰好 124M。FFN 通常是参数大头。' },
+  { id: 'scaledd', term: '缩放 √d', gloss: '注意力分数是 Q 和 K 的点积，点积会随向量维度 d 变大（d 个乘积相加）。分数太大时 softmax 会落进饱和区：一个值≈1、其余≈0，几乎处处平坦、梯度接近 0，模型学不动。把分数统一除以 √d，正好抵消维度带来的放大，让 softmax 保持在合适的软硬程度。d 越大，除得越多 —— 这就是「缩放点积注意力」里那个 √d 的来历。' },
+  { id: 'causalmask', term: '因果掩码', gloss: '自回归生成时，第 i 个词只能看到自己和它前面的词（不能偷看未来）。做法：把第 i 行里所有 j>i 的注意力分数设成 −∞，softmax 之后这些位的权重恰好为 0。于是整张注意力矩阵变成严格下三角。训练时用它，才能让模型在预测每个位置时只依赖左侧上下文，和推理时逐字生成的信息可见范围一致。' },
+  { id: 'chunkpf', term: 'Chunked Prefill', gloss: '把一个长 prompt 的 prefill（一次性算完整段的 KV，耗时长）切成若干小块，块与块之间插进其它请求的 decode 步。这样正在解码的请求不用干等长 prefill 整块跑完，首字延迟大幅下降，而总时间几乎不变。本质是把大颗粒的“整块 prefill”拆成细颗粒、和 decode 交错调度 —— 和操作系统让多个进程轮流上处理器是同一思想。常和 PD 分离（prefill、decode 分到不同资源）一起提。' },
+  { id: 'kvoff', term: 'KV 换出 / offload', gloss: '当 GPU 显存装不下所有请求的 KV 缓存块时，把暂时用不到的块换出到容量大得多的 CPU 内存，需要时再换回 GPU。选哪个块换出通常挑最久没用的那个先走，和操作系统页面置换一模一样。好处是显存不够也能继续服务更多/更长的请求；代价是换出换入要走 PCIe 拷贝，比在显存里慢，所以要尽量少换、或异步预取。它把 KV 缓存的显存压力用“换到 CPU”的方式续命。' },
+  { id: 'allreduce', term: 'All-Reduce / 环形通信', gloss: '多卡把各自的一份数据求和、并让每张卡都拿到同一个结果，叫 all-reduce。朴素做法人人给人人发（G² 条消息、带宽爆）。环形（ring）算法把卡排成一个环，分两段共 2(G−1) 步：先 reduce-scatter —— 每步各卡把一个块发给环上下一张、对方累加，G−1 步后每张卡「拥有」某一个块的完整求和；再 all-gather —— 把这些已求和的块沿环传一圈，G−1 步后人人集齐所有块 = 完整总和。妙处：每步每张卡只收发一个块，用掉的带宽与卡数无关（带宽最优）。这是多卡对齐梯度/激活的基本操作，张量并行拼结果用的 all-gather 就是它的后半段。' },
+  { id: 'tpdef', term: '张量并行 / all-gather', gloss: '把一个大矩阵乘切到多张 GPU 上分头算，再拼回来。列并行：权重 W[K×N] 按列切成 G 份，第 g 张卡拿一段列、算出结果 Y 的对应一段列（Y_g = X·W_g）。每张卡只存 1/G 的权重、只做 1/G 的乘法。最后用一次跨卡通信 all-gather 把各卡的 Y 片拼成完整 Y。因为只是把同一个矩阵乘的列分开算，拼起来和单卡整算的结果完全一样 —— 不改结果，只把显存和算力摊到多卡（各降到 1/G），代价是那一次跨卡通信。它坐在「矩阵乘法」之上，是把大模型放上多卡跑的基本手段。' },
+  { id: 'layoutdef', term: '行主序 / 列主序', gloss: '矩阵是二维的，内存是一维的，把二维摊平进一维就是布局。row-major（行主序，C 和 NumPy 默认）：一行的元素在内存里连续存，元素 [i][j] 落在地址 i·cols+j。col-major（列主序，Fortran 和很多 BLAS 库默认）：一列的元素连续存，[i][j] 落在地址 j·rows+i。同一个矩阵、同样的值，两种布局在内存里的顺序完全不同。谁连续，顺着它走的访问就快（正好踩在 cache 行上、一次读一片）：row-major 里扫一行步长 1（连续、快）、扫一列步长 cols（跳着、慢），col-major 反过来。矩阵乘、转置、reshape 都要在意布局，否则访存跳来跳去、cache 命中率崩。' },
+  { id: 'matmuldef', term: '矩阵乘法', gloss: '两个矩阵相乘 A·B=C。规则：A 是 M×K、B 必须是 K×N（A 的列数=B 的行数，这个共同的 K 叫内维），结果 C 是 M×N。C 的每个格 C[i][j] = A 的第 i 行和 B 的第 j 列做点积 = Σ_k A[i][k]·B[k][j]（对应位相乘再全加起来）。总运算量 = 2·M·N·K 次浮点（每格 K 次乘 + K 次加）。神经网络几乎每一步都是矩阵乘：注意力的 Q·Kᵀ、前馈网络的 W·x、输出层投影到词表，全是它。FlashAttention 分块、多卡并行切矩阵，都是在切分这个乘法、并不改变结果。' },
+  { id: 'fwpass', term: '前向传播 / 一次 decode', gloss: '模型推理时，把输入向量从头算到尾、吐出下一个 token 的完整过程，叫一次前向传播。一层 Transformer 块的顺序是：归一化 → 自注意力 → 残差相加 → 归一化 → 前馈网络 FFN → 残差相加；真实模型把这样的块叠几十上百层，最后一层归一化后接 LM 头投影到词表，得到每个词的 logit，再 softmax + 采样选出下一个 token。生成一句话就是把这条链重复跑很多次（每次多吐一个字）。推理引擎里 KV 缓存、FlashAttention、量化、连续批处理，优化的都是这条链的速度，不改变它算出来的结果。' },
+  { id: 'rmsdef', term: 'RMSNorm / 均方根归一化', gloss: '把一个向量缩放到统一尺度的归一化方法，Transformer 每个子层前都用。均方根 RMS = √(各维平方的平均)。RMSNorm 把向量每一维都除以这个 RMS，于是归一化后向量的均方根恰好为 1（尺度被拉齐），再乘一个可学习的增益 g（每维一个）微调。它和 LayerNorm 的关键区别是：LayerNorm 先减均值再除标准差、还带偏置，RMSNorm 不减均值、不带偏置，更省计算和参数，效果却相当 —— 所以 LLaMA、Qwen 等主流大模型都改用它。' },
+  { id: 'ropepos', term: 'RoPE 旋转位置编码', gloss: '给注意力加位置信息的一种做法。注意力本身对词序无感（打乱词序结果一样），需要额外告诉它每个词在第几位。RoPE 把每对相邻维度 (x₂ᵢ, x₂ᵢ₊₁) 看成平面上的一个 2D 向量，按“位置 × 频率 θ”的角度旋转它。旋转只改方向、不改模长。妙处在于：位置 m 的 query 和位置 n 的 key 各自旋转后做点积，结果只依赖夹角差 (m−n)·θ —— 只和相对位置有关、与绝对位置无关，所以能自然泛化到训练时没见过的更长上下文。真实实现给每对维度一个不同的频率 θᵢ=base^(−2i/d)：转得快的编码精细位置、慢的编码粗位置。' },
+  { id: 'moeroute', term: 'MoE / 专家路由', gloss: '把 Transformer 里那个最大的 FFN 拆成 E 个小“专家”网络，再加一个 router 给每个 token 打分。门控 = softmax(router 分数)，只取分数最高的 top-k 个专家来算，输出是这 k 个专家结果按门控加权求和。于是模型的总参数量随专家数 E 增长（容量变大），但每个 token 只激活 k 个专家、算力只随 k 走（活跃参数 ∝ k/E）。这就是“总参数几百 B、推理只激活几十 B”的稀疏激活。代价是各专家接到的 token 数可能不均（负载不均衡），要靠均衡策略缓解。' },
+  { id: 'quantsym', term: '对称量化 / scale', gloss: '把浮点权重压成低位整数的一种做法。先定一个步长 scale = 该组权重绝对值最大 ÷ 整数上限（int8 是 127、int4 是 7）；再把每个权重除以 scale、四舍五入成整数存起来；用时反量化 ŵ = 整数 × scale 还原。因为整数只有有限格、scale 一格代表固定大小，还原值和原值会差一点点（舍入误差）。位数越少，可用的整数格越少、scale 越大、误差越大，但每个权重占的字节越少、越省显存。这是拿一点精度换显存和带宽。' },
+  { id: 'specdraft', term: '草稿 / 目标模型', gloss: '投机解码里的两个模型：草稿模型小而快、猜得不一定准，负责一口气提议 K 个后续 token；目标模型（真正要用的大模型）大而准、也贵，负责一次前向并行验证这 K+1 个位置。验证时从头比对，接受草稿猜对的最长前缀，第一个猜错处用目标模型自己的 token 纠正，其余作废；K 个全中还能白送目标模型的下一个 token。因为落地的每个 token 都由目标模型定夺，最终输出和只用目标模型逐字生成完全一致 —— 草稿只是帮忙提速，不改变结果。' },
+  { id: 'roofmodel', term: 'Roofline / 算术强度', gloss: '判断一个 kernel 到底卡在哪的性能模型。算术强度 AI = FLOPs ÷ 搬运字节数（每从显存搬一个字节，能做几次浮点运算）。机器有两个上限：峰值算力 P（每秒多少 FLOP）和峰值带宽 B（每秒搬多少字节），两者之比 P/B 叫脊点。可达性能 = min(P, AI·B)：当 AI 小于脊点，性能被带宽卡住（memory-bound，搬得慢）；大于脊点，被算力卡住（compute-bound，算得慢）。画成图就是一条“先斜坡后平顶”的屋顶线。大模型解码 AI≈1、深陷带宽瓶颈，所以优化都在想办法抬高 AI。' },
+  { id: 'onlinesoftmax', term: '在线 softmax', gloss: '一次只看一小块数据、就能算出和「看完整批」完全一样的 softmax 加权和的技巧。维护三个滚动量：m（目前见过的最大分数）、l（exp 之和）、O（加权和）。每来一个新块，先把旧的 l、O 按 exp(旧max − 新max) 缩放，对齐到新的最大值，再加上本块的贡献。因为 softmax 对所有分数同减一个常数结果不变，这样分块累加与一次性 softmax 分毫不差。FlashAttention 靠它边扫块边算，中间那条完整的分数向量永远不用存下来。' },
+  { id: 'hbmsram', term: 'HBM / SRAM', gloss: 'GPU 的两级存储：HBM 是显存，容量大但带宽相对慢；SRAM 是片上缓存，容量极小但快几十倍。注意力慢往往不是算得慢，而是那条很长的分数向量在 HBM 里被反复读写（访存瓶颈）。FlashAttention 把计算搬进 SRAM 分块做，分数向量不落 HBM —— 和 CPU 缓存的分块（blocking）优化是同一招：让数据尽量待在快的那层里算完。' },
+  { id: 'kvprefill', term: '预填充 / 解码', gloss: '大模型推理分两段：预填充（prefill）把整段输入 prompt 一次性喂进模型、并行算出每个 token 的 K/V（算得多、并行度高）；解码（decode）是之后一个字一个字地吐，每步都要用到前面所有 token 的 K/V。KV 缓存省的正是解码阶段这份对前缀 K/V 的重复计算。' },
+  { id: 'kvmem', term: 'KV 缓存显存', gloss: '推理时每个 token 的 K、V 向量要缓存起来供后续复用。显存 = 2（K 和 V）× 层数 × 序列长 × d × 每参数字节。它是每序列的额外开销，随序列长度和并发请求数线性增长 —— 长上下文、高并发的显存压力主要来自它，而权重是固定开销。' },
+  { id: 'topk', term: 'top-k 采样', gloss: '吐字前只保留概率最高的 k 个候选，其余全部置 0，再在这 k 个里重新归一化后采样。按"个数"截断，简单但固定 —— 不管这 k 个概率是很接近还是很悬殊，都恰好留 k 个。' },
+  { id: 'topp', term: 'top-p / 核采样', gloss: '把候选按概率从大到小累加，保留累计概率刚超过 p 的那一小撮（"核"），其余砍掉再归一化。按"累计概率"截断：分布很尖时只留一两个（省得采到长尾），分布很平时自动多留几个（保住多样性）—— 比 top-k 更能随分布自适应。' },
+  { id: 'bpe', term: 'BPE 分词', gloss: '字节对编码：先把文本拆成最小单位（字符/字节），再按训练好的 merge 表逐条把高频相邻对合并成一个 token。merge 表是在语料上统计学出来的，高频组合优先合并 —— 这让常见词压成很少的 token，罕见串保留更多 token。' },
+  { id: 'tokencost', term: 'token 成本', gloss: '大模型按 token 计费、上下文也按 token 算长度。分词器的 merge 表主要在英文语料上学，英文常见词能一路合并成一两个 token；中文很多字的组合不在表里、甚至先被拆成 2-3 个 UTF-8 字节，合并不动，同样一句话 token 数更多 —— 这就是"中文更贵"的技术原因。' },
+  { id: 'contbatch', term: '连续批处理', gloss: '推理引擎把多个请求凑成一个 batch 一起过 GPU。静态批处理等整批跑完才收下一批，请求长短不一时空槽白白浪费；连续批处理每个 decode 步都动态调整 batch —— 请求吐完就离场、腾出的槽立刻补进排队的请求。本质是把进程调度搬到 GPU：槽相当于 CPU、请求相当于进程、每一步 decode 相当于一次调度。' },
+  { id: 'mhavariant', term: 'MHA / MQA / GQA', gloss: '多头注意力的三种变体，差在 KV 头怎么共享。MHA：每个 query 头一个 KV 头，表达力最强但 KV 缓存最大。MQA：所有 query 头共享 1 个 KV 头，KV 缓存最小但可能掉点。GQA：query 头分组、每组共享一个 KV 头，是前两者的折中，现在大模型（LLaMA2、Qwen 等）普遍用它。KV 缓存大小正比于 KV 头数。' },
+  { id: 'gpuutil', term: 'GPU 利用率', gloss: '当前在跑的 batch 槽数占总槽数的比例。请求长短不一时，静态批处理会因为等最慢的请求而让空槽闲置、利用率低；连续批处理把空槽随时补满，利用率接近 100%，同样的卡能服务更多请求、吞吐更高。' },
 ]
 
 /** 每个实验一段。**加实验必须加这一段** —— 冒烟会数够不够 30 个。 */
 export const GUIDES: Record<string, Guide> = {
   cache: {
     question: '同一串内存地址，Cache 怎么摆能少跑几趟内存？',
+    /*
+     * 固定四段：当前输入 → 本步规则 → 状态怎么变 → 该在画面哪里看。
+     * 先让人跟完一次具体的推演，「组相联」那个正式名字放到后面的名词卡里 ——
+     * 定义式的说法要求读者先在脑子里建一个整体图景，
+     * 而他此刻正盯着一个具体地址在找它去哪儿。
+     */
+    basics: [
+      {
+        title: '先分清三个词：内存块 / 组 / 路',
+        body: '**内存块** —— 主存按块大小（此处 16B）划分为等长的块，调入调出均以块为单位：'
+          + '访问 0x210 将把 0x210~0x21F 整块调入。地址 ÷ 块大小即该地址所属的**块号**。'
+          + '　**组**（set） —— Cache 划分为若干组，图中一行即一组。内存块映射到哪一组'
+          + '由块号对组数取模**唯一确定**，不可选择。'
+          + '　**路**（way） —— 同一组内并列的若干存储位置，每一路存放一个内存块，'
+          + '表头「路 0」「路 1」即由此而来（路号从 0 起数）。'
+          + '"2 路"即每组有两个位置；实际处理器中常见 4 路、8 路。',
+      },
+      {
+        title: 'tag / index / offset 各管一件事',
+        body: '地址划分为三段：**Index 决定去哪组，Tag 决定是不是它，Offset 决定取块里的哪个字节**。'
+          + '　`index` 唯一确定检索的组，其余组不参与比较；'
+          + '`offset` 指出块内的字节位置；剩余高位为 `tag`，随块一同存入该路。'
+          + '　tag 的必要性在于：**多个不同的内存块会映射到同一组**'
+          + '（0x10、0x110、0x210 的组号均为 1）。它们共用同一组的若干路，'
+          + '只能依据 tag 判定某一路当前存放的是否为目标块。'
+          + '　**tag 是编号而非地址**，故界面上不加 0x 前缀。',
+      },
+    ],
+    step: (s: never, doc) => {
+      const st = s as {
+        address: number; tag: number; setIndex: number; offset: number
+        outcome: 'hit' | 'miss'; wayUsed: number; evictedTag: number | null
+      }
+      const hex = (n: number) => '0x' + n.toString(16).toUpperCase()
+      const ways = Number(doc.params.associativity) || 1
+      const hit = st.outcome === 'hit'
+      /*  ⚠️ 用词跟舞台对齐：**组**（一行）· **路**（行里的一个格子）·
+          **内存块**（格子里装的东西）。tag 印十进制 —— 它是编号不是地址。
+          用户原话：「块-》tag，组-》组/index，这些文字没统一」。 */
+      /*
+       * ⚠️ 这三段是照**右栏那一列**（约 300px、一行二十来个汉字）写的，
+       * 不是照原来那条横带子（约 1300px、四段并排）。同一句话在两种宽度下
+       * 的成本差着三倍：横带子里两行说完的话，竖栏里要五行。
+       * 措辞仍是书面陈述 —— 短不等于口语，砍掉的是**重复的主语和铺垫**，
+       * 不是把「判定为缺失」写成「没接住」。
+       */
+      const policy = String(doc.params.replacement ?? 'LRU')
+      return [
+        { k: '本步输入',
+          v: `内存地址 **${hex(st.address)}**` },
+        { k: '判定规则',
+          v: `由 index = **${st.setIndex}**，只检查组 ${st.setIndex} 的 ${ways} 路。` },
+        { k: '本步结果',
+          v: hit
+            ? `路 ${st.wayUsed} 的 tag = ${st.tag}，**命中**，不访问主存。`
+            : st.evictedTag === null
+              ? `${ways} 路的 tag 均 ≠ ${st.tag}，**缺失**；装入空闲的路 ${st.wayUsed}。`
+              : `${ways} 路的 tag 均 ≠ ${st.tag}，**缺失**；按 ${policy} 淘汰路 ${st.wayUsed}（原 tag ${st.evictedTag}），装入新块。` },
+        /*
+         * ⚠️ **这一屏没有「对应画面」那一段。**
+         *
+         * 四段骨架（本步输入 / 判定规则 / 本步结果 / 对应画面）里，第四段的活是
+         * 「这段话对应屏幕上哪一块」—— 那是给"文字在一处、图在另一处"准备的。
+         * 而 Cache 这一屏改版之后，推演就贴在图旁边的右栏里，
+         * 因果链末端、状态列、本步结果带三处已经把结论写在图上了；
+         * 再写一段话去描述读者正盯着的那张图，是同一件事说第四遍。
+         *
+         * 骨架仍然成立：段名的顺序和含义没变，只是这一屏用不上最后一段。
+         * 冒烟因此不再写死"必须四段"，改成验"是骨架的前缀、且至少三段"。
+         */
+      ]
+    },
+    /*  ⚠️ 新条目一律**追加在末尾**：卡片 id 是 `read${i}`，按位置生成的。
+        往前插一条，read0/read1 的含义整体错位，而冒烟里按 id 认卡的判据会一起红 ——
+        「拿位置当键」在这个仓里已经栽过八次。 */
+    verdict: (s: never) => {
+      const st = s as { setIndex: number; wayUsed: number; outcome: 'hit' | 'miss'; evictedTag: number | null }
+      return st.outcome === 'hit'
+        ? `命中 · 组 ${st.setIndex} 路 ${st.wayUsed}`
+        : `缺失 · 装入组 ${st.setIndex} 路 ${st.wayUsed}`
+    },
     read: [
-      { at: '上面那条彩色的位串', is: '当前访问的地址被切成三段：标记 / 组号 / 块内偏移。', anchor: '.bitrow' },
-      { at: '中间的格子矩阵', is: 'Cache 本身。竖着是组，横着是组内的路。虚线箭头指向这次落到哪一组。', anchor: '.sets' },
+      { at: '左边那三个彩色方块', is: '当前地址被切成三段：**tag / index / offset**。每段下面写着它管什么、以及位宽是怎么算出来的；再往下是同一件事的除法写法（考场上手算用的那一版）。', anchor: '.bitrow' },
+      { at: '右边那张表', is: '这就是 Cache 本身。**一行是一个组，行里并排的几格就是几条路**，格子里写着它装的那一块的 tag 和对应的主存地址区间。最右边一列是这一步对这一组的判定 —— 只有被检索的那一组有话说。', anchor: '.sets' },
       { at: '轴上的柱子', is: '到这一步为止的滚动命中率 —— 绿格命中、红格缺失。', anchor: '.axis' },
+      { at: '最上面那条链', is: '这一步的完整推理：**地址 → index 定组 → 检索该组 → 比对 tag → 命中还是缺失**。末端那个词就是本步的结论，别处不再重复写一遍。', anchor: '.chain' },
     ],
     try: [
-      { act: '把相联度从 2 调到 1', watch: '地址拆分里组号变长、标记变短；同组冲突的那几个地址开始互相挤，命中率掉下来。', param: '相联度' },
+      { act: '把相联度从 2 调到 1', watch: '表从 8 行、每行 2 个方框，变成 16 行、每行 1 个，地址里中间那段变长、tag 段变短。**先看命中率变没变** —— 这串地址上它可能一点不动；想看出差别，换下面那串「同组冲突」。', param: '相联度' },
       { act: '换成「同组冲突」预置序列', watch: '这串地址全落在同一组 —— 相联度 1 时几乎全红，调到 4 就几乎全绿。', preset: '同组冲突' },
       { act: '把块大小从 16 调到 64', watch: '块内偏移占的位变多、组号变少；顺序访问会因为"搬一块就带进来好几个"而变好。', param: '块大小' },
     ],
-    terms: ['hit', 'setassoc', 'direct', 'fullassoc', 'tagidx', 'lru', 'locality'],
+    terms: ['hit', 'blockway', 'setassoc', 'direct', 'fullassoc', 'tagidx', 'lru', 'locality'],
   },
   scheduler: {
     question: '同一批进程，换个调度算法，谁先跑完、平均等多久？',
+    step: (s: never, doc) => {
+      const st = s as { t: number; running: string | null; readyQueue: string[]
+                        remaining: Record<string, number>; completed: string[]; sliceLeft: number }
+      const algo = String(doc.params.algorithm)
+      const q = Number(doc.params.quantum) || 0
+      const wait = st.readyQueue.length
+      const RULE: Record<string, string> = {
+        FCFS: '**先来先服务**：谁先到谁先跑，跑完为止，中途不换人。',
+        SJF: '**短作业优先**：每次从就绪队列里挑**服务时间最短**的那个，一旦开跑不抢占。',
+        SRTF: '**最短剩余时间优先**：每来一个新进程都比一次 —— 它的服务时间比当前进程**剩下的**还短，就当场抢占。',
+        RR: `**时间片轮转**：每个进程最多连跑 ${q} 个时刻，时间片一到就排到队尾，轮下一个。`,
+        Priority: '**优先级调度**：每次挑优先级最高的那个（数字小的优先）。',
+      }
+      return [
+        { k: '本步输入', v: `时刻 **${st.t}**；就绪队列里排着 ${wait} 个${wait ? `（${st.readyQueue.join('、')}）` : ''}` },
+        { k: '判定规则', v: RULE[algo] ?? `按 ${algo} 挑下一个该跑的进程。` },
+        { k: '本步结果',
+          v: st.running
+            ? `本时刻 CPU 上跑的是 **${st.running}**，它还剩 ${st.remaining[st.running] ?? 0} 个时刻`
+              /*  ⚠️ 时间片**只有 RR 有**。`quantum` 这个参数在别的算法下照样有默认值，
+                  拿 `q > 0` 判断就会在 SRTF 上印出「当前时间片还剩 1 个时刻」——
+                  一句听着很专业的假话。 */
+              + (algo === 'RR' ? `，当前时间片还剩 ${st.sliceLeft} 个时刻。` : '。')
+              + (st.completed.length ? `已完成 ${st.completed.length} 个。` : '')
+            : `本时刻 CPU **空闲**：没有已到达且未完成的进程。已完成 ${st.completed.length} 个。` },
+      ]
+    },
     read: [
       { at: '甘特图每一行', is: '一个进程。深色格是它在 CPU 上跑，浅色是就绪等待。', anchor: '.gantt' },
       { at: '进程表', is: '题面数据：到达时刻和服务时间。可以直接改，也可以加一行。', anchor: '.enttab' },
@@ -223,6 +437,36 @@ export const GUIDES: Record<string, Guide> = {
   },
   tcp: {
     question: '一条 TCP 连接遇到丢包，发送窗口是怎么涨、怎么砍的？',
+    step: (s: never, doc) => {
+      const st = s as { round: number; cwnd: number; ssthresh: number
+                        phase: 'slowStart' | 'congestionAvoidance' | 'fastRecovery'
+                        event: 'none' | 'timeout' | 'tripleDup'; nextCwnd: number }
+      const variant = String(doc.params.variant)
+      const PHASE = { slowStart: '慢启动', congestionAvoidance: '拥塞避免', fastRecovery: '快恢复' }
+      const ev = st.event === 'timeout' ? '**超时**'
+        : st.event === 'tripleDup' ? '**三次重复 ACK**' : '没有丢包'
+      const rule = st.event === 'timeout'
+        ? '超时表示连重复 ACK 都未收到，无法判断链路仍可达。'
+          + '两个版本处置相同：ssthresh 置为当前 cwnd 的一半，cwnd 置为 1，重新进入慢启动。'
+        : st.event === 'tripleDup'
+          ? variant === 'Reno'
+            ? '收到三个重复 ACK，说明后续报文仍在到达，链路未中断。'
+              + 'Reno 据此只做减半：ssthresh 取当前 cwnd 的一半，cwnd 同时降至该值，直接进入拥塞避免（快恢复）。'
+            : 'Tahoe **不区分**两类丢包：无论超时还是重复 ACK，一律将 cwnd 置为 1 并重新慢启动。'
+          : st.phase === 'slowStart'
+            ? '慢启动阶段：每经过一个 RTT，cwnd **加倍**；达到 ssthresh 后转入拥塞避免。'
+            : '拥塞避免阶段：每个 RTT 仅 **加 1**，以线性方式试探可用带宽。'
+      return [
+        { k: '本步输入', v: `第 **${st.round}** 个 RTT；本轮事件：${ev}` },
+        { k: '判定规则', v: rule },
+        { k: '本步结果',
+          v: `cwnd ${st.cwnd} → **${st.nextCwnd}** MSS，ssthresh ${st.ssthresh}，`
+            + `当前阶段为**${PHASE[st.phase]}**。` },
+        { k: '对应画面',
+          v: `曲线第 ${st.round} 个数据点（实线为 cwnd，虚线为 ssthresh）`
+            + `${st.event === 'none' ? '' : '；本轮的丢包事件以红色竖虚线标出'}。` },
+      ]
+    },
     read: [
       { at: '锯齿曲线', is: '实线是 cwnd，虚线是 ssthresh。竖的红虚线是丢包事件。', anchor: '.curve' },
       { at: '状态机页签', is: '当前处在慢启动、拥塞避免还是快恢复，以及这一档的涨法。', anchor: '.tabs' },
@@ -235,6 +479,35 @@ export const GUIDES: Record<string, Guide> = {
   },
   page: {
     question: '同一串页面引用，哪种置换算法缺页少？多给物理块一定更好吗？',
+    step: (s: never, doc) => {
+      const st = s as { i: number; page: number; outcome: 'hit' | 'fault'
+                        frameUsed: number; evictedPage: number | null
+                        faults: number; hits: number; hand: number
+                        frames: ({ page: number } | null)[] }
+      const algo = String(doc.params.algorithm)
+      const n = Number(doc.params.frames)
+      const hit = st.outcome === 'hit'
+      const RULE: Record<string, string> = {
+        FIFO: '**先进先出**：物理块满了就换出**最早装进来**的那一页，不管它刚刚有没有被用过。',
+        LRU: '**最近最少使用**：换出**最久没被访问**的那一页。',
+        OPT: '**最佳置换**：换出**将来最久不会用到**的那一页 —— 需要预知未来，只能当理论下界。',
+        CLOCK: '**时钟算法**：指针转着圈找使用位为 0 的页；碰到 1 就清零并继续转。它是 LRU 的近似。',
+      }
+      return [
+        { k: '本步输入', v: `第 **${st.i + 1}** 次引用，访问页 **${st.page}**；共 ${n} 个物理块` },
+        { k: '判定规则',
+          v: `先看这一页在不在物理块里：在就是命中，不必调页。`
+            + `不在则要调入，物理块满了就得换出一页 —— ${RULE[algo] ?? algo}` },
+        { k: '本步结果',
+          v: hit
+            ? `页 ${st.page} 已在物理块 ${st.frameUsed} 里，判定为**命中**，不发生调页。`
+              + `累计命中 ${st.hits} 次、缺页 ${st.faults} 次。`
+            : st.evictedPage === null
+              ? `页 ${st.page} 不在，判定为**缺页**：装入空闲的物理块 ${st.frameUsed}。累计缺页 ${st.faults} 次。`
+              : `页 ${st.page} 不在，判定为**缺页**；物理块已满，按 ${algo} 换出页 ${st.evictedPage}，`
+                + `新页占用物理块 ${st.frameUsed}。累计缺页 ${st.faults} 次。` },
+      ]
+    },
     read: [
       { at: '置换表', is: '每一列是一次引用，格子里是当时各物理块装着谁，红色表示这次缺页。', anchor: '.ptable' },
       { at: '引用串输入框', is: '题面数据，可以直接改。', anchor: '.seqin' },
@@ -247,6 +520,37 @@ export const GUIDES: Record<string, Guide> = {
   },
   disk: {
     question: '一队磁道请求，磁头按什么顺序走最省？',
+    step: (s: never, doc) => {
+      const st = s as { i: number; from: number; head: number; served: number
+                        moved: number; total: number; pending: number[]
+                        dir: number; sweep: boolean; via: number[] }
+      const algo = String(doc.params.algorithm)
+      const RULE: Record<string, string> = {
+        FCFS: '**先来先服务**：严格按请求到达的顺序走，不管磁头此刻在哪儿。',
+        SSTF: '**最短寻道优先**：每次挑离磁头**当前位置最近**的那个请求 —— 近端密集时远端会饿死。',
+        SCAN: '**电梯算法**：朝一个方向一路服务到**磁盘边界**再掉头。',
+        LOOK: '**LOOK**：朝一个方向服务到**那个方向上最远的请求**就掉头，不走到边界。',
+        'C-SCAN': '**C-SCAN**：单向服务，走到边界后**直接回到另一端**重新开始，不在回程上服务。',
+      }
+      /*  ⚠️ `dir` 这个字段**每种算法都填**（初值就是 ±1），可"方向"这个概念
+          只对 SCAN 这一系成立 —— FCFS/SSTF 是按请求挑的，说它"当前方向向大磁道"
+          是句假话。所以按算法过滤，不按字段有没有值过滤。 */
+      const scanLike = ['SCAN', 'LOOK', 'C-SCAN', 'C-LOOK'].includes(algo)
+      const dir = scanLike ? (st.dir > 0 ? '向大磁道' : st.dir < 0 ? '向小磁道' : '') : ''
+      return [
+        { k: '本步输入', v: `磁头在磁道 **${st.from}**；还有 ${st.pending.length} 个请求没服务${dir ? `；当前方向${dir}` : ''}` },
+        { k: '判定规则', v: RULE[algo] ?? `按 ${algo} 决定下一个去哪个磁道。` },
+        /*  ⚠️ `served` 存的是**本步服务的那个磁道号**，不是"已服务几个"。
+            按后者写出来就是「已服务 14 个请求」而实际只服务了 4 个 ——
+            字段名像计数，值却是编号，这种谎判据抓不到（非空、也跟着变）。 */
+        { k: '本步结果',
+          v: st.sweep
+            ? `这一步是**空跑**：走到 ${st.head} 只为掉头/回绕，途中没有请求可服务。`
+              + `移动 ${st.moved} 个磁道，累计 ${st.total}。`
+            : `磁头移到磁道 **${st.head}**${st.via.length ? `（途经 ${st.via.join(' → ')}）` : ''}，`
+              + `本步移动 **${st.moved}** 个磁道，累计寻道 **${st.total}**。还剩 ${st.pending.length} 个请求。` },
+      ]
+    },
     read: [
       { at: '轨迹图', is: '横轴是磁道号，折线是磁头走过的路。空心虚线圈是"只是路过或掉头"的折返点。', anchor: '.dplot' },
       { at: '右边读数', is: '这一步移动了多少磁道、累计多少。', anchor: '.readouts' },
@@ -260,6 +564,41 @@ export const GUIDES: Record<string, Guide> = {
   },
   sort: {
     question: '七种排序，每一趟之后数组长什么样？哪些位置是真定了？',
+    step: (s: never, doc) => {
+      const st = s as { i: number; arr: number[]; hole: number; held: number | null
+                        compare: number[]; changed: number[]; pass: number; passEnd: boolean
+                        settled: number[]; sorted: number[]; comparisons: number; moves: number }
+      const algo = String(doc.params.algorithm)
+      /*  ⚠️ 键要跟**参数的实际取值**对上：注册表里写的是「冒泡」不是「冒泡排序」。
+          对不上时会静静落到兜底那句「按 快速 决定这一步比谁、动谁」——
+          非空、也跟着变，判据一条都抓不到，只有人念一遍才看得出这是句废话。 */
+      const RULE: Record<string, string> = {
+        冒泡: '**冒泡**：相邻两个比一次，大的往后挪。每趟结束，最大的那个**沉到位**，之后再也不动。',
+        直接插入: '**直接插入**：把当前这个数往前面已排好的那段里插。注意前缀只是**暂时有序**，后面还会被挤动。',
+        简单选择: '**简单选择**：每趟在未排序区里找最小的，跟区首交换 —— 每趟**确定一个**最终位置。',
+        快速: '**快排**：选一个基准，比它小的甩左边、大的甩右边；基准归位后**它的位置就定了**。',
+        堆: '**堆排序**：先建大顶堆，然后反复"堆顶跟末尾交换、堆长度减一、重新下沉" —— 每次**定一个**。',
+        希尔: '**希尔**：按增量分组做插入排序，增量逐轮减半。中途每一段都只是**暂时有序**。',
+        归并: '**归并**：两两归并有序段。中途的有序段是**局部的**，最后一次归并完才全局有序。',
+      }
+      const held = st.hole >= 0 ? `手里正端着 **${st.held}**，下标 ${st.hole} 那格是旧副本（挖坑法）。` : ''
+      return [
+        { k: '本步输入',
+          v: `第 **${st.pass || 1}** 趟；数组 ${st.arr.join(' ')}`
+            + (st.compare.length ? `；本步比较下标 ${st.compare.join(' 与 ')}` : '') },
+        { k: '判定规则', v: RULE[algo] ?? `按 ${algo} 决定这一步比谁、动谁。` },
+        { k: '本步结果',
+          v: (st.changed.length ? `下标 ${st.changed.join('、')} 发生了写入。` : '本步只比较，没有写入。')
+            + held
+            + `累计比较 ${st.comparisons} 次、移动 ${st.moves} 次。`
+            + (st.settled.length
+                ? `已**确定最终位置**的有 ${st.settled.length} 个。`
+                : st.sorted.length
+                  ? `下标 ${st.sorted[0]}~${st.sorted[st.sorted.length - 1]} 这一段**暂时有序**，后面还会动。`
+                  : '')
+            + (st.passEnd ? ' 本步是这一趟的末尾。' : '') },
+      ]
+    },
     read: [
       { at: '柱状数组', is: '当前状态。深色是**已确定最终位置**，浅色只是**暂时有序、后面还会动**。', anchor: '.sbars' },
       { at: '空出来的那一格', is: '挖坑法：手里正端着一个值，坑还没填上 —— 所以数组看起来会"少一个"。', anchor: '.sbars' },
@@ -273,6 +612,37 @@ export const GUIDES: Record<string, Guide> = {
   },
   dijkstra: {
     question: '从一个点出发，到每个点的最短路是怎么一步步定下来的？',
+    step: (s: never, doc) => {
+      const st = s as { act: 'pick' | 'relax' | 'skip' | 'done'; at: string; to: string
+                        dist: Record<string, number>; prev: Record<string, string | null>
+                        settled: string[]; improved: boolean }
+      const src = String(doc.params.source)
+      const d = (v: string) => (st.dist[v] === undefined || st.dist[v] === Infinity ? '∞' : String(st.dist[v]))
+      const open = Object.keys(st.dist).filter(v => !st.settled.includes(v))
+      return [
+        { k: '本步输入',
+          v: st.act === 'pick'
+            ? `未确定的点还有 ${open.length} 个，各自的当前距离：${open.map(v => `${v}=${d(v)}`).join('、')}`
+            : st.act === 'done'
+              ? `全部 ${st.settled.length} 个点都已确定`
+              : `刚确定的点是 **${st.at}**（距离 ${d(st.at)}），正在看它的邻边 ${st.at}→${st.to}` },
+        { k: '判定规则',
+          v: st.act === 'pick'
+            ? `从**未确定**的点里挑当前距离最小的那个，把它**定下来** —— `
+              + `之后再也不会更短，因为边权非负，绕远路只会更长。`
+            : st.act === 'done'
+              ? `没有可挑的点了：要么全部确定，要么剩下的从 ${src} 根本走不到。`
+              : `**松弛**：如果"经过 ${st.at} 再到 ${st.to}"比 ${st.to} 现在记的距离更短，就改小它。` },
+        { k: '本步结果',
+          v: st.act === 'pick'
+            ? `确定 **${st.at}**，距离 ${d(st.at)}；已确定 ${st.settled.length} 个点。`
+            : st.act === 'done'
+              ? `结束。从 ${src} 出发的最短距离：${Object.keys(st.dist).map(v => `${v}=${d(v)}`).join('、')}。`
+              : st.improved
+                ? `更短，改小：**${st.to}** 的距离变成 ${d(st.to)}，前驱记成 ${st.prev[st.to] ?? '—'}。`
+                : `不更短，**不改**：${st.to} 保持 ${d(st.to)}。` },
+      ]
+    },
     read: [
       { at: '图', is: '结点上的数字是当前记录的最短距离，加粗的边是最短路径树。', anchor: '.gvwrap' },
       { at: '逐轮距离表', is: '每一轮：选中谁、松弛了谁、哪些距离被改小了。', anchor: '.tabs' },
@@ -285,6 +655,54 @@ export const GUIDES: Record<string, Guide> = {
   },
   banker: {
     question: '现在把资源分出去，会不会走进死锁？',
+    step: (s: never, doc) => {
+      const st = s as { act: 'init' | 'try' | 'accept' | 'reject' | 'safe' | 'unsafe'
+                        pid: string; work: Record<string, number>
+                        finish: Record<string, boolean>; sequence: string[]
+                        need: Record<string, Record<string, number>> }
+      const res = String(doc.params.resources).split(/[\s,，]+/).filter(Boolean)
+      const w = res.map(r => `${r}=${st.work[r] ?? 0}`).join(' ')
+      const left = Object.keys(st.finish).filter(p => !st.finish[p])
+      const need = st.pid && st.need[st.pid]
+        ? res.map(r => `${r}=${st.need[st.pid]![r] ?? 0}`).join(' ')
+        : ''
+      return [
+        { k: '本步输入',
+          v: st.act === 'init'
+            ? `可用资源 Work = ${w}；${left.length} 个进程还没跑完`
+            /*  ⚠️ 末帧（safe / unsafe）**没有"正在试"的对象** —— `pid` 是空的。
+                照通用模板走会吐出「正在试 **—**」这种破句（体验师在第 14 步抓到）。
+                收尾这一帧要说的是"推演结束、结果如何"，不是"正在试谁"。 */
+            : st.act === 'safe' || st.act === 'unsafe'
+            ? `推演结束：Work = ${w}；`
+              + (st.act === 'safe'
+                ? `${Object.keys(st.finish).length} 个进程全部排得进来`
+                : `还剩 ${left.length} 个进程谁都满足不了`)
+            : `Work = ${w}；正在试 **${st.pid || '—'}**${need ? `，它还差 Need = ${need}` : ''}` },
+        { k: '判定规则',
+          v: `安全性检查：反复找一个**还没跑完、且 Need ≤ Work** 的进程。`
+            + `找到就**假设**它跑完并把 Allocation 全还回来（Work 增大），继续找下一个。`
+            + `注意这只是"推演"，不真的分配。` },
+        /*  ⚠️ **两帧的分工要看清楚**：`accept` 那一帧只是"判定它能满足"，
+            此时 `work` 还没加回来、`sequence` 也还没 push；真正的归还在下一帧
+            （`act:'try'`）。照 accept 那一帧去写"还回来之后 Work = …"，
+            印出来的是**归还前**的数，而且安全序列是空的。 */
+        { k: '本步结果',
+          v: st.act === 'accept'
+            ? `${st.pid} 的 Need ≤ Work，**可以满足** —— 假设把它排进去让它跑完。`
+              + `（资源要到下一步才归还，所以此刻 Work 还是 ${w}。）`
+            : st.act === 'try'
+              ? `${st.pid} 跑完并归还了它已占的资源，Work 增大到 ${w}。`
+                + `当前安全序列：${st.sequence.join(' → ') || '（刚开始）'}。`
+            : st.act === 'reject'
+              ? `${st.pid} 的 Need 有一项大于 Work，这一轮**跳过它**，接着试别的。`
+              : st.act === 'safe'
+                ? `每个进程都排得进来 —— 当前状态**安全**，安全序列：${st.sequence.join(' → ')}。`
+                : st.act === 'unsafe'
+                  ? `剩下的 ${left.join('、')} 谁都满足不了，找不出全排列 —— 当前状态**不安全**。`
+                  : `初始：Work = ${w}，还没有进程被排进序列。` },
+      ]
+    },
     read: [
       { at: '资源矩阵', is: 'Max 是声明的最大需求，Allocation 是已经给的，Need 是还差的（自动算，不用填）。', anchor: '.enttab' },
       { at: '安全性检查页签', is: '逐轮找"Need 能被当前可用量满足"的进程，找到就假设它跑完并归还。', anchor: '.tabs' },
@@ -298,6 +716,38 @@ export const GUIDES: Record<string, Guide> = {
   },
   arq: {
     question: '帧丢了之后，回退 N 和选择重传各要重发多少个？',
+    step: (s: never, doc) => {
+      const st = s as { i: number; base: number; next: number; expected: number
+                        delivered: number; transmissions: number
+                        event: 'send' | 'resend' | 'recv' | 'ack' | 'drop' | 'timeout' | 'idle' | 'done' }
+      const proto = String(doc.params.protocol)
+      const NAME = { GBN: '回退 N', SR: '选择重传', SW: '停止等待' }[proto] ?? proto
+      const EV = { send: '发出一帧', resend: '重发', recv: '接收方收到一帧', ack: '发送方收到 ACK',
+                   drop: '有东西在路上丢了', timeout: '定时器超时', idle: '窗口满了，只能等', done: '全部送达' }
+      const rule = st.event === 'timeout'
+        ? proto === 'SR'
+          ? '选择重传：仅重发超时的该帧；其余帧各自维护独立定时器，不受影响。'
+          : '回退 N：接收方仅接受按序到达的帧，故该帧之后已到达的帧均被丢弃，发送方**自该帧起整段重发**。'
+        : st.event === 'recv'
+          ? proto === 'SR'
+            ? '选择重传的接收方**缓存乱序帧**：非期待序号的帧先行缓存，待缺失帧补齐后按序交付。'
+            : '回退 N 的接收方仅接收**序号恰为期待值**的帧，其余一律丢弃，不设缓存。'
+          : st.event === 'idle'
+            ? `已发送未确认的帧数达到窗口上限 ${doc.params.windowSize}，发送方停止发送、等待 ACK：窗口在此起流量限制作用。`
+            : '每发出一帧即启动其定时器；收到 ACK 后窗口前移，前移后腾出的位置才可用于发送新帧。'
+      return [
+        { k: '本步输入', v: `第 **${st.i}** 个时隙 · ${NAME} · ${EV[st.event] ?? st.event}` },
+        { k: '判定规则', v: rule },
+        { k: '本步结果',
+          v: `发送窗口 [${st.base}, ${st.next - 1}]，接收方期待 **${st.expected}** 号，`
+            + `已交付 ${st.delivered} 帧，累计传输 **${st.transmissions}** 次。` },
+        { k: '对应画面',
+          /*  ⚠️ 编号必须跟上面那段一致。第一版这里写 `i + 1`、上面写 `i`，
+              同一条带子里两个数打架，读的人只会以为自己看错了行。 */
+          v: `时空图第 ${st.i} 个时隙所在行：左侧为发送方，右侧为接收方；`
+            + `斜线表示一帧，红色斜线表示该帧在传输中丢失。` },
+      ]
+    },
     read: [
       { at: '时空图', is: '左边是发送方、右边是接收方。斜线是帧，红色是丢掉的。', anchor: '.aplot' },
       { at: '窗口状态页签', is: '发送窗口此刻滑到哪儿、哪些已确认。', anchor: '.tabs' },
@@ -310,6 +760,38 @@ export const GUIDES: Record<string, Guide> = {
   },
   float: {
     question: '一个十进制小数，怎么变成 32 位里的那一串 0 和 1？',
+    step: (s: never, doc) => {
+      const st = s as { phase: string; bits: string; detail: Record<string, string> }
+      const fmt = String(doc.params.format)
+      const op = String(doc.params.operation)
+      const kv = Object.entries(st.detail)
+      const RULE: Record<string, string> = {
+        sign: '符号位单独拿出来：**0 正 1 负**，它不参与后面的数值换算。',
+        int: '整数部分**除 2 取余**，余数倒着读就是二进制。',
+        frac: '小数部分**乘 2 取整**，取出的整数位正着读 —— 它可能永远除不尽，那就是浮点误差的来源。',
+        normalize: '**规格化**：把尾数挪成 `1.xxx` 的形式，小数点挪几位，阶码就加减几。',
+        /*  ⚠️ `format` 的实际取值是 `single` / `double`，不是 `binary32`。
+            写错的那版一路走进双精度分支，规则里印「偏置 1023」，
+            而下一行的结果印「3 + 127 = 130」—— **同一屏上自相矛盾**。
+            判据抓不到：两段都非空、都跟着步数变。只有念一遍才看得出来。 */
+        exponent: `**阶码存移码**：真值加偏置（${fmt === 'double' ? '1023' : '127'}）。这样全 0 最小、全 1 最大，比大小可以直接按无符号比。`,
+        mantissa: '**隐含位不存**：规格化之后整数位恒为 1，那个 1 不占位置，只存小数点后面那串。',
+        assemble: '把符号、阶码、尾数按位拼起来，就是最终的机器数。',
+        align: '**对阶**：两个数的阶码不同不能直接加减 —— 小阶向大阶看齐，尾数右移，右移几位就丢几位精度。',
+        addsub: '对阶之后尾数才能直接加减。',
+        round: '**舍入**：结果尾数超出位数就要舍入，这一步会引入误差。',
+        special: '落到特殊值：阶码全 0 或全 1 有专门的含义（非规格化数 / 无穷 / NaN）。',
+        done: '拼装完成。',
+      }
+      return [
+        { k: '本步输入', v: `${fmt} · ${op}；当前位串 \`${st.bits || '（还没拼）'}\`` },
+        { k: '判定规则', v: RULE[st.phase] ?? `进入「${st.phase}」这一步。` },
+        { k: '本步结果',
+          v: kv.length
+            ? kv.map(([k2, v2]) => `**${k2}** ${v2}`).join('；') + '。'
+            : `位串更新为 \`${st.bits}\`。` },
+      ]
+    },
     read: [
       { at: '位域拆解', is: '符号 1 位 / 阶码 8 位 / 尾数 23 位（单精度）。鼠标停在某段能看到它的值。', anchor: '.bfrow' },
       { at: '推导链页签', is: '七步：定符号、转二进制、规格化、算阶码、取尾数、拼起来、验证。', anchor: '.tabs' },
@@ -323,6 +805,29 @@ export const GUIDES: Record<string, Guide> = {
   },
   pipeline: {
     question: '有数据冒险的时候，五段流水线要停几拍？前递能省下几拍？',
+    step: (s: never, doc) => {
+      const st = s as { cycle: number; at: Record<string, string>; stalled: string[]
+                        flushed: string[]; forwards: Record<string, string>; done: number }
+      const fw = Number(doc.params.forwarding) >= 1
+      const busy = Object.entries(st.at).filter(([, seg]) => seg && seg !== '-')
+      const fwList = Object.entries(st.forwards)
+      return [
+        { k: '本步输入',
+          v: `第 **${st.cycle}** 周期；流水线上有 ${busy.length} 条指令在跑`
+            + (busy.length ? `（${busy.map(([ins2, seg]) => `${ins2}@${seg}`).join('、')}）` : '') },
+        { k: '判定规则',
+          v: `五段流水：取指 → 译码 → 执行 → 访存 → 写回，不同指令的不同段同一周期并行。`
+            + `**数据冒险**是后一条要用的值前一条还没写回 —— `
+            + (fw
+                ? `已开**前递**：结果从上一段直接送到下一段的输入，能消掉大部分停顿。`
+                : `**没开前递**：只能等前一条写回，中间插气泡。`) },
+        { k: '本步结果',
+          v: (st.stalled.length ? `**停顿**：${st.stalled.join('、')} 这一拍走不动（气泡）。` : '本周期没有停顿。')
+            + (st.flushed.length ? ` 分支导致 ${st.flushed.join('、')} 被清空。` : '')
+            + (fwList.length ? ` 前递：${fwList.map(([k2, v2]) => `${v2} → ${k2}`).join('、')}。` : '')
+            + ` 已完成 ${st.done} 条指令。` },
+      ]
+    },
     read: [
       { at: '时空图', is: '横轴是周期，每一行是一条指令，格子里是它这个周期在哪一段。', anchor: '.ptab.pipe' },
       { at: '带斜纹的格子', is: '停顿（气泡）。它后面的指令跟着一起停。', anchor: '.pipe' },
@@ -335,6 +840,32 @@ export const GUIDES: Record<string, Guide> = {
   },
   vm: {
     question: '一个虚地址，要走几步、访问几次内存，才变成物理地址？',
+    step: (s: never, doc) => {
+      const st = s as { vaddr: number; vpn: number; offset: number
+                        outcome: 'tlbHit' | 'ptHit' | 'fault'
+                        paddr: number | null; frame: number | null
+                        evicted: number | null; tlbHits: number; ptHits: number; faults: number }
+      const hex = (n: number) => '0x' + n.toString(16).toUpperCase()
+      const pageSize = Number(doc.params.pageSizeBytes)
+      const offBits = Math.log2(pageSize)
+      const cap = Number(doc.params.tlbEntries)
+      return [
+        { k: '本步输入', v: `虚地址 **${hex(st.vaddr)}**；页大小 ${pageSize}B` },
+        { k: '判定规则',
+          v: `地址低 ${offBits} 位是**页内偏移**，原样搬到物理地址上；高位是**页号**，只有它要翻译。`
+            + `先查 TLB（${cap} 项），没有再查页表；页表里也没有就是缺页。` },
+        { k: '本步结果',
+          v: st.outcome === 'tlbHit'
+            ? `页号 ${st.vpn} 在 **TLB** 里命中 → 页框 ${st.frame}，物理地址 ${st.paddr === null ? '—' : hex(st.paddr)}；`
+              + `本次只访存一次。累计 TLB 命中 ${st.tlbHits} 次。`
+            : st.outcome === 'ptHit'
+              ? `TLB 未命中，查**页表**找到页号 ${st.vpn} → 页框 ${st.frame}，物理地址 ${st.paddr === null ? '—' : hex(st.paddr)}；`
+                + `本次多访存一次，结果回填 TLB`
+                + (st.evicted === null ? '。' : `，按 LRU 换出了页 ${st.evicted}。`)
+                + `累计页表命中 ${st.ptHits} 次。`
+              : `页表里也没有页号 ${st.vpn} —— **缺页**，要从磁盘调入。累计缺页 ${st.faults} 次。` },
+      ]
+    },
     read: [
       { at: '转换链', is: '拆地址 → 查 TLB →（没中就）查页表 → 拼物理地址。', anchor: '.vmchain' },
       { at: '位域', is: '低位是页内偏移，高位是页号。偏移原样搬过去，只有页号被翻译。', anchor: '.bfrow' },
@@ -347,6 +878,35 @@ export const GUIDES: Record<string, Guide> = {
   },
   multiply: {
     question: '乘法和除法在硬件里是怎么一位一位做出来的？',
+    step: (s: never, doc) => {
+      const st = s as { round: number; hi: string; lo: string; extra: string
+                        act: string; judge: string; q: number | null; rem: number | null }
+      const algo = String(doc.params.algorithm)
+      //  ⚠️ 键对齐注册表里的实际取值：'原码一位乘' / 'Booth' / '加减交替'
+      const RULE: Record<string, string> = {
+        原码一位乘: '**原码一位乘**：符号位单独算，数值部分按乘数末位决定"加被乘数还是加 0"，然后右移一位。',
+        Booth: '**Booth（补码一位乘）**：看乘数末位与它右边那个附加位这**两位**的组合 —— `01` 加、`10` 减、`00`/`11` 只移位。它能直接算带符号数，不用先取绝对值。',
+        加减交替: '**加减交替法（不恢复余数法）**：余数为负就不退回去，下一步改成加法补偿 —— 省掉一次"恢复余数"的操作。',
+      }
+      return [
+        { k: '本步输入',
+          v: `第 **${st.round}** 轮；高位 \`${st.hi}\`、低位 \`${st.lo}\``
+            + (st.extra ? `、附加位 \`${st.extra}\`` : '')
+            + (st.judge ? `；${algo === 'Booth' ? '末两位' : '判断位'} **${st.judge}**` : '') },
+        { k: '判定规则', v: RULE[algo] ?? `按 ${algo} 逐位处理。` },
+        { k: '本步结果',
+          v: (st.act === 'add' ? '本步**加**上被乘数/除数。'
+            : st.act === 'sub' ? '本步**减**去被乘数/除数。'
+            : st.act === 'shift' ? '本步只**移位**，不加不减。'
+            : st.act === 'correct' ? '最后一步**校正**：补码乘除的最高位要单独处理，不校正符号就是错的。'
+            : st.act === 'done' ? '算完了。'
+            : '本步不作加减。')
+            + ` 结果 \`${st.hi}\` \`${st.lo}\``
+            + (st.q !== null ? `；商 ${st.q}` : '')
+            + (st.rem !== null ? `、余数 ${st.rem}` : '')
+            + '。' },
+      ]
+    },
     read: [
       { at: '寄存器视图', is: '每一轮之后各寄存器的值，加粗的是这一轮变了的。', anchor: '.mregs' },
       { at: '逐轮表', is: '每一轮判断了什么、做了加还是减、移了几位。', anchor: '.tabs' },
@@ -357,8 +917,105 @@ export const GUIDES: Record<string, Guide> = {
     ],
     terms: ['booth', 'restore'],
   },
+  addsub: {
+    question: '补码加减为什么符号位能一起算？什么时候会溢出？',
+    step: (s: never) => {
+      const st = s as {
+        act: string; op: 'add' | 'sub'; aVal: number; bVal: number
+        bits: number; pos: number; carryIn: number; sum: string
+        cInSign: number; cOutSign: number; overflow: boolean; addend: string; bBits: string
+      }
+      const done = st.act === 'overflow' || st.act === 'done'
+      return [
+        { k: '本步输入',
+          v: st.act === 'setup'
+            ? `A = ${st.aVal}，B = ${st.bVal}，先各写成 ${st.bits} 位补码`
+            : st.act === 'negate'
+              ? `减法要把 B 变成 −B 的补码：[B]补 = ${st.bBits}`
+              : st.act === 'addbit'
+                ? `正在算第 ${st.bits - st.pos} 列（从低位数），进入这一列的进位是 ${st.carryIn}`
+                : `逐列相加已完成，结果补码 ${st.sum}` },
+        { k: '判定规则',
+          v: st.act === 'negate'
+            ? `**(−B)补 = [B]补按位取反再 + 1**。这样 A − B 就变成 A + (−B)，全用加法器做。`
+            : done
+              ? `**溢出看双进位**：进入符号位的进位 ⊕ 移出符号位的进位，不相等就溢出 —— `
+                + `不是看最高位有没有进位。`
+              : `**补码加法符号位一起参与**，逐列从低位往高位加，每列带上一列的进位 —— `
+                + `不用像原码那样单独处理符号。` },
+        { k: '本步结果',
+          v: st.act === 'setup'
+            ? `补码写好了，接下来${st.op === 'sub' ? '先求 −B 的补码' : '逐列相加'}。`
+            : st.act === 'negate'
+              ? `−B 的补码 = ${st.addend}，下面用它和 A 相加。`
+              : st.act === 'addbit'
+                ? `本列结果 ${st.sum[st.pos]}，产生的进位送往上一列。`
+                : done
+                  ? (st.overflow
+                      ? `${st.cInSign} ⊕ ${st.cOutSign} = 1 → **溢出**，机器数 ${st.sum} 不是真正的和。`
+                      : `${st.cInSign} ⊕ ${st.cOutSign} = 0 → **无溢出**，结果 ${st.sum} 有效。`)
+                  : '' },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { act: string; overflow: boolean; sum: string; op: 'add' | 'sub'; aVal: number; bVal: number }
+      if (st.act !== 'overflow' && st.act !== 'done') return `逐列相加中…`
+      const real = st.op === 'sub' ? st.aVal - st.bVal : st.aVal + st.bVal
+      return st.overflow ? `溢出 · 真正的和是 ${real}` : `无溢出 · 结果 = ${real}`
+    },
+    read: [
+      { at: '竖式', is: '两个补码上下对齐，从最低位往高位逐列相加，当前列高亮。', anchor: '.ascol' },
+      { at: '进位那一行', is: '每列产生、送往上一列的进位 —— 溢出就藏在符号位那两个进位里。', anchor: '.ascarry' },
+      { at: '溢出判定页签', is: '双进位异或、符号看变化两种等价判法。', anchor: '.tabs' },
+    ],
+    try: [
+      { act: '把操作数换成 100 和 50（都是正数）', watch: '两个正数相加得到负数 —— 结果符号翻了，就是溢出。', preset: '正 + 正（溢出）' },
+      { act: '在「加 / 减」之间切', watch: '减法会多一步"求 −B 的补码"，之后完全走加法的路子。', param: '运算' },
+    ],
+    terms: ['complement', 'overflow'],
+  },
   crc: {
     question: '发过去的一串位被改了一位，CRC 能不能查出来？',
+    step: (s: never, doc) => {
+      const st = s as { i: number; dividend: string; at: number; q: string
+                        quotient: string; remainder: string
+                        phase: 'init' | 'divide' | 'result' | 'verify' }
+      const g = String(doc.params.generator)
+      const enc = doc.params.operation === 'encode'
+      if (st.phase === 'init') return [
+        { k: '本步输入', v: `数据 **${st.dividend}**，生成多项式 **${g}**（${g.length} 位）` },
+        { k: '判定规则',
+          v: enc
+            ? `发送端先在数据末尾补 **${g.length - 1} 个 0**（补零位数等于多项式次数，即校验位位数），再作模 2 除法。`
+            : '接收端所得为「数据 + 校验位」的完整码字，直接作除法，不再补零。' },
+        { k: '本步结果', v: '被除数已就位，自最高位起逐位对齐相除。' },
+        { k: '对应画面', v: '竖式首行即为该被除数。' },
+      ]
+      if (st.phase === 'divide') return [
+        { k: '本步输入', v: `被除数对齐到第 **${st.at + 1}** 位，那一位是 **${st.q === '1' ? 1 : 0}**` },
+        { k: '判定规则',
+          v: st.q === '1'
+            ? `对齐位为 1，商取 **1**，将自该位起的 ${g.length} 位与 ${g} **逐位异或**。`
+              + '模 2 除法以异或代替减法，**不进位、不借位**，因此是否"够除"仅由对齐位决定。'
+            : '对齐位为 0，商取 **0**，本位不作异或，除数右移一位。' },
+        { k: '本步结果', v: `当前商为 ${st.quotient}，被除数变为 ${st.dividend}。` },
+        { k: '对应画面', v: `竖式中高亮的若干位，即本步参与异或的位置。` },
+      ]
+      return [
+        { k: '本步输入', v: `除法结束，余数为 **${st.remainder || '—'}**` },
+        { k: '判定规则',
+          v: enc
+            ? '发送端：该余数即**校验位**，附于数据之后构成码字发送。'
+            : '接收端：对整个码字再作一次除法，**余数为 0 方判定为校验通过**。' },
+        { k: '本步结果',
+          v: enc
+            ? `校验位为 **${st.remainder}**，发送的码字 = 数据 + 校验位。`
+            : /^0*$/.test(st.remainder)
+              ? `余数是 **${st.remainder}** —— 全 0，这串码字校验通过。`
+              : `余数是 **${st.remainder}** —— 不是 0，**路上被改过**。` },
+        { k: '对应画面', v: '竖式末行右端的若干位。' },
+      ]
+    },
     read: [
       { at: '竖式', is: '模 2 除法，每一步都是异或，不进位不借位。', anchor: '.crcdiv' },
       { at: '结果那一行', is: '余数就是校验位，附在数据后面构成码字。', anchor: '.crcdiv .crow:last-of-type' },
@@ -371,6 +1028,63 @@ export const GUIDES: Record<string, Guide> = {
   },
   hamming: {
     question: '海明码怎么做到"算出来的数就是出错的位号"？',
+    step: (s: never) => {
+      const st = s as { bits: string; touched: number[]; p: number; covers: number[]
+                        ok: boolean | null; syndrome: number
+                        phase: 'layout' | 'parity' | 'done' | 'inject' | 'check' | 'locate' }
+      const cov = st.covers.length ? st.covers.join('、') : '—'
+      if (st.phase === 'layout') return [
+        { k: '本步输入', v: '若干数据位，需按海明码规则排入码字' },
+        { k: '判定规则',
+          v: '**位号是 2 的幂**（1、2、4、8…）的位置留给校验位，其余位置按顺序放数据位。'
+            + '这个摆法不是约定俗成 —— 它是让"校验子等于位号"成立的前提。' },
+        { k: '本步结果', v: `码字长度为 ${st.bits.length} 位。` },
+        { k: '对应画面', v: '位序表中灰底为校验位，白底为数据位。' },
+      ]
+      if (st.phase === 'parity' || st.phase === 'check') return [
+        { k: '本步输入', v: `校验位 **P${st.p}**，它覆盖位号 ${cov}` },
+        { k: '判定规则',
+          v: `P${st.p} 管的是**位号的二进制里"${st.p}"那一位为 1** 的所有位 —— `
+            + `所以覆盖范围不用背，看位号就知道。`
+            + (st.phase === 'parity' ? '编码时取值使这些位（含该校验位自身）中 1 的个数为偶数。'
+                                     : '接收端重新计算，检验其奇偶性是否仍然成立。') },
+        { k: '本步结果',
+          v: st.phase === 'parity'
+            ? `P${st.p} 取使其覆盖范围内 1 的个数为偶数的值。`
+            : st.ok === false
+              ? `**没通过** —— 错位一定在它覆盖的范围里，校验子加上 ${st.p}，现在是 **${st.syndrome}**。`
+              : `通过 —— 错位不在它的覆盖范围里，校验子不加，仍是 **${st.syndrome}**。` },
+        { k: '对应画面', v: `位序表中高亮的若干格（位号 ${cov}）即其覆盖范围。` },
+      ]
+      if (st.phase === 'inject') {
+        //  内核把翻掉那一位的下标放在 touched 里（下标 0 对应位号 1）
+        const at = st.touched.length ? st.touched[0]! + 1 : null
+        return [
+          { k: '本步输入',
+            v: at === null ? '本次未注入差错，码字原样到达接收端'
+                           : `传输中**第 ${at} 位**发生翻转，接收端收到的码字为 ${st.bits}` },
+          { k: '判定规则',
+            v: '**接收端并不知道哪一位出错**，它只看到一串位。可行的做法只有一种：'
+              + '按原覆盖规则逐个重算校验位，找出其中不成立的那些。' },
+          { k: '本步结果',
+            v: at === null ? '接下来逐个重算校验位，各项均应成立。'
+                           : `接下来逐个重算校验位：凡覆盖第 ${at} 位的校验均不成立。` },
+          { k: '对应画面',
+            v: at === null ? '位序表所示即接收端收到的码字。'
+                           : `位序表中标红的那一格（位号 ${at}）。` },
+        ]
+      }
+      return [
+        { k: '本步输入', v: `全部校验位计算完毕，校验子为 **${st.syndrome}**` },
+        { k: '判定规则',
+          v: '将未通过的各校验位的位号相加，所得之值**即出错位的位号**，无需查表。' },
+        { k: '本步结果',
+          v: st.syndrome === 0
+            ? '校验子为 0，各位均无差错。'
+            : `第 **${st.syndrome}** 位出错，将其取反即可纠正；这正是海明码相较 CRC 多用若干校验位所换来的能力。` },
+        { k: '对应画面', v: '位序表中被指出的那一格。' },
+      ]
+    },
     read: [
       { at: '位序表', is: '2 的幂次位（1、2、4、8…）放校验位，其余放数据位。', anchor: '.hgrid' },
       { at: '每个校验位那一行', is: '它负责哪些位 —— 规律是"位号的二进制里那一位是 1"。', anchor: '.hrow' },
@@ -383,6 +1097,37 @@ export const GUIDES: Record<string, Guide> = {
   },
   subnet: {
     question: '给一个网段和掩码，能划几个子网、每个能放多少台机器？',
+    step: (s: never) => {
+      const st = s as { prefix: number; best: string; entry: string; hit: boolean
+                        detail: Record<string, string>
+                        phase: 'addr' | 'mask' | 'network' | 'broadcast' | 'hosts' | 'split' | 'match' | 'pick' }
+      const host = 32 - st.prefix
+      const D = (k: string) => st.detail[k] ?? '—'
+      const M = {
+        addr: ['一个 IPv4 地址', '先摊成 32 位二进制 —— 十进制点分只是给人看的，机器眼里就是这 32 位。',
+               `地址摆好了。`, '位域第一行。'],
+        mask: [`前缀 **/${st.prefix}**`, `掩码就是**前 ${st.prefix} 位全 1、后 ${host} 位全 0**。1 盖住的是网络号，0 露出来的是主机号。`,
+               `网络号 ${st.prefix} 位，主机号 ${host} 位。`, '位域第二行，跟上面那行对齐着看。'],
+        network: ['地址与掩码', '把主机位**全部置 0**，得到的就是这个网段的网络地址 —— 它代表整个网段，不能分给任何一台机器。',
+                  `网络地址 = ${D('网络地址')}`, '位域里主机位被清零的那一行。'],
+        broadcast: ['地址与掩码', '把主机位**全部置 1**，得到广播地址 —— 发给它等于发给网段里所有机器，同样不能分配。',
+                    `广播地址 = ${D('广播地址')}`, '位域里主机位被拉满的那一行。'],
+        hosts: [`主机位 ${host} 位`, `地址总数是 2^${host}，但**要减 2** —— 全 0 是网络地址、全 1 是广播地址，都不能给主机。`,
+                `地址总数 ${D('地址总数')}，可用主机 **${D('可用主机数')}**`, '右边读数栏里那两个数。'],
+        split: ['再借几位划子网', '从主机位里再借几位当子网号：借 n 位就分出 2^n 个子网，每个子网的主机数除以 2^n，而**减 2 要各扣各的**。',
+                '子网表列出了每一个。', '子网表那一页。'],
+        match: [`路由表里的一条：${st.entry}`, '最长前缀匹配：目的地址跟每条路由的网络号逐位比，**比中的里面选前缀最长的那条**。',
+                st.hit ? `匹配上了，当前最优是 ${st.best}` : '这条没匹配上。', '路由表里高亮的那一行。'],
+        pick: ['所有路由都比过了', '前缀越长越具体 —— 具体的优先于笼统的，默认路由 0.0.0.0/0 因此永远排最后。',
+               `最终走 **${st.best}**`, '路由表里被选中的那一行。'],
+      }[st.phase]
+      return [
+        { k: '本步输入', v: M[0]! },
+        { k: '判定规则', v: M[1]! },
+        { k: '本步结果', v: M[2]! },
+        { k: '对应画面', v: M[3]! },
+      ]
+    },
     read: [
       { at: '位域', is: '32 位地址里，掩码的 1 划出网络号、0 是主机号。', anchor: '.bfrow' },
       { at: '子网表', is: '每个子网的网络地址、可用主机范围、广播地址。', anchor: '.tabs' },
@@ -395,6 +1140,46 @@ export const GUIDES: Record<string, Guide> = {
   },
   handshake: {
     question: '建立和断开一条 TCP 连接，两端的状态各自怎么变？',
+    step: (s: never) => {
+      const st = s as { client: string; server: string; history: unknown[]
+                        /*  ⚠️ 照 `src/kernels/handshake.ts` 的 `Seg` 抄，别按印象写：
+                            `flags` 是**一个字符串**（"SYN+ACK"），不是数组；
+                            方向字段叫 `dir`（'c2s' / 's2c'），不叫 `from`。
+                            第一版两处都写错，`flags.join` 在真实状态上直接抛，
+                            握手实验有两步的带子整条消失。 */
+                        seg: { flags: string; seq: number; ack: number; dir: 'c2s' | 's2c' } | null
+                        act: 'send' | 'arrive' | 'lost' | 'timeout' | 'wait' | 'done' }
+      /*  ⚠️ 「到达」那一步内核不带 `seg`（它只在发出时挂一次），
+          刚到的那个报文段其实是 `history` 的最后一个。不这么取，
+          到达那半边就只剩一句"报文到达对端"，标志位和序号全丢了。 */
+      const seg = st.seg ?? (st.act === 'arrive'
+        ? st.history[st.history.length - 1] as typeof st.seg
+        : null)
+      const flags = seg?.flags ?? '—'
+      const who = seg?.dir === 's2c' ? '服务器' : '客户端'
+      const ACT = { send: `${who}发出`, arrive: '报文到达对端', lost: '这个报文丢了',
+                    timeout: '等超时了', wait: '在等', done: '走完了' }
+      const rule = st.act === 'wait'
+        ? '**TIME_WAIT 要等 2MSL**：万一最后那个 ACK 丢了，对方会重发 FIN，这段时间就是留给它的。'
+          + '等完之后这条连接的四元组才能被复用。'
+        : flags.includes('SYN') && flags.includes('ACK')
+          ? '服务器把「我收到你的 SYN 了」和「我也要发」**捎带在同一个报文段**里 —— 建连之所以是三次而不是四次，就差在这一下。'
+          : flags.includes('FIN')
+            ? '**FIN 只代表"我发完了"**，不代表对方也发完了。所以对方先单独回一个 ACK，等自己发完再发自己的 FIN —— 断连因此多一次。'
+            : flags.includes('SYN')
+              ? '发起方挑一个初始序号发过去 —— 序号不从 0 开始，是为了避免旧连接的残留报文被认成新连接的。'
+              : '确认号 = 期待收到的下一个字节序号，所以它总是对方序号 + 1（SYN 和 FIN 各占一个序号）。'
+      return [
+        { k: '本步输入',
+          v: seg
+            ? `第 **${st.history.length}** 个报文段（${ACT[st.act]}）：**${flags}**，`
+              + `seq=${seg.seq ?? '—'}、ack=${seg.ack ?? '—'}`
+            : ACT[st.act] },
+        { k: '判定规则', v: rule },
+        { k: '本步结果', v: `客户端 **${st.client}** · 服务器 **${st.server}**` },
+        { k: '对应画面', v: `时序图上第 ${Math.max(1, st.history.length)} 条斜箭头，两侧竖线上的状态标签也跟着换了。` },
+      ]
+    },
     read: [
       { at: '时序图', is: '左右两条竖线是两端，斜箭头是报文，上面标着标志位和序号。', anchor: '.hsplot' },
       { at: '两侧的状态标签', is: '每收发一个报文之后各自处在什么状态。', anchor: '.hsside' },
@@ -407,6 +1192,37 @@ export const GUIDES: Record<string, Guide> = {
   },
   avl: {
     question: '往二叉搜索树里插入，什么时候会失衡？该怎么转？',
+    step: (s: never, doc) => {
+      const st = s as { key: number; act: string; rotation: string; pivot: number
+                        inserted: number; rotations: number; root: number
+                        nodes: { key: number; bf?: number }[]; focus: number[] }
+      const mode = String(doc.params.mode ?? 'AVL')
+      const ROT: Record<string, string> = {
+        LL: '**LL**：失衡结点往下两步都是左 —— 同向，右旋一次。',
+        RR: '**RR**：往下两步都是右 —— 同向，左旋一次。',
+        LR: '**LR**：先左后右 —— 异向，先把下面那段掰成同向，再转，一共两次。',
+        RL: '**RL**：先右后左 —— 异向，同样转两次。',
+      }
+      return [
+        { k: '本步输入',
+          v: `正在插入 **${st.key}**；树上已有 ${st.nodes.length} 个结点`
+            + (st.focus.length ? `，当前看的是第 ${st.focus.join('、')} 号结点` : '') },
+        { k: '判定规则',
+          v: st.act === 'rotate'
+            ? (ROT[st.rotation] ?? '按失衡类型旋转。')
+              + ' 旋转的名字按**失衡结点往下两步的方向**取，不是按插入的方向。'
+            : `先按二叉搜索树的规矩找位置：比结点小往左、大往右。插完从插入点往上回溯，`
+              + `谁的**平衡因子**（左高 − 右高）绝对值超过 1，谁就是失衡结点${mode === 'BST' ? '（本模式不旋转，只看它长歪）' : '，对它做旋转'}。` },
+        { k: '本步结果',
+          v: st.act === 'rotate'
+            ? `对 ${st.pivot} 号结点做 **${st.rotation}** 旋转，树重新平衡。累计旋转 ${st.rotations} 次。`
+            : st.act === 'insert'
+              ? `${st.key} 插入完成，树上现在 ${st.nodes.length} 个结点，还没发现失衡。`
+              : st.act === 'done'
+                ? `插完了：${st.nodes.length} 个结点，一共旋转 ${st.rotations} 次。`
+                : `继续往下找 ${st.key} 该去的位置。` },
+      ]
+    },
     read: [
       { at: '树形', is: '结点上的小数字是平衡因子（左高 − 右高）。', anchor: '.tvbox' },
       { at: '标红的结点', is: '失衡点 —— 从插入位置往上找到的第一个 |bf| > 1 的结点。', anchor: '.tvbox' },
@@ -417,8 +1233,85 @@ export const GUIDES: Record<string, Guide> = {
     ],
     terms: ['bf', 'rotate'],
   },
+  btree: {
+    question: '前中后序只差"根什么时候输出"？中序遍历 BST 为什么是有序的？',
+    step: (s: never) => {
+      const st = s as {
+        order: 'pre' | 'in' | 'post' | 'level'
+        nodes: { key: number }[]; cur: number; visited: number[]
+        aux: number[]; auxKind: 'stack' | 'queue'; act: string; log: string
+      }
+      const ORDER_CN: Record<string, string> = { pre: '前序', in: '中序', post: '后序', level: '层序' }
+      const RULE: Record<string, string> = {
+        pre: '**前序 = 根 → 左 → 右**：每到一个结点，先输出它自己，再去左子树、右子树。',
+        in: '**中序 = 左 → 根 → 右**：先把左子树走完，再输出自己，最后走右子树。',
+        post: '**后序 = 左 → 右 → 根**：左右子树都走完，最后才输出自己。',
+        level: '**层序 = 一层一层**：用队列，出队一个就访问它，再把它的左右孩子入队。',
+      }
+      const seq = st.visited.map(n => st.nodes[n]?.key).join(' ')
+      return [
+        { k: '本步输入',
+          v: st.act === 'done'
+            ? `遍历结束，共输出 ${st.visited.length} 个结点`
+            : `正在做 **${ORDER_CN[st.order]}** 遍历；已输出 ${Math.max(0, st.visited.length - 1)} 个`
+              + `，${st.auxKind === 'stack' ? '调用栈' : '队列'}里 ${st.aux.length} 个` },
+        { k: '判定规则', v: RULE[st.order] },
+        { k: '本步结果',
+          v: st.act === 'done'
+            ? `${ORDER_CN[st.order]}序列：**${seq}**`
+              + (st.order === 'in' ? '　—— 中序遍历二叉搜索树，正好从小到大有序。' : '')
+            : `输出 **${st.nodes[st.cur]?.key}**，它是第 ${st.visited.length} 个。`
+              + (st.auxKind === 'stack'
+                ? `此刻调用栈是从根到它的路径（深度 ${st.aux.length}）。`
+                : `此刻队列里还排着 ${Math.max(0, st.aux.length)} 个等着出队。`) },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { order: string; cur: number; nodes: { key: number }[]; act: string }
+      const CN: Record<string, string> = { pre: '前序', in: '中序', post: '后序', level: '层序' }
+      return st.act === 'done' ? `${CN[st.order]}遍历完成`
+        : `${CN[st.order]} · 输出 ${st.nodes[st.cur]?.key ?? ''}`
+    },
+    read: [
+      { at: '遍历树', is: '结点下方的 #n 是它被输出的次序，当前结点高亮。', anchor: '.tvbox' },
+      { at: '调用栈 / 队列', is: '深度优先看栈（根到当前的路径），层序看队列 —— 容器不同，走法就不同。', anchor: '.btaux' },
+      { at: '四种次序页签', is: '同一棵树的四条序列摆一起，一眼看出只差"根在什么时候输出"。', anchor: '.tabs' },
+    ],
+    try: [
+      { act: '在前序 / 中序 / 后序之间切', watch: '树不变、只是"根"输出的时机变，三条序列各不相同。', param: '遍历次序' },
+      { act: '切到中序', watch: '不管插入序列多乱，中序输出永远是从小到大 —— 这是 BST 的定义性质。', param: '遍历次序' },
+      { act: '切到层序', watch: '辅助结构从栈换成队列，访问从"往深钻"变成"一层层铺开"。', param: '遍历次序' },
+    ],
+    terms: ['inorder', 'stack'],
+  },
   hash: {
     question: '冲突了怎么办？四种处理方式的平均查找长度差多少？',
+    step: (s: never, doc) => {
+      const st = s as { key: number; home: number; probes: number[]; slot: number
+                        compares: number; totalCompares: number; count: number; collided: boolean
+                        table: number[][] }
+      const size = Number(doc.params.size)
+      const method = String(doc.params.method)
+      const stepN = Number(doc.params.rehashStep) || 1
+      const RULE: Record<string, string> = {
+        拉链法: '**拉链法**：冲突了就挂到那个槽的链表后面，槽位不变。',
+        线性探测: '**线性探测**：冲突了往后一个一个找空位。老毛病是**堆积** —— 冲突的元素挤成一片连续占用，后来的一撞就要探很多次。',
+        平方探测: '**平方探测**：按 ±1²、±2²… 往外跳，正是为了打散线性探测那种连片堆积。',
+        再散列: `**再散列**：冲突了按第二个散列函数的步长（这里是 ${stepN}）往前跳。`,
+      }
+      return [
+        { k: '本步输入', v: `插入键 **${st.key}**；表长 ${size}，已装 ${st.count} 个` },
+        { k: '判定规则',
+          v: `先算**基地址** H(${st.key}) = ${st.key} % ${size} = **${st.home}**。`
+            + `那个位置空着就直接放；被占了就是冲突 —— ${RULE[method] ?? method}` },
+        { k: '本步结果',
+          v: (st.collided
+                ? `${st.home} 号槽被占，探测了 ${st.probes.join(' → ')}，最终落在 **${st.slot}** 号槽。`
+                : `${st.home} 号槽是空的，直接放进 **${st.slot}** 号槽。`)
+            + ` 这个键比较了 ${st.compares} 次，全表累计 ${st.totalCompares} 次 —— `
+            + `ASL 就是这个累计数除以键的个数。` },
+      ]
+    },
     read: [
       { at: '槽位表', is: '每个槽装着谁。虚线框是探测路过但没停下的槽。', anchor: '.hslots' },
       { at: 'ASL 页签', is: '每个关键字查到它要比较几次，平均下来就是 ASL。', anchor: '.tabs' },
@@ -431,6 +1324,38 @@ export const GUIDES: Record<string, Guide> = {
   },
   huffman: {
     question: '给一组权值，怎么合并才能让总编码最短？',
+    step: (s: never, doc) => {
+      const st = s as { forest: number[]; picked: number[]; merged: number; wpl: number
+                        codes: Record<string, string>; act: string
+                        nodes: { w: number; ch?: string }[] }
+      const w = (idx: number) => st.nodes[idx]?.w ?? 0
+      const codeList = Object.entries(st.codes)
+      void doc
+      /*  ⚠️ 两个字段的时点都要看清楚：
+          `forest` 在合并帧里已经是**合并之后**的（内核先 filter 再 concat 才 push 帧），
+          所以"本步输入"里不能拿它当合并前的棵数 —— 差一棵。
+          `wpl` **只在末帧才算**（内核到 done 那一帧才遍历树累加），
+          中途恒为 0；照它写"到此累计 WPL = 0"是句假话。 */
+      return [
+        { k: '本步输入',
+          v: st.act === 'init'
+            ? `森林里有 ${st.forest.length} 棵单结点树，权值 ${st.forest.map(w).join('、')}`
+            : st.act === 'done'
+              ? `合并完毕，只剩一棵树`
+              : `合并前森林里有 ${st.forest.length + 1} 棵；本步挑中权值最小的两棵：${st.picked.map(w).join(' 和 ')}` },
+        { k: '判定规则',
+          v: `每次从森林里取**权值最小的两棵**合并，新结点的权值是它俩之和，再放回森林。`
+            + `这样权值大的字符离根近、编码短 —— **WPL（带权路径长度）因此最小**。` },
+        { k: '本步结果',
+          v: st.act === 'merge'
+            ? `合成一棵权值 **${w(st.merged)}** 的新树放回森林；森林剩 ${st.forest.length} 棵。`
+              + `（WPL 要等树建完才能算 —— 它是"权值 × 层数"的和。）`
+            : st.act === 'done'
+              ? `WPL = **${st.wpl}**（它恰好等于所有内部结点权值之和）。`
+                + (codeList.length ? ` 编码：${codeList.map(([c, b]) => `${c}=${b}`).join('、')} —— 任何一个都不是另一个的前缀，所以码流不用分隔符也能唯一解码。` : '')
+              : `初始森林已就绪，共 ${st.forest.length} 棵。` },
+      ]
+    },
     read: [
       { at: '森林', is: '每一步取最小的两棵合并成一棵，权值相加当新根。', anchor: '.tv' },
       { at: '编码表', is: '左 0 右 1 走到叶子。所有编码都在叶子上，所以互不为前缀。', anchor: '.tabs' },
@@ -443,6 +1368,41 @@ export const GUIDES: Record<string, Guide> = {
   },
   kmp: {
     question: 'next 数组是怎么求的？失配时模式串到底滑多远？',
+    step: (s: never, doc) => {
+      const st = s as { phase: 'next' | 'match' | 'found' | 'done'
+                        next: number[]; j: number; k: number; ti: number; pj: number
+                        eq: boolean | null; found: number[]; textAdvances: number }
+      const text = String(doc.params.text)
+      const pat = String(doc.params.pattern)
+      return [
+        /*  ⚠️ 末帧（done）的 ti / pj 是 **−1**，照"第 N 位对第 M 位"写就印出
+            「主串第 -1 位 `` 对模式串第 -1 位 ``」—— 下标当哨兵用的字段，
+            必须先问这一帧有没有"当前位"这回事。 */
+        { k: '本步输入',
+          v: st.phase === 'next'
+            ? `正在算 next 数组：看模式串前 ${st.j + 1} 位 \`${pat.slice(0, st.j + 1)}\``
+            : st.phase === 'done'
+              ? `主串 ${text.length} 位、模式串 ${pat.length} 位，已经扫完`
+              : `主串第 **${st.ti}** 位 \`${text[st.ti] ?? ''}\` 对模式串第 **${st.pj}** 位 \`${pat[st.pj] ?? ''}\`` },
+        { k: '判定规则',
+          v: st.phase === 'next'
+            ? `next[j] 记的是模式串前 j 位里**最长的相等前后缀**有多长。`
+              + `失配时靠它决定模式串往右滑多远 —— 已经匹配上的那一截不用重新比。`
+            : `**主串指针只往前走，绝不回退** —— 这就是 KMP 相对暴力法的全部好处。`
+              + `失配时只挪模式串：j 退到 next[j]，主串原地不动。` },
+        { k: '本步结果',
+          v: st.phase === 'next'
+            ? `next[${st.j}] = **${st.next[st.j] ?? 0}**（当前最长相等前后缀长度 ${st.k}）。`
+            : st.phase === 'found'
+              ? `模式串走到头 —— 在主串第 **${st.found[st.found.length - 1] ?? st.ti}** 位处**匹配成功**。`
+                + `累计找到 ${st.found.length} 处，主串指针一共只前进了 ${st.textAdvances} 次。`
+              : st.phase === 'done'
+                ? `扫完了，共找到 ${st.found.length} 处；主串指针总共前进 ${st.textAdvances} 次，一次都没回退。`
+                : st.eq
+                  ? `两位相等，双方各前进一位。`
+                  : `失配：模式串的 j 退到 next[${st.pj}] = ${st.next[st.pj] ?? 0}，**主串不动**。` },
+      ]
+    },
     read: [
       { at: 'next 数组页签', is: '模式串每个位置的"最长相等前后缀"长度。', anchor: '.tabs' },
       { at: '匹配对齐页签', is: '主串和模式串当前怎么对齐的，红色是失配的那一位。', anchor: '.tabs' },
@@ -453,8 +1413,82 @@ export const GUIDES: Record<string, Guide> = {
     ],
     terms: ['next', 'noback'],
   },
+  expr: {
+    question: '为什么先把中缀式转成后缀，就能用一个栈一遍算出来？',
+    step: (s: never) => {
+      const st = s as {
+        phase: 'toRPN' | 'eval'; act: string; infix: string[]; at: number
+        stack: string[]; rpn: string[]; result: number | null
+      }
+      const tok = st.at >= 0 ? (st.phase === 'eval' ? st.rpn[st.at] : st.infix[st.at]) : ''
+      return [
+        { k: '本步输入',
+          v: st.phase === 'toRPN'
+            ? (st.act === 'flush' ? `中缀读完了，运算符栈里还剩 ${st.stack.length} 个` : `读中缀的第 ${st.at + 1} 个：**${tok}**`)
+            : (st.act === 'done' ? `后缀扫描完了，栈里剩 ${st.stack.length} 个` : `读后缀的第 ${st.at + 1} 个：**${tok}**`) },
+        { k: '判定规则',
+          v: st.phase === 'toRPN'
+            ? `**中缀转后缀**：数字直接进后缀；运算符要和栈顶比优先级，`
+              + `**栈顶不比它低的先弹出去**，再把自己压栈；括号成对地压入 / 弹出。`
+            : `**后缀求值**：遇数字压栈；遇运算符**弹出栈顶两个**算完，`
+              + `结果再压回 —— 一遍扫描就出答案。` },
+        { k: '本步结果',
+          v: st.act === 'flush'
+            ? `后缀式确定：**${st.rpn.join(' ')}**，接下来用栈求值。`
+            : st.act === 'done'
+              ? `栈里只剩一个数，就是答案：**${st.result}**`
+              : st.act === 'apply'
+                ? `弹两个算完、把结果压回，栈变成 [${st.stack.join(' ')}]。`
+                : st.act === 'num' || st.act === 'push'
+                  ? `**${tok}** 就位，栈现在是 [${st.stack.join(' ') || '空'}]。`
+                  : `栈变成 [${st.stack.join(' ') || '空'}]，后缀已产出 ${st.rpn.length} 个。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; act: string; result: number | null; rpn: string[] }
+      if (st.act === 'done' && st.result !== null) return `求值完成 · 结果 ${st.result}`
+      if (st.act === 'flush') return `后缀式：${st.rpn.join(' ')}`
+      return st.phase === 'eval' ? '后缀求值中' : '中缀转后缀中'
+    },
+    read: [
+      { at: '栈', is: '竖着长的那一摞，栈顶在上 —— 转换时装运算符、求值时装数值。', anchor: '.exstack' },
+      { at: '中缀 / 后缀带', is: '上面是原式（当前读到的高亮），下面是逐步产出的后缀式。', anchor: '.extoks' },
+    ],
+    try: [
+      { act: '换成带括号的式子，如 (3+4)*2', watch: '括号会先压栈，遇到右括号时一次性弹到左括号 —— 强行改变了运算顺序。', param: '中缀表达式' },
+      { act: '对比 3+4*2 和 (3+4)*2', watch: '同样的数字和运算符，后缀式却不同 —— 优先级和括号都写进了后缀的排列里。', param: '中缀表达式' },
+    ],
+    terms: ['rpn', 'precedence'],
+  },
   mst: {
     question: 'Prim 和 Kruskal 挑边的顺序不同，最后的树一样吗？',
+    step: (s: never, doc) => {
+      const st = s as { chosen: string[]; inTree: string[]; edge: string
+                        act: 'consider' | 'take' | 'skip' | 'done'; weight: number }
+      const algo = String(doc.params.algorithm)
+      const prim = algo.toLowerCase().includes('prim')
+      return [
+        { k: '本步输入',
+          v: st.act === 'done'
+            ? `已选 ${st.chosen.length} 条边`
+            : `正在考虑边 **${st.edge}**；树里已有 ${st.inTree.length} 个点、${st.chosen.length} 条边` },
+        { k: '判定规则',
+          v: prim
+            ? `**Prim**：从"已经连上的那一堆"往外挑**权值最小的一条**边，把新点拉进来。`
+              + `它天然不会成环 —— 每条边都是从树内连到树外。`
+            : `**Kruskal**：把所有边按权值从小到大排，逐条问"加了会不会成环"。`
+              + `不成环就要，成环就跳过。判环靠并查集。` },
+        { k: '本步结果',
+          v: st.act === 'take'
+            ? `边 ${st.edge} **选中**，累计权值 ${st.weight}；树里现在 ${st.inTree.length} 个点。`
+            : st.act === 'skip'
+              ? `边 ${st.edge} **跳过**${prim ? '：两端都已在树里' : '：加了会成环'}。累计权值仍是 ${st.weight}。`
+              : st.act === 'done'
+                ? `选够 ${st.chosen.length} 条边，总权值 **${st.weight}** —— `
+                  + `Prim 和 Kruskal 选的边可能不同，但**总权值必然相同**。`
+                : `${st.edge} 进入候选 —— 还要跟其余候选边比一比权值，下一步才定要不要。` },
+      ]
+    },
     read: [
       { at: '图', is: '加粗的是已选进生成树的边，灰的是被否掉的。', anchor: '.gvwrap' },
       { at: '边表页签', is: '每一步考虑了哪条边、为什么要（或不要）。', anchor: '.tabs' },
@@ -467,6 +1501,47 @@ export const GUIDES: Record<string, Guide> = {
   },
   topo: {
     question: '这个工程最短要多久？哪些环节拖不得？',
+    step: (s: never, doc) => {
+      const st = s as { phase: 'topo' | 've' | 'vl' | 'activity' | 'done'
+                        indeg: Record<string, number>; order: string[]; at: string
+                        ve: Record<string, number>; vl: Record<string, number>
+                        ee: Record<string, number>; el: Record<string, number>
+                        critical: string[] }
+      /*  ⚠️ `indeg` 是**这一步做完之后**的状态：刚取出的那个点入度仍是 0，
+          不排掉的话"入度为 0 的还有 3 个"里数着一个已经出队的点。 */
+      const zero = Object.keys(st.indeg).filter(v => st.indeg[v] === 0 && !st.order.includes(v))
+      const op = String(doc.params.operation)
+      const RULE: Record<string, string> = {
+        topo: '**拓扑排序**：反复取出一个**入度为 0** 的点，删掉它和它的出边，让后继的入度减一。取不出来就说明有环。',
+        ve: '**ve（事件最早发生时刻）正推**：从源点出发，`ve[j] = max(ve[i] + 权)`，取**最大**——所有前置活动都干完了这个事件才能发生。',
+        vl: '**vl（事件最迟发生时刻）逆推**：从汇点倒回来，`vl[i] = min(vl[j] − 权)`，取**最小**——晚一点就会拖工期。',
+        activity: '**活动的余量**：`ee` 是活动最早开始（= 起点的 ve），`el` 是最迟开始（= 终点的 vl − 权）。两者相等的活动余量为 0。',
+        done: '结束。',
+      }
+      return [
+        { k: '本步输入',
+          v: st.phase === 'topo'
+            ? `入度为 0 的点有 ${zero.length} 个${zero.length ? `（${zero.join('、')}）` : ''}；已排出 ${st.order.length} 个`
+            : st.phase === 'done'
+              ? `全部算完`
+              : `正在处理 **${st.at || '—'}**` },
+        { k: '判定规则', v: RULE[st.phase] ?? `进入「${st.phase}」阶段（${op}）。` },
+        { k: '本步结果',
+          v: st.phase === 'topo'
+            ? (st.at
+                ? `取出 **${st.at}**，它的后继入度各减一。当前拓扑序：${st.order.join(' → ')}。`
+                : `取不出入度为 0 的点了 —— 图里有环，拓扑序不存在。`)
+            : st.phase === 've'
+              ? `ve[${st.at}] = **${st.ve[st.at] ?? 0}**（取所有前驱里最大的那条路径）。`
+              : st.phase === 'vl'
+                ? `vl[${st.at}] = **${st.vl[st.at] ?? 0}**（取所有后继里最小的那条限制）。`
+                : st.phase === 'activity'
+                  ? `活动 ${st.at}：ee = ${st.ee[st.at] ?? 0}、el = ${st.el[st.at] ?? 0}，`
+                    + `余量 ${(st.el[st.at] ?? 0) - (st.ee[st.at] ?? 0)}`
+                    + `${(st.el[st.at] ?? 0) === (st.ee[st.at] ?? 0) ? ' —— **关键活动**，拖它一天整个工程就晚一天。' : '，有余量，不是关键活动。'}`
+                  : `关键路径：${st.critical.join(' → ') || '—'}。` },
+      ]
+    },
     read: [
       { at: '图', is: '点是事件、边是活动，边上的数字是工期。', anchor: '.gvwrap' },
       { at: '表格页签', is: '每个事件的 ve（最早）和 vl（最迟），以及每个活动的余量。', anchor: '.tabs' },
@@ -479,6 +1554,42 @@ export const GUIDES: Record<string, Guide> = {
   },
   partition: {
     question: '同一串内存请求，四种放置策略会分到哪儿？谁更碎？',
+    step: (s: never, doc) => {
+      const st = s as { act: 'alloc' | 'free' | 'fail'; job: string; size: number
+                        at: number; scanned: number[]; merged: number
+                        external: number; freeTotal: number
+                        blocks: { start: number; size: number; job?: string | null }[] }
+      const algo = String(doc.params.algorithm)
+      const total = Number(doc.params.memorySize)
+      const RULE: Record<string, string> = {
+        首次适应: '**首次适应**：从低地址往上找**第一个**够大的空闲分区。低地址会被切得很碎，但找得快。',
+        最佳适应: '**最佳适应**：找**最小的够大**的那块。听着省，其实最容易留下一堆用不上的小碎片。',
+        最坏适应: '**最坏适应**：找**最大**的那块切。剩下的那截还比较大，还能再用。',
+        邻近适应: '**邻近适应**：从上次停的地方接着往下找，不每次都从头扫。',
+      }
+      return [
+        { k: '本步输入',
+          v: st.act === 'free'
+            //  ⚠️ free 帧里 `size` 是 0（内核只在分配时填），别拿它当"归还了多少"
+            ? `作业 **${st.job}** 释放它占的那块；内存共 ${total}K`
+            : `作业 **${st.job}** 请求 **${st.size}K**；当前空闲共 ${st.freeTotal}K，分成 ${st.blocks.filter(b => !b.job).length} 块` },
+        { k: '判定规则',
+          v: st.act === 'free'
+            ? `回收时要看**相邻的空闲块**：上邻、下邻、或者两头都空，都要合并成一块 —— 不合并的话空闲区会越切越碎。`
+            : RULE[algo] ?? `按 ${algo} 挑一块空闲分区。` },
+        { k: '本步结果',
+          v: st.act === 'alloc'
+            ? `扫过 ${st.scanned.length} 块，选中起始地址 **${st.at}K** 那一块切给 ${st.job}。`
+              + `切剩的部分留作空闲。当前**外碎片** ${st.external}K —— `
+              + `指小于 8K、已经小到分不出去的那些空闲块；它们加起来可能够用，但**连不成一块**。`
+            : st.act === 'free'
+              ? `${st.job} 占的那块变回空闲`
+                + (st.merged > 0 ? `，并跟相邻的 ${st.merged} 块合并成一块。` : '，两边都不空，没有可合并的。')
+                + ` 空闲总量 ${st.freeTotal}K。`
+              : `扫遍了所有空闲块，**没有一块装得下 ${st.size}K** —— 分配失败。`
+                + `注意空闲总量还有 ${st.freeTotal}K，装不下是因为它们**连不成一块**，这就是外碎片。` },
+      ]
+    },
     read: [
       { at: '内存条', is: '横着一整条内存，深色是已分配、浅色是空闲。', anchor: '.membar' },
       { at: '分区表', is: '每块的起址、大小、归谁。', anchor: '.tabs' },
@@ -491,6 +1602,36 @@ export const GUIDES: Record<string, Guide> = {
   },
   inode: {
     question: '读文件某个字节，要先访问几次磁盘？',
+    step: (s: never, doc) => {
+      const st = s as { lbn: number; level: 'direct' | 'single' | 'double' | 'triple' | 'oob'
+                        path: string[]; reads: number
+                        ranges: { name: string; from: number; to: number; count: number }[] }
+      const bs = Number(doc.params.blockSizeBytes)
+      const ps = Number(doc.params.pointerSizeBytes)
+      const direct = Number(doc.params.directCount)
+      const perBlock = Math.floor(bs / ps)
+      const LEVEL: Record<string, string> = {
+        direct: '**直接地址**：inode 里就存着这一块的地址，拿来就用。',
+        single: '**一级间址**：inode 里那个指针指向一个**索引块**，索引块里才是数据块的地址。',
+        double: '**二级间址**：要先读一级索引块，再读二级索引块，才拿到数据块地址。',
+        triple: '**三级间址**：三层索引块一层层读下来。',
+        oob: '**越界**：这个逻辑块号超出了这套索引结构能表示的最大范围。',
+      }
+      const r = st.ranges.find(x => x.name.includes(st.level === 'direct' ? '直接' : st.level === 'single' ? '一级' : st.level === 'double' ? '二级' : '三级'))
+      return [
+        { k: '本步输入', v: `要访问第 **${st.lbn}** 号逻辑块；盘块 ${bs}B、指针 ${ps}B，一个索引块能装 ${perBlock} 个指针` },
+        { k: '判定规则',
+          v: `inode 里前 ${direct} 个是直接地址，往后依次是一级、二级、三级间址。`
+            + `**先按范围判断这一块落在哪一档**，再决定要多绕几层索引 —— ${LEVEL[st.level] ?? ''}` },
+        { k: '本步结果',
+          v: st.level === 'oob'
+            ? `第 ${st.lbn} 号块超出这套结构能表示的范围，取不到。`
+            : `落在**${r?.name ?? st.level}**档（${r ? `${r.from}~${r.to}` : ''}）。`
+              + `寻址路径：${st.path.join(' → ')}。`
+              + `一共要读 **${st.reads}** 次盘：${st.reads - 1} 次索引块 + 1 次数据块 —— `
+              + `小文件一次就到，大文件要多绕几层，这就是混合索引的代价。` },
+      ]
+    },
     read: [
       { at: '寻址链', is: '从逻辑块号开始，判断落在直接、一级间址还是二级间址，一层层往下。', anchor: '.inchain' },
       { at: '分级结构页签', is: '每一级能覆盖多少块 —— 决定了分界点在哪儿。', anchor: '.tabs' },
@@ -503,6 +1644,32 @@ export const GUIDES: Record<string, Guide> = {
   },
   bplus: {
     question: '往 B+ 树里插入，什么时候分裂？提上去的是哪个键？',
+    step: (s: never, doc) => {
+      const st = s as { key: number; act: 'descend' | 'insert' | 'split' | 'grow' | 'done'
+                        upKey: number; splitLeaf: boolean; height: number; splits: number
+                        nodes: { keys: number[] }[]; focus: number[] }
+      const m = Number(doc.params.order)
+      return [
+        { k: '本步输入',
+          v: `正在插入 **${st.key}**；${m} 阶 B+ 树，当前高度 ${st.height}`
+            + (st.focus.length ? `，看的是第 ${st.focus.join('、')} 号结点` : '') },
+        { k: '判定规则',
+          v: `${m} 阶 B+ 树每个结点最多 ${m - 1} 个键。**所有真数据都在叶子层**，`
+            + `内部结点只当路标；叶子之间还串成链表，所以范围查询能顺着链走。`
+            + `插满了就**分裂**：从中间劈开，把中间那个键提到父结点`
+            + `（叶子分裂时那个键**留一份在右叶子**，内部结点分裂才是真提上去）。` },
+        { k: '本步结果',
+          v: st.act === 'split'
+            ? `结点装不下了，**分裂**${st.splitLeaf ? '（叶子）' : '（内部结点）'}，键 **${st.upKey}** 提到父结点。累计分裂 ${st.splits} 次。`
+            : st.act === 'grow'
+              ? `根也分裂了，**树长高一层** —— 现在高度 ${st.height}。B+ 树只在根分裂时长高，所以永远是平衡的。`
+              : st.act === 'insert'
+                ? `${st.key} 放进叶子，没有超出 ${m - 1} 个键的上限，不用分裂。`
+                : st.act === 'done'
+                  ? `插完了：高度 ${st.height}，一共分裂 ${st.splits} 次。`
+                  : `顺着路标往下找 ${st.key} 该去的那片叶子。` },
+      ]
+    },
     read: [
       { at: '树形', is: '内部结点只当路标，**真正的键全在叶子层**，叶子之间还串成链。', anchor: '.bpt' },
       { at: '标红的结点', is: '这一步装满了、正在分裂。', anchor: '.bpt' },
@@ -515,6 +1682,37 @@ export const GUIDES: Record<string, Guide> = {
   },
   traverse: {
     question: 'DFS 和 BFS 的访问顺序为什么不同？辅助结构装着什么？',
+    step: (s: never, doc) => {
+      const st = s as { order: string[]; pending: string[]; at: string
+                        act: 'visit' | 'push' | 'skip' | 'done'; treeEdges: string[] }
+      const algo = String(doc.params.algorithm)
+      const dfs = algo.toUpperCase().includes('DFS')
+      const start = String(doc.params.start)
+      return [
+        { k: '本步输入',
+          /*  ⚠️ `order` 已经含了**本步**访问的那个点。照它写"已访问 N 个（… A）"，
+              下一行又说"访问 A"—— 同一个点被数了两遍。访问帧要减掉自己。 */
+          v: `已访问 ${Math.max(0, st.order.length - (st.act === 'visit' ? 1 : 0))} 个点`
+            + (st.order.length > 1 || st.act !== 'visit'
+                ? `（${st.order.slice(0, st.order.length - (st.act === 'visit' ? 1 : 0)).join(' ') || '还没有'}）` : '（还没有）')
+            + `；`
+            + `${dfs ? '栈' : '队列'}里还有 ${st.pending.length} 个${st.pending.length ? `（${st.pending.join(' ')}）` : ''}` },
+        { k: '判定规则',
+          v: dfs
+            ? `**深度优先**：一条路走到黑，走不动了回退换一条 —— 用**栈**（递归就是隐式的栈）。`
+              + `图不连通时，一趟走完还有没访问到的点，就从新的起点再来一趟。`
+            : `**广度优先**：一圈一圈往外铺，先访问所有邻居再往深走 —— 用**队列**。`
+              + `无权图上它顺带给出从 ${start} 出发的最短边数。` },
+        { k: '本步结果',
+          v: st.act === 'visit'
+            ? `访问 **${st.at}**，记进访问序列（第 ${st.order.length} 个）。`
+            : st.act === 'push'
+              ? `把 ${st.at} 的未访问邻居放进${dfs ? '栈' : '队列'}，现在里面有 ${st.pending.length} 个。`
+              : st.act === 'skip'
+                ? `${st.at} 已经访问过，跳过 —— 不跳的话有环的图会绕不出来。`
+                : `走完了：访问序列 ${st.order.join(' ')}，生成树用了 ${st.treeEdges.length} 条边。` },
+      ]
+    },
     read: [
       { at: '图', is: '已访问的结点变色，加粗的边是生成树。', anchor: '.gvwrap' },
       { at: '栈 / 队列页签', is: '当前辅助结构里排着谁 —— DFS 用栈、BFS 用队列，差别全在这儿。', anchor: '.tabs' },
@@ -527,6 +1725,63 @@ export const GUIDES: Record<string, Guide> = {
   },
   semaphore: {
     question: 'P 操作的顺序写反了，到底会怎么死？',
+    step: (s: never, doc) => {
+      const st = s as { i: number; empty: number; full: number; mutex: number; buffer: number[]
+                        pc: Record<string, number>; blocked: Record<string, string>
+                        who: string; act: 'P' | 'V' | 'work' | 'block' | 'wake' | 'deadlock' | 'done'
+                        sem: string; produced: number; consumed: number }
+      const SEM: Record<string, string> = { empty: 'empty（空位）', full: 'full（产品）', mutex: 'mutex（锁）' }
+      const semName = SEM[st.sem] ?? st.sem
+      const wrong = doc.params.order === 'wrong'
+      /*  ⚠️ 初始态的 `act` 也是 `'done'`（见内核的 `initial()`），
+          光看 act 会把第一步讲成"调度序列走完了"。
+          `initial()` 里那个 `i: -1` 也认不得 —— 它根本不进轨迹：
+          `step()` 返回的是 `{ i, ...frames[i] }`，第一帧的 `i` 就是 0。
+          「`pc` 为空」同样不行，各线程的程序计数器在第一帧之前就置好了。
+          **认轨迹下标**：第 0 帧是内核 put 的那句「初始：empty = …」。 */
+      const start = st.i === 0
+      const rule = start
+        ? '三个信号量各司其职：**empty 记录空位数、full 记录产品数、mutex 保证同一时刻只有一个线程访问缓冲区**。'
+          + '以下每一步表示某个线程尝试执行其代码中的下一条语句。'
+        : st.act === 'P'
+          ? `P(${st.sem}) 看 ${semName}：**大于 0 就减 1 放行，已经是 0 就地挂起**。`
+            + '（本仿真不允许信号量取负值；教材中"先减再判负"的写法里，'
+            + '负值的绝对值即等待队列长度，两种写法行为等价。）'
+          : st.act === 'V'
+            ? `V(${st.sem}) 把 ${semName} 加 1，然后**看有没有人正排在它上面**，有就放行队首那个 ——`
+              + '被唤醒者直接获得资源，无需重新竞争。'
+            : st.act === 'block'
+              ? `${semName} 已经是 0，${st.who} 拿不到，就地挂起。`
+                + '**而它已持有的资源不会释放**，这正是死锁的成因所在。'
+              : st.act === 'wake'
+                ? '其他线程对该信号量执行了 V 操作，等待队列的队首线程被唤醒。'
+                : st.act === 'deadlock'
+                  ? '全部线程均已挂起，而**能够唤醒它们的 V 操作只能由这些线程自身执行**，系统无法继续推进。'
+                  : st.act === 'work'
+                    ? '进入临界区。读写缓冲区的语句仅此一条，必须置于 mutex 的 P/V 之间。'
+                    : '调度序列执行完毕。'
+      const input = start
+        ? '一个生产者与一个消费者，共用一个缓冲区'
+        : st.act === 'deadlock' ? '没有线程能往下走了'
+          : st.act === 'done' ? '调度序列走完'
+            : st.act === 'block' ? `**${st.who}** 卡在了 P(${st.sem}) 上`
+              : st.act === 'wake' ? `**${st.who}** 被唤醒`
+                : st.act === 'work' ? `轮到 **${st.who}**，它要动缓冲区了`
+                  : `轮到 **${st.who}**，它要执行 **${st.act}(${st.sem})**`
+      return [
+        { k: '本步输入', v: input },
+        { k: '判定规则', v: rule },
+        { k: '本步结果',
+          v: `empty ${st.empty} · full ${st.full} · mutex ${st.mutex}，`
+            + `缓冲区里 ${st.buffer.length} 个，生产 ${st.produced} / 消费 ${st.consumed}。`
+            + (Object.keys(st.blocked).length
+              ? `**卡住的：${Object.entries(st.blocked).map(([k, v]) => `${k} 等 ${v}`).join('，')}**`
+              : '没有人被卡住。') },
+        { k: '对应画面',
+          v: `右边三个信号量的数字；「两段代码」那一页里${st.who ? ` ${st.who} ` : '各线程'}的箭头停在第几行`
+            + `${wrong ? '（现在是**错误顺序**：P(mutex) 排在最前面）' : ''}。` },
+      ]
+    },
     read: [
       { at: '缓冲区', is: '几个格子，生产者往里放、消费者往外取。', anchor: '.sbuf' },
       { at: '两段代码页签', is: '生产者和消费者的代码，高亮的是当前执行到的那一行。', anchor: '.tabs' },
@@ -540,6 +1795,33 @@ export const GUIDES: Record<string, Guide> = {
   },
   bitmap: {
     question: '位示图里第几个字第几位，对应哪个盘块？',
+    step: (s: never, doc) => {
+      const st = s as { act: 'alloc' | 'free' | 'fail'; blocks: number[]
+                        word: number; bit: number; freeCount: number
+                        bits: number[][] }
+      const wb = Number(doc.params.wordBits)
+      const words = Number(doc.params.words)
+      return [
+        { k: '本步输入',
+          v: st.act === 'free'
+            ? `回收 ${st.blocks.length} 个盘块${st.blocks.length ? `（${st.blocks.join('、')}）` : ''}；位示图 ${words} 字 × ${wb} 位`
+            /*  ⚠️ `freeCount` 是内核在**改完位图之后**统计的，不是分配前的余量。
+                写成"当前空闲 N 个"再在结果里写"剩余 N 个"，同一个数出现两次，
+                读者会以为这次分配没生效。 */
+            : `申请 ${st.blocks.length} 个盘块；位示图 ${words} 字 × ${wb} 位` },
+        { k: '判定规则',
+          v: `位示图里**一位对应一个盘块**：0 空闲、1 已用。分配就是找 0 并置 1，回收就是置 0。`
+            + `考点全在换算：位号 (字号 ${st.word}, 位号 ${st.bit}) 与盘块号之间是`
+            + ` **盘块号 = 字号 × ${wb} + 位号**（若盘块从 1 开始编号，还要再加 1）。` },
+        { k: '本步结果',
+          v: st.act === 'alloc'
+            ? `分到盘块 ${st.blocks.join('、')}，对应位示图第 ${st.word} 字第 ${st.bit} 位起，`
+              + `这些位置 1。剩余空闲 ${st.freeCount} 个。`
+            : st.act === 'free'
+              ? `盘块 ${st.blocks.join('、')} 对应的位清 0，空闲数回到 ${st.freeCount} 个。`
+              : `空闲块不够 —— 分配失败，位示图不变（仍有 ${st.freeCount} 个空闲，但凑不够这次要的连续块）。` },
+      ]
+    },
     read: [
       { at: '位阵', is: '每一行是一个字，每一格是一位。0 空闲、1 已用。', anchor: '.bmgrid' },
       { at: '换算公式页签', is: '盘块号 ↔ (字号, 位号) 的两个方向，以及为什么是这么算的。', anchor: '.tabs' },
@@ -552,6 +1834,34 @@ export const GUIDES: Record<string, Guide> = {
   },
   csma: {
     question: '两台机器同时发，冲突之后各自等多久？',
+    step: (s: never, doc) => {
+      const st = s as { slot: number; sending: string[]; collision: boolean
+                        attempts: Record<string, number>; backoff: Record<string, number>
+                        picked: Record<string, string>; done: string[]; aborted: string[] }
+      const waiting = Object.entries(st.backoff).filter(([, n]) => n > 0)
+      const picks = Object.entries(st.picked).map(([k, v]) => `${k} 取 ${v}`).join('，')
+      const rule = st.collision
+        ? '两个及以上的站在同一争用期发送，发生**冲突**。各站随即停止发送，'
+          + '在 0~2^k−1 中各取一个整数 r，退避 r 个争用期后重发（二进制指数退避：冲突次数越多，取值范围越大）。'
+        : st.sending.length === 1
+          ? '本争用期内仅一个站发送，无竞争，该站发送成功。'
+          : st.aborted.length
+            ? `有站撞到了重传上限（${doc.params.maxAttempts} 次）就**放弃**这一帧，交给上层去处理。`
+            : '待发送的各站均处于退避计时中，信道空闲。'
+      return [
+        { k: '本步输入',
+          v: `第 **${st.slot}** 个争用期，`
+            + (st.sending.length ? `**${st.sending.join('、')}** 要发` : '没有站要发') },
+        { k: '判定规则', v: rule },
+        { k: '本步结果',
+          v: (st.collision ? `冲突次数变成 ${Object.entries(st.attempts).map(([k, v]) => `${k}:${v}`).join(' ')}${picks ? `，${picks}` : ''}。` : '')
+            + (waiting.length ? `还在退避：${waiting.map(([k, n]) => `${k} 还要等 ${n}`).join('，')}。` : '')
+            + (st.done.length ? `已成功 ${st.done.join('、')}。` : '')
+            + (st.aborted.length ? `**已放弃 ${st.aborted.join('、')}**。` : '')
+            || '这一拍线上没有变化。' },
+        { k: '对应画面', v: `时隙图第 ${st.slot} 列 —— 撞了那一列画成红的；退避取的 r 在「退避表」那一页。` },
+      ]
+    },
     read: [
       { at: '时间轴', is: '每一行是一个站点，红色格是冲突发生的时刻。', anchor: '.csma' },
       { at: '退避表', is: '第几次冲突、退避区间是多少、随机挑中了几。', anchor: '.ptab' },
@@ -561,6 +1871,2679 @@ export const GUIDES: Record<string, Guide> = {
       { act: '让冲突一直发生', watch: '到 16 次就放弃并报错给上层，不会无限重试。' },
     ],
     terms: ['csma', 'backoff'],
+  },
+  rip: {
+    question: '路由器只跟邻居聊天，怎么就都算出了全网最短路？断了一条链又会怎样？',
+    step: (s: never) => {
+      const st = s as {
+        act: string; round: number; changed: string[]; broken: string
+        routers: string[]; dist: Record<string, Record<string, number>>
+      }
+      const infs = st.routers?.reduce((n, x) => n + st.routers.filter(y => x !== y && (st.dist[x]?.[y] ?? 0) >= 16).length, 0) ?? 0
+      return [
+        { k: '本步输入',
+          v: st.act === 'init'
+            ? `每台路由器只知道到直连邻居的代价，其余目的地都是"无穷"（16）`
+            : st.act === 'break'
+              ? `链路 ${st.broken?.[0]}—${st.broken?.[1]} 刚断，断点两端把这条直连代价设为无穷`
+              : `第 ${st.round} 轮，各路由器收到邻居广播来的距离表` },
+        { k: '判定规则',
+          v: st.act === 'break' || st.act === 'capped'
+            ? `**没有水平分割时**，邻居会把"经过你才到得了"的旧路由又广播回来，`
+              + `你信了它、加上一跳再传出去 —— 代价就这样一格格虚长，这就是**无穷计数**。`
+            : `**距离矢量更新**：到某目的地的代价 = min（到每个邻居的代价 + 邻居声称到目的地的代价）。`
+              + `只跟直连邻居交换整张表，一轮一轮把最短路扩散到全网。` },
+        { k: '本步结果',
+          v: st.act === 'init'
+            ? `初始表建好，开始逐轮交换。`
+            : st.act === 'converged'
+              ? `没有任何表项再变 —— ${infs > 0 ? `收敛，${infs} 个真正不可达的表项停在无穷` : '全网收敛，每台都掌握了到所有目的地的最短代价'}。`
+              : st.act === 'break'
+                ? `坏消息还没扩散，别的路由器仍以为到得了断点 —— 下面几轮会看到代价往上爬。`
+                : `本轮 ${st.changed?.length ?? 0} 个表项更新`
+                  + (st.act === 'capped' ? `，通往断点的代价正一格格逼近无穷 16。` : `，最短路又向外扩散了一圈。`) },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { act: string; round: number; broken: string; changed: string[] }
+      if (st.act === 'converged') return st.broken ? `断链后收敛 · 不可达处停在无穷` : `全网收敛 · 第 ${st.round} 轮`
+      if (st.act === 'capped') return `无穷计数中 · 第 ${st.round} 轮`
+      if (st.act === 'break') return `链路 ${st.broken?.[0]}—${st.broken?.[1]} 断开`
+      return `第 ${st.round} 轮 · ${st.changed?.length ?? 0} 项更新`
+    },
+    read: [
+      { at: '距离矢量矩阵', is: '行是路由器、列是目的地；本轮变的格子高亮，∞ 是不可达。', anchor: '.ripmat' },
+      { at: '网络图页签', is: '拓扑长什么样、断了哪条链一眼可见。', anchor: '.tabs' },
+    ],
+    try: [
+      { act: '从「收敛」切到「断链」', watch: '收敛后断掉一条链，看通往断点的代价一格格往上爬到 16 —— 无穷计数。', param: '场景' },
+      { act: '换成「带环网络」拓扑', watch: '有备用路径时，断链后很快收敛到新路，不会数到无穷。', preset: '带环网络' },
+    ],
+    terms: ['distvec', 'counttoinf'],
+  },
+  radix: {
+    question: '多个请求共享前缀，KV 缓存怎么复用、能省下多少 prefill？',
+    step: (s: never) => {
+      const st = s as {
+        act: string; req: number; pos: number; reqTokens: string[]
+        hit: number; compute: number; cached: number; budget: number
+        savedTotal: number; seenTotal: number
+      }
+      const tk = st.pos >= 0 ? st.reqTokens?.[st.pos] : ''
+      const pctSaved = st.seenTotal ? Math.round((st.savedTotal / st.seenTotal) * 100) : 0
+      return [
+        { k: '本步输入',
+          v: st.act === 'done'
+            ? `全部请求处理完，累计 ${st.seenTotal} 个 token`
+            : st.act === 'evict'
+              ? `缓存已满（${st.budget} token），要腾地方`
+              : st.act === 'reqdone'
+                ? `请求 ${st.req} 处理完`
+                : `请求 ${st.req} 的第 ${st.pos + 1} 个 token「${tk}」，去前缀树上找` },
+        { k: '判定规则',
+          v: st.act === 'evict'
+            ? `**LRU 淘汰**：缓存的 token 总数超预算，挑最久没被命中的**叶子**回收 —— 从叶子往上，不动还在被复用的前缀。`
+            : `**能匹配前缀树上已有路径 → 命中**：这段 KV 已经算过，直接复用、跳过 prefill；`
+              + `**走到树上没有的 token → 未命中**：计算它的 KV 并把结点挂上去。之后的 token 都算新的。` },
+        { k: '本步结果',
+          v: st.act === 'match'
+            ? `「${tk}」命中，KV 复用 —— 本请求已命中 ${st.hit} 个。`
+            : st.act === 'compute'
+              ? `「${tk}」未命中，算了它的 KV 挂进树。`
+              : st.act === 'evict'
+                ? `淘汰一个叶子，缓存降到 ${st.cached} / ${st.budget}。`
+                : st.act === 'reqdone'
+                  ? `请求 ${st.req}：命中 ${st.hit}、计算 ${st.compute} —— 省下 ${st.hit} 个 token 的 prefill。`
+                  : `累计省下 ${st.savedTotal} / ${st.seenTotal} 个 token 的 prefill（**${pctSaved}%**）。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { act: string; hit: number; compute: number; savedTotal: number; seenTotal: number }
+      if (st.act === 'done') {
+        const p = st.seenTotal ? Math.round((st.savedTotal / st.seenTotal) * 100) : 0
+        return `共省下 ${st.savedTotal}/${st.seenTotal} 的 prefill（${p}%）`
+      }
+      if (st.act === 'match') return `命中 · 复用 KV`
+      if (st.act === 'compute') return `未命中 · 计算 KV`
+      if (st.act === 'evict') return `LRU 淘汰`
+      return `请求处理中`
+    },
+    read: [
+      { at: '前缀树', is: '一条路径 = 一段缓存的前缀；当前 token 高亮，绿色是某请求的终点。', anchor: '.rxgraph' },
+      { at: '请求 token 带', is: '绿色是命中（复用 KV）、蓝色是未命中（要计算）。', anchor: '.rxtoks' },
+      { at: '省下 prefill 条', is: '命中的 token 占比 —— 共享前缀越多，这条越长。', anchor: '.rxsave' },
+    ],
+    try: [
+      { act: '在「共享 system 前缀」和「各不相同」之间切', watch: '共享前缀的请求集能省下近一半 prefill；毫无共享的省 0 —— 前缀复用的价值全看请求像不像。', param: '请求集' },
+      { act: '把缓存预算调到 4', watch: '缓存装不下所有前缀，开始 LRU 淘汰叶子；下一个请求想复用被淘汰的前缀就得重算。', param: '缓存预算' },
+    ],
+    terms: ['prefixcache', 'prefill'],
+  },
+  paged: {
+    question: 'KV 缓存为什么要分页？物理块不连续，怎么还能对得上？',
+    step: (s: never) => {
+      const st = s as {
+        act: string; req: string; focus: number; freeCount: number
+        totalBlocks: number; blockSize: number; tables: Record<string, number[]>
+      }
+      const aTable = st.tables?.A ?? []
+      return [
+        { k: '本步输入',
+          v: st.act === 'done'
+            ? `处理完毕，${st.totalBlocks - st.freeCount} / ${st.totalBlocks} 块在用`
+            : st.act === 'free'
+              ? `请求 ${st.req} 结束了`
+              : `请求 ${st.req} 又生成了一批 token，要放 KV` },
+        { k: '判定规则',
+          v: st.act === 'free'
+            ? `请求结束 → 它的物理块**全部归还空闲池**，别的请求立刻能拿去用（像进程退出释放页框）。`
+            : `KV 切成每块 ${st.blockSize} 个 token 的**固定块**。装满当前块就从**空闲池拿一块新的** —— `
+              + `**拿到哪块都行，不要求连续**。每个请求一张**块表**记「逻辑块→物理块」，就是页表。` },
+        { k: '本步结果',
+          v: st.act === 'alloc'
+            ? `分配了物理块 ${st.focus}（请求 ${st.req} 的一个逻辑块）—— 物理上可能和上一块隔开，块表照样对上。`
+            : st.act === 'append'
+              ? `填进已有的块，没占新块。`
+              : st.act === 'free'
+                ? `归还完毕，空闲块回到 ${st.freeCount} 个。`
+                : `A 的块表是 [${aTable.join(' ')}] —— 非连续也毫无问题，这就是分页消灭外碎片的方式。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { act: string; req: string; focus: number; freeCount: number; totalBlocks: number }
+      if (st.act === 'done') return `${st.totalBlocks - st.freeCount}/${st.totalBlocks} 块在用 · 零外碎片`
+      if (st.act === 'alloc') return `分配物理块 ${st.focus}`
+      if (st.act === 'free') return `归还 · 空闲 ${st.freeCount}`
+      return `请求 ${st.req} 填入`
+    },
+    read: [
+      { at: '物理块池', is: '每块按属主上色；当前分配的块高亮，灰色是空闲。', anchor: '.pgpool' },
+      { at: '块表', is: '每个请求一行：逻辑块号 → 物理块号。物理块跳着走完全正常。', anchor: '.pgtmap' },
+    ],
+    try: [
+      { act: '看请求 A 的块表', watch: '交错生成让 A 拿到物理块 0、2、4 —— 不连续，但块表把它们串成 A 的逻辑序列，一点不乱。', param: '场景' },
+      { act: '切到「释放后复用」', watch: '前一个请求结束、块归还后，新请求直接捡起这些块 —— 没有连续分配那种"总量够却拼不出一整块"的外碎片。', param: '场景' },
+    ],
+    terms: ['paging', 'blocktable', 'fragment'],
+  },
+  forward: {
+    question: '前面学的嵌入、注意力、FFN、归一化、采样，合起来一次推理到底怎么流动？',
+    step: (s: never) => {
+      const st = s as { phase: string; stageIdx: number; stageName: string; stageLink: string; vec: number[]; attn: number[] | null; predicted: string | null; seq: string[]; probs: number[] | null; detail: string }
+      return [
+        { k: '本步输入',
+          v: st.phase === 'done' ? `序列「${st.seq.join('')}」走完整条前向` : `${st.stageName}` },
+        { k: '判定规则',
+          v: st.stageLink && st.stageLink !== '—'
+            ? `这一段就是**${st.stageLink}**那个实验做的事，用真实向量跑一遍。${st.detail}`
+            : `${st.detail || '把上一段的输出接着往下算。'}` },
+        { k: '本步结果',
+          v: st.phase === 'done'
+            ? `预测下一个 token「**${st.predicted}**」。这条 embed→注意力→FFN→norm→采样 的链，就是每步 decode 真正跑的东西 —— 之前所有优化都在加速它。`
+            : st.attn ? `注意力权重 [${st.attn.join('、')}]，末向量 [${st.vec.join('、')}]。`
+              : st.predicted ? `softmax 后贪心取最大 → 预测「${st.predicted}」。`
+                : `末向量 [${st.vec.join('、')}]，进入下一段。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; stageIdx: number; predicted: string | null; stageName: string }
+      return st.phase === 'done' ? `一次前向 → 预测「${st.predicted}」`
+        : `第 ${st.stageIdx + 1}/10 段 · ${st.stageName.replace(/^[①-⑩]\s*/, '')}`
+    },
+    read: [
+      { at: '顶部序列→预测', is: '输入序列在左，走完流水后右边出现预测的下一个 token。', anchor: '.fwhdr' },
+      { at: '流水段带', is: '10 段流水，当前段高亮、已过的变绿。', anchor: '.fwflow' },
+      { at: '当前段详情', is: '本段的真实向量；注意力段有权重、末尾有词表概率。', anchor: '.fwdetail' },
+    ],
+    try: [
+      { act: '一步步点"下一步"走完 10 段', watch: '向量在每段被改写：归一化拉尺度、注意力融入上下文、FFN 变换、残差叠加，最后变成 logits。' },
+      { act: '走到最后看词表概率', watch: 'logits 过 softmax 成概率，最高的那个词被选中 —— 这就是模型"吐"出下一个字的瞬间。' },
+    ],
+    terms: ['fwpass', 'softmaxdef', 'contbatch'],
+  },
+  rmsnorm: {
+    question: 'Transformer 每层前都要归一化，RMSNorm 到底做了什么，为什么比 LayerNorm 更受欢迎？',
+    step: (s: never) => {
+      const st = s as { phase: string; x: number[]; meanSq: number; rms: number; cursor: number; gain: number[]; out: (number|null)[]; outRms: number }
+      return [
+        { k: '本步输入',
+          v: st.phase === 'square' ? `向量 x = [${st.x.join(', ')}]`
+            : st.phase === 'rms' ? `均方 = ${st.meanSq}`
+              : st.phase === 'done' ? '归一化完成' : `第 ${st.cursor} 维 x=${st.x[st.cursor]}` },
+        { k: '判定规则',
+          v: `RMSNorm：**RMS = √(各维平方的平均)**，再把每维 **x̂ = x/RMS·g**。关键是**不减均值**（LayerNorm 要减）—— 少一步、少一组偏置，更省。` },
+        { k: '本步结果',
+          v: st.phase === 'square' ? `各维平方求平均得均方 ${st.meanSq}，下一步开方。`
+            : st.phase === 'rms' ? `RMS = √${st.meanSq} = **${st.rms}**，用它把向量缩到单位尺度。`
+              : st.phase === 'done' ? `归一化后（未乘增益）向量 RMS = **${st.outRms}**（正好为 1）。增益 g 再逐维缩放。`
+                : `x̂ = ${st.x[st.cursor]} ÷ ${st.rms} × g(${st.gain[st.cursor]}) = **${st.out[st.cursor]}**。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; rms: number; outRms: number; cursor: number }
+      return st.phase === 'done' ? `归一化后 RMS = ${st.outRms}（单位尺度）`
+        : st.phase === 'rms' || st.phase === 'square' ? `RMS = ${st.rms || '?'}` : `第 ${st.cursor} 维`
+    },
+    read: [
+      { at: '输入 / 平方', is: 'x 与各维平方，平方求平均就是均方。', anchor: '.rncell.sq' },
+      { at: 'RMS 一行', is: '均方开方得 RMS —— 归一化的除数。', anchor: '.rnrms' },
+      { at: '归一化输出', is: 'x/RMS·g，逐维长出；下面是增益 g。', anchor: '.rncell.out' },
+      { at: '校验行', is: '归一化后向量 RMS=1，证明尺度被拉齐了。', anchor: '.rncheck' },
+    ],
+    try: [
+      { act: '把增益 g 改成"放大末维"', watch: '前几维不变，最后一维输出翻倍 —— 增益是每维一个的可学习缩放。', param: '可学习增益 g' },
+      { act: '盯住校验行', watch: '不管输入什么，归一化后（未乘增益）的 RMS 永远是 1 —— 这就是"归一化"的含义。', param: '可学习增益 g' },
+    ],
+    terms: ['rmsdef'],
+  },
+  rope: {
+    question: '注意力对词序无感，RoPE 怎么用"旋转"把位置塞进去，还能泛化到更长文本？',
+    step: (s: never) => {
+      const st = s as { phase: string; pos: number; thetaDeg: number; angleDeg: number; x: number; y: number; norm: number; dotWith0: number }
+      return [
+        { k: '本步输入',
+          v: st.phase === 'done' ? '所有位置旋转完' : `位置 ${st.pos}` },
+        { k: '判定规则',
+          v: `把一对维度当成 2D 向量，按 **位置 × θ = ${st.angleDeg}°** 旋转它。旋转是正交变换：**只改方向、不改模长**。位置越靠后，转得越多。` },
+        { k: '本步结果',
+          v: st.phase === 'done'
+            ? `模长始终 **${st.norm.toFixed(3)}**（旋转保范，不像"加"位置会改大小）。位置 m 与 n 的点积只依赖 (m−n)·θ —— 只看相对位置，所以能泛化到更长上下文。`
+            : `向量到 (${st.x.toFixed(3)}, ${st.y.toFixed(3)})，模长 **${st.norm.toFixed(3)}**。与位置0点积 = cos(${st.pos}·${st.thetaDeg}°) = **${st.dotWith0.toFixed(3)}**。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; norm: number; angleDeg: number; dotWith0: number; pos: number }
+      return st.phase === 'done' ? `模长恒 ${st.norm.toFixed(2)} · 点积只看相对位置`
+        : `位置 ${st.pos} · 转到 ${st.angleDeg}° · 点积 ${st.dotWith0.toFixed(2)}`
+    },
+    read: [
+      { at: '单位圆', is: '琥珀是当前向量，虚线是位置0参考；圆点是走过的位置轨迹。', anchor: '.ropesvg' },
+      { at: '模长 |v|', is: '不管转到哪，模长永远是 1 —— 旋转保范。', anchor: '.ropest.ok' },
+      { at: '与位置0点积', is: 'cos(p·θ)，随相对位置差变化，绝对位置无关。', anchor: '.ropestats' },
+    ],
+    try: [
+      { act: '把 θ 从 30° 加到 60°', watch: '每个位置转得更多、向量绕圈更快 —— θ 就是这对维度的旋转频率。', param: '每位旋转角 θ' },
+      { act: '盯住模长这一行', watch: '走遍所有位置，模长始终是 1.000 —— 这是旋转（正交变换）的性质，加法位置编码做不到。', param: '每位旋转角 θ' },
+    ],
+    terms: ['ropepos'],
+  },
+  moe: {
+    question: '听说 MoE 模型总参数几百 B，为什么推理起来反而比稠密模型省算力？',
+    step: (s: never) => {
+      const st = s as { phase: string; experts: number; topk: number; tokens: string[]; cursor: number; chosen: number[]; chosenGates: number[]; load: number[]; activeFrac: number }
+      return [
+        { k: '本步输入',
+          v: st.phase === 'done' ? `${st.tokens.length} 个 token 全部路由完` : `token「${st.tokens[st.cursor]}」的 router 打分` },
+        { k: '判定规则',
+          v: `门控 = softmax(router 分数)，取门控最高的 **top-${st.topk}** 个专家，在这 ${st.topk} 个内重新归一化 → 输出 = Σ 门控·专家。只算选中的 ${st.topk}/${st.experts} 个，其余**跳过**。` },
+        { k: '本步结果',
+          v: st.phase === 'done'
+            ? `每个 token 只激活 **${st.topk}/${st.experts}**（活跃参数 ${Math.round(st.activeFrac * 100)}%）。负载 [${st.load.join('、')}]${Math.max(...st.load) === Math.min(...st.load) ? '，正好均衡' : '，忙闲不均，需负载均衡'}。`
+            : `选中专家 ${st.chosen.join('、')}，门控 ${st.chosenGates.map(g => Math.round(g * 100) + '%').join('、')}。当前负载 [${st.load.join('、')}]。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; activeFrac: number; topk: number; experts: number; chosen: number[]; tokens: string[]; cursor: number }
+      return st.phase === 'done' ? `活跃 ${Math.round(st.activeFrac * 100)}%（${st.topk}/${st.experts} 专家）`
+        : `${st.tokens[st.cursor]} → 专家 ${st.chosen.join(',')}`
+    },
+    read: [
+      { at: '专家行', is: '选中的专家高亮并显示门控 %，没选中的标"跳过"。', anchor: '.moeexperts' },
+      { at: '门控细条', is: '每个专家的 softmax 门控，top-k 就是最高的那几个。', anchor: '.moeexperts' },
+      { at: '负载条', is: '每个专家累计接了几个 token，红色是最忙的 —— 看均不均衡。', anchor: '.moeload' },
+    ],
+    try: [
+      { act: '把 top-k 从 2 调到 1', watch: '活跃参数从 50% 降到 25%，更省算力；但表达力下降，且更容易有专家闲置（负载不均）。', param: '每 token 选几个专家' },
+      { act: '看负载条', watch: '有的专家一直被选、有的没人光顾 —— 这就是 MoE 要做负载均衡的原因。', param: '每 token 选几个专家' },
+    ],
+    terms: ['moeroute', 'params', 'softmaxdef'],
+  },
+  quant: {
+    question: '7B 模型 fp16 要十几 G，换成 int8 / int4 怎么就塞进小显存了？会差多少？',
+    step: (s: never) => {
+      const st = s as { phase: string; bits: number; qmax: number; scale: number; cursor: number; weights: number[]; ints: (number|null)[]; deq: (number|null)[]; errs: (number|null)[]; maxErr: number; bytesFp32: number; bytesQ: number }
+      return [
+        { k: '本步输入',
+          v: st.phase === 'scale' ? `int${st.bits} 的整数范围 ±${st.qmax}，权重绝对值最大值`
+            : st.phase === 'done' ? `${st.weights.length} 个权重全部量化完`
+              : `第 ${st.cursor} 个权重 w=${st.weights[st.cursor]}` },
+        { k: '判定规则',
+          v: st.phase === 'scale'
+            ? `**定标**：scale = max|w| ÷ ${st.qmax} = **${st.scale.toFixed(4)}**。整数的每一格代表这么大的实数。`
+            : `**量化**：q = round(w ÷ scale) 截断到 ±${st.qmax}，只存这个整数（int${st.bits} 占 ${st.bits/8} 字节）；用时反量化 ŵ = q × scale。` },
+        { k: '本步结果',
+          v: st.phase === 'done'
+            ? `fp32 的 ${st.bytesFp32} 字节压到 int${st.bits} 的 **${st.bytesQ} 字节**（省 ${Math.round((1-st.bytesQ/st.bytesFp32)*100)}%），最大误差 **${st.maxErr.toFixed(3)}**。位越少越省、误差越大。`
+            : st.phase === 'scale' ? `定标完成，接下来逐个把权重四舍五入到最近的整数格。`
+              : `q=${st.ints[st.cursor]}，反量化 ${(st.deq[st.cursor] ?? 0).toFixed(3)}，误差 ${(st.errs[st.cursor] ?? 0).toFixed(3)}。目前最大误差 ${st.maxErr.toFixed(3)}。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; bits: number; bytesFp32: number; bytesQ: number; maxErr: number; cursor: number }
+      return st.phase === 'done' ? `int${st.bits} · 省 ${Math.round((1-st.bytesQ/st.bytesFp32)*100)}% · 最大误差 ${st.maxErr.toFixed(3)}`
+        : st.phase === 'scale' ? `int${st.bits} 定标中` : `量化第 ${st.cursor} 个`
+    },
+    read: [
+      { at: 'scale 条', is: '整数范围 ±qmax 与 scale 步长，量化的标尺。', anchor: '.qzscale' },
+      { at: '量化表', is: 'w → 整数 q → 反量化 ŵ → 误差，逐行长出。', anchor: '.qztab' },
+      { at: '显存对比', is: 'fp32 与 int8/4 的字节数，右边是省下的比例与最大误差。', anchor: '.qzfoot' },
+    ],
+    try: [
+      { act: '在 int8 / int4 之间切', watch: 'int4 显存再省一半，但 scale 变大、整数格变粗，误差明显变大（0.008 → 0.14）。', param: '量化位数' },
+      { act: '看绝对值最大的那个权重', watch: '它总被映射到 ±qmax（int8 的 ±127 / int4 的 ±7）—— scale 就是按它定的。', param: '量化位数' },
+    ],
+    terms: ['quantsym', 'params'],
+  },
+  specdec: {
+    question: '大模型逐字吐太慢，怎么用一个小模型帮它一次多吐几个字还不掉质量？',
+    step: (s: never) => {
+      const st = s as { phase: string; proposals: string[]; matchLen: number; bonus: boolean; gotThisRound: number; targetPasses: number; tokensOut: number; speedup: number; K: number }
+      return [
+        { k: '本步输入',
+          v: st.phase === 'done' ? `共 ${st.tokensOut} 字生成完` : `草稿模型一次猜 ${st.K} 个：「${st.proposals.join('')}」` },
+        { k: '判定规则',
+          v: `大模型**一次前向**并行验证这 K+1 个位置：从头比对，接受草稿猜对的**最长前缀**，第一个错处用大模型真值**纠正**，其余作废；全中还**白送 1 个**。落地的字都由大模型定夺 → 输出与逐字生成一致。` },
+        { k: '本步结果',
+          v: st.phase === 'done'
+            ? `${st.tokensOut} 字只花了 **${st.targetPasses}** 次大模型前向（逐字要 ${st.tokensOut} 次）→ 加速 **${st.speedup.toFixed(2)}×**。`
+            : `接受前 ${st.matchLen} 个` + (st.bonus ? '（全中，白送 1 个）' : '，纠正 1 个') + `，本轮落地 ${st.gotThisRound} 字。累计 ${st.speedup.toFixed(2)}×。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; speedup: number; targetPasses: number; tokensOut: number; matchLen: number }
+      return st.phase === 'done' ? `${st.tokensOut} 字 / ${st.targetPasses} 次前向 = ${st.speedup.toFixed(2)}×`
+        : `接受 ${st.matchLen} 个 · 累计 ${st.speedup.toFixed(2)}×`
+    },
+    read: [
+      { at: '已生成序列', is: '锁定的输出，绿色；本轮新落地的高亮。', anchor: '.sdseq' },
+      { at: '本轮草稿', is: '✓ 接受 / ✗ 纠正 / 作废，最后一格是大模型的真值或白送。', anchor: '.sdprops' },
+      { at: '加速比', is: '出字数 / 大模型前向次数，和逐字条对比。', anchor: '.sdspeed' },
+    ],
+    try: [
+      { act: '把草稿步数 K 从 1 加到 4', watch: 'K 越大一次猜得越多，草稿准时接受越多、加速比越高（本例到 2.67×）。', param: '草稿步数 K' },
+      { act: '盯住每轮"接受几个"', watch: '草稿猜对就多吐几个字、只花 1 次大模型前向；猜错处被大模型真值纠正，绝不出错。', param: '草稿步数 K' },
+    ],
+    terms: ['specdraft'],
+  },
+  scaledmask: {
+    question: '注意力打完分，为什么还要除 √d、还要盖一层掩码？',
+    step: (s: never) => {
+      const st = s as { phase: string; row: number; tokens: string[]; d: number; scale: number; causal: boolean; peak: number; peakUnscaled: number; raw: number[] }
+      return [
+        { k: '本步输入',
+          v: st.phase === 'done' ? '所有查询行算完' : `第 ${st.row} 行「${st.tokens[st.row]}」的原始 Q·K 分数` },
+        { k: '判定规则',
+          v: `**除 √${st.d}=${st.scale.toFixed(2)}**：把分数拉回合适量程，防止 softmax 饱和（一个≈1、其余≈0、梯度消失）。` + (st.causal ? `**因果掩码**：把 j>${st.phase === 'done' ? 'i' : st.row} 的未来位设 −∞，softmax 后权重恰为 0 → 矩阵成下三角。` : '（未开掩码 → 双向注意力，矩阵全满）') },
+        { k: '本步结果',
+          v: st.phase === 'done'
+            ? `注意力矩阵${st.causal ? '成下三角，每个词只看自己和前文' : '全满（双向）'}，每行 softmax 和为 1。除 √d 让分布不过尖。`
+            : `本行最大权重 ${Math.round(st.peak * 100)}%` + (st.d > 1 ? `；若不除 √d 会到 ${Math.round(st.peakUnscaled * 100)}%（更饱和、更接近独热）。` : '。') },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; causal: boolean; d: number; peak: number; row: number; tokens: string[] }
+      return st.phase === 'done' ? `${st.causal ? '下三角' : '双向'} · 除 √${st.d} 后不饱和`
+        : `行 ${st.row} · 最大权重 ${Math.round(st.peak * 100)}%`
+    },
+    read: [
+      { at: '注意力矩阵', is: '逐行长出，颜色越深越关注；· 是被掩掉的未来位（权重 0）。', anchor: '.smmgrid' },
+      { at: '本行拆解', is: '原始 Q·K → 除 √d → softmax 三行，看数字怎么被压平。', anchor: '.smmbreak' },
+      { at: '去饱和对比', is: '左边除 √d 后的最大权重，右边不除会更尖。', anchor: '.smmsat' },
+    ],
+    try: [
+      { act: '把头维度 d 调大（1 → 4 → 64）', watch: '同一行的最大权重越来越低、分布越来越平 —— √d 越大，去饱和越明显。', param: '头维度 d' },
+      { act: '关掉因果掩码', watch: '注意力矩阵从下三角变成全满 —— 每个词能看到未来（双向，像 BERT 而非 GPT）。', param: '因果掩码' },
+    ],
+    terms: ['scaledd', 'causalmask', 'softmaxdef', 'scaleddot'],
+  },
+  roofline: {
+    question: '为什么大模型解码那么慢，GPU 却没跑满？加大 batch 为什么就快了？',
+    step: (s: never) => {
+      const st = s as { phase: string; batch: number; ai: number; ridge: number; bound: string; attainTFLOPs: number; util: number; peakTFLOPs: number }
+      return [
+        { k: '本步输入',
+          v: st.phase === 'done' ? '批 1 → 128 全部走完' : `批大小 ${st.batch}：算 FLOPs、搬字节` },
+        { k: '判定规则',
+          v: `**算术强度 AI = FLOPs ÷ 字节**。和**脊点 ${st.ridge}**（峰值算力÷带宽）比：AI < 脊点 → **卡带宽**（搬得慢、算力闲着）；AI ≥ 脊点 → **卡算力**。可达性能 = min(峰值, AI·带宽)。` },
+        { k: '本步结果',
+          v: st.phase === 'done'
+            ? `批越大 AI 越高、越往算力屋顶爬：利用率从 <1% 升到 **${Math.round(st.util * 100)}%**。解码单条 AI≈1 卡死在带宽 —— 这就是"慢在搬权重"。`
+            : `AI = **${st.ai.toFixed(1)}** → **${st.bound === 'memory' ? '卡带宽' : '卡算力'}**。可达 ${st.attainTFLOPs} TFLOP/s，只用到峰值算力的 **${Math.round(st.util * 100)}%**。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; batch: number; ai: number; bound: string; util: number }
+      return st.phase === 'done' ? `批 1→128 · 利用率 <1% → ${Math.round(st.util * 100)}%`
+        : `批 ${st.batch} · AI ${st.ai.toFixed(1)} · ${st.bound === 'memory' ? '卡带宽' : '卡算力'}`
+    },
+    read: [
+      { at: '屋顶线图', is: '红斜坡=带宽屋顶，绿平顶=算力屋顶，交点是脊点。', anchor: '.rfsvg' },
+      { at: '点的位置', is: '每个批一个点，AI 越大越往右上爬，越贴近算力屋顶。', anchor: '.rfsvg' },
+      { at: '瓶颈', is: 'AI 小于脊点就是带宽瓶颈（红），大于是算力瓶颈（绿）。', anchor: '.rfstats' },
+    ],
+    try: [
+      { act: '一步步加大批（1→128）', watch: 'AI 从 ~1 涨到 ~120，点沿红斜坡往上爬，算力利用率从 0.6% 升到 77%。', param: '模型维度 d' },
+      { act: '想想解码 vs 批处理', watch: '单条解码 AI≈1 死死卡在带宽；连续批处理把很多请求凑成大 batch，正是在抬 AI。', param: '模型维度 d' },
+    ],
+    terms: ['roofmodel'],
+  },
+  flash: {
+    question: '把注意力拆成小块一块块算，结果会变吗？为什么这样能快很多？',
+    step: (s: never) => {
+      const st = s as { phase: string; block: number[]; m: number; l: number; acc: number; out: number; naive: number; err: number; blockSize: number; scores: number[] }
+      return [
+        { k: '本步输入',
+          v: st.phase === 'done' ? '所有块扫完' : `第 ${st.block.length ? Math.floor(st.block[0] / st.blockSize) + 1 : 1} 块：键 ${st.block.join('、')}（每块 ${st.blockSize} 个）` },
+        { k: '判定规则',
+          v: '**在线 softmax**：维护滚动的 m（最大分数）、l（exp 之和）、O（加权和）。每来一块，先把旧的 l、O 按 **exp(旧max − 新max)** 缩放对齐，再加本块贡献。softmax 同减常数不变 → 分块累加与一次性完全等价。' },
+        { k: '本步结果',
+          v: st.phase === 'done'
+            ? `在线结果 O=**${st.out.toFixed(4)}**、真值 **${st.naive.toFixed(4)}**，相对误差 ${(st.err * 1e9).toFixed(2)}e-9 —— 分毫不差。那条长度 ${st.scores.length} 的分数向量全程没落 HBM。`
+            : `更新 m=${st.m.toFixed(2)}、l=${st.l.toFixed(2)}，当前 O=${st.out.toFixed(2)}（真值 ${st.naive.toFixed(2)}，还差 ${(st.err * 100).toFixed(1)}%）。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; out: number; naive: number; err: number; block: number[] }
+      return st.phase === 'done' ? `O ${st.out.toFixed(2)} = 真值 ${st.naive.toFixed(2)} · 误差 ~0`
+        : `扫块 ${st.block.join('')} · O→${st.out.toFixed(1)}`
+    },
+    read: [
+      { at: '分数行', is: '琥珀块是本步在扫的 K/V 块，绿色是已扫过的。', anchor: '.flscores' },
+      { at: '滚动 m / l / O', is: '三个累加量，随每块更新 —— 从不需要完整分数向量。', anchor: '.flacc' },
+      { at: '收敛对照', is: '当前 O/l 一路逼近一次性 softmax 的真值，末步完全相等。', anchor: '.flconv' },
+      { at: 'HBM 流量', is: '朴素把分数向量在 HBM 搬 ~3N 趟，flash 是 0。', anchor: '.flio' },
+    ],
+    try: [
+      { act: '改块大小（1 / 2 / 3）', watch: '扫的步数变了，但最终 O 分毫不变 —— 分块只影响怎么算，不影响算什么。', param: '块大小' },
+      { act: '盯住 O/l 的收敛', watch: '每扫一块，当前输出就朝真值挪一步，末步相对误差降到 ~1e-9。', param: '块大小' },
+    ],
+    terms: ['onlinesoftmax', 'hbmsram', 'softmaxdef'],
+  },
+  kvcache: {
+    question: '每生成一个 token 都要重看前文，为什么不会越来越慢到不可用？',
+    step: (s: never) => {
+      const st = s as { phase: string; seq: string[]; computed: number; recomputed: number; cacheSize: number; cumCached: number; cumNaive: number; savedPct: number }
+      return [
+        { k: '本步输入',
+          v: st.phase === 'prefill' ? `提示词 ${st.cacheSize} 个 token，一次性预填充`
+            : st.phase === 'done' ? `${st.seq.length} 个 token 全部生成完`
+              : `生成第 ${st.seq.length} 个 token「${st.seq[st.seq.length - 1]}」，前面已有 ${st.cacheSize - 1} 个` },
+        { k: '判定规则',
+          v: `注意力要用到**前面每个 token 的 K/V**。**有缓存**：算过的 K/V 存起来，本步只算新 token 那 **1** 个；**无缓存**：本步把整段 ${st.recomputed} 个 token 的 K/V 全重算。所以有缓存每步是常数、无缓存随长度线性涨。` },
+        { k: '本步结果',
+          v: st.phase === 'done'
+            ? `有缓存共算 **${st.cumCached}** 次、无缓存要 **${st.cumNaive}** 次 —— 省 **${st.savedPct}%**。代价：缓存占 ${st.cacheSize} 对 K/V 显存，序列越长占越多。`
+            : `有缓存算 ${st.computed}、无缓存要 ${st.recomputed}。累计 ${st.cumCached} vs ${st.cumNaive}，缓存现存 ${st.cacheSize} 对。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; savedPct: number; seq: string[]; cacheSize: number }
+      return st.phase === 'done' ? `缓存省 ${st.savedPct}% 计算 · 占 ${st.cacheSize} 对 KV`
+        : st.phase === 'prefill' ? `预填充 ${st.cacheSize} 个 token`
+          : `第 ${st.seq.length} 个 · 只算 1 个 K/V`
+    },
+    read: [
+      { at: 'token 序列', is: '绿框是缓存里已有的 K/V，琥珀框是本步新算的那一个。', anchor: '.kvseq' },
+      { at: '本步计算量', is: '左边有缓存永远是 1，右边无缓存等于当前序列长度。', anchor: '.kvstep' },
+      { at: '累计对比条', is: '有缓存线性、无缓存二次 —— 差距随长度拉开。', anchor: '.kvcmp' },
+    ],
+    try: [
+      { act: '拉长总长度', watch: '无缓存累计按 ~L²/2 涨、有缓存只按 L 涨，省下的百分比越来越高。', param: '总长度' },
+      { act: '改提示词长度', watch: '预填充一次算完提示词那段；提示词越长，缓存起步就越大。', param: '提示词长度' },
+    ],
+    terms: ['kvprefill', 'kvmem'],
+  },
+  mha: {
+    question: 'MHA / MQA / GQA 差在哪？为什么大模型都改用 GQA？',
+    step: (s: never) => {
+      const st = s as { act: string; variant: string; heads: number; kvHeads: number; focus: number; map: number[]; kvRatio: number }
+      return [
+        { k: '本步输入', v: st.act === 'done' ? `${st.variant}：${st.heads} 个 query 头、${st.kvHeads} 个 KV 头` : `query 头 ${st.focus}` },
+        { k: '判定规则', v: `注意力分多个头并行。三种变体差在**KV 头怎么共享**：**MHA** 每个 query 头独占一个 KV 头；**MQA** 所有 query 头共享 1 个；**GQA** 分组共享。KV 缓存 ∝ KV 头数。` },
+        { k: '本步结果', v: st.act === 'done'
+          ? `KV 缓存是 MHA 的 **${Math.round(st.kvRatio * 100)}%**。${st.variant === 'GQA' ? 'GQA 用一点表达力换来 KV 缓存大减 —— 现在主流' : st.variant === 'MQA' ? 'MQA 最省但可能掉点' : 'MHA 最大、表达力最强'}`
+          : `它读 KV 头 **${st.map[st.focus]}**。` },
+      ]
+    },
+    verdict: (s: never) => { const st = s as { act: string; variant: string; kvRatio: number; focus: number; map: number[] }; return st.act === 'done' ? `${st.variant} · KV ${Math.round(st.kvRatio * 100)}% of MHA` : `头 ${st.focus} → KV ${st.map[st.focus]}` },
+    read: [
+      { at: '头共享图', is: 'query 头在上、KV 头在下，连线表示谁读谁。', anchor: '.mhwrap' },
+      { at: 'KV 缓存条', is: 'KV 头越少、缓存越小 —— MQA 最短、MHA 最长。', anchor: '.mhkv' },
+    ],
+    try: [
+      { act: '在 MHA / MQA / GQA 之间切', watch: '同样 8 个 query 头，KV 头从 8 到 1，KV 缓存从 100% 降到十几 %。', param: '变体' },
+      { act: '看 GQA 分组数', watch: '组越多越接近 MHA（表达力高、KV 大），越少越接近 MQA（省显存）。', param: 'GQA 分组' },
+    ],
+    terms: ['mhavariant', 'kvmem'],
+  },
+  chunkprefill: {
+    question: '一个用户发来超长 prompt，为什么会让别的用户"卡住"？怎么解决？',
+    step: (s: never) => {
+      const st = s as { phase: string; chunk: number; timeline: {kind:string;cost:number;label:string}[]; cursor: number; clock: number; firstDecodeAt: number; prefillLen: number; totalTime: number }
+      const op = st.timeline[st.cursor]
+      return [
+        { k: '本步输入', v: st.phase === 'done' ? '时间线走完' : op ? `t=${st.clock}：${op.label}` : '开始' },
+        { k: '判定规则',
+          v: `长 prefill 切成大小 ${st.chunk} 的块，**每排一个 prefill 块就插一个 B 的 decode**。整块跑 B 要等到 prefill 全完（t=${st.prefillLen + 1}）；切块后 B 很快插进来。` },
+        { k: '本步结果',
+          v: st.phase === 'done'
+            ? `B 的首字在 t=**${st.firstDecodeAt}** 就吐出（整块跑要等到 ${st.prefillLen + 1}），总时间还是 ${st.totalTime}。切得越碎、别人等得越短。`
+            : op ? `${op.kind === 'prefill' ? 'A 算一块 KV' : 'B 吐一个字'}，时钟到 ${st.clock}。` : '' },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; chunk: number; firstDecodeAt: number; clock: number }
+      return st.phase === 'done' ? `块 ${st.chunk} · B 首字延迟 ${st.firstDecodeAt}` : `t=${st.clock}`
+    },
+    read: [
+      { at: '时间线甘特', is: '蓝块是 A 的 prefill、绿块是 B 的 decode、琥珀是 B 首字。', anchor: '.cpgantt' },
+      { at: '首字延迟对比', is: '切块后 B 的首字延迟 vs 整块跑要等的时间。', anchor: '.cpcmp' },
+    ],
+    try: [
+      { act: '把块大小从 8 减到 2', watch: 'B 的首字延迟从 9 降到 3，总时间不变 —— 切得越碎别人等得越短。', param: 'prefill 块大小' },
+      { act: '看甘特图怎么交错', watch: '块大小 8 是一整条蓝挡在前面；块小了就变成蓝绿相间，B 早早插进来。', param: 'prefill 块大小' },
+    ],
+    terms: ['chunkpf'],
+  },
+  knn: {
+    question: '不训练模型，怎么给一个新点分类？看它的邻居就行？',
+    step: (s: never) => {
+      const st = s as { phase: string; k: number; seen: number; voteA: number; voteB: number; predict: number }
+      return [
+        { k: '本步输入', v: st.phase === 'done' ? `看最近 ${st.k} 个邻居` : `找第 ${st.seen} 近的邻居` },
+        { k: '判定规则', v: `k-NN 不训练:找待判点最近的 k 个已知点,让它们**投票**,票多的类别即答案。近的权重大。` },
+        { k: '本步结果', v: st.phase === 'done'
+            ? `A ${st.voteA} : B ${st.voteB} → 判 **${st.predict === 0 ? 'A' : 'B'}**。边界附近的点,判断会随 k 翻。`
+            : `到目前 A **${st.voteA}** : B **${st.voteB}** → 暂判 **${st.predict === 0 ? 'A' : st.predict === 1 ? 'B' : '平'}**。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; voteA: number; voteB: number; predict: number }
+      return st.phase === 'done' ? `判 ${st.predict === 0 ? 'A' : 'B'}` : `A${st.voteA}:B${st.voteB}`
+    },
+    read: [
+      { at: '读数', is: 'k、A/B 票数、判为哪类。', anchor: '.scdim' },
+      { at: '散点图', is: '◆=待判点;蓝=A、红=B;虚线圈=k 个邻居的覆盖半径,连线=被算进投票的邻居。', anchor: '.mlplot' },
+    ],
+    try: [
+      { act: '按「下一步」逐个找最近邻', watch: '覆盖圈变大、票数累加;够 k 个就定类。' },
+      { act: '把 k 从 1 调到 7', watch: '同一个点判断 A→B→A 来回翻——k 小敏感、k 大平滑。' },
+    ],
+    terms: [],
+  },
+  kmeans: {
+    question: '一堆没有标签的点，怎么自己分成几堆？',
+    step: (s: never) => {
+      const st = s as { phase: string; iter: number; k: number; inertia: number; converged: boolean }
+      return [
+        { k: '本步输入', v: st.phase === 'done' ? 'k-means 收敛' : `第 ${st.iter + 1} 轮 · ${st.phase === 'assign' ? '分配' : '更新重心'}` },
+        { k: '判定规则', v: `两步反复:①每点归给最近的重心(分堆);②重心移到"自己那堆点"的均值。inertia(簇内平方和)每步降。` },
+        { k: '本步结果', v: st.phase === 'done'
+            ? `重心 march 到三堆中心、inertia 稳定 **${st.inertia}**、归属稳定——没用任何标签。`
+            : st.phase === 'assign' ? `按最近重心分堆,此刻 inertia **${st.inertia}**。`
+            : `重心跳到各堆均值${st.converged ? '——不再动了,收敛' : ''}。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; iter: number; inertia: number; converged: boolean }
+      return st.phase === 'done' || st.converged ? `inertia ${st.inertia}` : `轮${st.iter + 1}·${st.phase === 'assign' ? '分' : '移'}`
+    },
+    read: [
+      { at: '读数', is: '轮次、簇数 k、簇内平方和、是否收敛。', anchor: '.scdim' },
+      { at: '散点图', is: '点按归属染色(三色);✕=重心;看点变色、✕ 移动。', anchor: '.mlplot' },
+    ],
+    try: [
+      { act: '一步步走「分配→移动」', watch: '点按最近 ✕ 染色 → ✕ 跳到自己那堆中心;几轮后三堆清清楚楚。' },
+      { act: '盯 inertia', watch: '每步都在降(54→4),重心不再动=收敛。全程没用真实标签。' },
+    ],
+    terms: [],
+  },
+  pca: {
+    question: '高维数据里维度那么多，怎么找出真正"有用"的几个方向？',
+    step: (s: never) => {
+      const st = s as { phase: string; angle: number; var1: number }
+      return [
+        { k: '本步输入', v: st.phase === 'done' ? '2D 投影到 1D 主轴' : ({ cloud: '一团拉长的点云', axis: '找方差最大的方向', project: '投影到主轴' } as Record<string, string>)[st.phase] },
+        { k: '判定规则', v: `PCA 找方差最大的方向 PC1(=协方差矩阵最大特征向量),把点投影上去;特征值=该方向方差,越大越该留。` },
+        { k: '本步结果', v: st.phase === 'done'
+            ? `PC1 保留 **${st.var1}%** 方差——2D 压到 1D 只丢 ${(100 - st.var1).toFixed(1)}%,去冗余抓主轴。`
+            : st.phase === 'axis' ? `主轴 PC1 约 **${st.angle}°**,是点铺得最开的方向。`
+            : st.phase === 'project' ? `每个点投影到 PC1,原 2D 坐标 → 轴上位置一个数。`
+            : `点云沿对角线拉长,两坐标相关——信息集中在少数方向。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; var1: number; angle: number }
+      return st.phase === 'done' ? `保 ${st.var1}%` : st.phase === 'cloud' ? '点云' : `PC1 ${st.angle}°`
+    },
+    read: [
+      { at: '读数', is: '主轴方向、保留方差、压维、丢失。', anchor: '.scdim' },
+      { at: '散点图', is: '橙点=原始点;橙线=主轴 PC1;红点=投影;虚线=投影垂线;红点(小)=均值。', anchor: '.mlplot' },
+    ],
+    try: [
+      { act: '走 点云→主轴→投影', watch: '先找到 33°主轴(方差最大),再把点垂直投影到轴上。' },
+      { act: '看保留方差', watch: 'PC1 一条轴就保住 96%——2D 压到 1D 几乎不丢信息。' },
+    ],
+    terms: [],
+  },
+  svm: {
+    question: '能分开两类的线有无数条，哪一条最好？',
+    step: (s: never) => {
+      const st = s as { phase: string; margin: number; supportVectors: number[]; isMax: boolean }
+      return [
+        { k: '本步输入', v: st.phase === 'done' ? '对比随便一条 vs SVM' : ({ setup: '两类线性可分', naive: '随便一条分开的线', svm: 'SVM 最大间隔' } as Record<string, string>)[st.phase] },
+        { k: '判定规则', v: `SVM 找最大间隔:两类间想象最宽的"街道",正中那条是边界。街只由紧贴街边的"支持向量"定住。` },
+        { k: '本步结果', v: st.phase === 'done'
+            ? `SVM 间隔 **${st.margin}** > 随便那条 0.5,只由 **${st.supportVectors.length}** 个支持向量定边界——泛化最稳。`
+            : st.phase === 'naive' ? `贴着一类、间隔只 **0.5**,离一类太近、泛化差。`
+            : st.phase === 'svm' ? `边界居中、间隔 **${st.margin}**(街最宽),**${st.supportVectors.length}** 个支持向量高亮。`
+            : `能分开的线无数条,哪条最好?` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; margin: number }
+      return st.phase === 'done' || st.phase === 'svm' ? `间隔 ${st.margin}` : st.phase === 'naive' ? '间隔窄' : '?'
+    },
+    read: [
+      { at: '读数', is: '哪条边界、间隔、支持向量数、泛化。', anchor: '.scdim' },
+      { at: '散点图', is: '两类点;橙线=边界;虚线=街边;浅色=间隔街道;黑圈=支持向量。', anchor: '.mlplot' },
+    ],
+    try: [
+      { act: '走 随便一条 → SVM 两步', watch: '随便那条贴着一类(间隔 0.5);SVM 居中、街最宽(间隔 1)。' },
+      { act: '看支持向量', watch: '最宽的街只由紧贴街边的 4 个点定住,其余点再远都不影响边界。' },
+    ],
+    terms: [],
+  },
+  gbdt: {
+    question: '单棵树不够准，怎么让一串小树接力、越拟合越好？',
+    step: (s: never) => {
+      const st = s as { phase: string; round: number; mse: number; splitT: number }
+      return [
+        { k: '本步输入', v: st.phase === 'done' ? `boosting ${st.round} 轮` : st.round === 0 ? '起点:只用均值当预测' : `第 ${st.round} 轮,加第 ${st.round} 棵小树` },
+        { k: '判定规则', v: `每轮算残差(真值−当前预测),训一棵小树拟合**残差**,乘学习率加进预测。拟合的是残差/梯度,故名梯度提升。` },
+        { k: '本步结果', v: st.phase === 'done'
+            ? `MSE 从 0.75 降到 **${st.mse}**,预测阶梯贴上数据——弱学习器接力=强学习器。`
+            : st.round === 0 ? `一条平线,MSE **${st.mse}**,啥都没学。`
+            : `加一棵切 x≈${st.splitT} 的树桩,MSE 降到 **${st.mse}**。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; round: number; mse: number }
+      return st.phase === 'done' ? `MSE ${st.mse.toFixed(2)}` : `第${st.round}轮·${st.mse.toFixed(2)}`
+    },
+    read: [
+      { at: '读数', is: '提升轮数、MSE、小树棵数、本轮切在哪。', anchor: '.scdim' },
+      { at: '散点图', is: '蓝点=数据;橙折线=当前预测(阶梯);红竖虚线=残差。', anchor: '.mlplot' },
+    ],
+    try: [
+      { act: '一轮一轮加树', watch: '预测阶梯从平线开始、一段段长出,越来越贴数据、残差变短。' },
+      { act: '盯 MSE', watch: '每轮都降(0.75→0.03)——每棵小树只补上一棵没拟合掉的残差。' },
+    ],
+    terms: [],
+  },
+  dtree: {
+    question: '不用直线，怎么靠"问是非题"一步步把类别分开？',
+    step: (s: never) => {
+      const st = s as { phase: string; splits: unknown[]; curGini: number; gain: number; leaves: unknown[] }
+      return [
+        { k: '本步输入', v: st.phase === 'done' ? '切完(3 个纯叶子)' : st.phase === 'root' ? '根节点:16 点混在一起' : `切第 ${st.splits.length} 刀` },
+        { k: '判定规则', v: `每刀挑"某特征≷某阈值"里让子集**最纯**的那一刀(基尼不纯度下降最多=信息增益最大);切出纯块成叶子,不纯的继续切。` },
+        { k: '本步结果', v: st.phase === 'done'
+            ? `深 2、**${st.leaves.length}** 个纯叶子。每条路径=一串 if-else,可解释、拼出非线性边界。`
+            : st.phase === 'root' ? `不纯度 Gini **${st.curGini}**(0=全同类),要切纯。`
+            : `本刀信息增益 **${st.gain}**,当前节点不纯度降到 **${st.curGini}**。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; splits: unknown[]; leaves: unknown[] }
+      return st.phase === 'done' ? `${st.leaves.length} 纯叶子` : st.phase === 'root' ? '根·不纯' : `切${st.splits.length}刀`
+    },
+    read: [
+      { at: '读数', is: '切了几刀、当前不纯度、本刀增益、纯叶子数。', anchor: '.scdim' },
+      { at: '散点图', is: '蓝/红两类点;虚线=每一刀(轴对齐);浅色块=已切纯的叶子(按主类)。', anchor: '.mlplot' },
+    ],
+    try: [
+      { act: '一刀一刀切', watch: '先竖切 x=0(左半纯)、再横切右半 y=0——每块变纯、Gini 降到 0。' },
+      { act: '看信息增益', watch: '挑的都是让子集最纯的那刀;三刀两下全部切纯。' },
+    ],
+    terms: [],
+  },
+  logreg: {
+    question: '把"拟合一条线"改一改，怎么变成"分两类"？',
+    step: (s: never) => {
+      const st = s as { phase: string; gdStep: number; loss: number; acc: number; w1: number; w2: number }
+      return [
+        { k: '本步输入', v: st.phase === 'done' ? '梯度下降 60 步' : `第 ${st.gdStep} 步梯度下降` },
+        { k: '判定规则', v: `打分 z=w₁x+w₂y+b → **sigmoid** 出概率 → **交叉熵**当损失 → 梯度下降调 w、b,把决策边界(z=0)转到分开两类。` },
+        { k: '本步结果', v: st.phase === 'done'
+            ? `交叉熵 **${st.loss}**、准确率 **${(st.acc * 100).toFixed(0)}%**,边界干净分开——这就是单个神经元+sigmoid。`
+            : `交叉熵 **${st.loss}**、准确率 **${(st.acc * 100).toFixed(0)}%**${st.gdStep === 0 ? '(还没边界、蒙一半)' : '(边界往中间转)'}。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; gdStep: number; acc: number }
+      return st.phase === 'done' ? `${(st.acc * 100).toFixed(0)}%` : `步${st.gdStep}·${(st.acc * 100).toFixed(0)}%`
+    },
+    read: [
+      { at: '读数', is: '梯度下降步、交叉熵损失、准确率、边界 w。', anchor: '.scdim' },
+      { at: '散点图', is: '蓝/红两类点;橙线=决策边界(z=0);两侧按 sigmoid 概率渐变。', anchor: '.mlplot' },
+    ],
+    try: [
+      { act: '按「下一步」推进', watch: '决策边界从无到有、转到两类中间;准确率 50%→100%、交叉熵降。' },
+      { act: '对比线性回归', watch: '同一套"定损失→求梯度→更新",只是 MSE 换交叉熵、直线换 sigmoid 概率。' },
+    ],
+    terms: [],
+  },
+  backprop: {
+    question: '网络有上亿个权重，怎么一趟就把每个权重的梯度都算出来？',
+    step: (s: never) => {
+      const st = s as { phase: string; stage: string; loss: number; gLda: number | null; gLdz: number | null; gLdw: number | null }
+      return [
+        { k: '本步输入', v: st.phase === 'forward' ? '前向:算到损失 L' : st.phase === 'done' ? '反向完成' : `反向回传:${st.stage}` },
+        { k: '判定规则', v: `前向算 L;反向从 L 出发,用链式法则**下游梯度 × 本站局部导数 = 上游梯度**,一站站回传到每个权重。` },
+        { k: '本步结果', v: st.phase === 'done'
+            ? `dL/dw、dL/db 都算出来了(负→梯度下降增大 w、b、降损失)。一趟出全部梯度。`
+            : st.phase === 'forward' ? `损失 L=**${st.loss}**。接下来从它往回传梯度。`
+            : st.gLdw !== null ? `到权重:dL/dw=**${st.gLdw}**。` : st.gLdz !== null ? `过 sigmoid:dL/dz=**${st.gLdz}**。` : `dL/da=**${st.gLda}**。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; stage: string }
+      return st.phase === 'done' ? '梯度全出' : st.phase === 'forward' ? '前向' : st.stage
+    },
+    read: [
+      { at: '读数', is: '当前趟、损失 L、逐站梯度 dL/da、dL/dz、dL/dw。', anchor: '.scdim' },
+      { at: '计算图', is: 'w,x,b→z→a→L 的链;节点上=前向值,节点下红字=回传的梯度 ∂L。', anchor: '.bpplot' },
+    ],
+    try: [
+      { act: '一步步走', watch: '前向算到 L;再从 L 往回,dL/da → 过 sigmoid → dL/dz → dL/dw、dL/db。' },
+      { act: '盯每站', watch: '下游梯度 × 本站局部导数 = 上游梯度——链式法则把误差一路送回权重。' },
+    ],
+    terms: [],
+  },
+  binsearch: {
+    question: '数组已经排好序，怎么比一个个扫快得多地找到一个数？',
+    step: (s: never) => {
+      const st = s as { phase: string; target: number; lo: number; hi: number; mid: number; arr: number[]; cmp: string; compares: number; found: number }
+      return [
+        { k: '本步输入', v: st.phase === 'done' ? `在 ${st.arr.length} 个数里找 ${st.target}` : `区间 [${st.lo},${st.hi}]，看中点` },
+        { k: '判定规则', v: `看正中间 arr[mid]:等于就命中;目标比它大只在右半、小只在左半——一次比较**砍掉一半**。区间反复对折。` },
+        { k: '本步结果', v: st.phase === 'done'
+            ? `**${st.compares}** 次比较命中(下标 ${st.found})——log₂n,百万个也才 ~20 步。`
+            : st.cmp === 'hit' ? `arr[${st.mid}]=${st.arr[st.mid]}=${st.target},**命中**!`
+            : st.cmp === 'go-right' ? `arr[${st.mid}]=${st.arr[st.mid]}<${st.target},砍左半、看右边。`
+            : `arr[${st.mid}]=${st.arr[st.mid]}>${st.target},砍右半、看左边。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; compares: number; lo: number; hi: number }
+      return st.phase === 'done' ? `${st.compares} 步命中` : `[${st.lo},${st.hi}]`
+    },
+    read: [
+      { at: '读数', is: '要找的数、当前区间、比较次数、结果。', anchor: '.scdim' },
+      { at: '数组', is: '有序数;灰=已排除、蓝框=中点 mid、绿=命中;lo/hi 标在下面。', anchor: '.bsrow' },
+    ],
+    try: [
+      { act: '按「下一步」二分', watch: '每步看中点、砍掉一半灰掉;区间越缩越小。' },
+      { act: '数比较次数', watch: '13 个数只要 4 次——log₂n,不是一个个扫的 n 次。' },
+    ],
+    terms: [],
+  },
+  nqueens: {
+    question: '要把 N 个皇后摆得互不攻击，怎么系统地试、不漏不重？',
+    step: (s: never) => {
+      const st = s as { phase: string; act: string; row: number; col: number; skip: number[]; cols: number[]; placed: number; n: number; backtracks: number }
+      const solved = st.act === 'solved' || st.phase === 'done'
+      return [
+        { k: '本步输入', v: solved ? `盘上 ${st.placed}/${st.n} 个皇后` : st.act === 'backtrack' ? `第 ${st.row} 行列 ${st.col} 下面走进死胡同` : `第 ${st.row} 行,从左找安全列` },
+        { k: '判定规则', v: `行内挑**不被已放皇后攻击**的列(同列或对角|Δ行|=|Δ列| 都算攻击);找到就落子进下一行,整行没有安全位就**回溯**——退回上一行换下一列。` },
+        { k: '本步结果', v: solved
+            ? `拼出无冲突布局 [${st.cols.join(',')}]——**解出**(回溯 ${st.backtracks} 次)。`
+            : st.act === 'place' ? `列 ${st.col} 安全,**落子**${st.skip && st.skip.length ? `(列 ${st.skip.join('、')} 被攻击、跳过)` : ''}。`
+            : `**撤回**第 ${st.row} 行的皇后,回上一行换下一个。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; act: string; placed: number; n: number; backtracks: number }
+      return (st.act === 'solved' || st.phase === 'done') ? `解出(回溯 ${st.backtracks} 次)` : `${st.placed}/${st.n}` 
+    },
+    read: [
+      { at: '读数', is: '盘上皇后数、累计试列次数、回溯次数。', anchor: '.scdim' },
+      { at: '棋盘', is: '♛=皇后;绿格=刚落子(安全)、红格=正被撤回(回溯)、✕=本行被攻击跳过的列。', anchor: '.nqboard' },
+    ],
+    try: [
+      { act: '按「下一步」逐行放', watch: '安全就落子往下走;整行没位就红格撤回、回上一行。' },
+      { act: '盯着皇后进出', watch: '一落一撤、换个位置再来——这就是"试错+撤销"的回溯。' },
+    ],
+    terms: [],
+  },
+  unionfind: {
+    question: '一堆元素不断两两结盟，怎么快速回答「这俩现在是不是一伙的」？',
+    step: (s: never) => {
+      const st = s as { phase: string; act: string; a: number; b: number; ra: number; rb: number; root: number; path: number[]; comps: number; depths: number[] }
+      return [
+        { k: '本步输入', v: st.act === 'union' ? `union(${st.a},${st.b})` : st.act === 'find' ? `find(${st.a}):要认根` : st.act === 'compress' ? `find(${st.a}) 的路径 ${st.path.join('→')}` : `已并成 ${st.comps} 团` },
+        { k: '判定规则', v: `每个元素顺**父指针**爬到**根**,根=集团代表。union=把两人的根挂一起、并成一棵树;"是不是一伙"就看**根同不同**;路径压缩=find 到根后把沿途点直接挂根下、拍平长链。` },
+        { k: '本步结果', v: st.act === 'union'
+            ? (st.ra === st.rb ? `根都是 ${st.ra},本就一伙,不用并。` : `根 ${st.ra}≠根 ${st.rb} → 挂到一起,连通分量降到 ${st.comps}。`)
+            : st.act === 'find' ? `顺链爬 ${[...st.path, st.root].join('→')} 到根 **${st.root}**,爬了 ${st.path.length} 步。`
+            : st.act === 'compress' ? `把 ${st.path.join('、')} 全直挂根 ${st.root},最深链塌到 **${Math.max(...st.depths)}**。`
+            : `6 次 union 并成 **1** 团,find 认根、压缩拍平——均摊近乎 O(1)。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; act: string; comps: number; path: number[] }
+      return st.phase === 'done' ? `${st.comps} 团` : st.act === 'find' ? `爬 ${st.path.length} 步` : `${st.comps} 团`
+    },
+    read: [
+      { at: '读数', is: '连通分量数、本步操作、最深链长。', anchor: '.scdim' },
+      { at: '节点', is: '大数=编号、↑=父指针、深N=到根几步、顶部色条=所属集团(同色一伙)。', anchor: '.ufrow' },
+    ],
+    try: [
+      { act: '按「下一步」做 union', watch: '两棵树并成一棵、连通分量数一路减到 1。' },
+      { act: '看 find(0) + 压缩', watch: '顺链爬到根,再把沿途点直挂根下——最深链从 4 塌到 1。' },
+    ],
+    terms: [],
+  },
+  heap: {
+    question: '怎么让「随时取出最大值」快到 O(log n)，而不是每次扫一遍？',
+    step: (s: never) => {
+      const st = s as { phase: string; act: string; stage: string; arr: number[]; node: number; child: number; heapN: number; sortedFrom: number }
+      return [
+        { k: '本步输入', v: st.act === '' ? `乱序数组 [${st.arr.join(',')}]` : st.act === 'extract' ? `堆顶 ${st.arr[st.sortedFrom]} 要取出` : st.stage === 'build' ? `建堆:节点 ${st.node >= 0 ? st.arr[st.node] : '—'} sift-down` : `复原:堆顶下沉` },
+        { k: '判定规则', v: `完全二叉树 + **父≥子**=最大堆,堆顶永远最大。孩子在 2i+1/2i+2;sift-down=节点比更大的孩子小就**交换、往下沉**到位。取最大=堆顶↔末尾、堆减一、再下沉复原。` },
+        { k: '本步结果', v: st.act === 'sift' ? `${st.arr[st.node]} 比孩子小 → 交换下沉。`
+            : st.act === 'extract' ? `最大值和末尾对调,排到数组尾就位,堆缩到 ${st.heapN}。`
+            : st.act === 'done' ? `新堆顶 **${st.arr[0]}** 是剩下的最大;反复取顶=堆排序 O(n log n)。`
+            : st.stage === 'build' && st.node === 0 ? `**最大堆建成**,堆顶 ${st.arr[0]}=全体最大。`
+            : `节点已 ≥ 孩子,到位。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; act: string; stage: string; arr: number[] }
+      return st.phase === 'done' ? `顶=${st.arr[0]}` : st.stage === 'build' ? '建堆' : '取最大'
+    },
+    read: [
+      { at: '读数', is: '堆顶(最大)、堆内元素数、当前阶段。', anchor: '.scdim' },
+      { at: '树+数组', is: '上=完全二叉树(琥珀=正下沉的节点、绿=更大的孩子),下=同一堆压进数组(#k=下标,绿"已排"=取出的最大)。', anchor: '.hpwrap' },
+    ],
+    try: [
+      { act: '按「下一步」建堆', watch: '节点比孩子小就下沉,整棵树变成父≥子、堆顶最大。' },
+      { act: '看取最大', watch: '堆顶和末尾对调、最大排到尾,新顶下沉复原——这就是堆排序的一趟。' },
+    ],
+    terms: [],
+  },
+  quicksort: {
+    question: '不用一趟趟两两交换，怎么把一个数组又快又省地排好？',
+    step: (s: never) => {
+      const st = s as { phase: string; act: string; arr: number[]; lo: number; hi: number; pivotVal: number; iPtr: number; jPtr: number; sortedCount: number; n: number }
+      return [
+        { k: '本步输入', v: st.act === '' ? `乱序 [${st.arr.join(',')}]` : st.pivotVal >= 0 && st.phase !== 'done' ? `区间 [${st.lo},${st.hi}],基准 ${st.pivotVal}` : `已排好 ${st.sortedCount}/${st.n}` },
+        { k: '判定规则', v: `分治:挑一个**基准 pivot**,一趟扫描把 **<pivot 的甩左、≥pivot 的留右**;基准落到分界位=**最终位置**(左全小、右全不小),永久锁定。再对左右两段**各自递归**,段长到 1 停。` },
+        { k: '本步结果', v: st.act === 'swap' ? `${st.arr[st.iPtr]} < ${st.pivotVal},换进左区。`
+            : st.act === 'grow' ? `${st.arr[st.jPtr]} < ${st.pivotVal},原地并入左区。`
+            : st.act === 'keep' ? `${st.arr[st.jPtr]} ≥ ${st.pivotVal},留右边。`
+            : st.act === 'place' ? `基准 ${st.pivotVal} **归位**到 #${st.jPtr},区间一切为二。`
+            : st.act === 'single' ? `单元素区间,天然有序,直接归位。`
+            : st.act === 'pivot' ? `挑末元素 ${st.pivotVal} 当基准,开始扫描。`
+            : st.act === 'done' ? `**排好序** [${st.arr.join(',')}]——平均 O(n log n)、原地。`
+            : `扫描中。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; sortedCount: number; n: number; pivotVal: number }
+      return st.phase === 'done' ? '已排好' : st.pivotVal >= 0 ? `归位 ${st.sortedCount}/${st.n}` : `${st.sortedCount}/${st.n}`
+    },
+    read: [
+      { at: '读数', is: '当前基准、处理区间、已归位个数。', anchor: '.scdim' },
+      { at: '数组', is: '琥珀=基准 pivot、蓝=扫描指针 j、i=左区右边界、绿✓=已归位(最终位置)、灰=不在当前区间。', anchor: '.qsrow' },
+    ],
+    try: [
+      { act: '按「下一步」分区', watch: 'j 一路扫:小的收进左区、大的留右;扫完基准归位、区间一切为二。' },
+      { act: '数已归位', watch: '每趟 partition 定死一个基准的最终位置;段越切越短,直到全部锁定。' },
+    ],
+    terms: [],
+  },
+  mergesort: {
+    question: '把两个已经排好序的小段合成一个大有序段，最快怎么做？',
+    step: (s: never) => {
+      const st = s as { phase: string; act: string; arr: number[]; width: number; lo: number; hi: number; took: number; from: string; out: number[] }
+      return [
+        { k: '本步输入', v: st.act === '' ? `乱序 [${st.arr.join(',')}]` : st.act === 'done' ? `段宽 ${st.width} 的两段` : `归并 [${st.lo},${st.hi}),各取队首比` },
+        { k: '判定规则', v: `分治:拆到长度 1(天然有序),再**两两归并**。合并两个有序段时,两段各自**队首就是各自最小**——比一下,把**小的先接进输出**,一趟线性扫完就拼成更长有序段。段宽 1→2→4… 翻倍。` },
+        { k: '本步结果', v: st.act === 'done' ? `拼成宽 ${st.out.length} 的有序段 [${st.out.join(',')}]。`
+            : st.act === 'drain' ? `另一段空了,${st.from === 'L' ? '左' : '右'}段剩下的 ${st.took} 直接接上。`
+            : st.act === 'emit' ? `${st.from === 'L' ? '左' : '右'}段队首 ${st.took} 更小 → 取它。`
+            : st.act === 'done' && st.phase === 'done' ? `排好序。`
+            : `扫描中。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; act: string; width: number; out: number[] }
+      return st.phase === 'done' ? '已排好' : st.act === 'done' ? `宽 ${st.out.length}` : `段宽 ${st.width}`
+    },
+    read: [
+      { at: '读数', is: '当前段宽、正在归并的区段、已输出个数。', anchor: '.scdim' },
+      { at: '数组+缓冲', is: '上=原数组(蓝=左段、琥珀=右段,▸=各自队首,灰=不在本次归并),下=输出缓冲逐个填。', anchor: '.mswrap' },
+    ],
+    try: [
+      { act: '按「下一步」归并', watch: '比两段队首、把小的先接进输出;一段空了另一段整段接上。' },
+      { act: '看段宽翻倍', watch: '长度 1→2→4… 每轮把相邻两段合成更长的有序段,直到全有序。' },
+    ],
+    terms: [],
+  },
+  fastpow: {
+    question: '算 a 的 n 次方，怎么不用老实乘 n 次，而是 log n 步搞定？',
+    step: (s: never) => {
+      const st = s as { phase: string; act: string; a: number; n: number; k: number; bit: number; powK: number; result: number; prevResult: number; mults: number; squares: number; picked: number[] }
+      return [
+        { k: '本步输入', v: st.act === '' ? `算 ${st.a}^${st.n}` : st.act === 'done' ? `${st.a}^${st.n} 逐位处理完` : `第 ${st.k} 位 = ${st.bit},幂 ${st.a}^${2 ** st.k}=${st.powK}` },
+        { k: '判定规则', v: `把指数写成**二进制**,每一位对应一个"反复平方"得来的幂 a^(2^k)(a,a²,a⁴,a⁸…每个由上一个平方而来)。这位是 **1** 就把该幂**乘进结果**、是 **0** 就跳过。log n 位 ⇒ log n 步。` },
+        { k: '本步结果', v: st.act === 'mul' ? `这位是 1 → ${st.prevResult}×${st.powK}=${st.result}。`
+            : st.act === 'skip' ? `这位是 0 → 跳过,结果仍 ${st.result}。`
+            : st.act === 'done' ? `${st.a}^${st.n}=${st.a}^(${st.picked.join('+')})=**${st.result}**,${st.mults} 乘+${st.squares} 平方 vs 朴素 ${st.n} 乘。`
+            : `处理中。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; act: string; result: number; powK: number }
+      return st.phase === 'done' ? `${st.result}` : st.act === 'mul' ? `×${st.powK}` : st.act === 'skip' ? '跳过' : '逐位'
+    },
+    read: [
+      { at: '读数', is: '要算的幂、当前结果、乘+平方次数。', anchor: '.scdim' },
+      { at: '二进制位', is: '指数拆二进制,每列一位:琥珀=当前位、绿✓=是1且已乘入、每列标 a^(2^k)。', anchor: '.fprow' },
+    ],
+    try: [
+      { act: '按「下一步」逐位', watch: 'base 反复平方得 a^(2^k);二进制这位是 1 就把它乘进结果、0 就跳。' },
+      { act: '数乘法次数', watch: '3¹³ 只用 3 乘+3 平方,不是老实乘 13 次——log n vs n。' },
+    ],
+    terms: [],
+  },
+  astar: {
+    question: '在有障碍的网格里找最短路，怎么比 Dijkstra 四面乱铺更聪明？',
+    step: (s: never) => {
+      const st = s as { phase: string; act: string; cur: number[]; curG: number; curH: number; curF: number; expanded: number; open: string[]; path: string[] }
+      return [
+        { k: '本步输入', v: st.act === '' ? '从起点 S 出发' : st.act === 'done' ? `已展开 ${st.expanded} 格` : `开放集里 f 最小的格 (${st.cur[0]},${st.cur[1]})` },
+        { k: '判定规则', v: `每格算 **f=g+h**:g=从起点已走的步数、h=到终点的**乐观估计**(曼哈顿距离,永不高估)。每步展开 f 最小的格→移入关闭集、邻居加进开放集。g 防走冤枉、h 把搜索**拽向终点**;h 不高估就保证最短路。` },
+        { k: '本步结果', v: st.act === 'expand' ? `展开 (${st.cur[0]},${st.cur[1]}):g=${st.curG}+h=${st.curH}=**f=${st.curF}**,邻居入开放集。`
+            : st.act === 'goal' ? `取到终点!g=${st.curG}、h=0——最短路已定。`
+            : st.act === 'done' ? `**最短路 ${st.path.length - 1} 步**,只展开 ${st.expanded} 格(比 Dijkstra 省)。`
+            : `搜索中。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; act: string; curF: number; path: string[] }
+      return st.phase === 'done' ? `${st.path.length - 1} 步` : st.act === 'goal' ? '到终点' : `f=${st.curF}`
+    },
+    read: [
+      { at: '读数', is: '当前 f=g+h、已展开格数、开放集大小。', anchor: '.scdim' },
+      { at: '网格', is: '大数=f、角标 g;蓝=已展开(关闭)、虚线浅色=开放集、琥珀=正展开、深灰=墙、S/G=起终点、绿=最短路。', anchor: '.asgrid' },
+    ],
+    try: [
+      { act: '按「下一步」展开', watch: 'A* 先探 f 最小的:沿 h 指引直扑终点,撞墙才绕行。' },
+      { act: '看展开范围', watch: '只在起点→终点那条走廊附近展开,不像 Dijkstra 四面均匀铺。' },
+    ],
+    terms: [],
+  },
+  perceptron: {
+    question: '一个神经元怎么"学会"在平面上画一条线，把两类点分开？',
+    step: (s: never) => {
+      const st = s as { phase: string; act: string; pts: { x: number[]; y: number }[]; w: number[]; b: number; pass: number; ptIdx: number; score: number; ok: boolean; updated: boolean; updates: number }
+      const p = st.ptIdx >= 0 ? st.pts[st.ptIdx] : null
+      return [
+        { k: '本步输入', v: st.act === '' ? '一条还没定的线,6 个点' : st.act === 'converged' ? `第 ${st.pass} 轮扫查` : st.act === 'done' ? `学好的线 w=(${st.w.join(',')})` : `点 (${p!.x.join(',')}) 真实类 ${p!.y > 0 ? '正' : '负'}` },
+        { k: '判定规则', v: `神经元算 **score=w·x+b**,看符号判类别(几何=一条分界线)。逐点检查:符号和真实类**一致就分对、不动**;**不一致就纠**——把权重朝该点挪:w += y·x、b += y。扫到某轮**零错误**即收敛(线性可分保证)。` },
+        { k: '本步结果', v: st.act === 'converged' ? `6 个点全分对、零更新 → **收敛**!`
+            : st.act === 'done' ? `学好:w=(${st.w.join(',')})、b=${st.b},共 ${st.updates} 次纠正。`
+            : st.ok ? `score=${st.score},符号对 → 分对,不动。`
+            : `score=${st.score},符号错 → 纠:w→(${st.w.join(',')})、b→${st.b},线转一下。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; act: string; updates: number; updated: boolean }
+      return st.phase === 'done' ? `${st.updates} 次收敛` : st.act === 'converged' ? '收敛' : st.updated ? '纠正' : '分对'
+    },
+    read: [
+      { at: '读数', is: '权重 w、偏置 b、纠正次数。', anchor: '.scdim' },
+      { at: '平面', is: '蓝=正类、琥珀=负类,那条线是 w·x+b=0;当前点分对=绿圈、分错=红圈(触发纠正,线转一下)。', anchor: '.mlplot' },
+    ],
+    try: [
+      { act: '按「下一步」逐点', watch: '符号对就跳过、符号错就纠(w+=y·x),线朝分错的点转一下。' },
+      { act: '看它收敛', watch: '5 次纠正后某一整轮零错误——线学好了,两类干净分开。' },
+    ],
+    terms: [],
+  },
+  pooling: {
+    question: '卷积后的特征图很大，怎么缩小它、又保住关键信号？',
+    step: (s: never) => {
+      const st = s as { phase: string; kindName: string; wr: number; wc: number; vals: number[]; result: number; out: (number | null)[][] }
+      const filled = st.out ? st.out.flat().filter(x => x !== null).length : 0
+      return [
+        { k: '本步输入', v: st.wr < 0 ? '4×4 特征图' : st.phase === 'done' ? '4 块都汇总完' : `窗口 (${st.wr},${st.wc}) 盖住 [${st.vals.join(', ')}]` },
+        { k: '判定规则', v: `2×2 窗口**不重叠**地扫,每块把 4 个数**汇总成 1 个**:${st.kindName}池化取${st.kindName === '平均' ? '**平均**(留整体强度)' : '**最大**(留最强响应)'}。图边长减半、面积变 1/4=降采样。无可学参数。` },
+        { k: '本步结果', v: st.phase === 'done' ? `4×4 缩成 2×2(已填 ${filled}/4),降采样完成。`
+            : st.wr < 0 ? '待扫。'
+            : st.kindName === '平均' ? `平均=(${st.vals.join('+')})/4=**${st.result}**。`
+            : `最大=**${st.result}**。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; kindName: string; result: number; wr: number }
+      return st.phase === 'done' ? `${st.kindName}池化` : st.wr >= 0 ? `→${st.result}` : st.kindName
+    },
+    read: [
+      { at: '读数', is: '汇总方式、尺寸变化、本块结果。', anchor: '.scdim' },
+      { at: '两张图', is: '左=输入 4×4(琥珀框=当前 2×2 窗口),右=输出 2×2(绿=刚写入)。', anchor: '.cvwrap' },
+    ],
+    try: [
+      { act: '按「下一步」扫窗口', watch: '2×2 窗口不重叠扫 4 个位置,每块汇总成 1 个数填进输出。' },
+      { act: '切「汇总方式」', watch: '最大池化留最强(6/4/7/9)、平均池化留整体(3.75…);改了立即重跑。' },
+    ],
+    terms: [],
+  },
+  beam: {
+    question: '大模型逐词生成整句，怎么不被"每步只贪当前最高"带进坑？',
+    step: (s: never) => {
+      const st = s as { phase: string; act: string; t: number; k: number; beamsIn: { seq: string; p: number }[]; cands: { seq: string; p: number }[]; kept: string[]; best: { seq: string; p: number }; greedy: { seq: string; p: number } }
+      const d = (x: string) => x === '' ? '⟨起⟩' : x.replace('·', '⟨end⟩')
+      return [
+        { k: '本步输入', v: st.act === '' ? '从起点开始' : st.phase === 'done' ? `${st.k} 条终局候选` : `第 ${st.t} 步:${st.beamsIn.length} 条候选` },
+        { k: '判定规则', v: `一句话概率=各步词概率**连乘**。维护 **k 条**候选(束宽=${st.k}),每步把每条各扩一个词、按**累积概率**排序,**只留前 k 条**继续、其余剪枝。k=1 就是贪心、k=∞ 就是全搜索。` },
+        { k: '本步结果', v: st.phase === 'done' ? `束搜索 **${d(st.best.seq)}(${st.best.p})** 胜过贪心 ${d(st.greedy.seq)}(${st.greedy.p})——留住了贪心错过的更优整句。`
+            : st.act === 'expand' ? `${st.cands.length} 候选留前 ${st.k}:${st.kept.map(d).join('、')}。`
+            : `扩展中。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; t: number; best: { p: number }; greedy: { p: number } }
+      return st.phase === 'done' ? `胜贪心 ${Math.round((st.best.p / (st.greedy.p || 1)) * 10) / 10}×` : `第${st.t}步`
+    },
+    read: [
+      { at: '读数', is: '束宽 k、解码步、当前最优概率。', anchor: '.scdim' },
+      { at: '候选/对照', is: '各步候选按累积概率排序、前 k 条绿✓保留其余剪掉;末步束搜索 vs 贪心对照。', anchor: '.bmwrap' },
+    ],
+    try: [
+      { act: '按「下一步」解码', watch: '每步 k 条各扩一词→排序→只留前 k 条(绿),其余剪掉。' },
+      { act: '看末步对照', watch: '贪心第一步贪 A 被锁进 0.10,束搜索留住 B 发现 0.288——近 3 倍胜出。' },
+    ],
+    terms: [],
+  },
+  rnn: {
+    question: '一句话有长有短，网络怎么"记住"前面读过的、处理变长序列？',
+    step: (s: never) => {
+      const st = s as { phase: string; t: number; xt: number; hPrev: number; pre: number; ht: number; wx: number; wh: number; b: number; xs: number[] }
+      return [
+        { k: '本步输入', v: st.t === 0 ? `序列 [${st.xs.join(',')}],记忆 h₀=0` : st.phase === 'done' ? '整段读完' : `x=${st.xt},带着上一刻记忆 h=${st.hPrev}` },
+        { k: '判定规则', v: `隐藏状态 **h(记忆)沿时间传递**。每读一个 x_t,用**同一套共享权重**把当前输入和上一刻记忆揉进新记忆:**h_t = tanh(wx·x_t + wh·h_{'{'}t-1{'}'} + b)**。权重所有时刻共享,能吃任意长序列。` },
+        { k: '本步结果', v: st.phase === 'done' ? `记忆演化到末态 **${st.ht}**——它藏着整段历史(同样末输入、历史不同 h 就不同)。`
+            : st.t === 0 ? '待读。'
+            : `h_${st.t} = tanh(${st.wx}·${st.xt}+${st.wh}·${st.hPrev}) = tanh(${st.pre}) = **${st.ht}**,传给下一步。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; t: number; ht: number }
+      return st.phase === 'done' ? `末态 ${st.ht}` : st.t > 0 ? `h=${st.ht}` : '记忆流动'
+    },
+    read: [
+      { at: '读数', is: '时间步、当前输入、记忆 h、共享权重。', anchor: '.scdim' },
+      { at: '时间链', is: '上排=记忆 h 沿时间流的传送带(蓝正/琥珀负、越深越大),下排=每步输入 x;h_t 同时吃当前 x 和上一刻 h。', anchor: '.rnnchain' },
+    ],
+    try: [
+      { act: '按「下一步」读序列', watch: '每步 h_t=tanh(wx·x+wh·h_prev),记忆沿时间更新、往右传。' },
+      { act: '想记忆的作用', watch: '同样最后输入 +2,历史 [2] 得 0.923、[−3] 得 0.269——h 记着过去。' },
+    ],
+    terms: [],
+  },
+  wordvec: {
+    question: '怎么让计算机"懂"词的意思——还能做「国王−男人+女人=？」这种类比？',
+    step: (s: never) => {
+      const st = s as { phase: string; stage: string; dir: number[]; result: number[]; ranked: { name: string; d: number }[]; nearest: string }
+      return [
+        { k: '本步输入', v: st.stage === 'show' ? '几个词的坐标(王室度×性别)' : st.stage === 'sub' ? '国王(1,0)、男人(0,0)' : st.stage === 'add' ? `方向(${st.dir.join(',')}) 和 女人(0,1)` : `结果 (${st.result.join(',')})` },
+        { k: '判定规则', v: `词向量把词变成**向量**:意思相近→位置相近,**语义关系→方向**。类比 A−B+C 用**向量加减**算出一个点,再找**离它最近的词**当答案。` },
+        { k: '本步结果', v: st.stage === 'sub' ? `国王−男人 = (${st.dir.join(',')})——"王室"方向。`
+            : st.stage === 'add' ? `+女人 = (${st.result.join(',')})。`
+            : st.stage === 'find' ? `最近的词是 **${st.nearest}**(距离 ${st.ranked[0]?.d})。`
+            : st.phase === 'done' ? `国王−男人+女人 = **${st.nearest}**——语义关系是可加减的方向。`
+            : '把词摆进平面。' },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; stage: string; nearest: string }
+      return st.phase === 'done' ? `=${st.nearest}` : st.stage === 'find' ? st.nearest : st.stage === 'sub' ? '王室方向' : '语义空间'
+    },
+    read: [
+      { at: '读数', is: '要算的类比、结果向量、最近的词。', anchor: '.scdim' },
+      { at: '语义空间', is: '词=平面上的点(横轴王室度、纵轴性别);琥珀箭头=国王−男人的方向,接到女人上(虚线)、终点 ⊕ 最近的词高亮。', anchor: '.wvplotbox' },
+    ],
+    try: [
+      { act: '按「下一步」做类比', watch: '国王−男人得"王室"方向→接到女人上→终点落在王后附近。' },
+      { act: '想方向的含义', watch: '"男→女""平民→王室"是两个方向,能像箭头一样加减——这就是语义算术。' },
+    ],
+    terms: [],
+  },
+  lstm: {
+    question: '普通 RNN 长序列就"忘"了，怎么让记忆稳稳传很远？',
+    step: (s: never) => {
+      const st = s as { phase: string; t: number; role: string; f: number; ig: number; o: number; ctil: number; cPrev: number; c: number; h: number }
+      return [
+        { k: '本步输入', v: st.t === 0 ? '空记忆 c₀=0' : st.phase === 'done' ? '走完 4 步' : `第 ${st.t} 步(${st.role}):门 f=${st.f} i=${st.ig} o=${st.o}` },
+        { k: '判定规则', v: `另开一条**细胞状态 c(传送带)**:**c_t = f·c_{'{'}t-1{'}'} + i·c̃**(加法为主、近乎线性)。遗忘门 **f** 留多少旧记忆、输入门 **i** 写多少新内容、输出门 **o** 放多少:**h = o·tanh(c)**。f≈1、i≈0 记忆就原样传很远。` },
+        { k: '本步结果', v: st.phase === 'done' ? `传送带全程稳在 **${st.c}**——存进去被原样扛到末尾、再取出 ${st.h}。这是 RNN 做不到的长期记忆。`
+            : st.role === '存' ? `开输入门 → c=${st.c},写入记忆。`
+            : st.role === '守' ? `f=1、i=0 → c=1·${st.cPrev}=**${st.c}**,记忆原样传下去。`
+            : st.role === '取' ? `开输出门 → h=tanh(${st.c})=**${st.h}**,放出记忆。`
+            : '待走。' },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; role: string; c: number }
+      return st.phase === 'done' ? `守住 ${st.c}` : st.role || '门控'
+    },
+    read: [
+      { at: '读数', is: '细胞状态 c(记忆)、隐藏 h、三个门、本步动作。', anchor: '.scdim' },
+      { at: '传送带+门', is: '上=cell 记忆传送带(全程稳在 0.8),下=三个门(绿开/灰关):遗忘 f、输入 i、输出 o。', anchor: '.lstmwrap' },
+    ],
+    try: [
+      { act: '按「下一步」走 4 步', watch: '存(开输入门)→守守(f=1 i=0,c 不变)→取(开输出门)。' },
+      { act: '盯 cell 传送带', watch: 'c 全程稳在 0.8——记忆被原封不动扛过来,这正是 RNN 会丢的。' },
+    ],
+    terms: [],
+  },
+  norm: {
+    question: 'BatchNorm 和 LayerNorm 都在做归一化，到底差在哪？',
+    step: (s: never) => {
+      const st = s as { phase: string; kindName: string; axis: string; slice: number; vals: number[]; mu: number; sigma: number }
+      const isB = st.axis === 'col'
+      return [
+        { k: '本步输入', v: st.slice < 0 ? '4 样本 × 3 特征的激活表' : st.phase === 'done' ? '全部片归一化完' : `${isB ? `特征 f${st.slice + 1}(一列)` : `样本 s${st.slice + 1}(一行)`} [${st.vals.join(',')}]` },
+        { k: '判定规则', v: `都是 **x̂=(x−μ)/√(σ²+ε)**,把一片激活拉成零均值单位方差。分歧只在**沿哪条轴**统计:**BatchNorm** 对每个**特征**、在一批**样本**上算(沿列);**LayerNorm** 对每个**样本**、在它自己**所有特征**上算(沿行)。` },
+        { k: '本步结果', v: st.phase === 'done' ? `每${isB ? '个特征(列)' : '个样本(行)'}都零均值单位方差。BatchNorm 依赖 batch(CNN 常用)、LayerNorm 不依赖(Transformer 标配)。`
+            : st.slice < 0 ? '待算。'
+            : `μ=${st.mu}、σ=${st.sigma} → (x−μ)/σ。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; kindName: string; mu: number; sigma: number; slice: number }
+      return st.phase === 'done' ? '已归一化' : st.slice >= 0 ? `μ=${st.mu} σ=${st.sigma}` : st.kindName
+    },
+    read: [
+      { at: '读数', is: '归一化方式、沿哪条轴、本片 μ/σ。', anchor: '.scdim' },
+      { at: '两张表', is: '左=输入(4 样本×3 特征),琥珀=当前归一化的一列(BatchNorm)或一行(LayerNorm);右=输出。', anchor: '.nmwrap' },
+    ],
+    try: [
+      { act: '按「下一步」逐片归一', watch: 'BatchNorm 一列列(每个特征跨样本)、LayerNorm 一行行(每个样本跨特征)。' },
+      { act: '切「归一化方式」', watch: '同一个 (x−μ)/σ 公式,只是统计的轴不同——BatchNorm 沿列、LayerNorm 沿行。' },
+    ],
+    terms: [],
+  },
+  rag: {
+    question: '大模型会过时、记不住私有资料、还爱编造，怎么让它答得有据可查？',
+    step: (s: never) => {
+      const st = s as { phase: string; stage: string; query: string; docs: { t: string; sim: number | null }[]; retrieved: number[]; answer: string; topK: number }
+      return [
+        { k: '本步输入', v: st.stage === 'query' ? `问题「${st.query}」+ 知识库 ${st.docs.length} 篇` : st.stage === 'score' ? '查询向量 vs 每篇文档' : st.stage === 'retrieve' ? `${st.docs.length} 篇的相似度` : st.stage === 'augment' ? `检索到的 ${st.topK} 篇` : '增强后的提示词' },
+        { k: '判定规则', v: `RAG 三步:①**检索**——问题编码成查询向量,和库里每篇比**相似度**(内积/余弦),取最相关 top-${st.topK}(这步=**向量最近邻**);②**增强**——把它们拼进提示词当上下文;③**生成**——模型据此作答。` },
+        { k: '本步结果', v: st.stage === 'score' ? '讲"猫吃"的两篇相似度最高、无关的(汽车/植物)接近 0。'
+            : st.stage === 'retrieve' ? `检索到「${st.docs[st.retrieved[0]]?.t}」「${st.docs[st.retrieved[1]]?.t}」,无关的丢掉。`
+            : st.stage === 'augment' ? '把 2 篇拼进上下文,模型开卷作答。'
+            : st.phase === 'done' ? `据此答「${st.answer}」——**有出处**、不靠瞎记。`
+            : '去库里找相关资料。' },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; stage: string; retrieved: number[] }
+      return st.phase === 'done' ? '据此作答' : st.stage === 'retrieve' ? `命中 ${st.retrieved.length}` : st.stage === 'score' ? '算相似度' : '检索中'
+    },
+    read: [
+      { at: '读数', is: '当前阶段、知识库篇数、命中的文档、答案。', anchor: '.scdim' },
+      { at: '知识库', is: '每篇文档的相似度条(越长越相关),绿=被检索的 top-k、灰=落选;下方是增强后的提示词与答案。', anchor: '.raglib' },
+    ],
+    try: [
+      { act: '按「下一步」跑三步', watch: '算相似度→检索 top-2(绿)→拼进上下文→据此作答。' },
+      { act: '看无关文档', watch: '汽车、植物相似度接近 0、落选——检索只留跟问题最相关的。' },
+    ],
+    terms: [],
+  },
+  selfconsist: {
+    question: '单条推理一步错就全错，怎么让大模型的数学/推理答得更稳？',
+    step: (s: never) => {
+      const st = s as { phase: string; chains: { r: string; a: number; ok: boolean }[]; n: number; tally: [number, number][]; winner: number; correct: number }
+      const last = st.chains[st.chains.length - 1]
+      return [
+        { k: '本步输入', v: st.chains.length === 0 ? `一道题(正解 ${st.correct})` : st.phase === 'done' ? `${st.n} 条链的答案` : `第 ${st.chains.length} 条链:${last?.r}` },
+        { k: '判定规则', v: `对同一题**采样 N 条不同的推理链**(温度制造多样),每条独立推到一个答案,最后**多数投票**取出现最多的。正确推法往往多条且一致,错法各异——所以多数票能把少数算错的淹没。` },
+        { k: '本步结果', v: st.phase === 'done' ? `${st.tally.map(([a, n]) => `${a}×${n}`).join('、')} → **${st.winner} 胜出**(正解 ${st.correct}${st.winner === st.correct ? '✓' : '✗'})。`
+            : st.chains.length === 0 ? '开始采样。'
+            : `→ ${last.a}${last.ok ? '' : '(算错)'};当前 ${st.tally[0][0]} 领先(${st.tally[0][1]} 票)。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; chains: unknown[]; n: number; winner: number }
+      return st.phase === 'done' ? `${st.winner} 胜出` : `${st.chains.length}/${st.n} 链`
+    },
+    read: [
+      { at: '读数', is: '已采样链数、当前多数票、正解。', anchor: '.scdim' },
+      { at: '链与投票', is: '每条推理链的算式+答案(绿对/红错),下方投票条,胜出的答案高亮。', anchor: '.scwrap' },
+    ],
+    try: [
+      { act: '按「下一步」采样', watch: '一条条推理链冒出来,票数实时累加。' },
+      { act: '看多数投票', watch: '3 条殊途同归到 17、2 条各自算错——多数票 17 胜出,救回了正确答案。' },
+    ],
+    terms: [],
+  },
+  bestofn: {
+    question: '生成质量时好时坏，怎么稳定地拿到更好的那个输出？',
+    step: (s: never) => {
+      const st = s as { phase: string; cands: { e: string; r: number; reward: number }[]; n: number; bestIdx: number; target: number }
+      const last = st.cands[st.cands.length - 1]
+      const best = st.cands[st.bestIdx]
+      return [
+        { k: '本步输入', v: st.cands.length === 0 ? `任务:凑近 ${st.target}` : st.phase === 'done' ? `${st.n} 个候选的分数` : `第 ${st.cands.length} 个候选:${last?.e}=${last?.r}` },
+        { k: '判定规则', v: `**采样 N 个**候选,每个交给**打分器**评分(奖励模型 或 可算的验证器),最后 **argmax 取最高分**的那个。和自洽的多数投票不同——这里靠**外部打分器选单个最好**,适合开放式生成。` },
+        { k: '本步结果', v: st.phase === 'done' ? `「${best?.e}」得 ${best?.reward} 分最高 → **采纳**。`
+            : st.cands.length === 0 ? '开始采样。'
+            : `${last?.e}=${last?.r} 得 **${last?.reward}** 分;当前最高「${best?.e}」(${best?.reward})。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; cands: { reward: number }[]; n: number; bestIdx: number }
+      return st.phase === 'done' ? `取 ${st.cands[st.bestIdx]?.reward} 分` : `${st.cands.length}/${st.n}`
+    },
+    read: [
+      { at: '读数', is: '已采样候选数、当前最高分、目标。', anchor: '.scdim' },
+      { at: '候选与分', is: '每个候选的算式+结果+奖励条(越长分越高),★=当前最高分。', anchor: '.bncands' },
+    ],
+    try: [
+      { act: '按「下一步」采样', watch: '候选一个个冒出、各自打分,★最高分实时更新。' },
+      { act: '想它和自洽的区别', watch: '自洽数票(多数投票)、Best-of-N 看分(打分器择优)——一个投票、一个打分。' },
+    ],
+    terms: [],
+  },
+  tot: {
+    question: '思维链错一步就没回头路，怎么让模型像下棋那样探索、试错、回溯？',
+    step: (s: never) => {
+      const st = s as { phase: string; stage: string; root: string; target: number; thoughts: { pruned: boolean; sure: boolean }[]; solution: string }
+      const pruned = st.thoughts.filter(t => t.pruned).length
+      const sure = st.thoughts.filter(t => t.sure && !t.pruned).length
+      return [
+        { k: '本步输入', v: st.stage === 'root' || st.stage === '' ? `${st.root} 凑 ${st.target}` : st.stage === 'generate' ? `根 ${st.root}` : `${st.thoughts.length} 个候选分支` },
+        { k: '判定规则', v: `把中间状态当**树节点**:每步①**生成多个想法分支**②用**评估器**判前景(能否通向解:sure/impossible)③**剪掉**没希望的④沿有希望的**搜索**(可**回溯**换分支)。比 CoT 单线、自洽独立多线更进一步。` },
+        { k: '本步结果', v: st.stage === 'generate' ? `展开出 ${st.thoughts.length} 个中间状态(分支)。`
+            : st.stage === 'evaluate' ? `${sure} 个有希望(sure)、${st.thoughts.length - sure} 个死路(impossible)。`
+            : st.stage === 'prune' ? `剪掉 ${pruned} 个死路分支,留有希望的。`
+            : st.stage === 'expand' ? `沿 {12,2} 展开:12×2=24 ✓ 找到解。`
+            : st.phase === 'done' ? `**解出** ${st.solution}=${st.target}——生成→评估→剪枝→搜索。`
+            : '展开树。' },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; stage: string }
+      return st.phase === 'done' ? '解出' : st.stage === 'prune' ? '剪枝' : st.stage === 'evaluate' ? '评估' : st.stage === 'expand' ? '搜索' : '展开'
+    },
+    read: [
+      { at: '读数', is: '起始数字、目标、已剪枝分支数、解。', anchor: '.scdim' },
+      { at: '想法树', is: '根=起始数字,每条边一步运算得一个中间状态(分支);绿=有希望、红虚线=死路(剪掉);沿有希望的展开到解。', anchor: '.tottree' },
+    ],
+    try: [
+      { act: '按「下一步」建树', watch: '生成分支→评估前景→剪掉死路→沿有希望的搜到解。' },
+      { act: '对比 CoT/自洽', watch: 'CoT 一条线、自洽独立多线,ToT 是能评估+剪枝+回溯的树。' },
+    ],
+    terms: [],
+  },
+  mcts: {
+    question: '下棋走法多到没法全搜，怎么把有限的思考花在最有希望的走法上？',
+    step: (s: never) => {
+      const st = s as { phase: string; iter: number; moves: string[]; n: number[]; w: number[]; ucb: (number | null)[]; pick: number; win: number; best: number }
+      return [
+        { k: '本步输入', v: st.iter === 0 && st.phase !== 'done' ? '根有 3 个候选走法 A/B/C' : st.phase === 'done' ? '各走法的访问次数' : `第 ${st.iter} 轮的 UCB` },
+        { k: '判定规则', v: `每轮四步:**选择**(按 **UCB=胜率+c·√(ln N父/N子)** 挑分支,胜率高多利用、试得少多探索)→**扩展**→**模拟**(随机走到底看输赢)→**回传**(更新沿途 N、胜数)。多轮后访问集中到最好的走法。` },
+        { k: '本步结果', v: st.phase === 'done' ? `访问 ${st.moves.map((m, k) => `${m}=${st.n[k]}`).join('、')} → 选 **${st.moves[st.best]}**(被反复模拟、几乎全赢)。`
+            : st.pick < 0 ? '待模拟。'
+            : `UCB 最大是 ${st.moves[st.pick]}${st.ucb[st.pick] === null ? '(没试过∞,先探索)' : ''} → 模拟**${st.win ? '赢' : '输'}**、回传。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; iter: number; moves: string[]; best: number; win: number }
+      return st.phase === 'done' ? `选 ${st.moves[st.best]}` : st.win === 1 ? '模拟赢' : st.win === 0 ? '模拟输' : `第${st.iter}轮`
+    },
+    read: [
+      { at: '读数', is: '模拟轮、本轮选中的走法+UCB、各走法访问次数。', anchor: '.scdim' },
+      { at: '树', is: '根+3走法;圆越大=访问越多;每轮挑 UCB 最大的模拟、回传;绿=本轮/最终选中。', anchor: '.gcntree' },
+    ],
+    try: [
+      { act: '按「下一步」模拟', watch: '每轮挑 UCB 最大的走法(没试过=∞先试)、随机模拟、回传更新访问数。' },
+      { act: '看火力集中', watch: 'A 总赢 → 被越选越多、圆越来越大;探索与利用的平衡。' },
+    ],
+    terms: [],
+  },
+  collision: {
+    question: '一堆小球乱糟糟地碰来碰去，有什么东西是始终不变的？',
+    step: (s: never) => {
+      const st = s as { phase: string; n: number }
+      return [
+        { k: '本步输入', v: st.phase === 'init' ? `${st.n} 个小球带着初速度出发` : '小球们正在盒子里弹性碰撞' },
+        { k: '判定规则', v: `实时物理引擎(Matter.js)求解**弹性碰撞**:每次碰撞按动量守恒、动能守恒的规律,把速度在两球间重新分配。无摩擦、四壁弹性反弹。` },
+        { k: '本步结果', v: st.phase === 'init' ? '总动能、总动量此刻是初值,球各自朝不同方向飞。'
+            : '有的球被撞快、有的被撞慢,单看一个球速度乱变——但**所有球加起来,总动能、总动量守恒**(读数基本不动)。' },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string }
+      return st.phase === 'run' ? '守恒' : '就绪'
+    },
+    read: [
+      { at: '读数', is: '总动能、总动量大小、小球数——碰撞中总量基本不变(守恒)。', anchor: '.scdim' },
+      { at: '沙盘', is: '实时物理仿真:拖动小球甩它、加球看多体、开重力看它们落底堆叠。', anchor: '.colcanvas' },
+    ],
+    try: [
+      { act: '拖一个球甩出去', watch: '它撞到别的球,把动能/动量传过去;但上方总动能读数基本不变。' },
+      { act: '加球 / 开重力', watch: '多体碰撞更热闹;开重力则失去竖直方向守恒、球落到底部堆叠。' },
+    ],
+    terms: [],
+  },
+  gcn: {
+    question: '社交网络、分子这种「图」数据，神经网络怎么处理？',
+    step: (s: never) => {
+      const st = s as { phase: string; cur: number; agg: number[]; result: number; feat: number[]; newFeat: (number | null)[] }
+      return [
+        { k: '本步输入', v: st.cur < 0 && st.phase !== 'done' ? '5 节点图,节点 0、4 特征=1' : st.phase === 'done' ? '一层聚合完' : `节点 ${st.cur} 及其邻居` },
+        { k: '判定规则', v: `图卷积一层:每个节点把**自己+所有邻居**的特征**平均**(聚合)成新特征——信息沿边渗一跳。真实 GCN 聚合后再乘可学权重 W、过激活。叠 L 层传 L 跳。` },
+        { k: '本步结果', v: st.phase === 'done' ? `新特征 [${(st.newFeat as number[]).join(', ')}]——相连节点变相似,信息渗了一跳。`
+            : st.cur < 0 ? '待聚合。'
+            : `节点 ${st.cur}:(${st.agg.map(u => st.feat[u]).join('+')})/${st.agg.length} = **${st.result}**。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; cur: number; result: number }
+      return st.phase === 'done' ? '渗一跳' : st.cur >= 0 ? `→${st.result}` : '聚合'
+    },
+    read: [
+      { at: '读数', is: '当前聚合的节点、新特征值、感受野。', anchor: '.scdim' },
+      { at: '图', is: '颜色深=特征值大;琥珀圈=正更新的节点、绿圈=它的邻居;把自己+邻居的特征平均=新特征。', anchor: '.gcntree' },
+    ],
+    try: [
+      { act: '按「下一步」逐个聚合', watch: '每个节点把自己+邻居的特征平均;节点 0、4 的"1"顺边分给邻居。' },
+      { act: '想叠多层', watch: '一层传一跳,叠 L 层传 L 跳——节点表示概括越来越大的邻域。' },
+    ],
+    terms: [],
+  },
+  pagerank: {
+    question: '网页那么多，怎么判断哪个更重要、该排在前面？',
+    step: (s: never) => {
+      const st = s as { phase: string; iter: number; rank: number[]; nodes: string[]; ranked: { name: string; r: number }[]; d: number }
+      return [
+        { k: '本步输入', v: st.iter === 0 && st.phase !== 'done' ? '4 个网页,初始 rank 各 0.25' : st.phase === 'done' ? '各页 rank 已稳定' : `第 ${st.iter} 轮的 rank` },
+        { k: '判定规则', v: `一个页面的重要性 = 有多少、多重要的页面链到它(链接=投票,重要页面的票更值钱)。**幂迭代**:每页把 rank **平分**给它链出的页面,收方求和,再混入随机跳转(阻尼 d=${st.d})。反复迭代到收敛。` },
+        { k: '本步结果', v: st.phase === 'done' ? `收敛排名 **${st.ranked.map(x => x.name).join(' > ')}**——${st.ranked[0].name} 最高(最多、最重要的页面链它)。`
+            : st.iter === 0 ? '每页起点都一样。'
+            : `${st.nodes.map((n, k) => `${n}=${st.rank[k]}`).join('、')};重要性在页面间流动、逐渐稳定。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; iter: number; ranked: { name: string }[] }
+      return st.phase === 'done' ? `${st.ranked[0].name} 胜` : st.iter === 0 ? '初始' : `第${st.iter}轮`
+    },
+    read: [
+      { at: '读数', is: '当前迭代轮、最高的页面、最高 rank。', anchor: '.scdim' },
+      { at: '图+条', is: '节点越大=rank 越高;箭头=链接(投票)。每轮把 rank 平分给链出页,重要性流动、几轮收敛。', anchor: '.prwrap' },
+    ],
+    try: [
+      { act: '按「下一步」迭代', watch: '每轮重要性顺箭头流动、重新分配;节点大小实时变。' },
+      { act: '看谁胜出', watch: 'C 被最多、最重要的页面链到 → 收敛后 rank 最高;D 没人链 → 最低。' },
+    ],
+    terms: [],
+  },
+  qlearn: {
+    question: '走迷宫只有终点才有奖励，怎么知道中间每一步该往哪走？',
+    step: (s: never) => {
+      const st = s as { phase: string; ring: number; gamma: number; path: string[] }
+      return [
+        { k: '本步输入', v: st.ring < 0 && st.phase !== 'done' ? '只有终点 ★ 有 +1 奖励' : st.phase === 'done' ? '价值满图、策略学好' : st.ring === 0 ? '终点拿到 +1' : `离终点 ${st.ring} 步的一圈格子` },
+        { k: '判定规则', v: `给每格估一个**价值**(从这出发未来总回报)。**Bellman**:格子价值 = 即时奖励 + γ×下一格价值。于是终点的 +1 顺规则**一圈圈倒推**,每远一步打 γ=${st.gamma} 折。策略=往价值最高的邻居走。` },
+        { k: '本步结果', v: st.phase === 'done' ? `跟着策略箭头从起点走到终点=最优 **${st.path.length - 1}** 步——没人教、靠试错+倒推自己学出来。`
+            : st.ring <= 0 ? '价值从终点开始往外倒推。'
+            : `价值 = 0.9^${st.ring} = **${Math.round(Math.pow(st.gamma, st.ring) * 1000) / 1000}**,箭头指向终点。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; ring: number; path: string[] }
+      return st.phase === 'done' ? `最优 ${st.path.length - 1} 步` : st.ring < 0 ? '试错' : `第${st.ring}圈`
+    },
+    read: [
+      { at: '读数', is: '价值倒推到第几圈、折扣 γ、本圈价值、最优路线长。', anchor: '.scdim' },
+      { at: '迷宫', is: '格子越绿=价值越高;★=终点(+1)、S=起点;箭头=策略(该往哪走);价值像波纹从终点倒推。', anchor: '.asgrid' },
+    ],
+    try: [
+      { act: '按「下一步」看倒推', watch: '价值从终点一圈圈往外传,每远一步×γ=0.9(0.9→0.81→0.729…)。' },
+      { act: '看策略箭头', watch: '每格箭头指向价值更高的邻居——跟着走就是最优路线,还不用提前知道地图。' },
+    ],
+    terms: [],
+  },
+  recsys: {
+    question: '你只看过几部电影，平台怎么猜你对没看过的会打几分？',
+    step: (s: never) => {
+      const st = s as { phase: string; stage: string; users: { n: string; v: number[] }[]; movies: { n: string; v: number[] }[]; rating: (number | null)[][]; pr: number; pc: number }
+      return [
+        { k: '本步输入', v: st.stage === 'matrix' || st.stage === '' ? '评分表,大半空缺' : st.stage === 'userv' ? '每个用户的口味' : st.stage === 'moviev' ? '每个电影的属性' : `${st.users[st.pr]?.n} 没看过 ${st.movies[st.pc]?.n}` },
+        { k: '判定规则', v: `矩阵分解:给每个用户、每个电影各学一个**隐向量**(压进低维隐空间),让 **评分 ≈ 用户隐向量·电影隐向量**(内积)。已知评分学隐向量,空缺处用内积**预测**。口味和属性对得上=内积大=推荐。` },
+        { k: '本步结果', v: st.stage === 'userv' ? '小明=(1,0)只爱动作、小红=(0,1)只爱文艺。'
+            : st.stage === 'moviev' ? '盗梦=(4,3)动作+烧脑;已知评分都=内积,对得上。'
+            : st.stage === 'predict' ? `${st.users[st.pr]?.n}·${st.movies[st.pc]?.n}=(${st.users[st.pr]?.v})·(${st.movies[st.pc]?.v})=**${st.rating[st.pr][st.pc]}** 分。`
+            : st.phase === 'done' ? `补全:给小明推盗梦(4)、不推小森林(0,纯文艺不对味)。`
+            : '待分解。' },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; stage: string; rating: (number | null)[][]; pr: number; pc: number }
+      return st.phase === 'done' ? '补全' : st.stage === 'predict' ? `预测 ${st.rating[st.pr]?.[st.pc]}` : st.stage === 'userv' ? '用户向量' : st.stage === 'moviev' ? '电影向量' : '评分表'
+    },
+    read: [
+      { at: '读数', is: '预测评分、隐空间维度、已填格数。', anchor: '.scdim' },
+      { at: '评分表', is: '绿=已知评分、? =空缺;行/列标着用户/电影的隐向量;评分=两向量内积。', anchor: '.rstable' },
+    ],
+    try: [
+      { act: '按「下一步」分解', watch: '露出用户口味向量、电影属性向量;已知评分=它们的内积。' },
+      { act: '看预测空缺', watch: '小明·盗梦=(1,0)·(4,3)=4 分;口味和属性合拍就推荐。' },
+    ],
+    terms: [],
+  },
+  diffusion: {
+    question: '怎么让 AI 从一团随机噪声里，"画"出一张全新的图？',
+    step: (s: never) => {
+      const st = s as { phase: string; dir: string; t: number; sqrtA: number; sqrtN: number }
+      return [
+        { k: '本步输入', v: st.dir === '' ? '一张 8×8 小图 ❤' : st.dir === 'forward' ? `噪声级 ${st.t} 的图` : st.phase === 'done' ? '纯噪声' : `噪声级 ${st.t + 1} 的图` },
+        { k: '判定规则', v: `扩散=先学破坏、再学修复。**前向**给图一步步掺高斯噪声(x=√ᾱ·原图+√(1−ᾱ)·ε),几十步变纯噪声——**固定不用学**。**反向**训练网络**预测并去掉每步的噪声**;从随机噪声去噪就=生成。` },
+        { k: '本步结果', v: st.phase === 'done' ? `从纯噪声一步步去噪,"磨"出了新图——这就是生成。`
+            : st.dir === 'forward' ? `√ᾱ=${st.sqrtA}(信号)、√(1−ᾱ)=${st.sqrtN}(噪声),图渐被淹没。`
+            : `网络减掉噪声,回到 √ᾱ=${st.sqrtA},图像浮现。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; dir: string }
+      return st.phase === 'done' ? '生成✓' : st.dir === 'forward' ? '加噪' : '去噪'
+    },
+    read: [
+      { at: '读数', is: '方向(加噪/去噪)、噪声级、√ᾱ 信号、√(1-ᾱ) 噪声。', anchor: '.scdim' },
+      { at: '图', is: '8×8 小图(深=亮);前向被噪声淹没、反向从噪声浮现。', anchor: '.dfgrid' },
+    ],
+    try: [
+      { act: '按「下一步」看加噪', watch: '前向每步 x=√ᾱ·原图+√(1−ᾱ)·噪声,图渐渐变纯噪声。' },
+      { act: '看反向去噪', watch: '网络一步步去噪,图像从噪声里浮现——这就是生成。' },
+    ],
+    terms: [],
+  },
+  gan: {
+    question: '不预设分布，怎么让 AI 生成以假乱真的数据？',
+    step: (s: never) => {
+      const st = s as { phase: string; round: number; acc: number; fakeInside: number }
+      return [
+        { k: '本步输入', v: st.round === 0 && st.phase !== 'done' ? '真数据(蓝) + G 造的假数据(红)' : st.phase === 'done' ? 'G、D 较劲到均衡' : `第 ${st.round} 轮的真/假数据` },
+        { k: '判定规则', v: `对抗博弈:**生成器 G** 造假想骗过审查、**判别器 D** 学着分辨真假。G 要**骗过 D**、D 要**抓住 G**,轮流进步。均衡处 G 的假分布=真分布、D 分不出(准确率→50%)。` },
+        { k: '本步结果', v: st.phase === 'done' ? `假数据和真数据难分难解,D 准确率掉到 **${st.acc}%**(瞎猜)——G 学会了生成。`
+            : st.round === 0 ? `G 造的假数据乱撒,D 一眼看穿,准确率 ${st.acc}%。`
+            : `G 造得更像,${st.fakeInside}/6 假数据混进真区骗过 D,D 准确率掉到 **${st.acc}%**。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; round: number; acc: number }
+      return st.phase === 'done' ? `D ${st.acc}%` : `第${st.round}轮`
+    },
+    read: [
+      { at: '读数', is: 'D 判别准确率、骗过 D 的假数据数、对抗轮。', anchor: '.scdim' },
+      { at: '散点', is: '蓝=真数据、红=G 造的假数据、虚线圈=D 认作真的区;红点逐轮逼近蓝点分布。', anchor: '.mlplot' },
+    ],
+    try: [
+      { act: '按「下一步」对抗', watch: 'G 造的红点逐轮逼近蓝点,混进虚线圈骗过 D。' },
+      { act: '看 D 准确率', watch: '假越像真,D 越难分,准确率从 100% 掉到 50%——掉到 50% 就是 G 赢了。' },
+    ],
+    terms: [],
+  },
+  conv: {
+    question: '不用给整张图接一大堆权重，怎么让网络"看见"边缘、纹理？',
+    step: (s: never) => {
+      const st = s as { phase: string; kernelName: string; ci: number; cj: number; curVal: number; out: (number | null)[][] }
+      const done = st.out ? st.out.flat().filter(x => x !== null).length : 0
+      return [
+        { k: '本步输入', v: st.phase === 'done' ? `${st.kernelName}核滑完 9 处` : st.ci >= 0 ? `核滑到窗口 (${st.ci},${st.cj})` : `${st.kernelName}核` },
+        { k: '判定规则', v: `卷积核在图上滑窗,每处把核和底下像素**逐位相乘再相加**(点积)=一个数,拼成特征图。核共享权重、平移不变。` },
+        { k: '本步结果', v: st.phase === 'done'
+            ? `${st.kernelName === '边缘' ? '边缘核在明暗交界响应最强(±27)、平坦≈0——"看见"了边缘' : st.kernelName === '模糊' ? '模糊核把边缘抹平了' : '锐化核把边缘提得更亮'}。`
+            : st.ci >= 0 ? `本格加权和 = **${st.curVal}**(已算 ${done}/9)。` : `按「下一步」滑窗。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; kernelName: string; ci: number; cj: number }
+      return st.phase === 'done' ? `${st.kernelName}特征` : st.ci >= 0 ? `(${st.ci},${st.cj})` : st.kernelName
+    },
+    read: [
+      { at: '读数', is: '卷积核、窗口位置、本格加权和、已算几格。', anchor: '.scdim' },
+      { at: '三个格', is: '输入图(亮=大值)+滑窗(蓝框)、核、特征图(填色);左中右对应"⊙ ="。', anchor: '.cvwrap' },
+    ],
+    try: [
+      { act: '按「下一步」让核滑窗', watch: '蓝框在输入图上一格格移,特征图对应格逐个填出。' },
+      { act: '换「卷积核」', watch: '边缘核在交界处亮、模糊核抹平、锐化核提中心——不同核提不同特征。' },
+    ],
+    terms: [],
+  },
+  linreg: {
+    question: '先从拟合一条线看起：机器"学习"到底在学什么？',
+    step: (s: never) => {
+      const st = s as { phase: string; gdStep: number; w: number; b: number; mse: number; wOls: number; bOls: number }
+      return [
+        { k: '本步输入', v: st.phase === 'done' ? '梯度下降 50 步' : `第 ${st.gdStep} 步梯度下降` },
+        { k: '判定规则', v: `损失=MSE(点到直线竖直距离的平方平均);沿负梯度调 w、b 让 MSE 下降。收敛到最小二乘闭式解。` },
+        { k: '本步结果', v: st.phase === 'done'
+            ? `直线 y=${st.w}x+${st.b}、MSE **${st.mse}**,正好=OLS(w=${st.wOls} b=${st.bOls})——找到数学最优线。`
+            : `直线 y=**${st.w}**x+**${st.b}**,MSE **${st.mse}**${st.gdStep === 0 ? '(还平、残差大)' : '(往点云里转)'}。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; gdStep: number; mse: number }
+      return st.phase === 'done' ? `MSE ${st.mse.toFixed(2)}` : `步${st.gdStep}·${st.mse.toFixed(1)}`
+    },
+    read: [
+      { at: '读数', is: '梯度下降步、MSE、当前直线、OLS 最优。', anchor: '.scdim' },
+      { at: '散点图', is: '蓝点=数据;橙线=拟合直线;红色竖虚线=残差(点到线的竖直距离)。', anchor: '.mlplot' },
+    ],
+    try: [
+      { act: '按「下一步」推进梯度下降', watch: '直线从平的转进点云、残差竖线一根根变短、MSE 降。' },
+      { act: '看收敛', watch: 'w→2.22、b→0.92,正好等于最小二乘闭式解——梯度下降找到了最优。' },
+    ],
+    terms: [],
+  },
+  pp: {
+    question: '按层把模型切到多卡，为什么会有"气泡"？怎么填掉？',
+    step: (s: never) => {
+      const st = s as { phase: string; stages: number; micro: number; t: number; totalTime: number; busy: number[]; util: number; bubblePct: number }
+      const active = st.busy ? st.busy.filter(m => m >= 0).length : 0
+      return [
+        { k: '本步输入', v: st.phase === 'done' ? `${st.stages} 级流水线、${st.micro} 微批` : `时刻 ${st.t + 1}/${st.totalTime}` },
+        { k: '判定规则', v: `按层切成 G 级流水线;把 batch 切 M 个微批首尾衔接流进来。稳态 G 卡同时各算一个,气泡=(G−1)/(M+G−1)。` },
+        { k: '本步结果', v: st.phase === 'done'
+            ? `利用率 **${st.util}%**、气泡 **${st.bubblePct}%**——微批越多气泡越小。`
+            : active === st.stages ? `**满载**:${st.stages} 张卡各算一个微批。`
+            : st.t < st.stages - 1 ? `**注入中**:才 ${active} 张卡在算,其余空等(气泡)。` : `**排空中**:只剩 ${active} 张卡收尾。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; t: number; totalTime: number; bubblePct: number }
+      return st.phase === 'done' ? `气泡 ${st.bubblePct}%` : `t${st.t + 1}/${st.totalTime}`
+    },
+    read: [
+      { at: '读数', is: '流水级、微批数、利用率、气泡。', anchor: '.scdim' },
+      { at: '调度表', is: '行=卡、列=时刻;彩格=在算某微批 μ,灰格=气泡。', anchor: '.ppgrid' },
+    ],
+    try: [
+      { act: '一步步走完一轮', watch: '开头几张卡空等(注入气泡)、中段满载、结尾排空。' },
+      { act: '把「微批数」调到 8', watch: '中段满载更长、气泡从 43% 降到 27%——微批越多越省。' },
+    ],
+    terms: [],
+  },
+  ep: {
+    question: 'MoE 的专家又多又大，一张卡放不下——怎么分到多卡、代价是什么？',
+    step: (s: never) => {
+      const st = s as { phase: string; gpus: number; experts: number; expertsPerGpu: number; load: number[]; maxLoad: number; minLoad: number }
+      return [
+        { k: '本步输入', v: st.phase === 'done' ? `${st.experts} 专家 → ${st.gpus} 卡` : ({ setup: `${st.experts} 专家分到 ${st.gpus} 卡`, route: 'token 路由挑专家', dispatch: 'all-to-all 派发', compute: '各卡算+收回' } as Record<string, string>)[st.phase] },
+        { k: '判定规则', v: `EP 把 E 个专家分片(每卡 E/G 个)省显存;token 挑中的专家在别的卡就 all-to-all 派过去;路由不均→热专家那卡过载。` },
+        { k: '本步结果', v: st.phase === 'done'
+            ? `分片省显存,代价=all-to-all + 负载不均(最忙 ${st.maxLoad} vs 最闲 ${st.minLoad})。MoE 常配 DP-attn + EP。`
+            : st.phase === 'setup' ? `每卡放 **${st.expertsPerGpu}** 个专家。`
+            : st.phase === 'route' ? `每 token 挑一个专家(专家 3 偏热)。`
+            : st.phase === 'dispatch' ? `token 送到专家所在卡（跨卡通信）。`
+            : `每卡负载 [${st.load.join(', ')}]:热专家那卡过载 **${st.maxLoad}**、别的闲 **${st.minLoad}**。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; maxLoad: number; minLoad: number }
+      return st.phase === 'done' ? (st.maxLoad > st.minLoad ? `负载 ${st.maxLoad}/${st.minLoad}` : '均衡') : st.phase
+    },
+    read: [
+      { at: '读数', is: '专家→卡、每卡专家数、负载最忙/最闲。', anchor: '.scdim' },
+      { at: 'token 行', is: '每个 token 挑的专家;专家 3(红)偏热。', anchor: '.eptokens' },
+      { at: 'GPU 盒子', is: '每卡放哪些专家 + 收到的 token + 负载条;过载卡标红。', anchor: '.epgpus' },
+    ],
+    try: [
+      { act: '走 路由→派发→算 三步', watch: 'token 按专家 all-to-all 跳到对应卡;热专家那卡负载最高。' },
+      { act: '调「卡数」', watch: '每卡专家数变(E/G),负载分布跟着变——但热专家仍造成不均。' },
+    ],
+    terms: [],
+  },
+  dpattn: {
+    question: '多卡服务一批请求，注意力怎么切到各卡上、通信最省？',
+    step: (s: never) => {
+      const st = s as { phase: string; gpus: number; b: number; h: number; headsPerGpu: number; reqPerGpu: number; tpComm: number; tpWeight: string }
+      return [
+        { k: '本步输入', v: st.phase === 'done' ? `${st.b} 请求、${st.h} 头 → ${st.gpus} 卡` : st.phase === 'tp' ? '张量并行 TP：切头' : st.phase === 'dp' ? '数据并行 DP：切请求' : `${st.b} 请求、${st.h} 头、${st.gpus} 卡` },
+        { k: '判定规则', v: `TP 切头(每卡 ${st.headsPerGpu} 头×全部请求)→每层 all-reduce 拼头;DP 切请求(每卡全部头×${st.reqPerGpu} 请求)→注意力零通信、权重复制。` },
+        { k: '本步结果', v: st.phase === 'done'
+            ? `TP 省显存(每卡 ${st.tpWeight})但每层通信;DP 零通信但复制权重。MoE 常用 DP-attn + EP。`
+            : st.phase === 'tp' ? `每卡只有一部分头,得 all-reduce 拼回来 → 通信 **${st.tpComm}**/token/层。`
+            : st.phase === 'dp' ? `每卡自己那 ${st.reqPerGpu} 个请求从头算到尾 → 注意力**零通信**。`
+            : `同一批注意力,两种铺法:切头 vs 切请求。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; tpComm: number }
+      return st.phase === 'done' ? 'DP 零通信' : st.phase === 'dp' ? '零通信' : st.phase === 'tp' ? `all-reduce ${st.tpComm}` : 'TP/DP'
+    },
+    read: [
+      { at: '读数', is: '卡数、请求·头、当前切法的通信量。', anchor: '.scdim' },
+      { at: 'TP 面板', is: '每卡分几个头×全部请求;底部标每层 all-reduce。', anchor: '.dppanel' },
+      { at: 'DP 面板', is: '每卡全部头×分几个请求;底部标零通信。', anchor: '.dpgpus' },
+    ],
+    try: [
+      { act: '走 TP → DP 两步', watch: 'TP 切头要每层 all-reduce;DP 切请求注意力零通信。' },
+      { act: '调「卡数」', watch: 'TP 每卡头更少(权重更省)、DP 每卡请求更少;通信量对比不变。' },
+    ],
+    terms: [],
+  },
+  flashdecode: {
+    question: '解码每步只有 1 个 query 却要扫一长串 KV，怎么并行提速？',
+    step: (s: never) => {
+      const st = s as { phase: string; n: number; chunks: number; curChunk: number; output: number; fullOutput: number; seqLatency: number; parLatency: number }
+      return [
+        { k: '本步输入', v: st.phase === 'done' ? `1 query 对 ${st.n} 个 KV，切 ${st.chunks} 块` : st.phase === 'combine' ? '合并各块局部结果' : `第 ${st.curChunk + 1}/${st.chunks} 块（并行算局部）` },
+        { k: '判定规则', v: `把 KV 切 C 块并行各算局部 (mᶜ,lᶜ,oᶜ)，再用 online softmax（拿全局最大 M 重缩放）无损合并。时延 ~N/C。` },
+        { k: '本步结果', v: st.phase === 'done'
+            ? `时延从 ~${st.seqLatency} 降到 ~${st.parLatency}，输出和一次性 softmax 完全相等——解码提速。`
+            : st.phase === 'combine' ? `合并输出 **${st.output}** = 一次性 softmax **${st.fullOutput}**（无损）。`
+            : `这一块的局部注意力算好了，和别的块互不依赖、同时算。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; parLatency: number; curChunk: number; chunks: number }
+      return st.phase === 'done' ? `时延 ~${st.parLatency}` : st.phase === 'combine' ? '合并=精确' : `块 ${st.curChunk + 1}/${st.chunks}`
+    },
+    read: [
+      { at: '读数', is: 'query×KV、KV 分块 C、时延、输出。', anchor: '.scdim' },
+      { at: 'KV 分块', is: 'N 个 key 切成 C 块(不同色);每块算局部 mᶜ/lᶜ/oᶜ。', anchor: '.fdkv' },
+      { at: '时延对比', is: '顺序扫 ~N vs Flash Decode ~N/C。', anchor: '.fdlat' },
+    ],
+    try: [
+      { act: '把「KV 分块」调到 8', watch: '时延 ~8→~1、块更多更细;合并输出始终 = 一次性 softmax。' },
+      { act: '看合并那步', watch: '不是简单相加——要用全局最大 M 重缩放各块 exp 才无损(online softmax)。' },
+    ],
+    terms: [],
+  },
+  engram: {
+    question: '注意力回头看又贵又受窗口限制——有没有便宜的旁路补上重复模式？',
+    step: (s: never) => {
+      const st = s as { stage: string; ngram: number; table: unknown[]; queryKey: string; prediction: string; matchCount: number }
+      const nm: Record<string, string> = { id: '看任务', build: '建 n-gram 表', lookup: 'O(1) 查表', predict: '复制预测', done: '完成' }
+      return [
+        { k: '本步输入', v: st.stage === 'done' ? `序列走完` : `阶段:${nm[st.stage]}（${st.ngram}-gram）` },
+        { k: '判定规则', v: `把出现过的 n-gram 存成「前 ${st.ngram - 1} 个→下一个」表;用当前 ${st.ngram - 1}-gram **O(1) 查表**拿到历次它后面跟的 token。不受注意力窗口限制。` },
+        { k: '本步结果', v: st.stage === 'done'
+            ? `查表补全出 **${st.prediction}**——把"精确复制"从贵的注意力卸载到便宜的表。`
+            : st.stage === 'build' ? `建好 **${st.table.length}** 个前缀的表(O(1) 可查)。`
+            : st.stage === 'lookup' ? `当前 2-gram「${st.queryKey}」命中(历史 ${st.matchCount} 次)。`
+            : st.stage === 'predict' ? `表里「${st.queryKey}」→ **${st.prediction}**,一次查表搞定。`
+            : `准备用 n-gram 记忆表补全下一个 token。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { stage: string; prediction: string }
+      return st.stage === 'done' ? `→ ${st.prediction}` : st.prediction ? `查到 ${st.prediction}` : st.stage
+    },
+    read: [
+      { at: '读数', is: '粒度、表项数、查询前缀、预测。', anchor: '.scdim' },
+      { at: '序列', is: '末尾 n−1 个 token(高亮)= 查询前缀;命中后补出预测。', anchor: '.egseq' },
+      { at: 'n-gram 表', is: '每行「前缀→下一个×次数」;命中行高亮。', anchor: '.egtable' },
+    ],
+    try: [
+      { act: '一步步走', watch: '建表 → 取当前 2-gram「B C」→ O(1) 命中 → 复制出 D。' },
+      { act: '对比归纳头', watch: '同是"回头找上次它之后是什么",但这是便宜的显式查表,不是贵的注意力。' },
+    ],
+    terms: [],
+  },
+  linattn: {
+    question: '上下文越长，注意力算量和 KV 缓存就越顶不住——线性注意力怎么解？',
+    step: (s: never) => {
+      const st = s as { phase: string; n: number; d: number; ratio: number; kvMem: number; stateMem: number; crossoverN: number }
+      const f = (x: number) => x >= 1e9 ? (x/1e9).toFixed(1)+'G' : x >= 1e6 ? (x/1e6).toFixed(1)+'M' : x >= 1e3 ? (x/1e3).toFixed(0)+'K' : `${x}`
+      return [
+        { k: '本步输入', v: st.phase === 'done' ? 'N 从 64 拉到 32768' : `序列长度 N=${st.n}` },
+        { k: '判定规则', v: `softmax 算 N×N=O(N²)、KV 缓存 O(N);线性用结合律先算 φ(K)ᵀV 的 d×d 状态→算量 O(N)、状态固定 O(d²)。` },
+        { k: '本步结果', v: st.phase === 'done'
+            ? `长序列线性完胜:算量差 **${st.ratio}×**、KV 缓存 ${f(st.kvMem)} vs 恒定状态 ${f(st.stateMem)}——告别膨胀 KV。`
+            : `算量差 **${st.ratio}×**、KV 缓存 ${f(st.kvMem)}(随 N 长) vs 状态 ${f(st.stateMem)}(恒定)${st.n <= st.d ? '（N≤d，softmax 还更省）' : ''}。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; n: number; ratio: number }
+      return st.phase === 'done' ? `省 ${st.ratio}×` : `N${st.n}·${st.ratio}×`
+    },
+    read: [
+      { at: '读数', is: 'N、算量差、KV 缓存 vs 线性状态。', anchor: '.scdim' },
+      { at: '算量曲线', is: '红=softmax O(N²) 陡、蓝=线性 O(N) 缓;竖虚线=交叉点 N=d。', anchor: '.laplot' },
+      { at: '显存条', is: 'KV 缓存随 N 长、线性状态恒定 d×d。', anchor: '.lamem' },
+    ],
+    try: [
+      { act: '按「下一步」拉长 N', watch: '红线(N²)越翘越高、蓝线(N)缓;KV 缓存条一直长、线性状态条不动。' },
+      { act: '看 N=32768', watch: '算量差 512×、KV 缓存 4M vs 状态 4K——长上下文的关键。' },
+    ],
+    terms: [],
+  },
+  condnum: {
+    question: '同一套梯度下降,为什么有的问题一步到位、有的却要爬几百步?',
+    step: (s: never) => {
+      const st = s as { phase: string; kappa: number; steps: number; rate: number }
+      return [
+        { k: '本步输入', v: st.phase === 'done' ? 'κ 从 1 加到 50' : `条件数 κ=${st.kappa}` },
+        { k: '判定规则', v: `κ=最大曲率/最小曲率。κ=1 正圆碗、梯度直指谷底;κ 大=细长椭圆、梯度偏离谷底方向,每步误差只缩 (κ−1)/(κ+1)。` },
+        { k: '本步结果', v: st.phase === 'done'
+            ? `收敛步数 1→12→47→**${st.steps}**——问题越病态越慢。要靠归一化/Adam 把 κ 拉回 1。`
+            : `收敛 **${st.steps}** 步,每步误差缩 **${st.rate}**${st.kappa === 1 ? '(一步到位)' : '(之字形)'}。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; kappa: number; steps: number }
+      return st.phase === 'done' ? `${st.steps} 步` : `κ${st.kappa}·${st.steps}步`
+    },
+    read: [
+      { at: '读数', is: '条件数、收敛步数、每步误差收缩率。', anchor: '.scdim' },
+      { at: '椭圆+轨迹', is: '等高线椭圆(κ 越大越扁)、之字形下降轨迹。', anchor: '.cnplot' },
+    ],
+    try: [
+      { act: '按「下一步」加大 κ', watch: '碗越拉越扁、轨迹从直线一步变成剧烈之字形、步数暴涨。' },
+      { act: '对比 κ=1 vs 50', watch: '正圆一步到位,κ=50 要 100 多步——这就是病态。' },
+    ],
+    terms: [],
+  },
+  maxent: {
+    question: 'softmax 到处都是——它凭什么"天生合理",不是随手挑的?',
+    step: (s: never) => {
+      const st = s as { phase: string; mu: number; ent: number; naiveEnt: number; maxEnt: number }
+      return [
+        { k: '本步输入', v: st.phase === 'done' ? '约束 μ 从 3.5 收紧到 5.5' : `约束:期望点数 μ=${st.mu}` },
+        { k: '判定规则', v: `在满足约束的分布里选**熵最大**的(最不武断)。可证它恒为指数族 p_i∝e^{λi};给期望能量约束就是 softmax/玻尔兹曼。` },
+        { k: '本步结果', v: st.phase === 'done'
+            ? `最大熵解从均匀(熵 ${st.maxEnt})变尖(熵→${st.ent})——信息越多、最诚实的分布越集中。这就是 softmax 的根。`
+            : `最大熵 **${st.ent}** bit${st.mu === 3.5 ? '(=均匀,到顶)' : `(> 同均值两点分布 ${st.naiveEnt})`}。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; mu: number; ent: number }
+      return st.phase === 'done' ? `熵 ${st.ent}` : `μ${st.mu}·H${st.ent}`
+    },
+    read: [
+      { at: '读数', is: '约束 μ、最大熵、熵上限、同均值两点分布的熵。', anchor: '.scdim' },
+      { at: '分布柱', is: '骰子 1..6 的最大熵概率;μ 越大越往 6 偏。', anchor: '.mebars' },
+      { at: '熵条', is: '当前熵占上限(log₂6)的比例。', anchor: '.meenttrack' },
+    ],
+    try: [
+      { act: '按「下一步」收紧 μ', watch: '分布从均匀往 6 偏、熵一路降;但每步都是该约束下最不武断的。' },
+      { act: '看 μ=3.5', watch: '没有约束时最大熵=均匀、熵到顶——这就是"最诚实"。' },
+    ],
+    terms: [],
+  },
+  jl: {
+    question: '几百上千维的向量,凭什么能压到几十维还不丢"谁离谁近"?',
+    step: (s: never) => {
+      const st = s as { phase: string; d: number; k: number; avgRatio: number; maxDev: number }
+      return [
+        { k: '本步输入', v: st.phase === 'done' ? `K 从 16 加到 128` : `投到 K=${st.k} 维（从 ${st.d} 维压下来）` },
+        { k: '判定规则', v: `JL 引理:随机线性投影到 k~O(log N/ε²) 维,所有两两距离保持在 (1±ε) 内——**与原维度 D 无关**,只看 N、ε。` },
+        { k: '本步结果', v: st.phase === 'done'
+            ? `最大偏差收到 **${(st.maxDev * 100).toFixed(0)}%**、平均比≈1——${st.d} 维压到几十维,距离几乎原样。`
+            : `平均距离比 **${st.avgRatio}**、最大偏差 **${(st.maxDev * 100).toFixed(0)}%**;K 越大越准。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; k: number; maxDev: number }
+      return st.phase === 'done' ? `偏差 ${(st.maxDev * 100).toFixed(0)}%` : `K${st.k}·${(st.maxDev * 100).toFixed(0)}%`
+    },
+    read: [
+      { at: '读数', is: '维度 D→K、平均距离比、最大偏差。', anchor: '.scdim' },
+      { at: '距离比数轴', is: '每个点=一对点的距离比,越挤向 1 越保距;灰带=±最大偏差。', anchor: '.jltrack' },
+    ],
+    try: [
+      { act: '按「下一步」加大 K', watch: '点越挤越紧地贴向 1、灰带越缩越窄。' },
+      { act: '想一想', watch: '要多少投影维只跟点数 N、精度有关,和原始 256 维无关——这才是 JL 的惊人处。' },
+    ],
+    terms: [],
+  },
+  greedy: {
+    question: '"每一步都拿当下最好的"——这个又快又直觉的策略,什么时候会栽?',
+    step: (s: never) => {
+      const st = s as { phase: string; rem: number; pick: number; picked: number[]; greedyCount: number; optimal: number; target: number }
+      return [
+        { k: '本步输入', v: st.phase === 'done' ? `贪心凑 ${st.target} 完成` : `剩 ${st.rem}，选一枚币` },
+        { k: '判定规则', v: `贪心=每步拿 ≤剩余 的**最大**币、不回头。只有具备"贪心选择性质"时才等于全局最优,否则可能次优。` },
+        { k: '本步结果', v: st.phase === 'done'
+            ? `贪心 [${st.picked.join('+')}]=**${st.greedyCount}** 枚,最优 **${st.optimal}** 枚(3+3)——贪心栽了。`
+            : `拿 **${st.pick}** → 已拿 [${st.picked.join('+')}]（${st.greedyCount} 枚）。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; greedyCount: number; optimal: number; pick: number }
+      return st.phase === 'done' ? (st.greedyCount > st.optimal ? `${st.greedyCount}>最优${st.optimal}` : '最优') : `+${st.pick}`
+    },
+    read: [
+      { at: '读数', is: '目标、币值、贪心用了几枚。', anchor: '.scdim' },
+      { at: '已拿的币', is: '贪心一枚枚拿的币(圆片)。', anchor: '.grcoins' },
+      { at: '对比条', is: '贪心 vs DP 最优的枚数对比。', anchor: '.grcompare' },
+    ],
+    try: [
+      { act: '按「下一步」贪心找零', watch: '每步拿最大币:4→1→1,共 3 枚。' },
+      { act: '看对比条', watch: '最优只要 2 枚(3+3)——先拿了 4 就堵死了 3+3 这条更优路。' },
+    ],
+    terms: [],
+  },
+  dotsim: {
+    question: '注意力用 Q·K 打分——一个乘加为什么就能量出"相关不相关"?',
+    step: (s: never) => {
+      const st = s as { phase: string; angleDeg: number; dot: number; cosSim: number; proj: number; magA: number; magB: number }
+      return [
+        { k: '本步输入', v: st.phase === 'done' ? 'θ 从 0° 转到 180°' : `夹角 θ=${st.angleDeg}°` },
+        { k: '判定规则', v: `内积 a·b=|a||b|cosθ,长度固定时纯量方向一致度:同向最大、正交=0、反向最负。÷|a||b| 就是余弦相似度。` },
+        { k: '本步结果', v: st.phase === 'done'
+            ? `内积 6→0(正交)→−6、余弦 1→0→−1——方向越一致内积越大。这就是 Q·K 打分。`
+            : `a·b = ${st.magA}×${st.magB}×cos${st.angleDeg}° = **${st.dot}**,余弦 **${st.cosSim}**${st.angleDeg === 90 ? '(正交=不相关)' : ''}。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; angleDeg: number; dot: number }
+      return st.phase === 'done' ? '方向=相似' : `${st.angleDeg}°·${st.dot}`
+    },
+    read: [
+      { at: '读数', is: '夹角、内积、余弦相似度。', anchor: '.scdim' },
+      { at: '几何图', is: 'a(灰)固定、b(蓝)转角;红段=b 在 a 上的投影,内积=|a|×投影。', anchor: '.dsplot' },
+      { at: '余弦尺', is: '▲ 在 −1(反向)…+1(同向)之间。', anchor: '.dsmtrack' },
+    ],
+    try: [
+      { act: '按「下一步」转 b', watch: '同向内积最大→转到 90°内积为 0→反向最负;投影段跟着变。' },
+      { act: '盯 90°那步', watch: '正交时内积=0=不相关——这正是注意力里无关 token 权重低的道理。' },
+    ],
+    terms: [],
+  },
+  lowrank: {
+    question: '为什么微调大模型能只训一小撮参数(LoRA)、还不太掉效果?',
+    step: (s: never) => {
+      const st = s as { phase: string; rank: number; error: number; energyPct: number; fullParams: number; lowrankParams: number }
+      return [
+        { k: '本步输入', v: st.phase === 'done' ? '秩从 1 提到 4' : `保留秩 k=${st.rank}` },
+        { k: '判定规则', v: `A=Σσ_i·u_i·v_iᵀ,信息集中在前几个大 σ。留前 k 个:用 2·d·k 个数近似 d² 个,误差=√(丢掉的σ²)(Eckart–Young 最优)。` },
+        { k: '本步结果', v: st.phase === 'done'
+            ? `秩 2 就保 98% 能量——这就是 LoRA:低秩更新 ΔW=B·A,只训 2·d·r 参数。`
+            : `保留能量 **${st.energyPct}%**、误差 **${st.error}**;参数 ${st.fullParams} → **${st.lowrankParams}**。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; rank: number; energyPct: number }
+      return st.phase === 'done' ? '低秩=LoRA' : `k${st.rank}·${st.energyPct}%`
+    },
+    read: [
+      { at: '读数', is: '秩、保留能量、重建误差、参数量。', anchor: '.scdim' },
+      { at: '两张热力图', is: '左=原矩阵、右=秩-k 重建;k 越大越像。', anchor: '.lrpair' },
+      { at: '奇异值条', is: '亮=保留、暗=丢弃;大的 σ 装了大部分信息。', anchor: '.lrsig' },
+    ],
+    try: [
+      { act: '按「下一步」加大秩 k', watch: '右边重建越来越像原图、能量从 88% 涨到 100%。' },
+      { act: '看秩 2', watch: '只留 2 个分量就 98% 像、参数 64→32——这就是 LoRA 省参数的道理。' },
+    ],
+    terms: [],
+  },
+  editdist: {
+    question: '把一个词改成另一个最少几步?为什么"填张表"就不用指数级重算?',
+    step: (s: never) => {
+      const st = s as { phase: string; a: string; b: string; ci: number; cj: number; match: boolean; val: number }
+      return [
+        { k: '本步输入', v: st.phase === 'done' ? `${st.a} → ${st.b} 全表填完` : `填格 (${st.ci},${st.cj})：a[${st.ci}]='${st.a[st.ci - 1]}' vs b[${st.cj}]='${st.b[st.cj - 1]}'` },
+        { k: '判定规则', v: `dp[i][j]=a 前 i 个改成 b 前 j 个的最少步。相同→抄左上;不同→**1+min(左上替换, 上删除, 左插入)**。只看三个已算邻居 O(1)。` },
+        { k: '本步结果', v: st.phase === 'done'
+            ? `右下角=**${st.val}**,就是编辑距离。O(n·m) 填完,把指数级重算压成填表。`
+            : st.match ? `相同,直接继承左上 → **${st.val}**。` : `不同,取三邻居最小+1 → **${st.val}**。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; ci: number; cj: number; val: number }
+      return st.phase === 'done' ? `距离 ${st.val}` : `(${st.ci},${st.cj})=${st.val}`
+    },
+    read: [
+      { at: '读数', is: 'a→b、当前格、本格值/编辑距离。', anchor: '.scdim' },
+      { at: 'DP 表', is: '行=a、列=b;蓝=当前格,浅色=它依赖的三个邻居,右下角=答案。', anchor: '.edtable' },
+    ],
+    try: [
+      { act: '按「下一步」逐格填', watch: '每格由左上/上/左三个已算好的邻居 O(1) 推出。' },
+      { act: '填到右下角', watch: 'horse→ros 的编辑距离 = 3。' },
+    ],
+    terms: [],
+  },
+  induction: {
+    question: '大模型没训过这句话,凭什么能"照着上文的样式接着写"?',
+    step: (s: never) => {
+      const st = s as { stage: string; cur: string; matches: number[]; prediction: string }
+      const nm: Record<string, string> = { id: '认当前 token', scan: '扫匹配位置', attend: '注意力落点', copy: '复制预测', done: '完成' }
+      return [
+        { k: '本步输入', v: st.stage === 'done' ? '序列 A B C A B C A' : `阶段:${nm[st.stage]}（当前 token ${st.cur}）` },
+        { k: '判定规则', v: `归纳头:"上次见到当前 token(${st.cur})时,它后面跟了什么?复制过来。"找"前一个 token==${st.cur}"的位置,注意力落其上。` },
+        { k: '本步结果', v: st.stage === 'done'
+            ? `A B C A B C A → **${st.prediction}**——纯靠上下文模式现学现用,这就是上下文学习。`
+            : st.stage === 'id' ? `当前 token = **${st.cur}**,准备回头找它上次之后跟了什么。`
+            : st.stage === 'scan' ? `找到匹配位置 [${st.matches.join(', ')}](前面都是 ${st.cur})。`
+            : st.stage === 'attend' ? `注意力集中在 pos ${st.matches.join('、')}(上次 ${st.cur} 之后)。`
+            : `那些位置的 token 都是 **${st.prediction}** → 复制成预测。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { stage: string; prediction: string }
+      return st.stage === 'done' ? `→ ${st.prediction}` : st.prediction ? `复制 ${st.prediction}` : st.stage
+    },
+    read: [
+      { at: '读数', is: '当前 token、注意力落点、预测。', anchor: '.scdim' },
+      { at: 'token 序列', is: '每个 token 一格;查询高亮、匹配位高亮、下方小柱=注意力权重。', anchor: '.idcrow' },
+    ],
+    try: [
+      { act: '一步步走', watch: '认当前 A → 扫出 pos1/pos4(前面是 A) → 注意力落上去 → 复制出 B。' },
+      { act: '看预测', watch: '"上次 A 之后跟的是 B",于是补全 A B C A B C A → B。' },
+    ],
+    terms: [],
+  },
+  residual: {
+    question: '几十上百层的深网络,梯度传到最底下不就没了吗?为什么还能训?',
+    step: (s: never) => {
+      const st = s as { phase: string; layer: number; depth: number; gradPlain: number; gradRes: number; resFactor: number }
+      return [
+        { k: '本步输入', v: st.phase === 'done' ? `梯度穿过全部 ${st.depth} 层` : `倒传到第 ${st.layer} 层` },
+        { k: '判定规则', v: `反向传播=各层导数**连乘**。没残差每层×0.8(<1)→指数衰减;残差 y=x+f(x)、导数=**1+f′**，那个 +1 让梯度原样穿过。` },
+        { k: '本步结果', v: st.phase === 'done'
+            ? `没残差塌到 **${st.gradPlain}**(≈梯度消失);有残差稳在 **${st.gradRes}**——这就是残差的作用。`
+            : `没残差 →**${st.gradPlain}**;有残差 ×${st.resFactor}→**${st.gradRes}**${st.gradPlain < 0.1 ? '(没残差快没了)' : ''}。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; layer: number; gradPlain: number; gradRes: number }
+      return st.phase === 'done' ? '残差守住' : `层${st.layer}·平${st.gradPlain}`
+    },
+    read: [
+      { at: '读数', is: '层数、没残差梯度、有残差梯度。', anchor: '.scdim' },
+      { at: '两条曲线', is: '红=有残差(守在1)、灰=没残差(往0塌);虚线是 y=1 与消失阈 0.1。', anchor: '.rsplot' },
+    ],
+    try: [
+      { act: '按「下一步」让梯度倒传', watch: '灰线(没残差)指数往 0 掉、红线(有残差)守在 1 附近。' },
+      { act: '看穿过 16 层后', watch: '没残差≈0.03(消失)、有残差≈1——差了一条 +1 恒等高速路。' },
+    ],
+    terms: [],
+  },
+  graddesc: {
+    question: '模型"训练"到底在干嘛？凭什么损失会一直降？',
+    step: (s: never) => {
+      const st = s as { phase: string; step: number; x: number; y: number; loss: number; gx: number; gy: number; lr: number }
+      return [
+        { k: '本步输入', v: st.phase === 'done' ? '走了 8 步梯度下降' : `第 ${st.step < 0 ? 0 : st.step} 步，位置 (${st.x}, ${st.y})` },
+        { k: '判定规则', v: `沿**负梯度**更新 θ←θ−lr·∇L。梯度指向上升最快方向，取负号朝下降最快走，lr=${st.lr} 控步长。` },
+        { k: '本步结果', v: st.phase === 'done'
+            ? `损失从 96 单调降到 **${st.loss}**，逼近谷底 (0,0)——这就是神经网络训练。`
+            : `损失 **${st.loss}**，梯度 (${st.gx}, ${st.gy})，走一步到 (${(st.x - st.lr * st.gx).toFixed(2)}, ${(st.y - st.lr * st.gy).toFixed(2)})。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; step: number; loss: number }
+      return st.phase === 'done' ? '到谷底' : `步${st.step < 0 ? 0 : st.step}·L${st.loss}`
+    },
+    read: [
+      { at: '读数', is: '步、损失、位置、梯度。', anchor: '.scdim' },
+      { at: '等高线+轨迹', is: '椭圆=损失等值圈；折线=下降轨迹,当前点高亮。', anchor: '.gdplot' },
+    ],
+    try: [
+      { act: '按「下一步」下降', watch: '损失单调降、点拐向谷底 (0,0)。' },
+      { act: '看 y 方向', watch: 'y 更陡、步子迈过头,点在中轴两侧来回跳(条件数的影响)。' },
+    ],
+    terms: [],
+  },
+  bloom: {
+    question: '怎么用一点点空间，就几乎不出错地判断"这个元素见过没"？',
+    step: (s: never) => {
+      const st = s as { phase: string; op: string; word: string; idx: number[]; verdict: string; falsePositive: boolean }
+      return [
+        { k: '本步输入', v: st.phase === 'done' ? '插 3 个、查 4 个之后' : st.op === 'add' ? `插入「${st.word}」` : `查询「${st.word}」` },
+        { k: '判定规则', v: `插入=把 k 个哈希位全置 1；查询=看这 k 位：**有一位是 0→一定不在**(绝不漏报)、**全是 1→可能在**(可能撞位假阳性)。` },
+        { k: '本步结果', v: st.phase === 'done'
+            ? `规律成立:绝不漏报、但可能误报——owl 撞了 dog 的位就是一次假阳性。`
+            : st.op === 'add' ? `位 [${st.idx.join(', ')}] 全置 1。`
+            : `位 [${st.idx.join(', ')}] → **${st.verdict}**${st.falsePositive ? '（假阳性！撞了别人的位）' : ''}。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; op: string; word: string; verdict: string; falsePositive: boolean }
+      return st.phase === 'done' ? '绝不漏报' : st.op === 'add' ? `+${st.word}` : `${st.word}:${st.verdict}${st.falsePositive ? '(假阳)' : ''}`
+    },
+    read: [
+      { at: '读数', is: 'm、k、已插入的词。', anchor: '.scdim' },
+      { at: 'bit 数组', is: '24 个位；插入点亮(蓝框)、查询探测(高亮)对应位。', anchor: '.blmbits' },
+    ],
+    try: [
+      { act: '按「下一步」插入 cat/dog/sun', watch: '每个词点亮 3 个位。' },
+      { act: '查到 owl', watch: '它没插过,可三位恰好和 dog 一样全是 1 → 假阳性"可能在"。' },
+    ],
+    terms: [],
+  },
+  bayes: {
+    question: '检测阳性了，你到底有多可能患病？为什么不是 90%？',
+    step: (s: never) => {
+      const st = s as { phase: string; nTests: number; prior: number; num: number; denFalse: number; posterior: number }
+      const pf = (x: number) => (x * 100).toFixed(x < 0.1 ? 2 : 1) + '%'
+      return [
+        { k: '本步输入', v: st.phase === 'done' ? '连续 4 次阳性' : `第 ${st.nTests} 次阳性，先验(本次前) ${pf(st.prior)}` },
+        { k: '判定规则', v: `后验 ∝ 先验 × 似然：P(病|阳)=真阳/(真阳+误报)=sens·先验/(sens·先验+fpr·(1−先验))。**把基础率也算进去**。` },
+        { k: '本步结果', v: st.phase === 'done'
+            ? `后验爬到 **${pf(st.posterior)}**。单次阳性只 9%(基础率谬误)，但证据连续更新逼近确诊。`
+            : `后验=${st.num.toFixed(3)}/(${st.num.toFixed(3)}+${st.denFalse.toFixed(3)})=**${pf(st.posterior)}**${st.nTests === 1 ? '(才 9%！误报淹了真阳)' : ''}。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; nTests: number; posterior: number }
+      return st.phase === 'done' ? `${(st.posterior * 100).toFixed(0)}%` : `#${st.nTests}·${(st.posterior * 100).toFixed(0)}%`
+    },
+    read: [
+      { at: '读数', is: '阳性次数、先验(本次前)、后验(本次后)。', anchor: '.scdim' },
+      { at: '患病信念尺', is: 'P(患病)在 0..100% 的位置，随证据右移。', anchor: '.bytrack' },
+      { at: '真阳|误报拆分', is: '后验=真阳截/(真阳+误报);先验低时误报截巨大。', anchor: '.bysplitbar' },
+    ],
+    try: [
+      { act: '按「下一步」看第 1 次阳性', watch: '后验只有 9%——因为先验(基础率)才 1%,误报截把真阳淹了。' },
+      { act: '继续按下去', watch: '上次后验当这次先验,9%→50%→91%→99%,证据累积逼近确诊。' },
+    ],
+    terms: [],
+  },
+  xent: {
+    question: '语言模型的"训练损失"和"困惑度"，到底在量什么？',
+    step: (s: never) => {
+      const st = s as { phase: string; trueWord: string; pTrue: number; surprise: number; ce: number; perplexity: number; ppUniform: number }
+      return [
+        { k: '本步输入', v: st.phase === 'done' ? '整句逐词预测完' : `预测「${st.trueWord}」，模型给它 ${(st.pTrue * 100).toFixed(0)}%` },
+        { k: '判定规则', v: `真词只有一个→这步交叉熵=**−log₂p(真词)**(惊讶度)；平均交叉熵=训练损失；**困惑度=2^交叉熵**(有效分叉数)。` },
+        { k: '本步结果', v: st.phase === 'done'
+            ? `平均交叉熵 **${st.ce}** bit/词(=训练损失)，困惑度 **${st.perplexity}**——只在约 ${st.perplexity.toFixed(1)} 个词间犹豫(完美=1、瞎猜=${st.ppUniform})。`
+            : `惊讶度 −log₂${st.pTrue} = **${st.surprise}** bit，到此平均交叉熵 **${st.ce}**、困惑度 **${st.perplexity}**。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; perplexity: number; ce: number }
+      return st.phase === 'done' ? `困惑度 ${st.perplexity}` : `CE ${st.ce}·PP ${st.perplexity}`
+    },
+    read: [
+      { at: '读数', is: '给真词的概率、惊讶度、平均交叉熵、困惑度。', anchor: '.scdim' },
+      { at: '预测分布', is: '模型对 8 个词的概率(柱)，真词高亮。', anchor: '.xebars' },
+      { at: '困惑度尺', is: '▲ 在「1(笃定)…V(瞎猜)」之间的位置。', anchor: '.xepptrack' },
+    ],
+    try: [
+      { act: '按「下一步」逐词预测', watch: '真词概率高的词惊讶度低；「on」拿不准(25%)那步惊讶度飙到 2 bit。' },
+      { act: '盯困惑度 ▲', watch: '它在 1(毫不犹豫)到 8(瞎猜)之间；平均交叉熵越小，困惑度越贴近 1。' },
+    ],
+    terms: [],
+  },
+  clt: {
+    question: '为什么高斯分布到处都是——凭什么"多个一平均"就变钟形？',
+    step: (s: never) => {
+      const st = s as { phase: string; m: number; trials: number; std: number; theoStd: number; exKurt: number }
+      return [
+        { k: '本步输入', v: st.phase === 'done' ? '平均样本数从 1 扫到 32' : `每次平均 ${st.m} 个均匀样本（跑 ${st.trials} 次）` },
+        { k: '判定规则', v: `不管原始分布长啥样(方差有限)，m 个 i.i.d. 样本的**均值**随 m 增大越来越接近**高斯**；均值 std 按 **σ/√m** 缩。` },
+        { k: '本步结果', v: st.phase === 'done'
+            ? `均匀分布(平的)平均 32 个就长成**钟形**：超额峰度从 −1.2 奔向 **0**(=高斯)，均值 std 按 σ/√m 缩。`
+            : `均值 std **${st.std}**(理论 σ/√m=${st.theoStd})、超额峰度 **${st.exKurt}**${st.m === 1 ? '(=均匀本身，平顶)' : '(往 0=高斯 走)'}。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; m: number; exKurt: number }
+      return st.phase === 'done' ? '长成钟形' : `m=${st.m} · 峰度${st.exKurt}`
+    },
+    read: [
+      { at: '统计读数', is: 'm、均值 std vs 理论 σ/√m、超额峰度(0=高斯)。', anchor: '.scdim' },
+      { at: '标准化直方图', is: '标准化均值的分布(柱)，红线=标准正态；m 越大越贴。', anchor: '.cltplot' },
+    ],
+    try: [
+      { act: '按「下一步」把 m 从 1 加到 32', watch: '直方图从平顶长成钟形、越来越贴那条红色正态曲线。' },
+      { act: '盯超额峰度', watch: '从 −1.2(均匀)一路奔向 0(高斯)；同时均值 std 按 σ/√m 缩。' },
+    ],
+    terms: [],
+  },
+  lln: {
+    question: '为什么“多采样就准”——大数定理凭什么让蒙特卡洛能算 π？',
+    step: (s: never) => {
+      const st = s as { phase: string; n: number; trials: number; meanEst: number; rmsError: number; rmsErrSqrtN: number }
+      return [
+        { k: '本步输入', v: st.phase === 'done' ? '撒点数从 50 扫到 12800' : `每次撒 ${st.n} 点、跑 ${st.trials} 次独立试验` },
+        { k: '判定规则', v: `落进 1/4 圆(x²+y²≤1)的比例 × 4 ≈ π；样本越多均值越贴期望，估计误差按 **1/√n** 缩（方差可加）。单条路径太吵，故取 RMS 误差。` },
+        { k: '本步结果', v: st.phase === 'done'
+            ? `均值估计始终 ≈3.14159（无偏），RMS 误差越来越小，而 **RMS误差×√n ≈ 1.64 恒定**——这就是“误差 ∝ 1/√n”。`
+            : `均值估计 **${st.meanEst}**（≈π），RMS 误差 **${st.rmsError}**、RMS误差×√n **${st.rmsErrSqrtN}**。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; n: number; meanEst: number }
+      return st.phase === 'done' ? '收敛到 π' : `n=${st.n} · π≈${st.meanEst}`
+    },
+    read: [
+      { at: '收敛读数', is: 'n、均值估计、RMS 误差、RMS误差×√n（后者≈1.64 常数=1/√n 定律）。', anchor: '.scdim' },
+      { at: '散点图', is: '第 0 次试验的散点：蓝=圆内、灰=圆外；蓝点占比×4=π 估计。', anchor: '.llnplot' },
+    ],
+    try: [
+      { act: '按「下一步」把 n 从 50 加到 12800', watch: '均值估计稳在 ≈3.14、RMS 误差越来越小。' },
+      { act: '盯 RMS误差×√n', watch: '它基本不随 n 变(≈1.64)——这个常数就是“误差 ∝ 1/√n”：样本翻 4 倍、误差才减半。' },
+    ],
+    terms: [],
+  },
+  ortho: {
+    question: '几百维的嵌入，为什么能装下十几万个词还不打架？',
+    step: (s: never) => {
+      const st = s as { phase: string; d: number; std: number; theoStd: number; maxAbs: number; mean: number }
+      return [
+        { k: '本步输入', v: st.phase === 'done' ? '维度从 2 扫到 512' : `维度 d=${st.d}` },
+        { k: '判定规则', v: `两个随机单位向量的夹角余弦，均值 0、**方差=1/d**（d 个分量的归一化内积，大数定理——分量越多越集中在 0）。` },
+        { k: '本步结果', v: st.phase === 'done'
+            ? `d 越大，余弦标准差越贴近 **1/√d**、max|cos|→0——随机方向几乎两两正交。`
+            : `余弦均值 ${st.mean}、标准差 **${st.std}**（理论 1/√d=${st.theoStd}）、最大 |余弦| **${st.maxAbs}**${st.maxAbs < 0.15 ? '（已近正交）' : ''}。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; d: number; maxAbs: number }
+      return st.phase === 'done' ? '几乎正交' : `d=${st.d} \u00b7 max|cos| ${st.maxAbs}`
+    },
+    read: [
+      { at: '维度读数', is: 'd、余弦标准差 vs 理论 1/√d、最大 |余弦|。', anchor: '.scdim' },
+      { at: '余弦数轴', is: '28 对夹角余弦画在 [-1,1] 上，中间 0=正交(90°)。', anchor: '.ortrack' },
+      { at: '灰带 ±1σ', is: '一个标准差的范围，随 d 越缩越窄。', anchor: '.orband' },
+    ],
+    try: [
+      { act: '按「下一步」把 d 从 2 加到 512', watch: '点越挤越紧地贴向中间"0=正交"；灰带(±1σ)越缩越窄。' },
+      { act: '看 d=2 vs d=512', watch: 'd=2 还可能有一对几乎同向(max|cos|≈1)；d=512 全贴到 90°(max|cos|≈0.09)。' },
+    ],
+    terms: [],
+  },
+  hopfield: {
+    question: '注意力凭什么能“回忆”——从上下文里检索出相关信息？',
+    step: (s: never) => {
+      const st = s as { phase: string; step: number; weights: number[]; best: number; matchBits: number; converged: boolean }
+      return [
+        { k: '本步输入', v: st.phase === 'done' ? '检索收敛' : `第 ${st.step < 0 ? 0 : st.step} 步检索` },
+        { k: '判定规则', v: `一步 Hopfield = 一次注意力：权重=softmax(β·query·keys)，output=Σ权重·记忆，取符号当新 query 再来。β 大→精确检索。` },
+        { k: '本步结果', v: st.phase === 'done'
+            ? `残缺 query 被“回忆”回完整 P0，权重收敛到 one-hot——注意力就是按内容检索的联想记忆。`
+            : `最像 **P${st.best}**（${(st.weights[st.best] * 100).toFixed(0)}%），query 与 P0 相同 **${st.matchBits}/8** 位${st.converged ? '——已回忆出完整 P0、权重 one-hot' : st.matchBits < 8 ? '（还残缺）' : ''}。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; best: number; matchBits: number }
+      return st.phase === 'done' ? '回忆出 P0' : `P${st.best} \u00b7 ${st.matchBits}/8`
+    },
+    read: [
+      { at: '存储的记忆', is: '4 个 8 位模式(蓝=+1 红=-1)当 keys；被检索到的高亮。', anchor: '.hfmem' },
+      { at: '当前 query', is: '红框标出和 P0 不一致的位；随检索一步步清理回 P0。', anchor: '.hfquery' },
+      { at: '检索权重', is: 'softmax(β·query·keys)，收敛到 one-hot=认定某个记忆。', anchor: '.hfweights' },
+    ],
+    try: [
+      { act: '按「下一步」做一次检索', watch: '红框位翻回来、query 与 P0 从 6/8 变 8/8；权重从分散收敛到 one-hot。' },
+      { act: '盯"最像 P?"', watch: '残缺 query 一开始就最像 P0，检索把它拉回完整的 P0——这就是按内容的联想回忆。' },
+    ],
+    terms: [],
+  },
+  scale: {
+    question: '注意力为什么要除以 \u221ad_k？',
+    step: (s: never) => {
+      const st = s as { phase: string; d: number; sqrtd: number; variance: number; entU: number; entS: number; maxU: number }
+      return [
+        { k: '本步输入', v: st.phase === 'done' ? '维度从 4 扫到 1024' : `维度 d=${st.d}` },
+        { k: '判定规则', v: `Q\u00b7K 是 d 个 i.i.d. 乘积之和 → 方差=d、标准差 \u221ad。不缩放 softmax(base\u00d7\u221ad)；\u00f7\u221ad 后 softmax(base)。` },
+        { k: '本步结果', v: st.phase === 'done'
+            ? `d 越大，不缩放的熵越塌向 0（一头独大、梯度消失）；\u00f7\u221ad 熵恒 **${st.entS}**。所以要除以 \u221ad_k。`
+            : `方差=**${st.variance}**、\u221ad=${st.sqrtd.toFixed(1)}。不缩放最大概率 **${(st.maxU * 100).toFixed(1)}%**、熵 **${st.entU}**${st.maxU > 0.9 ? '（塌成 one-hot）' : ''}；\u00f7\u221ad 熵 ${st.entS}（不变）。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; d: number; maxU: number }
+      return st.phase === 'done' ? '\u00f7\u221ad 稳' : `d=${st.d} \u00b7 最大 ${(st.maxU * 100).toFixed(0)}%`
+    },
+    read: [
+      { at: '维度读数', is: 'd、方差=d、标准差 \u221ad。', anchor: '.scdim' },
+      { at: '不缩放（红）', is: 'softmax(base\u00d7\u221ad)，d 大就塌成一根到顶的 one-hot。', anchor: '.sccol.bad' },
+      { at: '\u00f7\u221ad（绿）', is: 'softmax(base)，四根一直“软”、不随 d 变。', anchor: '.sccol.good' },
+    ],
+    try: [
+      { act: '按「下一步」把 d 从 4 加到 1024', watch: '不缩放那边逐步塌成 one-hot（熵→0、最大→100%）；\u00f7\u221ad 那边纹丝不动。' },
+      { act: '对比两边的熵', watch: '不缩放熵一路降到 0（梯度要消失）；\u00f7\u221ad 熵恒定——这就是为什么要除 \u221ad。' },
+    ],
+    terms: [],
+  },
+  engine: {
+    question: '一堆长短不一的请求，怎么高效地一起服务？',
+    step: (s: never) => {
+      const st = s as { phase: string; step: number; free: number; pool: number; running: unknown[]; waiting: string[]; gen: number; admitted: string[]; finished: string[]; event: string }
+      return [
+        { k: '本步输入', v: st.phase === 'done' ? '全部请求跑完' : `引擎第 ${st.step < 0 ? 0 : st.step} 步` },
+        { k: '判定规则', v: `回收完成的请求（归还块）→ FCFS 准入等待队列里空闲块够的（遇到第一个放不下就停）→ 新准入做 **prefill**、在跑的做 **decode**（各出 1 token）。块池守恒：空闲 + 在跑占用 = 总块。` },
+        { k: '本步结果', v: st.phase === 'done'
+            ? `共生成 **${st.gen}** 个 token、引擎 **${st.step + 1}** 步跑完。连续批处理让算完的位子立刻让给等待的。`
+            : (st.finished.length ? `回收 ${st.finished.join('/')}；` : '') + (st.admitted.length ? `准入 ${st.admitted.join('/')}；` : '') + `块池 ${st.pool - st.free}/${st.pool} 用，批内 ${st.running.length} 在跑、${st.waiting.length} 等。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; step: number; event: string; gen: number }
+      return st.phase === 'done' ? `${st.gen} token` : `第 ${st.step < 0 ? 0 : st.step} 步 · ${st.event}`
+    },
+    read: [
+      { at: '块池', is: '每格是一个 KV 块，按颜色归属在跑的请求；灰的是空闲。', anchor: '.engpool' },
+      { at: '运行批次', is: '每个请求一条：进度条（prompt|生成）、prefill/decode、占几块。', anchor: '.engbatch' },
+      { at: '计数', is: '引擎步 / 生成 token / 完成数，看吞吐。', anchor: '.engstats' },
+    ],
+    try: [
+      { act: '把 KV 块池从 4 加到 6', watch: '块多了，一开始能同时准入更多请求（批更大），等待更少。', param: 'KV 块池' },
+      { act: '盯运行批次的组成', watch: '每步都在变：R1 算完→R3 补上→R2 算完→R4 补上。算完随时走、新的随时上，这就是连续批处理。', param: 'KV 块池' },
+    ],
+    terms: [],
+  },
+  kvoffload: {
+    question: 'GPU 显存装不下这么多 KV 缓存，怎么办？',
+    step: (s: never) => {
+      const st = s as { phase: string; slots: number; req: number; result: string; evicted: number|null; reloaded: boolean; gpu: number[]; hits: number; offloads: number; reloads: number }
+      return [
+        { k: '本步输入', v: st.phase === 'done' ? '访问序列走完' : `访问 KV 块 ${st.req}` },
+        { k: '判定规则',
+          v: `在 GPU 上 → **命中**；不在且 GPU 满（${st.slots} 槽）→ 按 **LRU** 把最久没用的块**换出到 CPU**，再把要的块换入。和页面置换一样。` },
+        { k: '本步结果',
+          v: st.phase === 'done'
+            ? `命中 **${st.hits}**、换出 **${st.offloads}**、换入 **${st.reloads}**。GPU 装不下就靠换出换入续命，代价是 PCIe 拷贝。`
+            : st.result === 'hit' ? `块 ${st.req} 命中，更新为最近用过。`
+              : `未命中` + (st.reloaded ? `，块 ${st.req} 从 CPU 换入` : '（新块）') + (st.evicted !== null ? `，换出块 ${st.evicted} 到 CPU` : '') + `。GPU：[${st.gpu.join('、')}]。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; req: number; result: string; offloads: number }
+      return st.phase === 'done' ? `换出 ${st.offloads} 次` : `块 ${st.req} · ${st.result === 'hit' ? '命中' : '未命中'}`
+    },
+    read: [
+      { at: 'GPU 槽', is: '绿色是 GPU 上的 KV 块，右边最近用过；命中/换入的高亮。', anchor: '.kotier.gpu' },
+      { at: 'CPU 换出区', is: '被换出的块落到这里，红色；要用时再换回。', anchor: '.kotier.cpu' },
+      { at: '计数', is: '命中 / 换出 / 换入 三个数，看代价。', anchor: '.kostats' },
+    ],
+    try: [
+      { act: '把 GPU 槽数从 3 加到 4', watch: '槽多了，换出从 4 次降到 2 次、换入从 2 到 1 —— 显存越大越少来回搬。', param: 'GPU 槽数' },
+      { act: '盯 CPU 换出区', watch: '每次 GPU 满又要新块，最久没用的块就被踢到 CPU；再访问它时又得换回来（reload）。', param: 'GPU 槽数' },
+    ],
+    terms: ['kvoff'],
+  },
+  collective: {
+    question: '多张卡各算了一半，怎么高效地把结果求和、让每张卡都拿到？',
+    step: (s: never) => {
+      const st = s as { phase: string; G: number; round: number; totalSteps: number; target: number[]; moves: {src:number;dst:number;chunk:number}[] }
+      return [
+        { k: '本步输入',
+          v: st.phase === 'done' ? `${st.G} 张卡的通信全走完` : st.phase === 'reduce' ? `reduce-scatter 第 ${st.round}/${st.G-1} 步` : `all-gather 第 ${st.round}/${st.G-1} 步` },
+        { k: '判定规则',
+          v: st.phase === 'reduce'
+            ? `每张卡把**一个块**发给环上下一张，对方**累加**。${st.G-1} 步后每卡各拥有某块的完整和。`
+            : st.phase === 'gather'
+              ? `把已求和的块沿环**广播**一圈，接收方覆盖。${st.G-1} 步后人人集齐。`
+              : `全部 **${st.totalSteps}** 步（2·(G−1)）走完。` },
+        { k: '本步结果',
+          v: st.phase === 'done'
+            ? `每张卡都拿到完整总和 [${st.target.join('、')}]。每步每卡只收发一个块 —— 带宽与卡数无关，比人人对发（G² 消息）省得多。`
+            : `本步 ${st.moves.length} 条环上传递（块 ${st.moves.map(m=>m.chunk).join('、')}）。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; round: number; G: number; totalSteps: number }
+      return st.phase === 'done' ? `人人拿到总和 · ${st.totalSteps} 步`
+        : st.phase === 'reduce' ? `reduce-scatter ${st.round}/${st.G-1}` : `all-gather ${st.round}/${st.G-1}`
+    },
+    read: [
+      { at: '阶段条', is: 'reduce-scatter 先做，再 all-gather；共 2(G−1) 步。', anchor: '.coph' },
+      { at: 'GPU×块 网格', is: '绿色✓的格子是已求和的块；本步环上传递的格子高亮。', anchor: '.cogrid' },
+      { at: '总和行', is: '逐元素总和，末步每张卡都收敛到它。', anchor: '.cotarget' },
+    ],
+    try: [
+      { act: '把 GPU 数从 2 加到 4', watch: '步数变成 2·(G−1)：卡越多步越多，但每步每卡仍只收发一个块。', param: 'GPU 数 G' },
+      { act: '看绿色✓怎么铺开', watch: 'reduce-scatter 后每卡先各拥有一个完整块，all-gather 再把它们传满全网格。', param: 'GPU 数 G' },
+    ],
+    terms: ['allreduce', 'tpdef', 'matmuldef'],
+  },
+  tensorpar: {
+    question: '一个矩阵乘大到单卡装不下，怎么切到多张 GPU 上算、还保证结果不变？',
+    step: (s: never) => {
+      const st = s as { phase: string; gpu: number; G: number; cols: [number,number]; shard: number[]; full: number[]; fraction: number }
+      return [
+        { k: '本步输入',
+          v: st.phase === 'done' ? `${st.G} 张卡的 Y 片全拼完` : st.phase === 'gather' ? `${st.G} 张卡各自的 Y 片` : `GPU ${st.gpu}：拿 W 的第 ${st.cols[0]}~${st.cols[1]-1} 列（1/${st.G} 的权重）` },
+        { k: '判定规则',
+          v: `**列并行**：W 按列切成 ${st.G} 份，第 g 卡算 Y 的对应列 Y_g = X·W_g（只存/只算 1/${st.G}）。${st.phase==='gather'||st.phase==='done' ? '**all-gather** 把各片拼成完整 Y（跨卡通信）。' : ''}` },
+        { k: '本步结果',
+          v: st.phase === 'done'
+            ? `拼出的 Y = [${st.full.join('、')}]，和单卡整算**完全一样**。每卡显存、算力都降到 **1/${st.G}**，代价是 all-gather 的跨卡通信。`
+            : st.phase === 'gather' ? `拼成完整 Y = [${st.full.join('、')}]。`
+              : `算出 Y 片 = [${st.shard.join('、')}]。只做了整个乘法的 1/${st.G}。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; gpu: number; G: number; fraction: number; full: number[] }
+      return st.phase === 'done' ? `拼接 == 单卡 · 每卡 1/${st.G}`
+        : st.phase === 'gather' ? 'all-gather 拼接'
+          : `GPU ${st.gpu} 算 1/${st.G}`
+    },
+    read: [
+      { at: 'W 按列分卡', is: 'W 的列按颜色分给不同 GPU，当前卡的列高亮。', anchor: '.tpw' },
+      { at: 'Y 片 → 完整 Y', is: '各卡算自己那段 Y，all-gather 后拼成整条。', anchor: '.tpyrow' },
+      { at: '1/G 占比', is: '每卡只承担 1/G 的显存与算力。', anchor: '.tpfrac' },
+    ],
+    try: [
+      { act: '把 GPU 数从 2 调到 4', watch: 'W 切得更细，每卡只拿 1/4 的列、算 1/4；拼起来仍等于单卡整算。', param: 'GPU 数 G' },
+      { act: '核对拼接结果', watch: '不管切几刀，all-gather 拼出的 Y 和单卡完全一样 —— 切的是乘法、不改结果。', param: 'GPU 数 G' },
+    ],
+    terms: ['tpdef', 'matmuldef'],
+  },
+  layout: {
+    question: '二维矩阵在内存里其实是一条直线 —— 它到底怎么排？为什么排法会影响速度？',
+    step: (s: never) => {
+      const st = s as { phase: string; layout: string; rows: number; cols: number; cur: {addr:number;i:number;j:number;v:number}|null; rowStride: number; colStride: number; mem: ({v:number}|null)[] }
+      return [
+        { k: '本步输入',
+          v: st.phase === 'done' ? `${st.layout} 全摊平完` : st.cur ? `内存地址 @${st.cur.addr}` : '开始摊平' },
+        { k: '判定规则',
+          v: st.layout === 'row-major'
+            ? `**row-major**：一行连续存，地址 = i·${st.cols}+j。`
+            : `**col-major**：一列连续存，地址 = j·${st.rows}+i。` },
+        { k: '本步结果',
+          v: st.phase === 'done'
+            ? `内存顺序 [${st.mem.map(m=>m!.v).join('、')}]。扫一行步长 **${st.rowStride}**、扫一列步长 **${st.colStride}** —— 步长 1 的那个连续、快。`
+            : st.cur ? `A[${st.cur.i}][${st.cur.j}]=${st.cur.v} 放进地址 ${st.cur.addr}。` : '' },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; layout: string; rowStride: number; colStride: number; cur: {addr:number}|null }
+      return st.phase === 'done' ? `${st.layout} · 行步长 ${st.rowStride} / 列步长 ${st.colStride}`
+        : st.cur ? `@${st.cur.addr}` : st.layout
+    },
+    read: [
+      { at: '矩阵格', is: '每格标着 [i,j]；颜色按"谁连续"分（row-major 按行、col-major 按列）。', anchor: '.lymat' },
+      { at: '一维内存条', is: '按布局顺序摊平；同色的连续排在一起。', anchor: '.lymem' },
+      { at: '步长对比', is: '扫一行 vs 扫一列的地址步长，步长 1 = 连续 = 快。', anchor: '.lystride' },
+    ],
+    try: [
+      { act: '在 row-major / col-major 之间切', watch: '同一矩阵内存顺序变了：[1,2,3,4,5,6] ↔ [1,4,2,5,3,6]；行/列步长跟着互换。', param: '布局' },
+      { act: '盯步长那两格', watch: 'row-major 扫行快(步长1)、扫列慢(步长3)；col-major 正好反过来 —— 决定矩阵乘该怎么访存。', param: '布局' },
+    ],
+    terms: ['layoutdef'],
+  },
+  matmul: {
+    question: '神经网络里说的"矩阵乘"到底怎么算？为什么它是一切的地基？',
+    step: (s: never) => {
+      const st = s as { phase: string; row: number; col: number; terms: {a:number;b:number;prod:number}[]; value: number; M:number;K:number;N:number; flops:number; totalFlops:number }
+      return [
+        { k: '本步输入',
+          v: st.phase === 'done' ? `${st.M}×${st.K} · ${st.K}×${st.N} 全算完` : `输出格 C[${st.row}][${st.col}]：A 第 ${st.row} 行、B 第 ${st.col} 列` },
+        { k: '判定规则',
+          v: `A[M×K]·B[K×N]=C[M×N]，**内维 K 必须对上**。每格 C[i][j] = A 第 i 行**点** B 第 j 列 = Σ 对应位相乘。` },
+        { k: '本步结果',
+          v: st.phase === 'done'
+            ? `每格都是一行点一列。共 **${st.totalFlops}** 次浮点（2·M·N·K）。注意力 Q·Kᵀ、FFN 的 W·x 都是它 —— FlashAttention/张量并行切的就是这个乘法。`
+            : `= ${st.terms.map(t=>t.a+'×'+t.b).join(' + ')} = **${st.value}**。累计 ${st.flops}/${st.totalFlops} FLOPs。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; row: number; col: number; value: number; M:number; N:number }
+      return st.phase === 'done' ? `${st.M}×${st.N} 算完 · 每格一行点一列`
+        : `C[${st.row}][${st.col}] = ${st.value}`
+    },
+    read: [
+      { at: 'A·B→C 布局', is: 'A 在左下、B 在右上、C 在右下；当前格由 A 的行 × B 的列决定。', anchor: '.mmlayout' },
+      { at: '高亮的行与列', is: '蓝行是 A 第 i 行、紫列是 B 第 j 列，它俩点积落到 C 那一格。', anchor: '.mmC' },
+      { at: '点积展开', is: '一行点一列 = 对应位相乘再相加。', anchor: '.mmdot' },
+      { at: 'FLOPs 条', is: '每格 2K 次浮点，共 2·M·N·K。', anchor: '.mmflops' },
+    ],
+    try: [
+      { act: '一格一格点下去', watch: 'A 的行、B 的列高亮，点积落到 C 对应格；FLOPs 每格涨 2K。' },
+      { act: '想想它在哪出现', watch: '注意力 Q·Kᵀ、FFN 的 W·x、LM 头投影全是矩阵乘 —— 这一个算法撑起整个网络。' },
+    ],
+    terms: ['matmuldef'],
+  },
+  softmax: {
+    question: 'softmax 怎么把一串打分变成概率？温度到底调的是什么？',
+    step: (s: never) => {
+      const st = s as {
+        phase: string; T: number; tokens: string[]; probs: number[]; entropy: number; sumExp: number
+      }
+      const top = st.probs.length ? Math.max(...st.probs) : 0
+      return [
+        { k: '本步输入',
+          v: st.phase === 'logits'
+            ? `模型对 ${st.tokens.length} 个候选 token 各打了一个 **logit**（可正可负、和不为 1）`
+            : st.phase === 'scale'
+              ? `温度 T = ${st.T}`
+              : st.phase === 'exp'
+                ? `温度缩放后的 logits`
+                : `各 token 的 exp 值，总和 = ${st.sumExp.toFixed(2)}` },
+        { k: '判定规则',
+          v: st.phase === 'scale' || st.phase === 'logits'
+            ? `**softmax**：每个 logit 取 exp，再除以所有 exp 的总和 → 得到非负、和为 1 的概率。`
+              + `**温度**在 softmax 之前先把 logit 除以 T：T 小放大差距（分布尖）、T 大压平差距（分布匀）。`
+            : `**归一化**：prob = exp(logit) ÷ Σexp。exp 保证非负、单调；除以总和保证和为 1。` },
+        { k: '本步结果',
+          v: st.phase === 'done'
+            ? `分布出来了，熵 = **${st.entropy.toFixed(2)} bit**，最大概率 ${(top * 100).toFixed(0)}%。`
+              + (st.T < 1 ? '低温 → 尖 → 接近贪心。' : st.T > 1 ? '高温 → 平 → 更随机。' : '基准温度。')
+            : st.phase === 'norm'
+              ? `归一化完成：概率和为 1，熵 ${st.entropy.toFixed(2)} bit。`
+              : st.phase === 'exp'
+                ? `exp 把负数也变正、把大的拉得更大，为归一化做准备。`
+                : st.phase === 'scale'
+                  ? `每个 logit 除以 T，差距被${st.T < 1 ? '放大' : st.T > 1 ? '压平' : '保持'}。`
+                  : `logit 是原始打分，还不是概率。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; T: number; entropy: number; probs: number[] }
+      if (st.phase !== 'done' && st.phase !== 'norm') return `softmax 计算中`
+      const top = st.probs.length ? Math.round(Math.max(...st.probs) * 100) : 0
+      return `熵 ${st.entropy.toFixed(2)} bit · 最大 ${top}%`
+    },
+    read: [
+      { at: 'logit 条', is: '原始打分，可正可负（正向右、负向左）。', anchor: '.smsect' },
+      { at: '概率条', is: '归一化后的分布，非负、和为 1；越尖越确定。', anchor: '.smbars' },
+    ],
+    try: [
+      { act: '把温度 T 从 1 调到 2', watch: '同样的 logits，分布变平、熵变大 —— 更随机、更有创造性。', param: '温度 T' },
+      { act: '把 T 调到 0.5', watch: '分布变尖、熵变小 —— 越来越接近"只选最大的那个"（贪心）。', param: '温度 T' },
+      { act: '换成「接近平局」的 logits', watch: '几个 logit 很接近时，softmax 出来的概率也很接近，熵很高。', param: 'logits 组' },
+    ],
+    terms: ['softmaxdef', 'temp', 'entropy'],
+  },
+  attention: {
+    question: '自注意力怎么让每个词"看"全句？Q、K、V 各是干嘛的？',
+    step: (s: never) => {
+      const st = s as {
+        phase: string; qi: number; tokens: string[]; scores: number[]; attn: number[][]; out: number[]
+      }
+      const w = st.qi >= 0 ? st.attn[st.qi] : []
+      const top = w.length ? st.tokens[w.indexOf(Math.max(...w))] : ''
+      return [
+        { k: '本步输入',
+          v: st.phase === 'setup'
+            ? `每个 token 带三个向量：**Q**（我要找什么）· **K**（我能被谁找到）· **V**（我携带的信息）`
+            : st.phase === 'done'
+              ? `${st.tokens.length} 个查询都算完了`
+              : `查询 token「**${st.tokens[st.qi]}**」，要决定它该关注全句里的谁` },
+        { k: '判定规则',
+          v: st.phase === 'sum'
+            ? `**加权求和**：out = Σ 注意力权重 × 各 token 的 V。关注得越多，那个 token 的信息占比越大。`
+            : st.phase === 'softmax' || st.phase === 'score'
+              ? `**缩放点积注意力**：分数 = Q·K / √d（点积衡量相关，除 √d 防 softmax 饱和），再 softmax 成和为 1 的权重。`
+              : `Q/K/V 已经投影好（真实模型里由 embedding 乘三个矩阵得到）。下面逐个查询算注意力。` },
+        { k: '本步结果',
+          v: st.phase === 'score'
+            ? `「${st.tokens[st.qi]}」和每个 token 的 K 点积 → 分数 [${st.scores.map(x => x.toFixed(1)).join(' ')}]。分数越高越相关`
+            : st.phase === 'softmax'
+              ? `softmax 后权重 [${w.map(x => (x * 100).toFixed(0) + '%').join(' ')}]，「${st.tokens[st.qi]}」最关注「**${top}**」`
+              : st.phase === 'sum'
+                ? `「${st.tokens[st.qi]}」的新表示 = [${st.out.map(x => x.toFixed(1)).join(' ')}]，已融入最相关 token 的信息`
+                : st.phase === 'done'
+                  ? `矩阵每一行是"一个词对全句的关注分配" —— 每个词都根据全局重新理解了自己`
+                  : `准备逐个查询。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; qi: number; tokens: string[]; attn: number[][] }
+      if (st.phase === 'done') return `${st.tokens.length} 个词各算完注意力`
+      const w = st.qi >= 0 ? st.attn[st.qi] : []
+      if (w.length) return `「${st.tokens[st.qi]}」最关注「${st.tokens[w.indexOf(Math.max(...w))]}」`
+      if (st.qi >= 0) return `查询「${st.tokens[st.qi]}」`
+      return `Q / K / V`
+    },
+    read: [
+      { at: '注意力连线', is: '当前查询到每个 token 的线；线越粗越深＝关注越多。', anchor: '.atflow' },
+      { at: '注意力矩阵', is: '行=查询、列=键，格子越深权重越高，逐行长出来。', anchor: '.atmat' },
+      { at: '算式', is: '分数 Q·K/√d → softmax → 加权求和 V，三步现算。', anchor: '.atcalc' },
+    ],
+    try: [
+      { act: '逐步走完一个查询', watch: '先和每个 K 点积得分数、softmax 成权重、再按权重把各 V 加起来 —— 这就是一次注意力。' },
+      { act: '换成「猫追老鼠」例句', watch: 'Q/K/V 变了，注意力矩阵完全不同 —— 每个词关注谁，由向量之间的相似度决定。', param: '例句' },
+    ],
+    terms: ['qkv', 'scaleddot', 'softmaxdef'],
+  },
+  llmsize: {
+    question: '7B 为什么要十几 G 显存？参数都堆在哪、KV 缓存又吃多少？',
+    step: (s: never) => {
+      const st = s as {
+        phase: string; L: number; d: number; total: number; embed: number
+        attnPerLayer: number; ffnPerLayer: number; weightBytes: number; kvBytes: number; dtype: string; bytes: number; seq: number
+      }
+      const gb = (b: number) => (b >= 1e9 ? (b / 1e9).toFixed(1) + ' GB' : (b / 1e6).toFixed(0) + ' MB')
+      const bn = (n: number) => (n >= 1e9 ? (n / 1e9).toFixed(2) + 'B' : (n / 1e6).toFixed(0) + 'M')
+      return [
+        { k: '本步输入',
+          v: st.phase === 'kv' || st.phase === 'done'
+            ? `序列长度 ${st.seq}、精度 ${st.dtype}（每参数 ${st.bytes} 字节）`
+            : `模型 ${st.L} 层、d_model ${st.d}` },
+        { k: '判定规则',
+          v: st.phase === 'kv'
+            ? `**KV 缓存** = 2（K 和 V）× 层数 × 序列长 × d × 字节。它是**每序列**的额外显存，跟并发数一起线性涨。`
+            : st.phase === 'weight'
+              ? `**权重显存** = 总参数 × 每参数字节数。fp16 是 2 字节 —— "7B×2=14G"就是这么来的。`
+              : `**参数量**逐块算：embedding = vocab×d；每层注意力 = 4d²（Q/K/V/O）；每层 FFN = 2·ffn·d²。总数 = embedding + 层数×两者之和。` },
+        { k: '本步结果',
+          v: st.phase === 'embed' ? `词嵌入 ${bn(st.embed)} 参数。`
+            : st.phase === 'attn' ? `每层注意力 ${bn(st.attnPerLayer)}。`
+            : st.phase === 'ffn' ? `每层 FFN ${bn(st.ffnPerLayer)} —— 通常是参数大头。`
+            : st.phase === 'total' ? `总参数 **${bn(st.total)}**。`
+            : st.phase === 'weight' ? `权重占 **${gb(st.weightBytes)}**（${st.dtype}）。换 fp32 翻倍、int8 减半 —— 量化就在这省。`
+            : st.phase === 'kv' ? `KV 缓存 **${gb(st.kvBytes)}** / 序列（长 ${st.seq}）。`
+            : `权重是固定开销、KV 随并发和序列长涨 —— 推理显存两大块。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; total: number; weightBytes: number; dtype: string }
+      const gb = (b: number) => (b / 1e9).toFixed(1) + ' GB'
+      if (st.phase === 'done' || st.phase === 'weight' || st.phase === 'kv') return `${(st.total / 1e9).toFixed(2)}B · 权重 ${gb(st.weightBytes)}（${st.dtype}）`
+      if (st.total) return `总参数 ${(st.total / 1e9).toFixed(2)}B`
+      return `逐块拆参数`
+    },
+    read: [
+      { at: '参数拆解条', is: '嵌入 / 注意力×层 / FFN×层 三块，FFN 往往最大。', anchor: '.lsstack' },
+      { at: '显存条', is: '权重是固定开销，KV 随序列和并发涨。', anchor: '.lsmem' },
+    ],
+    try: [
+      { act: '把精度从 fp16 切到 int8', watch: '权重显存直接减半 —— 这就是量化省显存的原理。', param: '精度' },
+      { act: '把序列长度从 512 拉到 8192', watch: '权重一点没变，但 KV 缓存翻了十几倍 —— 长上下文贵在 KV。', param: '序列长度' },
+      { act: '在 GPT-2 和 7B 之间切', watch: '同样的公式，参数量差 50 倍，显存跟着差 50 倍。', param: '模型' },
+    ],
+    terms: ['params', 'kvmem'],
+  },
+  sampling: {
+    question: '吐字前 top-k / top-p 在砍什么？它们和温度怎么配合？',
+    step: (s: never) => {
+      const st = s as {
+        phase: string; T: number; k: number; p: number; tokens: string[]
+        order: number[]; kept: boolean[]; final: number[]
+      }
+      const keptN = st.kept.filter(Boolean).length
+      return [
+        { k: '本步输入',
+          v: st.phase === 'softmax'
+            ? `softmax 后的概率分布（温度 T=${st.T}）`
+            : `按概率降序：${st.order.map(i => st.tokens[i]).slice(0, 5).join(' > ')}…` },
+        { k: '判定规则',
+          v: st.phase === 'topk'
+            ? `**top-k**：只留概率最高的 ${st.k > 0 ? st.k : '（关）'} 个，其余置 0 —— 按**个数**截断。`
+            : st.phase === 'topp'
+              ? `**top-p（核采样）**：概率从大到小累加，留累计刚超过 ${st.p} 的一小撮 —— 按**累计概率**截断，分布尖只留一两个、分布平自动多留。`
+              : st.phase === 'renorm'
+                ? `**重新归一化**：留下的概率除以它们的总和，重新凑成和为 1。`
+                : `先 softmax，再排序，长尾一堆低概率 token 直接采容易蹦出离谱词，所以要截断。` },
+        { k: '本步结果',
+          v: st.phase === 'topk'
+            ? (st.k > 0 ? `留下 ${keptN} 个，砍掉 ${st.tokens.length - keptN} 个。` : `top-k 关闭，不按个数截。`)
+            : st.phase === 'topp'
+              ? (st.p < 1 ? `核里剩 ${keptN} 个候选。` : `top-p 关闭。`)
+              : st.phase === 'renorm'
+                ? `归一化完成，就在这 ${keptN} 个候选里随机采一个。`
+                : st.phase === 'done'
+                  ? `最终从 ${keptN} 个候选采样（原本 ${st.tokens.length} 个）—— 三个旋钮一起定"多稳/多野"。`
+                  : `分布出来了，准备排序截断。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { phase: string; k: number; p: number; kept: boolean[]; tokens: string[] }
+      const keptN = st.kept.filter(Boolean).length
+      if (st.phase === 'done' || st.phase === 'renorm') return `采样集 ${keptN} / ${st.tokens.length} 个`
+      if (st.phase === 'topk') return `top-k=${st.k > 0 ? st.k : '关'} · 留 ${keptN}`
+      if (st.phase === 'topp') return `top-p=${st.p < 1 ? st.p : '关'} · 留 ${keptN}`
+      return `准备截断`
+    },
+    read: [
+      { at: '概率条', is: '按概率降序；被砍的变灰打 ✕，留下的重新归一化。', anchor: '.spbars' },
+      { at: '累计 Σ', is: 'top-p 用：概率从大到小累加，越过 p 就停。', anchor: '.spcum' },
+      { at: '旋钮现值', is: '温度、top-k、top-p 三个旋钮当前的值。', anchor: '.spknobs' },
+    ],
+    try: [
+      { act: '把 top-p 从 1 调到 0.5', watch: '只留累计到 50% 的那一两个 —— 越保守、越稳。', param: 'top-p' },
+      { act: '把 top-k 设 2、top-p 关（=1）', watch: '硬留 2 个，不管它们概率多接近。top-k 按个数、top-p 按累计，两种取向。', param: 'top-k' },
+      { act: '换「两强争锋」的 logits', watch: '两个概率接近时，top-p 会自动两个都留，top-k=1 却只留一个 —— 这时 top-p 更合理。', param: 'logits 组' },
+    ],
+    terms: ['topk', 'topp'],
+  },
+  bpe: {
+    question: 'BPE 怎么把文本切成 token？中文为什么就更贵？',
+    step: (s: never) => {
+      const st = s as { act: string; toks: string[]; pair: [string, string] | null; merged: string; start: number; ruleLeft: number }
+      return [
+        { k: '本步输入',
+          v: st.act === 'init'
+            ? `文本先拆成最小单位：${st.toks.join(' ')}（${st.start} 个）`
+            : st.act === 'done'
+              ? `合并结束`
+              : st.pair ? `相邻的 ${st.pair[0]} 和 ${st.pair[1]}` : `当前序列 ${st.toks.join(' ')}` },
+        { k: '判定规则',
+          v: `**BPE**：按训练好的 merge 表（按学到的先后排序），把**高频相邻对**合成一个 token。merge 表主要在英文上学 —— 英文常见组合都在表里、能一路合并；中文的组合大多不在，合并不动。` },
+        { k: '本步结果',
+          v: st.act === 'merge'
+            ? `合成 **${st.merged}** → 现在 ${st.toks.length} 个 token。`
+            : st.act === 'nomerge'
+              ? `没有可用的合并 —— 每个符号各算一个 token。`
+              : st.act === 'done'
+                ? `${st.start} 符号 → **${st.toks.length}** token。${st.toks.length < st.start ? '压得短、便宜' : '合并不动、贵'}`
+                : `准备逐条套用 merge 表。` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { act: string; toks: string[]; start: number }
+      if (st.act === 'done') {
+        const r = Math.round((st.toks.length / Math.max(1, st.start)) * 100)
+        return `${st.start} 符号 → ${st.toks.length} token（压到 ${r}%）`
+      }
+      if (st.act === 'merge') return `合成 · 剩 ${st.toks.length} token`
+      if (st.act === 'nomerge') return `合并不动`
+      return `拆分中`
+    },
+    read: [
+      { at: 'token 序列', is: '当前 token；深色是合并出来的多字符 token，高亮是本步刚合成的。', anchor: '.bptoks' },
+      { at: '压缩条', is: '压到原符号数的百分比 —— 越短、token 越少、越便宜。', anchor: '.bpbar' },
+    ],
+    try: [
+      { act: '看「英文 lowest」', watch: '6 个字符一路合并成 1 个 token —— 英文常见词在 merge 表里，压得很短。', param: '例子' },
+      { act: '换成「中文 你好」', watch: 'merge 表里没有它们的组合，合并不动，每个字各算一个 token —— 这就是中文更贵的原因。', param: '例子' },
+    ],
+    terms: ['bpe', 'tokencost'],
+  },
+  batching: {
+    question: '推理引擎怎么把长短不一的请求凑成 batch？连续批处理省在哪？',
+    step: (s: never) => {
+      const st = s as { act: string; mode: string; active: string[]; done: string[]; admitted: string[]; waiting: string[]; util: number; slots: number; step: number }
+      return [
+        { k: '本步输入',
+          v: st.act === 'done'
+            ? `全部请求处理完`
+            : `第 ${st.step} 步，${st.slots} 个 GPU 槽；排队 ${st.waiting.length} 个` },
+        { k: '判定规则',
+          v: st.mode === 'cont'
+            ? `**连续批处理**：每个 decode 步都检查 —— 有请求吐完就离场，腾出的空槽**立刻**补进排队的请求，不等整批跑完。`
+            : `**静态批处理**：凑一批一起跑，中途不接新请求，直到整批全部吐完才收下一批 —— 空出来的槽只能干等。` },
+        { k: '本步结果',
+          v: st.act === 'idle'
+            ? `GPU 空转 —— 没有已到达的请求可跑。`
+            : st.act === 'done'
+              ? `${st.mode === 'cont' ? '连续：空槽随时补，GPU 几乎没闲着' : '静态：每批等最慢的跑完，空槽白白浪费'}。`
+              : `batch [${[...st.active, ...st.done].join(' ')}] 各吐一个 token${st.done.length ? `，${st.done.join('、')} 离场` : ''}${st.admitted.length ? `，补入 ${st.admitted.join('、')}` : ''}。利用率 ${Math.round(st.util * 100)}%` },
+      ]
+    },
+    verdict: (s: never) => {
+      const st = s as { act: string; mode: string; util: number; step: number }
+      if (st.act === 'done') return `${st.mode === 'cont' ? '连续' : '静态'} · 用了 ${st.step} 步`
+      if (st.act === 'idle') return `空转 · 0%`
+      return `利用率 ${Math.round(st.util * 100)}%`
+    },
+    read: [
+      { at: 'GPU batch 槽', is: '实线是在跑、虚线是空槽；绿色离场、高亮是本步补入的。', anchor: '.bqslots' },
+      { at: '排队 / 完成', is: '已到达还没进 batch 的排队中，跑完的进已完成。', anchor: '.bqqueue' },
+    ],
+    try: [
+      { act: '在「连续」和「静态」之间切', watch: '静态每批要等最慢的跑完、空槽闲置；连续吐完就补，利用率高得多、总步数更少。', param: '批处理方式' },
+      { act: '把槽数调大', watch: '能同时跑更多请求，但也更吃显存 —— 槽数受 KV 缓存显存约束。', param: 'batch 槽数' },
+    ],
+    terms: ['contbatch', 'gpuutil'],
   },
 }
 
@@ -574,6 +4557,27 @@ export const GUIDES: Record<string, Guide> = {
  * 顺序就是「‹ 1/N ›」翻页的顺序，也是新手真实的卡壳顺序：
  * 这一屏在问什么 → 屏幕上每块是什么 → 先拧什么看什么 → 名词。
  */
+/**
+ * 卡片正文可以是**函数** —— 拿当前这一步的状态现算。
+ *
+ * 为什么要这个：静态卡片只能写"组、路、tag 是什么"，那是**组件说明书**；
+ * 而读者真正缺的是"这一个地址进来之后，第一步、第二步、第三步到底发生了什么"。
+ * 那句话必须提到**此刻屏幕上这个具体的地址、这一行、这几个方框**，
+ * 写死就不成立 —— 下一步它就变了。
+ *
+ * 边界跟实验单 ④ 同一条：**只从验过的轨迹派生，不接运行时模型**。
+ */
+/**
+ * 「本步推演」的一段。`k` 是段名，`v` 是这一步现算出来的内容。
+ *
+ * 分成四段而不是一段散文，是因为**结构本身就是要教的东西**：
+ * 每一步都在回答同样四个问题（这次的输入是什么 → 本步按什么规则走 →
+ * 因此状态怎么变 → 这个结果在画面哪儿看得到）。写成散文，
+ * 用户得自己从句子里把这四段扒出来；写成四格，翻到第三个实验时
+ * 他已经知道该往哪儿看了。
+ */
+export type WhyPart = { k: string; v: string }
+
 export type Card = {
   id: string
   title: string
@@ -586,6 +4590,21 @@ export type Card = {
   preset?: string
   /** 这一页提到的名词 —— 渲染成可点的链接，跳到对应的名词页 */
   see?: string[]
+  /**
+   * `'ref'` = **参考层**：点到了才讲，不进首轮翻页。
+   *
+   * ## 为什么要分这一层
+   *
+   * 卡组一路长到 28 张：读数一张、每个参数一张、每个预置一张、每个术语一张、
+   * 页面每块一张。挨个翻完，用户读到的是一本**组件说明书** ——
+   * 「轴是什么」「参数怎么改」「tag 是什么」，一句都没错，
+   * 而看完还是不知道这一屏在推演什么。
+   *
+   * 首轮只留三张：**这一屏在问什么**（对象）、**本步推演**（单步规则）、
+   * **第一项实验**（动手）。剩下的全在这一层 —— 它们照样点得到
+   * （点哪讲哪那条路不变），只是不再堵在主干上。
+   */
+  tier?: 'ref'
 }
 
 const termCardId = (id: string) => `term:${id}`
@@ -631,27 +4650,55 @@ export function cardsOf(expId: string, ctx: GuideContext = {}): Card[] {
 
   const cards: Card[] = [
     { id: 'intro', title: '这一屏在问什么', body: g.question, anchor: '.stagewrap', see: g.terms.slice(0, 3) },
-    ...g.read.map((r, i) => ({ id: `read${i}`, title: r.at, body: r.is, anchor: r.anchor })),
-    ...g.try.map((t, i) => ({
+    //  推演那一张紧跟着问题 —— 先跟完一次，再去看"组件都叫什么"
+    //  基础卡：名词先认识，再谈这一步在干什么。锚到舞台 —— 它们讲的就是那张图
+    ...(g.basics ?? []).map((b, i) => ({
+      id: `basic${i}`, title: b.title, body: b.body, anchor: '.stagewrap',
+    } as Card)),
+    /*  推演本身在舞台底下那条带子里（`shell/WhyBand.tsx`），这里只留一张指路的卡。
+        两处印同一段文字是浪费 —— 而这一张的活是**告诉人那条带子会跟着走**，
+        不然它看起来就像又一条静态说明。 */
+    ...(g.step ? [{
+      /*  ⚠️ 两个住处都写上：推演在旁栏时是 `.whyband`，搬到右栏时是 `.whyrail`
+          （见 types.ts 的 whyInRail）。只写一个的那版，Cache 这张卡
+          "声明了锚点却落不下" —— 卡还在，指过去是空的。 */
+      id: 'why', title: '本步推演', anchor: '.whyband, .whyrail',
+      /*  ⚠️ 只留一句。四个段名屏幕上就写着，卡里再抄一遍是**同一件事说两遍** ——
+          而这张卡每多一行，浮层就得高 18px，它被"不许压住可点元素"那条判据卡着，
+          高不上去就只能裁字。真正要说的只有一件：它是活的。 */
+      body: '这条带子跟着轴走 —— 按一下「下一步」，四段全会改写成新那一步的内容。',
+    } as Card] : []),
+    /*  第一项实验留在主干（用户："第一项实验"），其余全降级 ——
+        三条动手挨个翻，等于把实验单又抄了一遍。 */
+    ...g.try.slice(0, 1).map((t, i) => ({
       id: `try${i}`, title: `试一试 · ${t.act}`, body: t.watch,
       ...(t.param ? { param: t.param } : {}),
       ...(t.preset ? { preset: t.preset } : {}),
       ...(!t.param && !t.preset ? { anchor: '.stagewrap' } : {}),
     })),
+    ...g.read.map((r, i) => ({ id: `read${i}`, title: r.at, body: r.is, anchor: r.anchor, tier: 'ref' as const })),
+    ...g.try.slice(1).map((t, i0) => { const i = i0 + 1; return {
+      id: `try${i}`, title: `试一试 · ${t.act}`, body: t.watch, tier: 'ref' as const,
+      ...(t.param ? { param: t.param } : {}),
+      ...(t.preset ? { preset: t.preset } : {}),
+      ...(!t.param && !t.preset ? { anchor: '.stagewrap' } : {}),
+    } }),
     ...(ctx.seqPresets ?? []).filter(x => !coveredPresets.has(x.label)).map(x => ({
-      id: `preset:${x.label}`, title: `预置 · ${x.label}`, body: x.note, preset: x.label,
+      id: `preset:${x.label}`, title: `预置 · ${x.label}`, body: x.note, preset: x.label, tier: 'ref' as const,
     })),
     ...(ctx.entPresets ?? []).filter(x => !coveredPresets.has(x.label)).map(x => ({
-      id: `epreset:${x.label}`, title: `预置 · ${x.label}`, body: x.note, preset: x.label,
+      id: `epreset:${x.label}`, title: `预置 · ${x.label}`, body: x.note, preset: x.label, tier: 'ref' as const,
     })),
     ...(ctx.params ?? []).filter(x => !coveredParams.has(x.label)).map(x => ({
       id: `param:${x.key}`, title: `参数 · ${x.label}`,
       body: `可选 ${x.options.join(' / ')}${x.unit ? ' ' + x.unit : ''}。改了立刻重跑整条轨迹 —— 轴、读数、逐步日志都会跟着变。`,
-      param: x.label,
+      param: x.label, tier: 'ref' as const,
     })),
     ...g.terms.map(id => {
       const t = TERMS.find(x => x.id === id)!
-      return { id: termCardId(id), title: t.term, body: t.gloss }
+      /*  术语降级为参考层（用户原话："把术语表降级为参考层"）——
+          它答的是"这个词叫什么"，不是"这一步在发生什么"。 */
+      return { id: termCardId(id), title: t.term, body: t.gloss, tier: 'ref' as const }
     }),
   ]
 
@@ -667,7 +4714,7 @@ export function cardsOf(expId: string, ctx: GuideContext = {}): Card[] {
   for (const [i, r] of TOUR.entries()) {
     if (used.has(r.anchor)) continue
     if (r.need && !has[r.need]) continue
-    cards.push({ id: `tour${i}`, title: `页面 · ${r.at}`, body: r.is, anchor: r.anchor })
+    cards.push({ id: `tour${i}`, title: `页面 · ${r.at}`, body: r.is, anchor: r.anchor, tier: 'ref' })
   }
   return cards
 }

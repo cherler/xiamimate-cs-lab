@@ -49,7 +49,9 @@ export const semaphoreKernel: Kernel<SemState> = {
   compile(doc: SimDocument): CompiledModel<SemState> {
     const size = num(doc.params, 'bufferSize')
     const order = str(doc.params, 'order')     // 'correct' | 'wrong'
-    /** 调度序列：每一步轮到哪个线程试一次 —— 由文档给定，保证可复现 */
+    /** 调度序列：每一步轮到哪个线程试一次 —— 由文档给定，保证可复现。
+     *  界面上那个「调度序列」旋钮只是**选哪一条**，选完仍然是把它写进这条流里
+     *  （见 `web/src/types.ts` 的 `ParamSpecBase.stream`）—— 数据只有一个出处。 */
     const sched = (doc.streams.find(s => s.name === 'schedule')?.values ?? []) as string[]
     const threads = [...new Set(sched.map(String))]
 

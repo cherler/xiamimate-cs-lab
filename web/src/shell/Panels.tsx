@@ -1,13 +1,25 @@
 /** 共享面板：逐步日志 · 参数 · 读数 · 违规 · 边界 */
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { rich } from './rich.tsx'
 import type { Violation } from '@engine/core/verify.ts'
 import { tipFor } from '../guide.ts'
 import type { AnyExperiment, ParamSpec, Readout } from '../types.ts'
 
 // ── 逐步日志：跟轴联动 ─────────────────────────────────
 export function StepLog({
-  exp, trace, index, onSeek,
-}: { exp: AnyExperiment; trace: never[]; index: number; onSeek: (i: number) => void }) {
+  exp, trace, index, replay, onSeek,
+}: { exp: AnyExperiment; trace: never[]; index: number; replay: boolean; onSeek: (i: number) => void }) {
+  /**
+   * 跟轴同一条规矩：**没走到的步不预告结果**。
+   * 日志每行写着"命中 / 缺失"，全列出来跟把答案抄在黑板上没区别。
+   *
+   * 但**走完一整遍之后就全列** —— 那时是重播，结果你已经看过，
+   * 再藏起来只会让"点日志跳到那一步"变成只能往回跳。
+   */
+  const [seen, setSeen] = useState(0)
+  useEffect(() => { setSeen(0) }, [trace])
+  useEffect(() => { setSeen(v => Math.max(v, index)) }, [index])
+  const upto = replay ? trace.length - 1 : seen
   const ref = useRef<HTMLLIElement | null>(null)
   const box = useRef<HTMLDivElement | null>(null)
 
@@ -36,9 +48,11 @@ export function StepLog({
 
   return (
     <div className="card log" ref={box}>
-      <h3>逐步日志 <span className="hint">点击跳到该步</span></h3>
+      <h3>逐步日志 <span className="hint">
+        {upto >= trace.length - 1 ? '点击跳到该步' : `点击跳到该步 · 走到哪列到哪（${upto + 1} / ${trace.length}）`}
+      </span></h3>
       <ul>
-        {trace.map((s, i) => {
+        {trace.slice(0, upto + 1).map((s, i) => {
           const tone = exp.tone(s)
           return (
             <li
@@ -57,30 +71,50 @@ export function StepLog({
   )
 }
 
-// ── 参数：改了就重跑 ───────────────────────────────────
+// ── 实验控制：改了就重跑 ───────────────────────────────
+/**
+ * 标题从「参数」改成「实验控制」（用户给的概念图上的叫法）。
+ *
+ * 不只是换个词：「参数」说的是**这个盒子里装着什么**，
+ * 「实验控制」说的是**你能拿它干什么** —— 而这一栏的活恰恰是后者。
+ * 用户侧的名字要按人能控制、能认出的东西起，不按系统怎么实现起。
+ *
+ * 「重置」只在**真的改过**时才出现：没改过还挂着一个按不动的按钮，
+ * 是在让人怀疑自己是不是漏改了什么。
+ */
 export function ParamPanel({
-  specs, values, onChange, emptyNote,
+  specs, values, onChange, emptyNote, dirty, onReset,
 }: {
   specs: ParamSpec[]
   values: Record<string, number | string | boolean>
   onChange: (key: string, v: number | string) => void
   /** 有些实验的自由度不在标量参数上（如银行家在资源矩阵里）—— 空面板要说明白，不能只留一个空盒子 */
   emptyNote?: string
+  /** 参数被改过 —— 改过才给「重置」 */
+  dirty?: boolean
+  onReset?: () => void
 }) {
   if (specs.length === 0) {
     return (
       <div className="card">
-        <h3>参数</h3>
+        <h3>实验控制</h3>
         <div className="body"><p className="pempty">{emptyNote ?? '本实验没有可调参数。'}</p></div>
       </div>
     )
   }
   return (
     <div className="card">
-      <h3>参数 <span className="hint">改了立即重跑</span></h3>
+      <h3>实验控制
+        {dirty && onReset
+          ? <button className="preset" onClick={onReset}>↺ 重置</button>
+          : <span className="hint">改了立即重跑</span>}
+      </h3>
       <div className="body params">
-        {specs.map(sp => (
-          <div className="param" key={sp.key}>
+        {specs.map(sp => {
+        //  不生效的旋钮：留在原地、变灰、点不动，并且说清"什么时候才生效"
+        const live = !sp.when || sp.when.on(values)
+        return (
+          <div className={`param${live ? '' : ' na'}`} key={sp.key}>
             {/* 有一行说得清的就挂 data-tip，悬停时给一句；没有的不挂 ——
                 把名字重念一遍的提示比没有提示更烦。 */}
             <div className="k" data-tip={tipFor(sp.label) ?? undefined}>
@@ -93,12 +127,14 @@ export function ParamPanel({
                   key={String(o)}
                   className={values[sp.key] === o ? 'on' : ''}
                   onClick={() => onChange(sp.key, o)}
+                  disabled={!live}
                   aria-pressed={values[sp.key] === o}
-                >{o}</button>
+                >{sp.optionLabel ? sp.optionLabel(o as never) : o}</button>
               ))}
             </div>
+            {!live && <div className="nanote">{sp.when!.note}</div>}
           </div>
-        ))}
+        )})}
       </div>
     </div>
   )
@@ -137,11 +173,35 @@ export function Violations({ items }: { items: Violation[] }) {
 }
 
 // ── 边界：内容标准 #2 ──────────────────────────────────
+/**
+ * 边界：这个仿真**没有**模拟什么。
+ *
+ * ⚠️ 原来是 `items.join(' · ')` 塞进一个 `<p>` —— 一整段流水账，
+ * 而且没走 `rich()`，作者写的 `**强调**` 原样把星号印在屏幕上。
+ * 用户的原话：「内容文字整理，层次感、编号、标题、重要性体现」。
+ *
+ * 现在：编号 + 每条独占一行 + 走 rich()。条目支持 `标题｜正文` 写法
+ * （全角竖线），有标题的把标题提出来加重；没写标题的原样渲染 ——
+ * 30 个实验的既有文案一个字都不用改。
+ */
 export function Bounds({ items }: { items: string[] }) {
   return (
     <div className="bounds">
       <div className="t">边界</div>
-      <p>{items.join(' · ')}</p>
+      <p className="bsub">{rich('下面这些**本仿真没有建模** —— 拿它当全部事实会出错。')}</p>
+      <ol className="blist">
+        {items.map(raw => {
+          const bar = raw.indexOf('｜')
+          const head = bar > 0 ? raw.slice(0, bar) : null
+          const body = bar > 0 ? raw.slice(bar + 1) : raw
+          return (
+            <li key={raw}>
+              {head && <b className="bndh">{head}</b>}
+              <span>{rich(body)}</span>
+            </li>
+          )
+        })}
+      </ol>
     </div>
   )
 }

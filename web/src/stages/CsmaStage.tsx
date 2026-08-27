@@ -28,15 +28,21 @@ function Slots({ trace, index, state, stations }: {
               <tr key={st}>
                 <th>{st}</th>
                 {slots.map(s => {
-                  const sending = s.sending.includes(st)
+                  /*  ⚠️ 还没走到的争用期：**格子留空**，不是"画出来再调暗"。
+                      原来给未来格打 `future`（opacity .34）——可 34% 的 ✕/✓ 照样看得清清楚楚，
+                      第 1 步就知道哪一列会冲突、哪一列会成功，旁边讲解却还在一步步推。
+                      列本身保留（表格宽度不跳），只是内容还没长出来。 */
+                  const future = s.i > index
+                  const sending = !future && s.sending.includes(st)
+                  const waiting = !future && s.backoff[st] > 0
                   const cls = [
                     sending ? (s.collision ? 'coll' : 'okslot') : '',
-                    s.backoff[st] > 0 ? 'wait' : '',
-                    s.i > index ? 'future' : '',
+                    waiting ? 'wait' : '',
+                    future ? 'future' : '',
                   ].filter(Boolean).join(' ')
                   return (
-                    <td key={s.i} className={cls} title={s.picked[st] ?? ''}>
-                      {sending ? (s.collision ? '✕' : '✓') : s.backoff[st] > 0 ? '·' : ''}
+                    <td key={s.i} className={cls} title={future ? '' : (s.picked[st] ?? '')}>
+                      {sending ? (s.collision ? '✕' : '✓') : waiting ? '·' : ''}
                     </td>
                   )
                 })}
@@ -61,7 +67,11 @@ function Slots({ trace, index, state, stations }: {
 function Backoff({ trace, index, state, stations }: {
   trace: CsmaState[]; index: number; state: CsmaState; stations: string[]
 }) {
-  const colls = trace.filter(s => s.collision)
+  /*  只列**已经发生过**的冲突。原来把整条 trace 里的冲突全列出来（未来的调暗），
+      等于开局就告诉用户"第 3、第 5 个争用期会撞" —— 而这张表的意义正是
+      "撞一次、退避范围翻一倍"这个过程。下面那个「还没有发生冲突」空态本来就有，
+      现在它在开局真的会出现了。 */
+  const colls = trace.filter(s => s.collision && s.i <= index)
   return (
     <div className="card">
       <h3>二进制指数退避 <span className="hint">第 n 次冲突从 {'{0 … 2^min(n,10)−1}'} 里取 r</span></h3>

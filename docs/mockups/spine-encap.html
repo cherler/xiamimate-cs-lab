@@ -1,0 +1,529 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>主干式布局 + 伪 3D 爆炸 · 数据包封装（mockup）</title>
+<style>
+:root{
+  --bg:#0A0F16; --bg2:#0E151E; --panel:#121C27; --line:#223142; --line2:#1A2635;
+  --ink:#E2EAF4; --soft:#93A6BC; --faint:#5F7288;
+  --amber:#F0B429; --green:#52C08A; --blue:#43A9DC; --violet:#8B7BF0; --red:#E8705A;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:
+   radial-gradient(1200px 700px at 62% 12%, #16283A 0%, transparent 62%),
+   radial-gradient(900px 600px at 18% 88%, #131E2C 0%, transparent 60%),
+   var(--bg);
+  color:var(--ink);font-family:var(--sans);font-size:14px;overflow:hidden}
+#app{height:100dvh;display:flex;flex-direction:column}
+
+/* ───────── 顶栏：目录收成下拉，不占一列 ───────── */
+.top{display:flex;align-items:baseline;gap:14px;padding:13px 20px 12px;
+  border-bottom:1px solid var(--line2);flex:0 0 auto}
+.top h1{margin:0;font-size:16px;font-weight:660;letter-spacing:-.01em}
+.top .sub{color:var(--faint);font-size:12px}
+.top .sp{flex:1}
+.btn{background:transparent;border:1px solid var(--line);color:var(--soft);
+  font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+  padding:5px 10px;border-radius:4px;cursor:pointer;transition:.16s}
+.btn:hover{border-color:var(--amber);color:var(--amber)}
+.btn.on{border-color:var(--amber);color:#0A0F16;background:var(--amber)}
+
+/* ───────── 主干舞台 ───────── */
+.stagewrap{flex:1 1 auto;min-height:0;position:relative;display:flex}
+.legend{width:186px;flex:0 0 auto;padding:20px 0 20px 20px;
+  display:flex;flex-direction:column;gap:2px;justify-content:center}
+.lg{display:grid;grid-template-columns:9px 1fr;gap:0 10px;align-items:center;
+  padding:9px 10px;border-radius:5px;cursor:pointer;border:1px solid transparent;
+  transition:.16s;opacity:.42}
+.lg.live{opacity:1}
+.lg.sel{border-color:var(--line);background:#0E1720}
+.lg:hover{background:#0E1720}
+.lg i{width:9px;height:9px;border-radius:2px;background:var(--c);display:block}
+.lg .n{font-size:12.5px;font-weight:600}
+.lg .m{grid-column:2;font-family:var(--mono);font-size:10px;color:var(--faint);
+  letter-spacing:.06em;margin-top:2px}
+
+.stage{flex:1 1 auto;min-width:0;position:relative;overflow:hidden;cursor:grab}
+.stage.drag{cursor:grabbing}
+.scene{position:absolute;inset:0;perspective:1600px;perspective-origin:50% 44%}
+.world{position:absolute;left:50%;top:50%;width:0;height:0;
+  transform-style:preserve-3d;
+  transform:rotateX(var(--rx)) rotateZ(var(--rz)) translateZ(var(--lift));
+  transition:transform .42s cubic-bezier(.22,.7,.3,1)}
+.world.nofx{transition:none}
+
+/* 一块板 = 一层协议 */
+.plate{position:absolute;transform-style:preserve-3d;
+  transition:transform .42s cubic-bezier(.22,.7,.3,1), opacity .3s}
+.slab{display:flex;height:64px;border-radius:7px;transform-style:preserve-3d;
+  border:1px solid var(--c);background:#0C141Ccc;
+  box-shadow:0 0 0 1px #0006, 0 22px 46px -18px var(--c), inset 0 1px 0 #ffffff0f}
+.plate.dim .slab{opacity:.3;filter:saturate(.4)}
+.plate.hot .slab{box-shadow:0 0 0 1px var(--c), 0 0 34px -4px var(--c), 0 24px 50px -16px #000}
+.seg{position:relative;height:100%;border-right:1px solid #00000055;transform-style:preserve-3d;
+  background:linear-gradient(180deg,var(--c) 0%,var(--c) 100%);
+  opacity:.9}
+.seg:last-child{border-right:none;border-radius:0 6px 6px 0}
+.seg:first-child{border-radius:6px 0 0 6px}
+.seg.pay{background:repeating-linear-gradient(135deg,#ffffff08 0 7px,#ffffff02 7px 14px);
+  border:1px dashed var(--cin);opacity:1}
+.seg.tail{opacity:.55}
+
+/* 标注永远面向相机：反向旋转 —— 这是 3D 里文字唯一不糊的做法 */
+.face{position:absolute;transform-style:preserve-3d;
+  transform:translateZ(2px) rotateZ(calc(-1*var(--rz))) rotateX(calc(-1*var(--rx)));
+  transform-origin:0 0;pointer-events:none;white-space:nowrap}
+.tag{position:absolute;left:0;top:0;font-family:var(--mono);font-size:10px;
+  letter-spacing:.08em;color:#0A0F16;font-weight:700;
+  background:var(--c);padding:3px 7px;border-radius:3px;
+  transform:translate(calc(-100% - 12px),6px)}
+.blab{position:absolute;left:0;top:0;font-family:var(--mono);font-size:10.5px;
+  color:#06111Add;font-weight:700;transform:translate(4px,4px)}
+.paylab{position:absolute;left:0;top:0;font-family:var(--mono);font-size:10.5px;
+  color:var(--soft);transform:translate(6px,4px)}
+
+/* 束线：内层落在外层的载荷区上 */
+.teth{position:absolute;width:1px;background:linear-gradient(180deg,var(--c),transparent);
+  transform-origin:0 0;transform:rotateX(-90deg);opacity:.5}
+
+/* ───────── 旋钮贴在它作用的那一段上 ───────── */
+.knob{position:absolute;transform-style:preserve-3d;pointer-events:auto;z-index:9;
+  transform:translateZ(10px) rotateZ(calc(-1*var(--rz))) rotateX(calc(-1*var(--rx)));
+  transform-origin:0 0}
+.knobin{transform:translate(16px,-22px);background:#0B131Cf2;border:1px solid var(--c);
+  border-radius:6px;padding:7px 10px 8px;min-width:168px;
+  box-shadow:0 10px 30px -10px #000}
+.knobin .k{font-family:var(--mono);font-size:9px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--c);display:flex;justify-content:space-between;gap:10px}
+.knobin .k b{color:var(--ink);font-size:11px;letter-spacing:0}
+.knobin input{width:100%;margin:6px 0 0;accent-color:var(--c);height:3px}
+.knobin .warn{margin-top:5px;font-size:10.5px;color:var(--red);line-height:1.4}
+
+/* ───────── 读数 ───────── */
+.reads{position:absolute;right:20px;top:18px;display:flex;flex-direction:column;gap:8px;
+  z-index:5}
+.rd{background:#0B131Ce0;border:1px solid var(--line);border-radius:6px;
+  padding:8px 12px;min-width:146px;backdrop-filter:blur(6px)}
+.rd .k{font-family:var(--mono);font-size:9px;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--faint)}
+.rd .v{font-size:19px;font-weight:680;letter-spacing:-.02em;margin-top:1px;
+  font-variant-numeric:tabular-nums}
+.rd.bad .v{color:var(--red)}
+.rd .n{font-size:10.5px;color:var(--soft);margin-top:1px}
+
+/* ───────── L1：某一层展开 ───────── */
+.detail{position:absolute;inset:0;display:none;z-index:8;
+  background:linear-gradient(180deg,#0A0F16e6,#0A0F16f7);backdrop-filter:blur(8px);
+  padding:24px 30px;overflow:auto}
+.detail.on{display:block;animation:fade .26s ease}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.detail h2{margin:0 0 2px;font-size:17px;font-weight:660}
+.detail .dsub{color:var(--faint);font-size:12px;font-family:var(--mono);margin-bottom:16px}
+.rows{display:flex;flex-direction:column;gap:5px;max-width:760px}
+.row{display:flex;height:40px;border-radius:5px;overflow:hidden;border:1px solid var(--line)}
+.fld{position:relative;display:flex;flex-direction:column;justify-content:center;
+  padding:0 8px;border-right:1px solid var(--line2);cursor:pointer;
+  background:#101A25;transition:.14s;min-width:0}
+.fld:last-child{border-right:none}
+.fld:hover{background:#16232F}
+.fld.sel{background:var(--c);color:#0A0F16}
+.fld .fn{font-size:11px;font-weight:620;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fld .fv{font-family:var(--mono);font-size:9.5px;color:var(--soft);overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.fld.sel .fv{color:#0A0F16bb}
+.ruler{display:flex;max-width:760px;margin-bottom:6px}
+.ruler span{flex:1;font-family:var(--mono);font-size:9px;color:var(--faint);
+  border-left:1px solid var(--line2);padding-left:3px}
+.l2{margin-top:16px;max-width:760px;border-left:2px solid var(--c);
+  background:#0E1720;padding:11px 14px;border-radius:0 6px 6px 0;display:none}
+.l2.on{display:block}
+.l2 .t{font-size:12.5px;font-weight:660;margin-bottom:4px}
+.l2 p{margin:0;font-size:12.5px;color:var(--soft);line-height:1.75;max-width:62ch}
+.httptext{font-family:var(--mono);font-size:12px;line-height:1.9;color:var(--ink);
+  background:#101A25;border:1px solid var(--line);border-radius:6px;padding:12px 14px;
+  max-width:760px;white-space:pre-wrap}
+.back{position:absolute;right:26px;top:22px}
+
+/* ───────── 两根轴 ───────── */
+.axes{flex:0 0 auto;display:flex;align-items:center;gap:22px;
+  padding:11px 20px;border-top:1px solid var(--line2);background:#0B121Acc}
+.ax{display:flex;align-items:center;gap:10px}
+.ax .k{font-family:var(--mono);font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--faint);white-space:nowrap}
+.ax input[type=range]{width:170px;accent-color:var(--amber);height:3px}
+.steps{display:flex;gap:4px}
+.st{width:30px;height:22px;border:1px solid var(--line);background:transparent;
+  border-radius:4px;color:var(--faint);font-family:var(--mono);font-size:10px;cursor:pointer}
+.st.on{border-color:var(--amber);color:var(--amber);background:#F0B4291a}
+.st.done{color:var(--soft)}
+
+/* ───────── 底部坞：收起时只一行 ───────── */
+.dock{flex:0 0 auto;border-top:1px solid var(--line2);background:#0A1017}
+.dtabs{display:flex;gap:2px;padding:0 14px}
+.dtab{background:none;border:none;border-bottom:2px solid transparent;color:var(--faint);
+  font-size:11.5px;padding:8px 10px;cursor:pointer;font-family:var(--sans)}
+.dtab.on{color:var(--amber);border-bottom-color:var(--amber)}
+.dtabs .sp{flex:1}
+.dbody{padding:0 20px 12px;max-height:132px;overflow:auto;display:none}
+.dbody.on{display:block}
+.logline{display:grid;grid-template-columns:26px 1fr;gap:10px;padding:4px 0;
+  font-size:12.5px;color:var(--faint);cursor:pointer}
+.logline b{font-family:var(--mono);font-size:10px;color:var(--faint);padding-top:2px}
+.logline.on{color:var(--ink)}.logline.on b{color:var(--amber)}
+.bnd{font-size:12.5px;color:var(--soft);line-height:1.85;max-width:78ch}
+.bnd li{margin:0}
+.folded .dbody{display:none}
+.immersive .top,.immersive .dock,.immersive .legend{display:none}
+</style></head>
+<body><div id="app">
+
+<div class="top">
+  <h1>数据包封装</h1>
+  <span class="sub">一次 HTTP 请求怎么下到网线上 · 计算机网络</span>
+  <span class="sp"></span>
+  <button class="btn" id="tour">▶ 自动巡演</button>
+  <button class="btn" id="imm">沉浸模式</button>
+  <button class="btn" id="reset">复位视角</button>
+  <button class="btn">目录 ▾</button>
+</div>
+
+<div class="stagewrap" id="sw">
+  <div class="legend" id="legend"></div>
+  <div class="stage" id="stage">
+    <div class="scene"><div class="world" id="world"></div></div>
+    <div class="reads" id="reads"></div>
+    <div class="detail" id="detail"></div>
+  </div>
+</div>
+
+<div class="axes">
+  <div class="ax">
+    <span class="k">拆解深度 · depth</span>
+    <input type="range" id="ex" min="0" max="100" value="62">
+  </div>
+  <div class="ax">
+    <span class="k">封装步骤 · time</span>
+    <div class="steps" id="steps"></div>
+  </div>
+  <div class="ax">
+    <span class="k">视角</span>
+    <input type="range" id="rx" min="0" max="78" value="56">
+    <input type="range" id="rz" min="-60" max="60" value="-26">
+  </div>
+</div>
+
+<div class="dock" id="dock">
+  <div class="dtabs">
+    <button class="dtab on" data-d="log">逐步日志</button>
+    <button class="dtab" data-d="prob">真题 <b style="color:var(--amber)">3</b></button>
+    <button class="dtab" data-d="bnd">边界</button>
+    <span class="sp"></span>
+    <button class="dtab" id="fold">收起 ▾</button>
+  </div>
+  <div class="dbody on" data-d="log" id="log"></div>
+  <div class="dbody" data-d="prob">
+    <div class="bnd">〔2019 · 408 · 41 题〕主机通过以太网发送一个 HTTP 请求，应用层数据 87 字节，
+    求链路层帧的总长度与封装开销占比。<br>〔2016 · 408〕若 MTU 为 200 字节，该 IP 数据报需分成几片？</div>
+  </div>
+  <div class="dbody" data-d="bnd">
+    <ul class="bnd">
+      <li>不含 IP 选项与 TCP 选项字段（首部都按最小 20 字节算）</li>
+      <li>不含 VLAN 标签、不含以太网前导码与帧间隔</li>
+      <li>TCP 首部按 408 教材口径：保留 6 位 + 6 个标志位</li>
+      <li>不含 ARP 解析、不含 TLS</li>
+    </ul>
+  </div>
+</div>
+</div>
+
+<script>
+const HTTP_TEXT =
+"GET /index.html HTTP/1.1\r\nHost: example.com\r\nUser-Agent: xiami-lab/0.1\r\nAccept: */*\r\n\r\n";
+const HTTP_LEN = HTTP_TEXT.length; // 87
+
+const S = { payload:HTTP_LEN, mtu:1500, explode:.62, rx:56, rz:-26, step:3, sel:null, fld:null, imm:false };
+
+// 四层。inner 是它包住的那一层。
+const L = [
+  { id:'eth', name:'链路层', proto:'以太网帧 Ethernet II', c:'#F0B429',
+    head:[{n:'目的 MAC',b:6,v:'3C:22:FB:8A:11:02'},{n:'源 MAC',b:6,v:'A4:83:E7:6C:44:9D'},{n:'类型',b:2,v:'0x0800'}],
+    tail:[{n:'FCS',b:4,v:'CRC-32'}],
+    rows:[[['目的 MAC',48,'3C:22:FB:8A:11:02'],['源 MAC',48,'A4:83:E7:6C:44:9D']],
+          [['类型',16,'0x0800 = IPv4'],['…载荷…',32,'见上一层'],['FCS',32,'CRC-32 校验']]],
+    why:'以太网只认 MAC 地址。类型字段 0x0800 告诉网卡：拆开以后交给 IPv4 处理。FCS 在帧尾，是唯一一个放在数据后面的字段 —— 因为它要等整帧发完才算得出来。' },
+  { id:'ip', name:'网络层', proto:'IPv4 数据报', c:'#52C08A',
+    head:[{n:'IP 首部',b:20,v:'20 字节'}], tail:[],
+    rows:[[['版本',4,'4'],['首部长度',4,'5 → 20B'],['区分服务',8,'0x00'],['总长度',16,'动态']],
+          [['标识',16,'0x1C46'],['标志',3,'010 DF'],['片偏移',13,'0']],
+          [['生存时间 TTL',8,'64'],['协议',8,'6 = TCP'],['首部校验和',16,'0xB1E6']],
+          [['源 IP 地址',32,'192.168.1.23']],
+          [['目的 IP 地址',32,'93.184.216.34']]],
+    why:'IP 负责跨网段。总长度是 16 位，所以一个 IP 数据报最大 65535 字节；一旦超过链路的 MTU 就必须分片，片偏移以 8 字节为单位 —— 这是 408 分片题唯一的考点来源。' },
+  { id:'tcp', name:'传输层', proto:'TCP 报文段', c:'#43A9DC',
+    head:[{n:'TCP 首部',b:20,v:'20 字节'}], tail:[],
+    rows:[[['源端口',16,'51724'],['目的端口',16,'80']],
+          [['序号',32,'1829371']],
+          [['确认号',32,'3421991']],
+          [['数据偏移',4,'5'],['保留',6,'000000'],['标志',6,'PSH+ACK'],['窗口',16,'64240']],
+          [['校验和',16,'0x8C2A'],['紧急指针',16,'0']]],
+    why:'端口号决定交给哪个进程。序号以字节计数，不是以报文段计数 —— 这一条是 TCP 所有题目的地基。数据偏移 = 首部有几个 4 字节，5 就是 20 字节。' },
+  { id:'http', name:'应用层', proto:'HTTP 请求', c:'#8B7BF0',
+    head:[], tail:[], text:true,
+    why:'这一层才是用户真正要的东西。往下每包一层，就多一层首部 —— 读数里那个"封装开销"就是这么来的。' },
+];
+
+const W = document.getElementById('world');
+const R = document.getElementById('reads');
+const LG = document.getElementById('legend');
+const D = document.getElementById('detail');
+const GAP = 108, MAXW = 600;
+
+function totals(){
+  const http = S.payload;
+  const tcp = 20 + http, ip = 20 + tcp, eth = 14 + ip + 4;
+  return { http, tcp, ip, eth, all:eth };
+}
+function frags(){
+  const t = totals();
+  if (t.ip <= S.mtu) return 1;
+  const maxData = Math.floor((S.mtu - 20)/8)*8;
+  return maxData <= 0 ? Infinity : Math.ceil((t.ip - 20)/maxData);
+}
+
+function build(){
+  const t = totals();
+  const bytes = { eth:t.eth, ip:t.ip, tcp:t.tcp, http:t.http };
+  const PX = MAXW / t.eth;
+  W.innerHTML = '';
+  // i=0 最外层（以太网）在最底下，i=3 最里层（HTTP）在最上面
+  let offset = 0;
+  const geo = [];
+  L.forEach((l,i)=>{
+    const w = bytes[l.id]*PX;
+    const headW = l.head.reduce((a,s)=>a+s.b,0)*PX;
+    geo.push({ l, i, w, headW, x:offset });
+    offset += headW;
+  });
+
+  const maxX = Math.max(...geo.map(g=>g.x+g.w)), CX = maxX/2;
+  geo.forEach(g=>{
+    const { l, i, w } = g;
+    const live = (3-i) <= S.step;              // 封装步骤：从内往外长出来
+    const p = document.createElement('div');
+    p.className = 'plate' + (S.sel!==null && S.sel!==i ? ' dim':'') + (S.sel===i?' hot':'');
+    p.style.setProperty('--c', l.c);
+    const z = i*GAP*S.explode + i*3;
+    p.style.transform = `translate(-50%,-50%) translate3d(${g.x - CX}px, ${(1.5-i)*22}px, ${z}px)`;
+    p.style.opacity = live ? 1 : 0;
+    p.style.pointerEvents = live ? 'auto':'none';
+
+    const slab = document.createElement('div');
+    slab.className='slab'; slab.style.width = w+'px';
+    const inner = L[i+1];
+    l.head.forEach(s=>{
+      const d = document.createElement('div');
+      d.className='seg'; d.style.width = s.b*PX+'px'; d.style.setProperty('--c', l.c);
+      d.style.opacity = .82;
+      slab.appendChild(d);
+      if (s.b*PX > 46){ const f=document.createElement('div'); f.className='face';
+        f.style.left = (s.b*PX/2)+'px'; f.innerHTML = `<span class="blab">${s.n}</span>`; d.appendChild(f); }
+    });
+    if (inner){
+      const pay = document.createElement('div');
+      pay.className='seg pay'; pay.style.width = bytes[inner.id]*PX+'px';
+      pay.style.setProperty('--cin', inner.c);
+      const f=document.createElement('div'); f.className='face';
+      f.innerHTML = `<span class="paylab">载荷 ${bytes[inner.id]} B →</span>`; pay.appendChild(f);
+      slab.appendChild(pay);
+    } else {
+      const pay = document.createElement('div');
+      pay.className='seg'; pay.style.width = w+'px'; pay.style.setProperty('--c', l.c);
+      slab.appendChild(pay);
+      const f=document.createElement('div'); f.className='face';
+      f.style.left='10px'; f.innerHTML = `<span class="blab">GET /index.html …</span>`; pay.appendChild(f);
+    }
+    l.tail.forEach(s=>{
+      const d=document.createElement('div'); d.className='seg tail';
+      d.style.width=s.b*PX+'px'; d.style.setProperty('--c', l.c); slab.appendChild(d);
+    });
+
+    // 层名标签：反向旋转，永远面向相机
+    const tagWrap = document.createElement('div'); tagWrap.className='face';
+    tagWrap.innerHTML = `<span class="tag">${l.name} · ${bytes[l.id]} B</span>`;
+    slab.appendChild(tagWrap);
+
+    p.appendChild(slab);
+    p.onclick = e=>{ e.stopPropagation(); open(i); };
+    W.appendChild(p);
+
+    // 旋钮贴在它作用的那一段上
+    if (l.id==='http' && live){
+      const k = document.createElement('div'); k.className='knob';
+      k.style.setProperty('--c', l.c);
+      k.style.left = w+'px'; k.style.top = '0px';
+      k.innerHTML = `<div class="knobin"><div class="k"><span>应用层载荷</span><b>${S.payload} B</b></div>
+        <input type="range" min="20" max="400" value="${S.payload}"></div>`;
+      k.querySelector('input').oninput = e=>{ S.payload=+e.target.value; draw(); };
+      k.onclick = e=>e.stopPropagation();
+      p.appendChild(k);
+    }
+    if (l.id==='ip' && live){
+      const nf = frags();
+      const k = document.createElement('div'); k.className='knob';
+      k.style.setProperty('--c', l.c);
+      k.style.left = w+'px'; k.style.top = '0px';
+      k.innerHTML = `<div class="knobin"><div class="k"><span>链路 MTU</span><b>${S.mtu} B</b></div>
+        <input type="range" min="100" max="1500" step="20" value="${S.mtu}">
+        ${nf>1?`<div class="warn">IP 总长 ${totals().ip} B &gt; MTU ${S.mtu} B → 需分成 ${nf} 片</div>`:''}</div>`;
+      k.querySelector('input').oninput = e=>{ S.mtu=+e.target.value; draw(); };
+      k.onclick = e=>e.stopPropagation();
+      p.appendChild(k);
+    }
+  });
+}
+
+function reads(){
+  const t = totals(), over = t.eth - t.http, pct = (over/t.eth*100).toFixed(1);
+  const nf = frags();
+  R.innerHTML = `
+   <div class="rd"><div class="k">帧总长度</div><div class="v">${t.eth} B</div>
+     <div class="n">应用数据 ${t.http} B</div></div>
+   <div class="rd ${over/t.eth>.5?'bad':''}"><div class="k">封装开销</div><div class="v">${pct}%</div>
+     <div class="n">${over} 字节首部与尾部</div></div>
+   <div class="rd ${nf>1?'bad':''}"><div class="k">IP 分片</div><div class="v">${nf>1?nf+' 片':'不分片'}</div>
+     <div class="n">MTU ${S.mtu} B</div></div>`;
+}
+
+function legend(){
+  const t = totals(), b={eth:t.eth,ip:t.ip,tcp:t.tcp,http:t.http};
+  LG.innerHTML = L.map((l,i)=>({l,i})).reverse().map(({l,i})=>`
+    <div class="lg ${(3-i)<=S.step?'live':''} ${S.sel===i?'sel':''}" data-i="${i}" style="--c:${l.c}">
+      <i></i><span class="n">${l.name}</span><span class="m">${l.proto} · ${b[l.id]} B</span>
+    </div>`).join('');
+  LG.querySelectorAll('.lg').forEach(e=>e.onclick=()=>open(+e.dataset.i));
+}
+
+function open(i){
+  S.sel = i; S.fld = null; draw();
+  const l = L[i];
+  if (l.text){
+    D.innerHTML = `<button class="btn back" id="bk">← 返回主干</button>
+      <h2>${l.name} · ${l.proto}</h2><div class="dsub">${S.payload} 字节 · 纯文本，没有首部</div>
+      <div class="httptext">${HTTP_TEXT.replace(/\r\n/g,'⏎\n')}</div>
+      <div class="l2 on" style="--c:${l.c}"><div class="t">为什么</div><p>${l.why}</p></div>`;
+  } else {
+    const rows = l.rows.map(r=>{
+      const tot = r.reduce((a,f)=>a+f[1],0);
+      return `<div class="row">${r.map((f,k)=>
+        `<div class="fld" style="--c:${l.c};flex:${f[1]} 0 0"
+           data-n="${f[0]}" data-v="${f[2]}" data-b="${f[1]}">
+           <span class="fn">${f[0]}</span><span class="fv">${f[2]}</span></div>`).join('')}</div>`;
+    }).join('');
+    D.innerHTML = `<button class="btn back" id="bk">← 返回主干</button>
+      <h2>${l.name} · ${l.proto}</h2>
+      <div class="dsub">点任意一格看它是什么 · 每行 32 位</div>
+      <div class="ruler"><span>0</span><span>8</span><span>16</span><span>24</span></div>
+      <div class="rows">${rows}</div>
+      <div class="l2 on" style="--c:${l.c}"><div class="t">这一层在干什么</div><p>${l.why}</p></div>`;
+    D.querySelectorAll('.fld').forEach(e=>e.onclick=()=>{
+      D.querySelectorAll('.fld').forEach(x=>x.classList.remove('sel'));
+      e.classList.add('sel');
+      const box = D.querySelector('.l2');
+      box.innerHTML = `<div class="t">${e.dataset.n} · ${e.dataset.b} 位</div>
+        <p>当前值 <b style="font-family:var(--mono)">${e.dataset.v}</b>。${FIELD[e.dataset.n]||'（这一格的讲解词还没写）'}</p>`;
+    });
+  }
+  D.classList.add('on');
+  D.querySelector('#bk').onclick = ()=>{ D.classList.remove('on'); S.sel=null; draw(); };
+}
+
+const FIELD = {
+  '首部长度':'以 4 字节为单位。5 就是 20 字节 —— 没有选项时的最小首部。这一格解释了为什么 IP 首部长度只能是 4 的倍数。',
+  '总长度':'首部加数据的总字节数，16 位，所以 IP 数据报理论上限 65535 字节。分片题里减去首部才是数据部分。',
+  '片偏移':'以 8 字节为单位，所以除最后一片外每片的数据长度必须是 8 的倍数。408 分片题的全部难点都在这一格。',
+  '生存时间 TTL':'每经过一个路由器减 1，减到 0 就丢弃并回一个 ICMP 超时 —— traceroute 就是拿这一格做的。',
+  '协议':'6 是 TCP，17 是 UDP，1 是 ICMP。它告诉网络层拆完之后交给谁。',
+  '序号':'以字节计数，不是以报文段计数。这一条是 TCP 所有题目的地基。',
+  '数据偏移':'以 4 字节为单位，5 就是 20 字节首部。名字叫偏移，其实是首部长度。',
+  '标志':'URG ACK PSH RST SYN FIN 六位。三次握手考的就是 SYN 与 ACK 的组合。',
+  '窗口':'接收方还能收多少字节。流量控制的唯一手段，也是滑动窗口那一整套的来源。',
+  '类型':'0x0800 = IPv4，0x0806 = ARP，0x86DD = IPv6。网卡靠它决定拆开以后交给谁。',
+  '目的 MAC':'只在本网段有意义。每过一个路由器就换一次 —— 这是 MAC 和 IP 最大的区别。',
+};
+
+function log(){
+  const lines = ['应用层交出 HTTP 请求报文','传输层加 TCP 首部 20 B，成为报文段','网络层加 IP 首部 20 B，成为数据报','链路层加以太网首部 14 B 与尾部 FCS 4 B，成为帧'];
+  document.getElementById('log').innerHTML = lines.map((t,i)=>
+    `<div class="logline ${i<=S.step?'on':''}" data-s="${i}"><b>${String(i+1).padStart(2,'0')}</b><span>${t}</span></div>`).join('');
+  document.querySelectorAll('.logline').forEach(e=>e.onclick=()=>{ S.step=+e.dataset.s; draw(); });
+  document.getElementById('steps').innerHTML = [0,1,2,3].map(i=>
+    `<button class="st ${S.step===i?'on':S.step>i?'done':''}" data-s="${i}">${i+1}</button>`).join('');
+  document.querySelectorAll('.st').forEach(e=>e.onclick=()=>{ S.step=+e.dataset.s; draw(); });
+}
+
+function draw(){
+  W.style.setProperty('--rx', S.rx+'deg');
+  W.style.setProperty('--rz', S.rz+'deg');
+  W.style.setProperty('--lift', (-S.explode*GAP*0.85)+'px');
+  build(); reads(); legend(); log();
+  document.getElementById('ex').value = S.explode*100;
+  document.getElementById('rx').value = S.rx;
+  document.getElementById('rz').value = S.rz;
+}
+
+// 拖动转视角
+const stage = document.getElementById('stage');
+/* 坑：pointerdown 里直接 setPointerCapture，会把随后的 click 事件一并劫持到 stage 上 ——
+   浮层里的「返回主干」按钮就永远点不动。所以只有真的拖动起来（位移 > 4px）才捕获。 */
+let down=null, dragging=false;
+stage.onpointerdown = e=>{ if(e.target.closest('.knobin')||e.target.closest('.detail'))return;
+  down={x:e.clientX,y:e.clientY,rx:S.rx,rz:S.rz,id:e.pointerId}; };
+stage.onpointermove = e=>{ if(!down)return;
+  if(!dragging){ if(Math.hypot(e.clientX-down.x,e.clientY-down.y)<4) return;
+    dragging=true; stage.classList.add('drag'); W.classList.add('nofx');
+    stage.setPointerCapture(down.id); }
+  S.rz = down.rz + (e.clientX-down.x)*.35;
+  S.rx = Math.max(0,Math.min(80, down.rx - (e.clientY-down.y)*.3));
+  draw(); };
+stage.onpointerup = ()=>{ if(dragging){ stage.classList.remove('drag'); W.classList.remove('nofx'); }
+  setTimeout(()=>{ down=null; dragging=false; },0); };
+stage.onclick = e=>{ if(dragging)return;
+  if(e.target===stage||e.target.classList.contains('scene')||e.target===W){ S.sel=null; draw(); } };
+
+document.getElementById('ex').oninput = e=>{ S.explode=+e.target.value/100; draw(); };
+document.getElementById('rx').oninput = e=>{ S.rx=+e.target.value; draw(); };
+document.getElementById('rz').oninput = e=>{ S.rz=+e.target.value; draw(); };
+document.getElementById('reset').onclick = ()=>{ S.rx=56;S.rz=-26;S.explode=.62; draw(); };
+document.getElementById('imm').onclick = e=>{ S.imm=!S.imm;
+  document.getElementById('app').classList.toggle('immersive',S.imm); e.target.classList.toggle('on',S.imm); };
+document.getElementById('fold').onclick = ()=>document.getElementById('dock').classList.toggle('folded');
+document.querySelectorAll('.dtab[data-d]').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('.dtab[data-d]').forEach(x=>x.classList.remove('on')); b.classList.add('on');
+  document.querySelectorAll('.dbody').forEach(x=>x.classList.toggle('on', x.dataset.d===b.dataset.d)); });
+
+// 自动巡演：录屏时鼠标不该出现在画面里
+let tour=null;
+document.getElementById('tour').onclick = e=>{
+  if(tour){ tour.forEach(clearTimeout); tour=null; e.target.classList.remove('on'); return; }
+  e.target.classList.add('on');
+  const seq = [
+    [0,   ()=>{ S.sel=null; D.classList.remove('on'); S.step=0; S.explode=.1; S.rz=-26; S.rx=56; draw(); }],
+    [700, ()=>{ S.step=1; draw(); }],
+    [1400,()=>{ S.step=2; draw(); }],
+    [2100,()=>{ S.step=3; draw(); }],
+    [3000,()=>{ S.explode=.95; draw(); }],
+    [3900,()=>{ S.rz=22; draw(); }],
+    [4800,()=>{ S.rz=-40; draw(); }],
+    [5700,()=>{ open(1); }],
+    [7400,()=>{ D.querySelector('.fld[data-n="片偏移"]')?.click(); }],
+    [9200,()=>{ D.classList.remove('on'); S.sel=null; S.rz=-26; S.explode=.62; draw();
+                document.getElementById('tour').classList.remove('on'); tour=null; }],
+  ];
+  tour = seq.map(([t,f])=>setTimeout(f,t));
+};
+
+draw();
+</script></body></html>

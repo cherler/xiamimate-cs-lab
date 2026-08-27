@@ -527,3 +527,20 @@ export const SEM_SCHEDULES: { label: string; note: string; values: string[] }[] 
     values: ['C1','C1','P1','P1','P1','P1','P1','C1','C1','C1','C1'],
   },
 ]
+
+/** 距离矢量路由：线状拓扑最能演"无穷计数"；带环的用来看收敛 */
+const rn = (id: string): Entity => ({ id, type: 'node', attrs: { x: 0, y: 0 } })
+export const RIP_PRESETS: EntityPreset[] = [
+  {
+    label: '四点一线',
+    note: 'A—B—C—D 一条链，断掉 A—B 后 A 彻底孤立，B/C/D 到 A 的代价一格格爬到无穷 —— 最经典的无穷计数',
+    entities: [rn('A'), rn('B'), rn('C'), rn('D'),
+      und('A', 'B', 1), und('B', 'C', 1), und('C', 'D', 1)],
+  },
+  {
+    label: '带环网络',
+    note: '四点成环，任意一条链断了还有另一条路 —— 收敛快，也不会数到无穷',
+    entities: [rn('A'), rn('B'), rn('C'), rn('D'),
+      und('A', 'B', 1), und('B', 'C', 2), und('C', 'D', 1), und('D', 'A', 4)],
+  },
+]

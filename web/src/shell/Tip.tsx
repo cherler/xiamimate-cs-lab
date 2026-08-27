@@ -17,6 +17,7 @@
  * 样式跟不了深浅两套主题、长一点的中文会被系统截断。
  */
 import { useEffect, useRef, useState } from 'react'
+import { rich } from './rich.tsx'
 
 type Pos = { x: number; y: number; text: string; below: boolean }
 
@@ -54,11 +55,8 @@ export function TipLayer() {
   return (
     <div ref={box} className={`tip ${tip.below ? 'below' : ''}`} role="tooltip"
          style={{ left: tip.x, top: tip.y }}>
-      {/* 词条里用 `**…**` 标重点（讲解卡的正文也是这么写的）。
-          这里按奇偶位切开渲染 —— **不用 dangerouslySetInnerHTML**：
-          这些字符串将来可能由别人补充，给它一条注入通道不值当。 */}
-      {tip.text.split('**').map((part, i) =>
-        i % 2 === 1 ? <b key={i}>{part}</b> : <span key={i}>{part}</span>)}
+      {/* 词条里用 `**…**` 标重点 —— 和实验单、导览卡共用 `rich()` 那一份实现 */}
+      {rich(tip.text)}
     </div>
   )
 }

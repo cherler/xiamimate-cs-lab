@@ -1,5 +1,5 @@
 {
-  "name": "xiamimate-cs-lab",
+  "name": "xiamimate-lab",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -18,9 +18,10 @@
     "test:l2": "tsx tests/compose-l2.test.ts",
     "web": "vite --config web/vite.config.ts web",
     "web:build": "vite build --config web/vite.config.ts web",
-    "web:single": "npm run web:build && node scripts/bundle-single.mjs",
+    "web:single": "VITE_NO3D=1 npm run web:build && node scripts/bundle-single.mjs",
     "web:lab": "VITE_BASE=/lab/ vite --config web/vite.config.ts web",
     "web:build:lab": "VITE_BASE=/lab/ vite build --config web/vite.config.ts web",
+    "ai:serve": "tsx server/index.ts",
     "gateway": "node scripts/local-gateway.mjs",
     "sync:tokens": "node scripts/sync-brand-tokens.mjs",
     "smoke": "node scripts/web-smoke.mjs",
@@ -28,9 +29,11 @@
     "contrast": "node scripts/theme-contrast.mjs --all"
   },
   "devDependencies": {
+    "@types/matter-js": "^0.20.2",
     "@types/node": "^26.2.0",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
+    "@types/three": "^0.185.4",
     "@vitejs/plugin-react": "^6.0.5",
     "playwright": "^1.62.1",
     "tsx": "^4.23.0",
@@ -39,7 +42,11 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.117.1",
+    "@react-three/drei": "^10.7.8",
+    "@react-three/fiber": "^9.7.0",
+    "matter-js": "^0.20.0",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "three": "^0.185.1"
   }
 }

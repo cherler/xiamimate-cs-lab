@@ -39,7 +39,7 @@ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8200/v1/lab/progress  
 
 ```bash
 # 构建必须带 VITE_BASE，否则产物里的资源链接指向域名根 —— 页面 200、控制台一屏 404
-cd /srv/xiamimate/xiamimate-cs-lab
+cd /srv/xiamimate/xiamimate-lab
 sudo git fetch --all && sudo git reset --hard origin/main
 sudo npm ci --no-audit --no-fund
 sudo npm run web:build:lab            # = VITE_BASE=/lab/ vite build

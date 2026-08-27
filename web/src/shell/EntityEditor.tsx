@@ -42,12 +42,15 @@ function cellOk(col: EntityColumn, raw: string): boolean {
 }
 
 export function EntityEditor({
-  spec, doc, onChange, onReset, dirty,
+  spec, doc, onChange, onReset, dirty, open, onToggle,
 }: {
   spec: EntitySpec
   doc: SimDocument
   onChange: (entities: Entity[]) => void
   onReset: () => void
+  /** 展开着没有；默认收起 */
+  open: boolean
+  onToggle: () => void
   dirty: boolean
 }) {
   /** 只有正在敲的那一格需要草稿；失焦即丢弃 */
@@ -91,13 +94,20 @@ export function EntityEditor({
   }
 
   return (
-    <div className="card ent">
+    /*  ⚠️ `shut` 这个类以前**没加** —— 折叠按钮的文字在「收起 ▲ / 展开改 ▼」
+        之间来回翻，`.card.shut>.body{display:none}` 那条规则却永远匹配不上，
+        表格一直摊在那儿。于是 9 个带实体表的实验里，编辑器吃掉 170~240px，
+        比舞台本身还高（子网划分：表 238px，舞台 182px）。
+        序列编辑器一直是对的（`card seq ... shut`），只有这一个漏了。 */
+    <div className={`card ent${open ? '' : ' shut'}`}>
       <h3>
         {spec.tables.map(t => t.label).join(' · ')}
         <span className="hint">
           {spec.tables.map(t => `${rowsOf(t).length} ${t.type === 'edge' ? '条' : '个'}`).join(' · ')}
           {dirty ? ' · 已改动' : ''}
         </span>
+        <button className="fold" onClick={onToggle}
+                aria-expanded={open}>{open ? '收起 ▲' : '展开改 ▼'}</button>
       </h3>
       <div className="body">
         {spec.tables.map(t => {
@@ -203,7 +213,8 @@ export function EntityEditor({
             <>
               <span className="k">预置</span>
               {spec.presets.map(p => (
-                <button key={p.label} title={p.note} onClick={() => { onChange(p.entities); setEditing(null) }}>
+                <button key={p.label} title={p.note} data-preset={p.label}
+                        onClick={() => { onChange(p.entities); setEditing(null) }}>
                   {p.label}
                 </button>
               ))}

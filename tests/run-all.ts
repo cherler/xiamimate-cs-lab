@@ -27,6 +27,8 @@ const SUITES = [
   ['跨设备合并的规则', 'sync-merge.test.ts'],
   ['讲解层的内容规则', 'guide-content.test.ts'],
   ['实验单的内容规则', 'brief-content.test.ts'],
+  ['实物渲染层的边界', 'render-only.test.ts'],
+  ['CSS 令牌都有定义', 'css-tokens.test.ts'],
 ] as const
 
 let failed = 0

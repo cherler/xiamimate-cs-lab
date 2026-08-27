@@ -18,13 +18,14 @@ import { dijkstraKernel, type DijkstraState } from '../src/kernels/dijkstra.ts'
 import { bankerKernel, type BankerState } from '../src/kernels/banker.ts'
 import { tcpKernel, type TcpState } from '../src/kernels/tcp.ts'
 import { arqKernel, type ArqState } from '../src/kernels/arq.ts'
+import { semaphoreKernel, type SemState } from '../src/kernels/semaphore.ts'
 import { validateDocument } from '../src/ai/schema.ts'
 import {
   CACHE_PRESETS, PAGE_PRESETS, DISK_PRESETS, SORT_PRESETS, type Preset,
 } from '../src/presets/sequences.ts'
 import {
   SCHED_PRESETS, DIJKSTRA_PRESETS, BANKER_PRESETS, TCP_PRESETS, ARQ_PRESETS,
-  type EntityPreset,
+  SEM_SCHEDULES, type EntityPreset,
 } from '../src/presets/entities.ts'
 
 let failures = 0
@@ -538,6 +539,64 @@ const arqLastOf = (ents: SimDocument['entities'], protocol: string) => {
   wrong.length === 0
     ? ok('不丢包：SW / GBN / SR 传输次数都恰好等于总帧数 8，零重传')
     : bad(`有重传：${wrong.map(x => `${x.p} ${x.t}`).join('、')}`)
+}
+
+console.log('\n【调度序列（信号量）】')
+
+const semLastOf = (label: string, order: 'correct' | 'wrong') => {
+  /*  内核只认流 —— 界面上那个「调度序列」旋钮做的也正是这件事：
+      把选中那条写进流里（`web/src/types.ts` 的 `ParamSpecBase.stream`）。
+      这里照同一条路走，判据验的才是产品真正跑的东西。 */
+  const values = SEM_SCHEDULES.find(x => x.label === label)!.values
+  const doc: SimDocument = {
+    kind: 'semaphore',
+    params: { bufferSize: 2, order, schedule: label },
+    entities: [], streams: [{ name: 'schedule', values }],
+  }
+  const v = validateDocument(doc)
+  if (v.length) throw new Error(`预置不合法：${v[0].location} ${v[0].message}`)
+  const t = run(semaphoreKernel.compile(doc), 4000) as SemState[]
+  return { last: t.at(-1)!, deadlocked: t.some(x => x.act === 'deadlock') }
+}
+
+/*
+ * 这三条 note 一直没人验过 —— 而其中两条对应的序列，界面上根本够不着
+ * （这个实验既没有序列编辑器也没有实体表，只有 `defaultDoc` 里那一条进得去）。
+ * 补上「调度序列」那个旋钮之后，三条都能跑，也就都该被钉住。
+ */
+// 「交替执行 → 正常协作，不会死锁」
+{
+  const a = semLastOf('交替执行', 'correct'), b2 = semLastOf('交替执行', 'wrong')
+  !a.deadlocked && !b2.deadlocked && a.last.produced === a.last.consumed && a.last.produced > 0
+    ? ok(`交替执行：两种 P 顺序都不死锁，生产 ${a.last.produced} = 消费 ${a.last.consumed}`)
+    : bad(`交替执行的说法不成立：正确序死锁=${a.deadlocked}、错误序死锁=${b2.deadlocked}`)
+}
+// 「生产者连跑 → 缓冲区填满后阻塞在 P(empty) 上」
+{
+  const r = semLastOf('生产者连跑', 'wrong')
+  r.deadlocked && Object.values(r.last.blocked).includes('empty')
+    ? ok(`生产者连跑（错误顺序）：死锁，且确实有人卡在 empty 上（${JSON.stringify(r.last.blocked)}）`)
+    : bad(`生产者连跑没演出阻塞：死锁=${r.deadlocked}、阻塞表=${JSON.stringify(r.last.blocked)}`)
+}
+// 「消费者先跑 → 缓冲区还空着，消费者阻塞在 P(full) 上」
+{
+  const r = semLastOf('消费者先跑', 'wrong')
+  r.deadlocked && Object.values(r.last.blocked).includes('full')
+    ? ok(`消费者先跑（错误顺序）：死锁，且确实有人卡在 full 上（${JSON.stringify(r.last.blocked)}）`)
+    : bad(`消费者先跑没演出阻塞：死锁=${r.deadlocked}、阻塞表=${JSON.stringify(r.last.blocked)}`)
+}
+/*
+ * 副标题那句「顺序错了会死锁」必须**在产品里演得出来**。
+ * 这条判据守的正是那句话：换成错误顺序之后，至少有一条够得着的调度序列会死锁。
+ * 在补上「调度序列」旋钮之前，这条会红 —— 那时候唯一够得着的序列是交替执行，
+ * 而它两种顺序都跑得通。
+ */
+{
+  const any = SEM_SCHEDULES.some(x => semLastOf(x.label, 'wrong').deadlocked)
+  const none = SEM_SCHEDULES.every(x => !semLastOf(x.label, 'correct').deadlocked)
+  any && none
+    ? ok('「顺序错了会死锁」立得住：错误顺序下有序列会死锁，正确顺序下一条都不会')
+    : bad(`副标题的说法不成立：错误顺序有死锁=${any}、正确顺序全都不死锁=${none}`)
 }
 
 // ═══ 自检：这套判据得会红 ══════════════════════════════

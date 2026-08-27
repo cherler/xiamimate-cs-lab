@@ -47,6 +47,14 @@ export default defineConfig(({ mode }) => {
        * 接口全排队**，表现是「页面好好的，但按什么都卡十几秒」。
        */
       hmr: { host: '127.0.0.1', clientPort: port, protocol: 'ws' },
+      /**
+       * AI 学伴后端是**另一个进程**（server/index.ts，默认 :8300），不在 Vite 里。
+       * 页面 fetch 的是同源的 /lab/ai/*，dev 下由这条 proxy 转给它。
+       * 线上同样要有对应规则（见 deploy/caddy-snippet：/lab/ai/* → 8300）。
+       */
+      proxy: {
+        '/lab/ai': { target: 'http://127.0.0.1:8300', changeOrigin: false },
+      },
     },
     build: { outDir: 'dist', emptyOutDir: true },
   }

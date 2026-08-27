@@ -50,9 +50,21 @@
  * 淡淡的琥珀，暗底上是一层暗琥珀，两边都成立。要换的只有**当文字用**的那一档。
  */
 :root{
+  /* ── 帧间过渡节奏（动画 pass）──
+     轨迹是逐步推演，切帧时"变了什么"该滑动而非瞬跳。全局两档：
+     --anim 给底色/边框/透明度这类原地变化；--anim-move 给真正的位置移动。
+     `prefers-reduced-motion` 那条 `*{transition:none}` 会把这些全关掉，无障碍白捡。 */
+  --anim: .18s ease;
+  --anim-move: .28s cubic-bezier(.4, 0, .2, 1);
   /* ── 浅色（默认档；随系统时系统亮就是它） ── */
-  --void:#E9EDF3; --panel:#FFFFFF; --panel-2:#F1F4F8; --line:#D5DBE4;
-  --ink:#1B2430; --dim:#526071; --faint:#5B6878;
+  /* 2026-08-18 改：原来页面底是 #E9EDF3（偏蓝的灰）。
+     把面板底色去掉之后，那层灰就整屏铺开了 —— 用户的原话是"背景是灰色、字不够黑"。
+     现在整页是**白纸**，色号取虾米看股那一套（同族但各自的纸面，见 brand-tokens.css 的分工）：
+     纸 #FFFFFF · 线 #D8E0E2 · 字 #14202A。 */
+  --void:#FFFFFF; --panel:#FFFFFF; --panel-2:#F3F6F6; --line:#D8E0E2;
+  --ink:#14202A; --dim:#4B5B66; --faint:#5A6B73;
+  /* faint 的下限是被 8.5px 的序号徽标钉死的：它压在 --panel-2 上而不是白纸上，
+     #66787F 只有 4.34:1、#5F7078 只有 4.40:1。选色号要按**最坏的那个底**算，不是按白纸算。 */
   --now:#8A5A00;                 /* 琥珀加深版：白纸上 5.93:1 */
   --hit:#0E7561; --miss:#B33B25;
   --f-tag:#3A5FB8; --f-idx:#7B4CB0; --f-off:#356274;
@@ -69,7 +81,27 @@
   /* 凹陷层：比所在面板更深的一层（输入框、表格格子、轨道）。
      名字里的数字是**深色主题下的黑色透明度**，这样这张表能逐条对回原来的字面量。 */
   --sunk-1:#14203308; --sunk-2:#1420330f; --sunk-3:#14203314; --sunk-4:#1420331c;
-  --line-soft:#D5DBE480;
+  /* ── 字号阶梯 ──
+     改之前一屏 **12 个字号**（8.5 → 17px），最小间距 0.5px ——
+     8.5 / 9 / 9.5 肉眼分不出，它们不构成层级，只构成噪音。
+     收成 5 档，每档对应一个**角色**而不是一个尺寸：
+     谁是主角（读数）· 谁是内容（正文）· 谁是控件 · 谁是标注。
+
+     写成 calc(N * var(--xm-font-scale))，顺带接上平台的整站字号缩放 ——
+     之前本仓的字号全是死的 px，用户在偏好设置里调那个数对本模块无效。 */
+  --t-title:calc(18px * var(--xm-font-scale));   /* 实验名（宋体，全站唯一一处） */
+  --t-read:calc(16px * var(--xm-font-scale));    /* 读数值：这一屏的心跳 */
+  --t-body:calc(12.5px * var(--xm-font-scale));  /* 正文 · 逐步日志 · 格子主值 */
+  --t-ui:calc(11px * var(--xm-font-scale));      /* 按钮 · 参数 · 位串 · chip */
+  --t-meta:calc(9.5px * var(--xm-font-scale));   /* 小标题 · 分组名 · 序号 · 字段名 */
+  --line-soft:#D8E0E280;
+  /* ── 实验台面 ──
+     签名元素：**屏幕上只有舞台有底色和网格**，其余全是白纸。
+     一块嵌进面板的浅青绿网格纸，青绿取自平台品牌色 #0c9488 —— 它同时说明了
+     "这是台面不是面板"，所以不需要再靠边框粗细去争主次。 */
+  --plate:#F8FBFA;   /* 再深一档就会把台面上 11px 的位串压到 4.27:1 —— 网格线负责说明「这是台面」，底色只要一点点 */ --plate-line:rgba(12,148,136,.075); --plate-edge:#CFE0DC;
+  /* 宋体做 display —— 跟虾米看股同族（那边 34 处在用） */
+  --song:"Songti SC","STSong","Noto Serif CJK SC","Source Han Serif SC",serif;
   --shadow:#1b243026;             /* 浮层投影：浅底上要淡，深底上要浓 */
   --scrim:#1b243066;             /* 弹层遮罩 */
 
@@ -119,7 +151,10 @@
 
   /* 底部坞的高度。**放在 :root 而不是 .dock 上**，因为讲解浮层要按它让位 ——
      浮层是 position:fixed，压在坞上面的话，坞右边那三分之一就点不到了。 */
-  --dock-h:172px;
+  /*  坞的厚度。**它同时是讲解卡的高度上限**（见 stage.css 的 .guide）——
+      讲解卡只能待在这条带子里，往上长就会压住轴刻度和读数。
+      所以这个数的下限由"三行讲解读得下"定，不能为了给舞台腾地方随便压。 */
+  --dock-h:128px;
   --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
   /* 兜底值留着：单文件产物里 brand-tokens.css 也会被内联，但万一将来
      谁把 import 顺序弄丢了，字体退回一个像样的栈，而不是退回 Times。 */
@@ -133,6 +168,8 @@
   :root:not([data-theme="light"]){
     color-scheme:dark;
     --void:var(--dk-void); --panel:var(--dk-panel); --panel-2:var(--dk-panel-2); --line:var(--dk-line);
+  --plate:var(--dk-panel); --plate-line:rgba(255,255,255,.045); --plate-edge:var(--dk-line);
+    --plate:var(--dk-panel); --plate-line:rgba(255,255,255,.045); --plate-edge:var(--dk-line);
     --ink:var(--dk-ink); --dim:var(--dk-dim); --faint:var(--dk-faint);
     --now:var(--dk-now); --hit:var(--dk-hit); --miss:var(--dk-miss);
     --f-tag:var(--dk-f-tag); --f-idx:var(--dk-f-idx); --f-off:var(--dk-f-off);
@@ -148,6 +185,7 @@
 :root[data-theme="dark"]{
   color-scheme:dark;
   --void:var(--dk-void); --panel:var(--dk-panel); --panel-2:var(--dk-panel-2); --line:var(--dk-line);
+  --plate:var(--dk-panel); --plate-line:rgba(255,255,255,.045); --plate-edge:var(--dk-line);
   --ink:var(--dk-ink); --dim:var(--dk-dim); --faint:var(--dk-faint);
   --now:var(--dk-now); --hit:var(--dk-hit); --miss:var(--dk-miss);
   --f-tag:var(--dk-f-tag); --f-idx:var(--dk-f-idx); --f-off:var(--dk-f-off);
@@ -184,13 +222,25 @@ html,body{height:100%}
 #root{display:flex;flex-direction:column;height:100dvh;overflow:hidden}
 .app{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
 body{margin:0;background:var(--void);color:var(--ink);font-family:var(--sans);
-  font-size:14px;line-height:1.65;-webkit-font-smoothing:antialiased}
+  font-size:var(--t-body);line-height:1.65;-webkit-font-smoothing:antialiased}
 button,input,select{font-family:inherit}
 button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{
   outline:2px solid var(--now);outline-offset:2px}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 
-.app{max-width:1420px;margin:0 auto;padding:12px 16px;width:100%;gap:11px}
+/*
+ * ⚠️ **不再封宽度上限。**
+ *
+ * 原来是 `max-width:1420px`。用户在一块 2000px 的屏上截图问
+ * 「我这么大的屏幕，核心实验区的字已经小到看不见了」—— 量出来：
+ * 那块屏白扔 612px（2560 的屏扔 1172px，46%），
+ * 而中列不管屏幕多大永远 952px。左右两条空白正是这条上限画出来的。
+ *
+ * 上限本来是给「一行别太长」用的，但这一屏的主角是**图**不是文章：
+ * 需要控行宽的只有实验单和讲解卡，它们各自有自己的宽度（见 `.brief` / `.guide`）。
+ * 拿一条外壳上限去管所有东西，代价是把舞台一起摁住了。
+ */
+.app{margin:0 auto;padding:12px 16px;width:100%;gap:11px}
 
 /* ── 平台页眉/页脚 ──
  *
@@ -216,22 +266,101 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{
 #xm-chrome-footer>.site-footer{background:var(--surface-card)}
 
 /* ── 页眉 ── */
-.top{display:flex;align-items:baseline;gap:13px;flex-wrap:wrap;
-  padding-bottom:11px;border-bottom:1px solid var(--line)}
-.top h1{margin:0;font-size:17px;font-weight:700;letter-spacing:-.01em}
-.top .sub{color:var(--dim);font-size:12.5px}
+/*  两行：第一行"这是什么实验"，第二行"这一屏在问什么"。
+    第二行值这 20px —— 没有它，人对着一屏格子不知道自己在看什么。 */
+.top{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:baseline;
+  gap:2px 13px;padding-bottom:9px;border-bottom:1px solid var(--line)}
+.tline{display:flex;align-items:baseline;gap:11px;min-width:0}
+.top .chips{grid-column:2;grid-row:1}
+/*  问句用正文色不用 dim：它是这一屏最该被读到的一句话，不是补充说明。 */
+.ask{grid-column:1/-1;margin:0;font-size:var(--t-body);color:var(--ink);
+  display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;line-height:1.5}
+.whycare{background:none;border:0;padding:0;cursor:pointer;color:var(--f-tag);
+  font-size:var(--t-ui);font-family:var(--sans);white-space:nowrap}
+.whycare:hover{text-decoration:underline}
+
+/*  实验名用宋体：技术产品里中文宋体标题辨识度高，且跟虾米看股同族。
+    只用在这一处 —— 出现第二处它就不是 display 了。 */
+
+.top .sub{color:var(--dim);font-size:var(--t-body)}
 .chips{margin-left:auto;display:flex;gap:6px;align-items:center}
-.chip{font-family:var(--mono);font-size:10px;letter-spacing:.1em;padding:3px 8px;
+.chip{font-family:var(--mono);font-size:var(--t-ui);letter-spacing:.1em;padding:3px 8px;
   border:1px solid var(--line);border-radius:3px;color:var(--dim);background:var(--panel);
   white-space:nowrap}
 .chip.warn{color:var(--miss);border-color:#E2664A55;background:#E2664A12}
+/*  目标 chip 是页眉上唯一一处**会随着你拧旋钮变的字**，所以给它比别的 chip 亮一档；
+    达成之后换成 --hit，但**不加动效** —— 它会在拖轴时逐步跳变，闪一下比不闪更吵。 */
+.chip.gchip{color:var(--ink);border-color:var(--line);cursor:pointer}
+/*  编辑器收起：它是**设置**，不是内容。改之前它和舞台一样大（各占屏 8.7%）。 */
+.card.shut>.body{display:none}
+.card>h3 .fold{background:none;border:0;color:var(--faint);cursor:pointer;
+  font-size:var(--t-ui);padding:0 2px;line-height:1}
+.card>h3 .fold:hover{color:var(--ink)}
+.chip.gchip.met{color:var(--hit);border-color:#0E756155;background:#0E756112}
 
-.grid{display:grid;grid-template-columns:178px minmax(0,1fr) 236px;gap:11px;
-  flex:1;min-height:0}
+/*  三栏比例照概念图定：**中列稳定在 64% 左右**。
+ *
+ *  ⚠️ 两栏的宽度必须**跟着屏宽长**，不能定死。
+ *  定死 225 / 320 的那一版，在 1440 上比例是对的（16% / 64% / 20%），
+ *  可屏幕再宽，多出来的像素**全进了中列** —— 2400 宽的屏上中列吃到 77%，
+ *  而 FitBox 的设计宽度封在 950，那多出来的六百多像素一寸都用不上，
+ *  全是白边；同时左右两栏还各自挤着。用户原话：
+ *  「两侧太窄、中间太宽，布局就感觉很不协调」。
+ *
+ *  `clamp` 的三个数各有出处：
+ *    下限 225/320 —— 1280 屏上的现值，窄屏一步不退（"一屏装得下"那组判据按它算）；
+ *    中间 15vw/20vw —— 概念图的比例；
+ *    上限 380/480 —— 再宽就该是"两栏太胖"了，目录一行放得下最长的实验名即可。 */
+/*  ⚠️ 两栏的宽度**定义在 `:root`**，不是写成 `.grid` 上的兜底值。
+ *
+ *  写成 `var(--navw, clamp(…))` 的那一版看着没问题，实际一寸没生效 ——
+ *  `:root` 上早就有一行 `--sidew:236px`（给 position:fixed 的讲解卡读的），
+ *  它会继承到 `.grid`，于是 `var()` 拿到的是那个 236，兜底的 clamp 永远轮不上。
+ *  **有定义就不走兜底**：兜底只在"这个变量根本没人定义"时才用得着。 */
+/*  下限 190/270 是**窄屏的地板**，不是设计值：1280 上按 15vw/20vw 算是 192/256，
+    地板只兜住比它更窄的屏。定成 225/320 的那版在 1280 上把中列压到 55%，
+    比改之前还窄 —— 那不是"两栏加宽"，是把窄屏一起赔进去了。 */
+:root{--navw:clamp(190px,15vw,380px); --sidew:clamp(270px,20vw,480px)}
+.grid{display:grid;
+  grid-template-columns:var(--navw) minmax(0,1fr) var(--sidew);
+  gap:11px;flex:1;min-height:0}
+/*  收起 = 缩成一条 22px 的窄轨，不是缩成 0。
+    缩成 0 的话「再打开」的按钮就得另找地方摆，而东西从哪儿没的就该从哪儿找回来。 */
+.grid[data-nav="shut"]{--navw:22px}
+.grid[data-side="shut"]{--sidew:22px}
+/*  讲解卡是 position:fixed，读不到 .grid 上那两条覆盖 ——
+    在 :root 这一层同步一份（body 上没有这个状态，用 :has 从 grid 往上够）。 */
+:root:has(.grid[data-side="shut"]){--sidew:22px}
+/*  收起时把栏里的东西整体藏掉（只留那颗折叠钮）。
+    用 `visibility` 而不是 `display:none`：display 会把子树整个拆掉，
+    再展开时滚动位置、focus 全丢；visibility 留着布局但不接事件。 */
+.grid[data-nav="shut"] .nav>*:not(.colfold),
+.grid[data-side="shut"] .side>*:not(.colfold){visibility:hidden;pointer-events:none}
+.grid[data-nav="shut"] .nav,.grid[data-side="shut"] .side{overflow:hidden}
+
+/*  折叠钮贴在两栏的上沿。它是 `.grid` 的直接子元素（不是栏的子元素，
+    理由见 App.tsx 那段注释），所以定位基准是整个 grid。 */
+.grid{position:relative}
+.grid>.colfold{position:absolute;top:6px;width:18px;min-width:18px;height:22px;padding:0;
+  border:1px solid var(--line);border-radius:4px;background:var(--panel);
+  color:var(--faint);font-size:var(--t-ui);line-height:1;cursor:pointer;z-index:3;
+  display:flex;align-items:center;justify-content:center}
+.grid>.colfold:hover{color:var(--ink);border-color:var(--faint)}
+/*  贴着各自那一栏的内沿：左栏靠右边、右栏靠左边 */
+.grid>.nav-fold{left:calc(var(--navw,178px) - 23px)}
+.grid>.side-fold{right:calc(var(--sidew) - 23px)}
+/*  两边的首个标题各让开一格，不然被按钮压住（实测「参数」的「参」正好在按钮底下） */
+.nav>div:first-of-type .grp{padding-right:24px}
+.col.side>.card:first-of-type h3{padding-left:24px}
 /* 每一列自己滚 —— `min-height:0` 是关键：不写它，grid 子项的默认
    `min-height:auto` 会让列被内容撑开，外面那层 overflow:hidden 就白设了。 */
 .grid>*{min-height:0}
-.col{display:flex;flex-direction:column;gap:11px;min-width:0;min-height:0}
+/*  ⚠️ `position:relative` 不能省。实验单是 `position:absolute;inset:0`，
+    它要盖住的是**中列**。给 `.grid` 加了定位（两颗收起钮要贴到栏边上）之后，
+    最近的定位祖先变成了 grid，实验单于是连左边的目录一起盖住 ——
+    表现是冒烟第 1 组点不着实验按钮，报错说被 `.bfsub` 挡住，
+    从那句话完全看不出祸首是一行 `position:relative`。 */
+.col{position:relative;display:flex;flex-direction:column;gap:11px;min-width:0;min-height:0}
 /* 右列（参数 + 读数）内容多时自己滚 */
 .col:last-child{overflow-y:auto}
 @media(max-width:1120px){
@@ -240,9 +369,60 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{
   .grid{grid-template-columns:minmax(0,1fr);overflow-y:auto}
   #root{height:auto;min-height:100dvh;overflow:visible}
   .app{overflow:visible}
+
+  /*  DOM 顺序是 目录 → 正文 → 右栏（桌面三列时正确）。
+      单列一叠，30 项目录就整个压在正文上方 —— 手机用户要划过全部 30 项
+      才看得见实验本身，首屏等于什么都没有。用 order 把正文提到最前，
+      目录退到最后（它是"换一个实验"，不是"这一屏在讲什么"）。 */
+  .col.main{order:1} .col.side{order:2} .nav{order:3}
+  /*  ⚠️ 选择器必须是 `.grid>.colfold`（0,2,0）—— 上面那条定位规则就是这个特异性。
+      只写 `.colfold`（0,1,0）压不过它，按钮照样绝对定位在正文最上方、盖住实验名。 */
+  .grid>.colfold{display:none}    /* 单列下折叠按钮没有意义，还会盖住标题 */
+}
+
+@media(max-width:560px){
+  /*  顶栏两列在 390px 上挤不下：让它叠成两行，面包屑独占一行。 */
+  .top{grid-template-columns:minmax(0,1fr)}
+  .top .chips{grid-column:1;grid-row:2;flex-wrap:wrap}
+
+  /*  走带是一行三块（播放键 · 刻度 · "第几步/共几步"）。390px 上三块互相挤，
+      刻度被压到彼此重叠、和步数文字糊成一坨。让它折行：刻度独占一行。 */
+  .axis{flex-wrap:wrap;gap:8px 12px}
+  .ticks{flex:1 0 100%;order:3}
+  .axis .head{margin-left:auto}
+
+  /*  实验名在窄屏会和"看懂这一屏"按钮挤到一起，允许它换行。 */
+  .exphead{flex-wrap:wrap}
+  .exphead h1{white-space:normal}
 }
 
 .card{background:var(--panel);border:1px solid var(--line);border-radius:6px}
+/*  ⚠️ 屏幕上只该有**一个**东西看起来像卡片。
+    改之前一屏 7 张同款白卡片（目录 / 序列编辑器 / 舞台 / 参数 / 读数 / 坞…），
+    边框粗细、圆角、内边距全一样 —— 没有任何东西在说"看这里"。
+    层级不靠"更暗"（深色面板上装不下三级灰），靠**有没有边框** + 字号字距。 */
+.grid .card:not(.stagewrap){background:transparent;border-color:transparent}
+/*  概念图上右栏是三张**实心白卡**，不是三段贴在底色上的文字。
+    只给声明了 `whyInRail` 的实验（`data-rail="cards"`，见 App.tsx）——
+    其余 29 个的右栏维持原样，改版一次只推一个实验。 */
+.grid .col.side[data-rail="cards"]>.card{background:var(--panel);border-color:var(--line)}
+.grid .col.side[data-rail="cards"]>.card>h3{border-bottom-color:var(--line)}
+.grid .card:not(.stagewrap)>h3{border-bottom-color:var(--line-soft, transparent)}
+.grid .card:not(.stagewrap)>.body{padding:10px 2px}
+.grid .nav{padding-left:0}
+/*  舞台反过来加重：它是主角，给它边框、底色和一点投影 */
+/*  ⚠️ 台面上的**网格去掉了**（2026-08-19）。
+    用户原话：「仿真实验的主场景，背景是方格子的……所以这个一格很模糊啊」——
+    讲解说"行里的每一格是一条路"，而背景本身就是一片格子，两层格子在打架。
+    这不是措辞问题：**Cache、散列表、位示图、B+ 树的内容本身就是格子矩阵**，
+    背景再铺一层，"格"这个字就没法用了。
+
+    工程图纸那个身份不靠网格 —— 它靠剖面线、标尺、引出线、尺寸标注，那些都是**信息**。
+    网格是这一套里唯一纯装饰的部分，而它现在在添乱。出门前摘掉一件配饰，摘它。 */
+.stagewrap{border:1px solid var(--plate-edge);border-radius:7px;
+  background:var(--plate);
+  /* 内凹一圈：台面是嵌进面板里的，不是浮在上面的卡片 */
+  box-shadow:inset 0 1px 3px rgba(20,32,42,.055), inset 0 0 0 1px rgba(255,255,255,.6)}
 /* 中列的排布：页签与轴按内容高，编辑器封顶，**舞台吃掉剩下的全部**。
  *
  * ⚠️ 第一版把编辑器写成 `flex:0 0 auto`（按内容高、不许缩）。在只有序列编辑器的
@@ -252,68 +432,296 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{
  *
  * 现在：编辑器可以缩、且各自封顶 34%（超了在自己框里滚），
  * 舞台有 180px 的地板 —— 实在排不下时中列整体滚，**滚的是一个面板，不是整页**。 */
-.grid>.col:nth-child(2){min-height:0;overflow-y:auto}
-.grid>.col:nth-child(2)>.tabs,
-.grid>.col:nth-child(2)>.axis{flex:0 0 auto}
+/*  ⚠️ 这几条原来写的是 `.grid>.col:nth-child(2)`。
+    往 `.grid` 里加了两颗收起钮（它们是绝对定位的，不占格子）之后，
+    中列从第 2 个孩子变成第 4 个，这 5 条规则**一声不响地全部失配** ——
+    页面不报错、看着也没塌，只是滚动与 flex 的约束悄悄没了。
+    这是「拿位置当键」的第六次（坞页签按下标 · 预置按文字 · 高亮按文字 ·
+    卡片按标题 · 翻页钮按位置 · 这里按第几个孩子）。给中列一个名字。 */
+.grid>.col.main{min-height:0;overflow-y:auto}
+.grid>.col.main>.tabs,
+.grid>.col.main>.axis{flex:0 0 auto}
+/*  舞台这一块吃掉中列剩下的全部高度 */
+/*  ⚠️ 默认**竖排**。第一版默认横排、只在宽容器里调整 ——
+    结果窄容器（1280 屏、9:16 展示）里推演旁白跟舞台挤同一行，
+    舞台被压成一条几像素宽的缝，FitBox 的内容从左边溢出去，
+    冒烟报的是「.sets .cell 被目录里的按钮挡住」—— 离病根隔着三层。 */
+.grid>.col.main>.stagerow{flex:1 1 auto;min-height:0;position:relative;
+  display:flex;flex-direction:column}
+/*  ── 主区抬头 ──
+ *  实验名 · 这一屏在问什么 · 挑战 · 页签，**一行摆完**（概念图上就是一行）。
+ *
+ *  原来是两行：第一行 名字 + 副题（组相联映射·替换策略）+ 页签，
+ *  第二行 问句 + 「先搞懂几个词」。副题说的是**这个实验属于哪一类**，
+ *  而问句说的是**这一屏要你回答什么** —— 招牌上只该留后者，
+ *  分类在左边目录里已经写着（分组标题就是它）。 */
+.exphead{flex:0 0 auto;display:flex;flex-wrap:nowrap;align-items:baseline;
+  gap:12px;padding-bottom:7px;border-bottom:1px solid var(--line)}
+/*  实验名沿用原来 `.top h1` 那一套（宋体，全站唯一一处）——
+    ⚠️ 别自己编令牌：我第一版写的 `--t-h1` / `--serif` 都不存在，
+    真名是 `--t-title` / `--song`，css-tokens 那套判据会红。 */
+.exphead h1{margin:0;font-size:var(--t-title);font-family:var(--song);
+  font-weight:600;letter-spacing:.01em;white-space:nowrap;flex:0 0 auto}
+/*  问句：招牌上的第二主角，比原来那行副题重一档 —— 它是这一屏的题目 */
+.exphead .sub{font-size:var(--t-body);color:var(--dim);flex:0 1 auto;min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.exphead .tabs{flex:0 0 auto}
+.exphead .tabs{margin-left:auto;border-left:0;padding-left:0}
+/*  挑战：一枚安静的蓝色药丸。
+    **不用琥珀** —— 全屏统一的规矩是"琥珀＝当前那一步"，
+    而挑战是整屏的目标，不是某一步；用同一个颜色会让人以为它跟着走带变。
+    达成之后才转绿：那是唯一一次它有资格抢注意力。 */
+/*  ⚠️ 必须**可收缩**（flex:0 1 auto + min-width:0 + 省略号）。
+    定死 `white-space:nowrap` 又不许收缩的那一版，在 1280 屏上把实验名那一行
+    挤到换行，表头从 61px 涨到 89px —— 而「一屏装得下」那条判据是按像素算的，
+    ARQ 当场超出基线 12px。药丸宁可截断，也不该改整页的高度。
+
+    ⚠️ 光有 `flex-shrink` 不够：**换行发生在收缩之前** —— 一行放不下时
+    flex 先把后面的项甩到下一行，根本不会去挤前面那一项。所以必须
+    给一个 `max-width` 把它按住。34% 是量出来的：1280 屏上中列 812px，
+    实验名 116 + 副标题 155 + 页签 126 + 间距 ≈ 420，剩给药丸 ≈ 390，取一半有余量。
+    完整那句话没丢，在悬停里。 */
+.goalpill{background:#3A5FB812;border:1px solid #3A5FB833;color:var(--p1);
+  border-radius:6px;padding:4px 11px;font-size:var(--t-ui);cursor:pointer;
+  font-family:inherit;line-height:1.5;white-space:nowrap;
+  flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;max-width:34%}
+.goalpill:hover{background:#3A5FB81f;border-color:#3A5FB855}
+.goalpill.met{background:#0E756114;border-color:#0E756140;color:var(--hit);font-weight:600}
+.exphead .ask{flex:0 0 100%;margin:0;font-size:var(--t-body);color:var(--ink)}
+
+/*  面包屑：模块级那一条，只说"你在目录的哪一格" */
+/*  ⚠️ `white-space:nowrap` + `flex-shrink:0` 是**必须**的，不是保险：
+    `.top` 是 `minmax(0,1fr) auto` 两列，右边那排 chips 是 auto（不让步）。
+    390px 上左列只剩 ~100px，而 flex 子项默认可以被压到比内容还窄 ——
+    中文没有空格，浏览器就**逐字换行**：「计算机组成原理」竖成 7 行、顶栏白占 140px。
+    体验师原话「这网站是不是坏了」。 */
+.crumb{display:flex;align-items:baseline;gap:7px;min-width:0}
+.crumbdir,.crumbgrp{white-space:nowrap;flex-shrink:0}
+.crumbdir{background:var(--panel-2);border:1px solid var(--line);border-radius:5px;
+  padding:3px 9px;cursor:pointer;color:var(--dim);font-size:var(--t-ui)}
+.crumbdir:hover{color:var(--ink);border-color:var(--faint)}
+.crumbsep{color:var(--ghost)}
+.crumbgrp{font-size:var(--t-ui);color:var(--dim)}
+
+/*  ⚠️ min-height 写 180 不写 0：`.stagerow>.stagewrap`（0,2,0）会压过
+    `.stagewrap{min-height:180px}`（0,1,0）—— 写 0 的那版在 1280 屏上
+    让子网划分的舞台被旁栏挤到只剩 78px。 */
+.stagerow>.stagewrap{flex:1 1 auto;min-width:0;min-height:180px;order:2}
+/*  旁栏（推演 / 日志 / 真题 / 边界）在舞台左边 —— 图是居中画的，左边本来就空。 */
+.stagerow>.dock{flex:0 0 auto;order:1}
+
+/*  ── 推演进实验区 ──
+ *
+ *  用户原话：「就上面这些解释说明部分能不能也放进实验区里，浮空层也好」。
+ *  它原来是舞台底下**独立的一条横带子**：占掉约 110px 高度，
+ *  而它只用得上 500px 宽，右边一千多像素全空着。
+ *
+ *  现在它进到实验区里，占左边一栏 —— 舞台因此多拿到那 110px 高度，
+ *  而这一栏本来就是空的（图是居中画的）。
+ *
+ *  ⚠️ 用 `margin-left` 给舞台让位，**不是真的浮在上面**：
+ *  真浮空会压住图，而每个舞台的空白在哪儿都不一样，压中什么全看运气。
+ *  让位之后 FitBox 量到的容器宽已经扣掉了这一栏，图永远不会钻到字底下。
+ */
+.col.main{container-type:inline-size;container-name:main}
+/*  窄容器：旁栏退回舞台上方的一条横带（封高，长了自己滚）。
+    并排要求舞台至少还剩 700px，不然两边都挤。 */
+.stagerow>.dock{max-height:34%}
+@container main (min-width:1160px){
+  /*  ⚠️ 选择器要跟"竖排"那条**同样长**。写 `.stagerow{flex-direction:row}`（0,1,0）
+      压不过上面的 `.grid>.col.main>.stagerow`（0,3,1）—— 容器查询不加权重。
+      表现是：宽度、max-height 都按查询里的来了，唯独方向还是 column，
+      旁栏于是横躺在舞台上方，只有 231px 高。 */
+  .grid>.col.main>.stagerow{flex-direction:row;gap:11px}
+  /*  默认宽按容器算；用户拖过之后由内联 style 覆盖（内联权重更高，天然生效）。 */
+  .stagerow>.dock{width:clamp(330px,27cqw,460px);max-height:none;
+    display:flex;flex-direction:column;min-height:0}
+  /*  折叠 = **往左收成一条 32px 的竖轨**，宽度全让给舞台。
+      原来折叠只藏正文、那 400px 的宽度照占 —— 用户原话：
+      「折叠还是占了这个空间，要不往左折叠呢」。 */
+  .stagerow>.dock.folded{width:32px;min-width:32px}
+  .stagerow>.dock.folded .dockbar{flex-direction:column;gap:0;border-bottom:0;padding:0}
+  .stagerow>.dock.folded .dockbar button:not(.dockfold){display:none}
+  .stagerow>.dock.folded .dockfold{margin:4px auto 0;writing-mode:vertical-rl}
+  .stagerow>.dock>.dockbody{flex:1;min-height:0;overflow-y:auto}
+  /*  旁栏里的推演：**四段各自编号、各自成块**，段与段之间留一整行的气口。
+      用户原话：「文字也描述不要堆叠，改换行换行、改加编号加编号啊」。
+      编号在这里不是装饰 —— 这四段本来就是一条有先后的推演
+      （输入 → 规则 → 于是 → 看哪儿），序号encode 的正是这个顺序。 */
+  .stagerow .whyband{grid-template-columns:1fr;align-content:start;gap:0;
+    border-left:0;padding:4px 0 0;counter-reset:wstep}
+  .stagerow .whyband .wseg{padding-left:0;border-left:0;
+    padding-bottom:11px;border-bottom:1px dashed var(--line)}
+  .stagerow .whyband .wseg:last-child{border-bottom:0}
+  .stagerow .whyband .wseg+.wseg{margin-top:11px}
+  .stagerow .whyband .wk{text-align:left;padding-top:0;counter-increment:wstep;
+    font-size:var(--t-ui);color:var(--dim);letter-spacing:0;margin-bottom:4px}
+  .stagerow .whyband .wk::before{content:counter(wstep);display:inline-grid;
+    place-items:center;width:16px;height:16px;margin-right:6px;border-radius:50%;
+    background:var(--sunk-3);color:var(--faint);font-family:var(--mono);
+    font-size:var(--t-meta);vertical-align:1px}
+  .stagerow .whyband .wv{max-width:none;line-height:1.85}
+  /*  第 3 段是结论 —— 序号点亮，眼睛知道答案在这一格 */
+  .stagerow .whyband .wseg:nth-child(3) .wk{color:var(--ink)}
+  .stagerow .whyband .wseg:nth-child(3) .wk::before{background:var(--f-tag);color:var(--void)}
+}
 /*  编辑器让位给舞台：**滚一个表单**比滚一张图可接受得多，舞台才是要看的东西。
     原来是 34%，那时 7 个实验的图缩到下限还差 42~96px；压到 30% 后差距减半。
     再往下压（试过 25%）舞台只多赚几十像素，编辑器却要滚三屏 —— 不划算。 */
-.grid>.col:nth-child(2)>.card:not(.stagewrap){flex:0 1 auto;max-height:30%;overflow-y:auto}
+.grid>.col.main>.card:not(.stagewrap){flex:0 1 auto;max-height:30%;overflow-y:auto}
+/*  ⚠️ 只写布局。`overflow` 归 stage.css 管（那边后加载、同权重会盖掉这边）——
+    一个元素的同一族属性只该有一个出处，那条注释就写在 stage.css 里。 */
 .stagewrap{flex:1 1 auto;min-height:180px}
+/*  给讲解卡在舞台底部留一条 —— 它是浮层，而实验区吃满了中列高度，
+    不留位就压住格子（1440×900 实测压 4 个）。
+    `--guide-h` 由卡片自己算：**只有真的压到实验区时才不为 0**，
+    否则一律 0，不白占（见 GuideOverlay 里那段相交判断）。 */
+.stagewrap{padding-bottom:var(--guide-h,0px)}
 .card>h3{margin:0;padding:9px 12px;border-bottom:1px solid var(--line);
-  font-family:var(--mono);font-size:9.5px;letter-spacing:.16em;
+  font-family:var(--mono);font-size:var(--t-meta);letter-spacing:.16em;
   text-transform:uppercase;color:var(--faint);font-weight:600;
   display:flex;justify-content:space-between;align-items:center;gap:8px}
-.card>h3 .hint{text-transform:none;letter-spacing:.02em;font-size:10px;color:var(--faint)}
+.card>h3 .hint{text-transform:none;letter-spacing:.02em;font-size:var(--t-ui);color:var(--faint)}
 .card>.body{padding:12px}
 
 /* ── 左：实验目录 ── */
 .nav{display:flex;flex-direction:column;padding-bottom:6px;overflow-y:auto}
-.nav .grp{padding:11px 12px 4px;font-family:var(--mono);font-size:9.5px;
+.nav .grp{padding:11px 12px 4px;font-family:var(--mono);font-size:var(--t-meta);
   letter-spacing:.16em;text-transform:uppercase;color:var(--faint)}
 .nav button{display:flex;gap:8px;align-items:baseline;padding:6px 12px;width:100%;
   background:none;border:0;border-left:2px solid transparent;color:var(--dim);
-  font-size:12.5px;text-align:left;cursor:pointer}
-.nav button .n{font-family:var(--mono);font-size:10px;color:var(--faint)}
+  font-size:var(--t-body);text-align:left;cursor:pointer}
+.nav button .n{font-family:var(--mono);font-size:var(--t-ui);color:var(--faint)}
 .nav button:hover{background:var(--panel-2);color:var(--ink)}
 .nav button.on{color:var(--ink);border-left-color:var(--now);background:var(--panel-2)}
 .nav button.on .n{color:var(--now)}
+/*  软链接：真身在别的子模块，目录里给个「↗」入口 —— 淡一点、右侧标记 */
+.nav button.soft{color:var(--dim)}
+.nav button.soft .n{opacity:.7}
+.nav button .softmark{margin-left:auto;font-size:var(--t-meta);color:var(--faint)}
+.nav button.soft:hover .softmark{color:var(--now)}
 
 /* ── 视图切换 ── */
-.tabs{display:flex;gap:1px;background:var(--line);border:1px solid var(--line);
-  border-radius:5px;overflow:hidden}
-.tabs button{flex:1;background:var(--panel);border:0;color:var(--dim);cursor:pointer;
-  padding:8px 6px;font-family:var(--mono);font-size:10.5px;letter-spacing:.09em}
-.tabs button:hover{background:var(--panel-2);color:var(--ink)}
-.tabs button[aria-selected=true]{background:var(--panel-2);color:var(--ink);
-  box-shadow:inset 0 -2px 0 var(--now)}
+/*  ── 页签 ──
+    改之前是一条通栏的框：满宽、带边框、按钮各占一半，视觉重量跟舞台一个量级 ——
+    而它只是「这一屏看哪个视图」，一个开关而已。
+    现在收成左对齐的一小排文字，靠下划线表示选中，**不占整行宽度**。 */
+/*  页签住在顶梁标题行里（原来自成一行，29px）。
+    baseline 对齐到标题、左边一道竖线隔开 —— 它是"换视图"，不是标题的一部分。 */
+.tabs{display:flex;gap:2px;align-self:baseline;padding:0;
+  margin-left:14px;padding-left:14px;border-left:1px solid var(--line)}
+.tabs button{background:none;border:0;color:var(--faint);cursor:pointer;
+  padding:5px 10px 6px;font-family:var(--mono);font-size:var(--t-ui);letter-spacing:.09em;
+  border-bottom:2px solid transparent;border-radius:3px 3px 0 0}
+.tabs button:hover{color:var(--ink);background:var(--panel-2)}
+.tabs button[aria-selected=true]{color:var(--ink);border-bottom-color:var(--now);
+  font-weight:600}
 
 /* ── 轴：第一等公民 ── */
-.axis{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:10px 14px 12px}
-.axis .head{display:flex;align-items:baseline;gap:10px;margin-bottom:8px}
-.lbl{font-family:var(--mono);font-size:9.5px;letter-spacing:.16em;
-  text-transform:uppercase;color:var(--faint);font-weight:600}
-.axis .head .cur{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--now)}
-.axis .head .metric{font-family:var(--mono);font-size:10px;color:var(--faint)}
-.ticks{display:flex;gap:2px;margin-bottom:8px;align-items:flex-end}
-.tick{flex:1;min-width:6px;height:40px;border-radius:2px;border:0;cursor:pointer;
-  position:relative;padding:0;overflow:hidden;background:var(--sunk-3);
-  display:flex;flex-direction:column;justify-content:flex-end}
-.tick i{display:block;width:100%;border-radius:1px 1px 0 0;transition:height .1s}
+/* ═══ 这一步为什么是这样 ═══
+ *
+ * 舞台与轴之间的一条带子。四段**竖着排**，段名走左边一条固定的窄栏。
+ *
+ * ## 为什么不是横着四格
+ *
+ * 横排试过：1440 屏中列 952px、1280 屏 812px，四格挤在一行每格才两百出头，
+ * 最长那段（规则）要折四行，整条带子 91~110px。更糟的是 1280×720 上
+ * 中列直接被撑出 12px —— 序列编辑器摊开时它自己把内容裁了，
+ * 屏幕上没有任何提示，冒烟里表现为"预置按钮点不着"。
+ *
+ * 竖排每段独占一整列宽（812~952px，能放七八十个字），
+ * 除了规则那段基本都是一行，整条带子 80~90px，还省下了四个段名各占一行的开销。
+ * 顺带对了另一件事：这四段本来就是**一条顺序**（输入 → 规则 → 于是 → 看哪儿），
+ * 从上往下读比从左往右扫更像在跟着推演走。
+ */
+.whyband{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;
+  padding:3px 2px 1px;border-left:2px solid var(--line);padding-left:11px}
+.whyband .wseg{display:contents}
+.whyband .wk{font-size:var(--t-meta);color:var(--faint);letter-spacing:.06em;
+  text-align:right;line-height:1.65;white-space:nowrap;
+  /*  段名跟正文首行对齐：`--t-meta` 比 `--t-ui` 小，基线不校就会浮在半空 */
+  padding-top:.15em}
+/*  同上：宽屏上这一段实测一行 132 个汉字。`46em` ≈ 46 字。 */
+.whyband .wv{font-size:var(--t-ui);line-height:1.65;color:var(--dim);margin:0;
+  min-width:0;max-width:46em}
+.whyband .wv b{color:var(--ink)}
+/*  ── 走带 ──
+ *  控制键 ─ 刻度带 ─ 步数，一行排完（原来三行 133px；它是每步都碰的控件，
+ *  越厚舞台越薄）。刻度带 flex:1 吃掉全部余宽 —— 它是这一屏的签名元素。 */
+.axis{background:var(--panel);border:1px solid var(--line);border-radius:6px;
+  display:flex;align-items:center;gap:12px;padding:8px 14px}
+.axis .head{flex:0 0 auto}
+.axis .head{display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.axis .head .cur{font-family:var(--mono);font-size:var(--t-ui);color:var(--now);white-space:nowrap}
+.axis .head .prog{display:block;width:104px;height:2px;border-radius:2px;background:var(--sunk-3)}
+.axis .head .prog b{display:block;height:100%;border-radius:2px;background:var(--now);
+  transition:width .12s}
+.ctl{display:flex;gap:6px;align-items:center;flex:0 0 auto}
+.ctl button{background:var(--panel-2);border:1px solid var(--line);color:var(--dim);
+  border-radius:5px;padding:5px 10px;cursor:pointer;font-size:var(--t-ui);line-height:1}
+.ctl button:disabled{opacity:.35;cursor:default}
+.ctl button:hover:not(:disabled){color:var(--ink);border-color:var(--faint)}
+.ctl .step{min-width:30px;padding:5px 9px}
+.ctl .play{border-color:var(--now);color:var(--now);min-width:78px;font-family:var(--mono)}
+
+/*  刻度带（走带的主体）。
+    ⚠️ 这几条曾在一次整段替换里被误删 —— 仓库没有 git，是从 web/dist 的
+    构建产物里按选择器捞回来的。改成一行布局后动了三处：
+    去掉 margin-bottom（不再有下一行）、flex:1（吃掉走带余宽）、
+    高度 30（原 34，一行制里它就是走带的身高）。 */
+.ticks{touch-action:none;cursor:ew-resize;align-items:flex-end;gap:2px;
+  padding-top:21px;display:flex;position:relative;flex:1 1 auto;min-width:0}
+.tick{min-width:6px;height:30px;cursor:inherit;background:var(--sunk-2);border:0;
+  border-radius:2px 2px 0 0;flex-direction:column;flex:1;justify-content:flex-end;
+  padding:0;display:flex;position:relative;overflow:visible}
+.tick i{border-radius:1px 1px 0 0;width:100%;transition:height .1s;display:block}
 .tick.good i{background:var(--hit)}
 .tick.bad i{background:var(--miss)}
 .tick.idle i{background:var(--wan)}
+.tick.unseen i{background:var(--sunk-4)}
+.tick.unseen:hover i{filter:none;background:var(--line)}
 .tick:hover i{filter:brightness(1.35)}
-.tick.cur{outline:2px solid var(--now);outline-offset:1px;z-index:1}
-.tick .no{position:absolute;top:2px;left:0;right:0;text-align:center;
-  font-family:var(--mono);font-size:8.5px;color:var(--faint);pointer-events:none}
-.tick.cur .no{color:var(--now)}
-.ctl{display:flex;gap:6px;align-items:center}
-.ctl button{background:var(--panel-2);border:1px solid var(--line);color:var(--dim);
-  border-radius:4px;padding:4px 11px;cursor:pointer;font-family:var(--mono);font-size:11px}
-.ctl button:hover:not(:disabled){color:var(--ink);border-color:var(--faint)}
+.tick.cur{z-index:2}
+.tick.cur:before{content:"";background:var(--now);width:2px;
+  box-shadow:0 0 0 1px color-mix(in srgb, var(--panel) 72%, transparent);
+  margin-left:-1px;position:absolute;top:-6px;bottom:0;left:50%}
+.tick.cur:after{content:"";border-left:5px solid #0000;border-right:5px solid #0000;
+  border-top:6px solid var(--now);margin-left:-5px;position:absolute;top:-12px;left:50%}
+.tick .no{text-align:center;font-family:var(--mono);font-size:var(--t-meta);color:var(--faint);
+  pointer-events:none;position:absolute;top:-19px;left:0;right:0}
+.tick.cur .no{color:var(--now);font-weight:700}
+
+/*  ── 写字格：柱高换成"这一步的输入" ──
+    只有声明了 `tickChip` 的实验会走这一档（见 AxisBand / types.ts）。
+    高度比柱状条那档矮一点：格子里的两行字自己就撑出身高，
+    再留 30px 会让走带比舞台的最后一条边还厚。 */
+.tick.chip{height:auto;min-width:0;background:var(--panel-2);border:1px solid var(--line);
+  border-radius:4px;padding:4px 2px 5px;justify-content:center;align-items:center;gap:1px;
+  overflow:hidden}
+.tick.chip .no{position:static;font-size:var(--t-ui);font-weight:600;color:var(--dim);line-height:1.2}
+.tick.chip .tx{font-style:normal;font-family:var(--mono);font-size:var(--t-meta);
+  color:var(--faint);line-height:1.2;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/*  结果色印在格子本身：绿=命中、红=缺失、灰=还没走到。
+    这三档就是这一类实验全部的"量"，所以颜色说完了它也就说完了。 */
+.tick.chip.good{border-color:#0E756155;background:#0E756114}
+.tick.chip.good .no{color:var(--hit)}
+.tick.chip.bad{border-color:#B33B2555;background:#B33B2510}
+.tick.chip.bad .no{color:var(--miss)}
+.tick.chip.idle{border-color:var(--line)}
+.tick.chip.unseen{background:transparent;border-color:var(--line-soft)}
+.tick.chip.unseen .no,.tick.chip.unseen .tx{color:var(--ghost)}
+.tick.chip.cur{border-color:var(--now);background:var(--panel);
+  box-shadow:0 0 0 2px color-mix(in srgb, var(--now) 22%, transparent)}
+.tick.chip.cur .no{color:var(--now);font-weight:700}
+/*  写字格自带边框与当前色，柱状条那套竖线+三角就成了第二套"当前"记号 */
+.tick.chip.cur:before,.tick.chip.cur:after{display:none}
+/*  一排写字格是并列的按钮，不再是一条可拖的带子 —— 光标别再说"能拖" */
+.ticks:has(.tick.chip){cursor:default;padding-top:4px;gap:4px;align-items:stretch}
 .ctl button:disabled{opacity:.4;cursor:default}
-.ctl input[type=range]{flex:1;accent-color:var(--now);min-width:60px}
+/*  ◀ ▶ 收成方块，播放钮是这一组里唯一带字的 —— 它是主动作 */
+.ctl .step{padding:4px 9px;min-width:30px}
+.ctl .play{border-color:var(--now);color:var(--now);min-width:78px}
+.ctl .hint{margin-left:auto;font-size:var(--t-meta);color:var(--faint);letter-spacing:.04em}
 
 /* ── 逐步日志 ── */
 .log{overflow-y:auto;border:0;background:none}
@@ -322,46 +730,238 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{
   padding:5px 12px;cursor:pointer;border-left:2px solid transparent;align-items:baseline}
 .log li:hover{background:var(--panel-2)}
 .log li.cur{background:#F0B4290d;border-left-color:var(--now)}
-.log .i{font-family:var(--mono);font-size:10px;color:var(--faint);text-align:right}
+.log .i{font-family:var(--mono);font-size:var(--t-ui);color:var(--faint);text-align:right}
 .log li.cur .i{color:var(--now)}
-.log .r{font-family:var(--mono);font-size:10px;letter-spacing:.08em}
+.log .r{font-family:var(--mono);font-size:var(--t-ui);letter-spacing:.08em}
 .log .r.good{color:var(--hit)}.log .r.bad{color:var(--miss)}.log .r.idle{color:var(--faint)}
-.log .x{font-size:12px;color:var(--dim)}
+.log .x{font-size:var(--t-body);color:var(--dim)}
 .log li.cur .x{color:var(--ink)}
 
 /* ── 参数面板 ── */
 .params{display:flex;flex-direction:column;gap:9px}
 .param{display:flex;flex-direction:column;gap:4px}
-.param>.k{font-size:11.5px;color:var(--dim);display:flex;justify-content:space-between;
+.param>.k{font-size:var(--t-ui);color:var(--dim);display:flex;justify-content:space-between;
   align-items:baseline;gap:8px}
-.param>.k .u{font-family:var(--mono);font-size:9.5px;color:var(--faint)}
+.param>.k .u{font-family:var(--mono);font-size:var(--t-meta);color:var(--faint)}
 .opts{display:flex;gap:3px;flex-wrap:wrap}
 .opts button{flex:1;min-width:34px;background:var(--panel-2);border:1px solid var(--line);
   color:var(--dim);border-radius:3px;padding:3px 5px;cursor:pointer;
-  font-family:var(--mono);font-size:11px;font-variant-numeric:tabular-nums}
-.opts button:hover{color:var(--ink);border-color:var(--faint)}
+  font-family:var(--mono);font-size:var(--t-ui);font-variant-numeric:tabular-nums}
+.opts button:hover:not(:disabled){color:var(--ink);border-color:var(--faint)}
+/*  不生效的旋钮：变灰、点不动，底下一句说清什么时候才生效。
+    `opacity` 在本仓只表示状态（还没轮到 / 不适用 / 禁用），不表示层级 —— 这儿正是"不适用"。 */
+.param.na>.k{opacity:.45}
+.param.na .opts button{opacity:.4;cursor:default}
+.param.na .opts button.on{border-color:var(--line);color:var(--dim);background:var(--panel-2);font-weight:400}
+.nanote{font-size:var(--t-meta);color:var(--faint);line-height:1.5;margin-top:1px}
 .opts button.on{background:#F0B42918;border-color:var(--now);color:var(--now);font-weight:700}
 
 /* ── 读数 ── */
 .pr{display:flex;justify-content:space-between;align-items:baseline;gap:10px;
   padding:5px 0;border-bottom:1px dashed var(--line)}
 .pr:last-child{border-bottom:0}
-.pr .k{font-size:12px;color:var(--dim)}
-.pr .v{font-family:var(--mono);font-size:12.5px;font-variant-numeric:tabular-nums}
+.pr .k{font-size:var(--t-ui);color:var(--faint);letter-spacing:.02em}
+/*  读数是这类产品的心跳。原来 12.5px 常规字，和左边的标签一样重 ——
+    于是一屏十几个数，没有一个抓得住眼睛。 */
+.pr .v{font-family:var(--mono);font-size:var(--t-read);font-weight:650;color:var(--ink);
+  font-variant-numeric:tabular-nums;letter-spacing:-.01em}
 .pr .v.good{color:var(--hit)}.pr .v.bad{color:var(--miss)}
 
 /* ── 违规提示（验证器直通 UI）── */
 .viol{border:1px solid #E2664A55;background:#E2664A10;border-radius:5px;padding:9px 11px;
   display:flex;flex-direction:column;gap:4px}
-.viol .t{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;
+.viol .t{font-family:var(--mono);font-size:var(--t-meta);letter-spacing:.14em;
   text-transform:uppercase;color:var(--miss);font-weight:600}
-.viol p{margin:0;font-size:12px;color:var(--dim)}
-.viol code{font-family:var(--mono);font-size:11px;color:var(--ink)}
+.viol p{margin:0;font-size:var(--t-body);color:var(--dim)}
+.viol code{font-family:var(--mono);font-size:var(--t-ui);color:var(--ink)}
 
 /* ── 边界 ── */
 .bounds{border:1px solid var(--line);border-left:2px solid var(--f-off);
   background:var(--panel);border-radius:0 6px 6px 0;padding:10px 14px}
-.bounds .t{font-family:var(--mono);font-size:9.5px;letter-spacing:.16em;
+.bounds .t{font-family:var(--mono);font-size:var(--t-meta);letter-spacing:.16em;
   text-transform:uppercase;color:var(--f-off);font-weight:600;margin-bottom:4px}
-.bounds p{margin:0;font-size:12px;color:var(--dim);line-height:1.8}
+.bounds p{margin:0;font-size:var(--t-body);color:var(--dim);line-height:1.8}
 .bounds b{color:var(--ink);font-weight:600}
+/*  边界改成"一句总述 + 编号清单"。原来是 `join(' · ')` 的一整段流水账，
+    读者读到第三条就找不到自己在哪儿了。 */
+.bounds .bsub{margin:0 0 8px;font-size:var(--t-ui);color:var(--faint);line-height:1.7}
+/*  ⚠️ 序号列必须**定宽**。第一版写 `grid-template-columns:auto 1fr` 加
+    `grid-row:1/span 2`：序号跨两行之后，`auto` 那一列去迁就标题的最小内容宽，
+    结果标题被压成一列竖字（「不 / 画 / 数 / 据 / 字 / 节」）。
+    定宽 + 只占一行，标题与正文各自成行，序号在左边对齐。 */
+.blist{list-style:none;margin:0;padding:0;counter-reset:bnd;display:grid;gap:9px}
+.blist li{display:grid;grid-template-columns:19px minmax(0,1fr);gap:2px 8px;
+  counter-increment:bnd;font-size:var(--t-body);color:var(--dim);line-height:1.75}
+.blist li::before{content:counter(bnd);grid-column:1;grid-row:1;justify-self:start;
+  display:inline-grid;place-items:center;width:17px;height:17px;border-radius:50%;
+  background:var(--sunk-3);color:var(--faint);font-family:var(--mono);
+  font-size:var(--t-meta);line-height:1}
+/*  标题在上、正文在下，都排在第二列 —— 标题答"是什么"，正文答"为什么" */
+/*  ⚠️ 类名叫 `bndh` 不叫 `bh` —— `stage.css` 里已经有一个
+    `.bh{width:24px;text-align:center}`（海明码的位号标签在用）。
+    撞名的后果是标题被那条 24px 定宽压成一列竖字（「不 / 画 / 数 / 据 / 字 / 节」），
+    而两处都没报错。**新类名先 grep 一遍**，这个仓库的 CSS 是全局的。 */
+.blist .bndh{grid-column:2;grid-row:1;color:var(--ink);
+  font-weight:600;font-size:var(--t-ui);align-self:center}
+.blist li>span{grid-column:2;grid-row:2}
+/*  没写标题的条目（其余 29 个实验的既有文案）：正文直接上第一行 */
+.blist li>span:first-of-type{grid-row:auto}
+
+/* ══ 展示模式 ══════════════════════════════════════════
+   给录屏用的取景框。三件事：藏壳 · 锁画幅 · 巡演时藏鼠标。
+
+   为什么在页面里画取景框，而不是让人去调窗口大小：
+   录屏工具录的是一块矩形，而窗口尺寸每台机器都不一样 ——
+   把画幅锁在页面里，「同一段 URL 出同一个画面」才成立，
+   拍摄才能交给脚本而不是交给手。 */
+body[data-show]{background:#08090B}
+body[data-show] #root{display:grid;place-items:center;height:100dvh}
+/*  用 `aspect-ratio` 定死比例，不用两个 min() 互算 ——
+    后者实测出来是 1.753 而不是 1.778（视口宽度含不含滚动条会差一点），
+    而画幅是要交给录屏和剪辑的，差 1.4% 就意味着导出后要补边。 */
+body[data-show] .app{
+  aspect-ratio:16/9;
+  width:min(100vw, calc(100dvh * 16 / 9));height:auto;max-height:100dvh;
+  background:var(--void);overflow:hidden;
+  box-shadow:0 0 0 1px #ffffff14, 0 30px 80px -30px #000}
+body[data-show="9:16"] .app{
+  aspect-ratio:9/16;
+  width:min(100vw, calc(100dvh * 9 / 16))}
+
+/*  藏掉一切不上镜的：目录、页签、编辑器、坞、讲解、平台页眉页脚。
+    **留下的只有四样**：实验名 + 这一屏在问什么 + 舞台 + 轴与读数。
+    第一帧要有信息，所以标题和问句不能藏 —— 4 秒里没人有空猜这是什么。 */
+body[data-show] .nav,
+body[data-show] .tabs,
+body[data-show] .card.seq,
+body[data-show] .card.ent,
+body[data-show] .dock,
+body[data-show] .guide,
+body[data-show] .guide-fab,
+body[data-show] .chips,
+body[data-show] .xm-chrome-header,
+body[data-show] .xm-chrome-footer{display:none!important}
+body[data-show] .grid{grid-template-columns:minmax(0,1fr) 244px}
+body[data-show] .top{padding:14px 20px 10px;border-bottom:0}
+body[data-show] .app>.grid{padding:0 18px 16px}
+
+/*  竖画幅：右列放不下，改成舞台在上、读数横着排在下面。
+    **参数表藏掉** —— 第一版留着它，实测舞台只剩两成画面，
+    而竖屏那 4 秒的抓手是"那个东西在动"，不是一张配置表。
+    横屏留着（右列 244px 不挤），因为横屏的观众有时间看配置。 */
+body[data-show="9:16"] .grid{grid-template-columns:minmax(0,1fr);grid-template-rows:1fr auto}
+body[data-show="9:16"] .grid>.col:last-child{overflow:visible}
+body[data-show="9:16"] .params,
+body[data-show="9:16"] .grid>.col:last-child>.card:not(.readouts){display:none}
+body[data-show="9:16"] .readouts>h3{display:none}
+body[data-show="9:16"] .readouts .body{display:grid;grid-template-columns:repeat(3,1fr);gap:2px 14px;padding-top:4px}
+body[data-show="9:16"] .pr{border-bottom:0}
+/*  舞台吃满剩下的高度 */
+body[data-show="9:16"] .grid>.col.main{min-height:0}
+body[data-show="9:16"] .stagewrap{flex:1 1 auto}
+
+/*  巡演时不该有鼠标出现在画面里 —— 这是「4 秒抓手」的前提之一 */
+body[data-show][data-tour]{cursor:none}
+body[data-show][data-tour] *{cursor:none!important}
+
+/* ═══ 实验记录：走带底下那一条（坞的底部形态）═══
+   收起时只有一行「已验证：<结论>」，展开后是逐步日志 / 真题 / 边界。
+   它替掉了舞台左边那条 32px 的折叠窄轨 —— 窄轨的毛病不在窄，
+   在于它是一条什么都不写的竖条；这一条收起来时本身就是内容。 */
+.dock.bottom{flex:0 0 auto;width:auto;max-height:none;border:1px solid var(--line);
+  border-radius:6px;background:var(--panel);overflow:hidden}
+.dock.bottom>.dockbar{display:flex;align-items:center;gap:8px;padding:0 12px;
+  min-height:38px;border-bottom:1px solid var(--line)}
+.dock.bottom.folded>.dockbar{border-bottom:0}
+/*  收起时页签让位给那一行结论：页签是"进去看什么"，结论是"已经看出了什么" */
+.dock.bottom.folded>.dockbar button:not(.dockfold){display:none}
+.dock.bottom>.dockbar .dockfold{margin-left:auto;writing-mode:horizontal-tb;
+  font-size:var(--t-ui);color:var(--p1);white-space:nowrap}
+.dock.bottom>.dockbody{padding:0;max-height:34vh;overflow-y:auto}
+.dock.bottom>.dockbody.off{display:none}
+.docklead{display:flex;align-items:baseline;gap:9px;min-width:0;flex:1 1 auto}
+.dockicon{font-style:normal;color:var(--faint);font-size:var(--t-body)}
+.docklead b{font-size:var(--t-ui);color:var(--ink);font-weight:600;white-space:nowrap}
+.docklead .ok{font-style:normal;font-size:var(--t-ui);color:var(--hit);white-space:nowrap}
+.docklead .say{font-size:var(--t-ui);color:var(--ink);min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.docklead .say.idle{color:var(--faint);font-family:var(--mono)}
+
+/* ── 地基链 basedon（实验抬头下方，可点跳到地基/被撑起的实验） ── */
+.basedon{display:flex;flex-direction:column;gap:5px;margin-top:9px}
+.borow{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.bol{font-size:11px;color:var(--faint);font-family:var(--mono);letter-spacing:.02em;flex:none}
+.bol.up{color:color-mix(in srgb,var(--warm,#8A5A00) 70%,var(--faint))}
+.bochip{display:inline-flex;align-items:baseline;gap:5px;font-size:12px;color:var(--ink);cursor:pointer;
+  background:color-mix(in srgb,var(--now) 8%,var(--panel));border:1px solid color-mix(in srgb,var(--now) 28%,var(--line));
+  border-radius:99px;padding:3px 10px;transition:background .15s,border-color .15s,transform .12s}
+.bochip:hover{background:color-mix(in srgb,var(--now) 16%,var(--panel));border-color:var(--now);transform:translateY(-1px)}
+.bochip i{font-style:normal;font-size:10px;color:var(--faint)}
+.bochip.up{background:var(--panel);border-color:var(--line);color:var(--dim)}
+.bochip.up:hover{background:var(--sunk-2);border-color:var(--faint);color:var(--ink)}
+
+/* ── 学科骨架：切换条 + 子模块 + guide 入口 ── */
+/* 学科切换：最高一级菜单，独立通栏顶条 */
+.disctabs{display:flex;flex-wrap:wrap;gap:2px;align-items:stretch;
+  padding:0 4px;margin-bottom:10px;border-bottom:1px solid var(--line)}
+.disctab{display:inline-flex;align-items:center;gap:5px;padding:9px 14px;border:0;background:none;
+  color:var(--faint);font-size:var(--t-body);cursor:pointer;border-bottom:2px solid transparent;
+  margin-bottom:-1px;user-select:none}
+.disctab .dti{font-size:15px;filter:grayscale(.4)}
+.disctab .dtn{font-weight:600}
+.disctab.on{color:var(--ink);border-bottom-color:var(--now)}
+.disctab.on .dti{filter:none}
+.disctab.soon{opacity:.5}
+.disctab.soon .dtn{font-weight:500}
+.disctab .dtsoon{font-style:normal;font-size:9px;color:var(--faint);font-family:var(--mono);
+  border:1px solid var(--line);border-radius:4px;padding:0 3px}
+.disctab:hover{color:var(--ink);background:var(--panel)}
+.discguide{margin:8px 10px 4px;padding:8px 10px;border-radius:8px;cursor:pointer;
+  background:linear-gradient(180deg,var(--panel-2),var(--panel));border:1px solid var(--line);
+  font-size:var(--t-ui);color:var(--dim);line-height:1.5}
+.discguide b{color:var(--ink)}
+.discguide:hover{border-color:var(--now,#4E46D6);color:var(--ink)}
+.navsoon{padding:24px 14px;color:var(--faint);font-size:var(--t-ui);text-align:center;line-height:1.8}
+.navsoon small{color:var(--faint);opacity:.8}
+.crumbdisc{color:var(--dim);font-size:var(--t-meta)}
+
+/* ── 嵌入的学科地图（guide 页）overlay ── */
+.lgover{position:fixed;inset:0;z-index:60;background:color-mix(in srgb,#000 42%,transparent);
+  display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto}
+.lgsheet{position:relative;width:min(920px,100%);background:var(--panel);border:1px solid var(--line);
+  border-radius:16px;padding:30px 34px 24px;box-shadow:0 24px 70px rgba(0,0,0,.3)}
+.lgclose{position:absolute;top:16px;right:18px;width:30px;height:30px;border-radius:8px;border:1px solid var(--line);
+  background:var(--panel);color:var(--dim);font-size:15px;cursor:pointer}
+.lgclose:hover{background:var(--panel-2);color:var(--ink)}
+.lghead{border-bottom:1px solid var(--line);padding-bottom:16px;margin-bottom:18px}
+.lgkicker{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--faint);margin-bottom:8px}
+.lgtitle{font-size:26px;font-weight:800;letter-spacing:-.01em;margin:0 0 8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.lgfrom{color:var(--faint)}
+.lgarrow{color:var(--faint);font-weight:400}
+.lgto{color:var(--now,#4E46D6)}
+.lglede{font-size:14px;color:var(--dim);margin:0;line-height:1.65}
+.lgfull{margin-left:8px;color:var(--now,#4E46D6);font-weight:600;white-space:nowrap}
+.lgbody{display:flex;flex-direction:column;gap:14px}
+.lggrp{border:1px solid var(--line);border-radius:11px;padding:12px 14px;background:var(--panel)}
+.lggrph{display:flex;align-items:center;gap:8px;margin-bottom:9px}
+.lggrpn{font-family:var(--mono);font-size:12px;color:var(--faint)}
+.lggrpt{font-weight:700;font-size:15px;color:var(--ink)}
+.lganchor{font-size:11px;color:var(--dim);background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:2px 9px}
+.lggrpc{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--faint)}
+.lgchips{display:flex;flex-wrap:wrap;gap:7px}
+.lgchip{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:6px 11px;
+  font-size:13px;color:var(--dim);cursor:pointer;text-align:left}
+.lgchip:hover{border-color:var(--now,#4E46D6);color:var(--ink);background:var(--panel-2)}
+.lgempty{padding:40px 10px;text-align:center;color:var(--dim)}
+.lgemptysub{color:var(--faint);font-size:13px;margin-top:6px}
+.lgothers{margin-top:20px;padding-top:16px;border-top:1px solid var(--line)}
+.lgotherh{font-size:12px;color:var(--faint);margin-bottom:10px}
+.lgotherrow{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.lgothercard{display:flex;flex-direction:column;gap:2px;padding:9px 11px;border:1px solid var(--line);
+  border-radius:10px;background:var(--panel);cursor:pointer;text-align:left}
+.lgothercard.soon{opacity:.7}
+.lgothercard:hover{border-color:var(--now,#4E46D6);background:var(--panel-2)}
+.lgotherico{font-size:17px}
+.lgothername{font-weight:650;font-size:13px;color:var(--ink);display:flex;align-items:center;gap:6px}
+.lgothername i{font-style:normal;font-size:9px;color:var(--faint);font-family:var(--mono);border:1px solid var(--line);border-radius:4px;padding:0 4px}
+.lgotherto{font-size:11px;color:var(--faint)}

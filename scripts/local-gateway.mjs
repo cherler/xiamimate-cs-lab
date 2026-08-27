@@ -39,6 +39,7 @@ const MAIN_MODE = arg('main', 'dev')
 const LAB_DEV = arg('lab-dev', 'http://127.0.0.1:5178')
 const MAIN_DEV = arg('main-dev', 'http://127.0.0.1:3000')
 const API = arg('api', 'http://127.0.0.1:8200')
+const LAB_AI = arg('lab-ai', 'http://127.0.0.1:8300')
 
 const LAB_OUT = join(ROOT, 'web', 'dist')
 const MAIN_OUT = join(MAIN_REPO, 'out')
@@ -106,6 +107,10 @@ const server = createServer(async (req, res) => {
   // ② /v1/* —— 账号与学习进度，打主站后端。**Cookie 靠同源自动带上**，
   //    所以这一条必须与页面同一个源，不能让前端直接 fetch 到 :8200 去（那是跨源）。
   if (p.startsWith('/v1/')) return proxy(req, res, API)
+
+  //  /lab/ai/* —— AI 学伴后端(server/index.ts, :8300)，是独立进程，必须排在 /lab/* 之前。
+  //    线上 caddy 同样要有这条(见 deploy/caddy-snippet)。
+  if (p.startsWith('/lab/ai/')) return proxy(req, res, LAB_AI)
 
   // ③ /lab → 308 /lab/（caddy-snippet 的 @labRoot）
   if (p === '/lab') { res.writeHead(308, { location: '/lab/' }); return res.end() }

@@ -22,12 +22,20 @@ export function TcpStage({ trace, index, state, tab }: StageProps<TcpState>) {
 // ═══ 锯齿曲线 ══════════════════════════════════════════
 function Curve({ trace, index }: { trace: TcpState[]; index: number }) {
   const W = 100, H = 46, PAD = 3
+  /*  ⚠️ 纵轴上限 / 横轴跨度**故意用整条 trace 算**，不跟着当前步变：
+      跟着变的话每走一步坐标系就重新缩放，已经画出来的曲线会整体跳动，
+      比"剧透"还难看。轴是固定的画布，曲线在上面长出来。 */
   const maxC = Math.max(...trace.map(s => Math.max(s.cwnd, s.ssthresh)), 4)
   const x = (i: number) => PAD + (i / Math.max(1, trace.length - 1)) * (W - PAD * 2)
   const y = (v: number) => H - PAD - (v / maxC) * (H - PAD * 2)
 
-  const cwndPath = trace.map((s, i) => `${i === 0 ? 'M' : 'L'} ${x(i)} ${y(s.cwnd)}`).join(' ')
-  const ssPath = trace.map((s, i) => `${i === 0 ? 'M' : 'L'} ${x(i)} ${y(s.ssthresh)}`).join(' ')
+  /*  只画到当前步 —— 这一屏的规矩是"逐步揭示"（Cache/银行家都是这样）。
+      原来拿整条 trace 画路径：第 1 步就把全部锯齿摆在那，
+      而旁边的讲解还在说"这一轮 cwnd 翻倍" —— 图和文案自相矛盾，
+      用户也失去了"猜下一步"的余地。 */
+  const upto = trace.slice(0, index + 1)
+  const cwndPath = upto.map((s, i) => `${i === 0 ? 'M' : 'L'} ${x(i)} ${y(s.cwnd)}`).join(' ')
+  const ssPath = upto.map((s, i) => `${i === 0 ? 'M' : 'L'} ${x(i)} ${y(s.ssthresh)}`).join(' ')
 
   return (
     <div className="card">
@@ -42,7 +50,8 @@ function Curve({ trace, index }: { trace: TcpState[]; index: number }) {
           <path d={ssPath} fill="none" stroke="var(--dim)" strokeWidth={1.4} strokeDasharray="5 4" vectorEffect="non-scaling-stroke" />
           <path d={cwndPath} fill="none" stroke="var(--now)" strokeWidth={2}
                 strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
-          {trace.map((s, i) => s.event !== 'none' && (
+          {/*  丢包竖线同理只画已经走到的：提前画出来等于告诉用户"第 8 轮会丢包"。 */}
+          {trace.map((s, i) => i <= index && s.event !== 'none' && (
             <line key={i} x1={x(i)} x2={x(i)} y1={PAD} y2={H - PAD}
                   stroke="var(--miss)" strokeWidth={1.2} strokeDasharray="4 3" opacity={0.8} vectorEffect="non-scaling-stroke" />
           ))}

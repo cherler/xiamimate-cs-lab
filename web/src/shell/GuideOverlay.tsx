@@ -35,7 +35,8 @@
  *   2. **用户做了别的事，高亮就撤掉**。点到有卡的东西就跟过去，
  *      点到别处就把手指放下 —— 那句"点这个"已经不指着现在的状态了。
  */
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { rich } from './rich.tsx'
 import type { Card } from '../guide.ts'
 import { TERMS, termCardId } from '../guide.ts'
 
@@ -46,8 +47,20 @@ const writeClosed = (v: boolean) => { try { localStorage.setItem(CLOSED, v ? '1'
 
 /** 把一张卡对应到页面上的元素。选择器 / 参数项 / 预置按钮三种。 */
 /**  底部坞三格的顺序，以及各自那张卡锚在哪 —— 页签下标 ↔ 卡，两个方向都靠这两张表 */
-const DOCK_TABS = ['log', 'prob', 'bounds']
-const DOCK_ANCHORS = ['.card.log', '.card.prob', '.bounds']
+/**
+ * 旁栏每一格对应的**锚点**，按格子的 id 索引 —— 不按它排第几。
+ *
+ * ⚠️ 原来是个数组 `['.card.log', '.card.prob', '.bounds']`，靠下标对齐。
+ * 往最前面插了「这一步为什么」那一格之后整排**错位一格**：
+ * 点「逐步日志」讲的是真题、点「真题」讲的是边界，一个错都不报。
+ * 位置会变，id 不会。
+ */
+const DOCK_ANCHORS: Record<string, string> = {
+  log: '.card.log',
+  prob: '.card.prob',
+  bounds: '.bounds',
+  why: '.stagewrap',
+}
 
 function elementOf(card: Card): HTMLElement | null {
   if (card.param) {
@@ -57,6 +70,18 @@ function elementOf(card: Card): HTMLElement | null {
     return null
   }
   if (card.preset) {
+    /*
+     * ⚠️ **按标识找，不按文字。**
+     * 原来比的是 `el.textContent === card.preset` —— 2026-08-19 把预置按钮从
+     * "一颗药丸"改成"标题 + 一句要点"的卡片，textContent 里多了那句要点，
+     * 56 处锚点当场落空，而且一个错都不报。
+     * 这跟同一天在坞的页签上栽的那次是同一个病：**用会变的东西当键**。
+     * 文字会改、位置会挪，`data-preset` 不会。
+     */
+    const byId = document.querySelector<HTMLElement>(
+      `.seqacts [data-preset="${card.preset}"], .entacts [data-preset="${card.preset}"]`)
+    if (byId) return byId
+    //  留一条文字兜底：万一哪个按钮还没挂上属性，别静默失效
     for (const el of document.querySelectorAll<HTMLElement>('.seqacts button, .entacts button')) {
       if (el.textContent?.trim() === card.preset) return el
     }
@@ -74,7 +99,8 @@ function cardIndexAt(target: EventTarget | null, cards: Card[]): number {
       if (c.anchor && node.matches(c.anchor)) return i
       if (c.param && node.classList.contains('param')
         && node.querySelector('.k')?.textContent?.trim().startsWith(c.param)) return i
-      if (c.preset && node.tagName === 'BUTTON' && node.textContent?.trim() === c.preset) return i
+      if (c.preset && node.tagName === 'BUTTON'
+        && (node.dataset.preset === c.preset || node.textContent?.trim() === c.preset)) return i
     }
     node = node.parentElement
   }
@@ -89,6 +115,15 @@ export function GuideOverlay({ cards, title, onRequestClose, onReopen, closedRef
   closedRef: boolean
 }) {
   const [i, setI] = useState(0)
+  /**
+   * 矮屏上**默认折起**（只留标题条 + 翻页）。
+   *
+   * 一屏装下之后页面上没有空地，这张浮层必然压住点什么 —— 以前压的是底部坞
+   * 那条横带（那儿没有可点的东西，所以相安无事）。坞并进实验区之后，
+   * 它落到哪儿都是舞台：1280×720 上实测压住三个格子。
+   * 与其挑一个"稍微少压一点"的位置，不如**矮屏上先收起来** ——
+   * 想看时点一下就展开，而屏幕够高时（>820px）舞台下沿本来就有空带，照旧摊开。
+   */
   const [folded, setFolded] = useState(false)
   /**
    * 拖动。
@@ -105,6 +140,10 @@ export function GuideOverlay({ cards, title, onRequestClose, onReopen, closedRef
     try { const v = localStorage.getItem(POS); return v ? JSON.parse(v) : null } catch { return null }
   })
   const drag = useRef<{ dx: number; dy: number } | null>(null)
+  /** 收起态那颗按钮的拖动。多两个字段：起点与"动没动过"，用来跟点击区分 */
+  const fabDrag = useRef<{ dx: number; dy: number; x0: number; y0: number; moved: boolean } | null>(null)
+  /** 刚刚是拖完松手的那一下 —— 紧跟其后的 click 要放过（见 fab 的 onPointerUp） */
+  const justDragged = useRef(false)
   /** 用户点了别处 —— 高亮先撤掉，翻页时再回来 */
   const [dropped, setDropped] = useState(false)
   const box = useRef<HTMLDivElement>(null)
@@ -131,6 +170,7 @@ export function GuideOverlay({ cards, title, onRequestClose, onReopen, closedRef
     setDropped(false)
   }, [title])
 
+
   const go = useCallback((n: number) => {
     setI(Math.max(0, Math.min(cards.length - 1, n)))
     setDropped(false)
@@ -146,6 +186,7 @@ export function GuideOverlay({ cards, title, onRequestClose, onReopen, closedRef
   useEffect(() => {
     if (closedRef) return
     const onClick = (e: MouseEvent) => {
+      if (selfClick.current) return
       //  点卡片自己不算
       if (box.current?.contains(e.target as Node)) return
       /*
@@ -176,13 +217,33 @@ export function GuideOverlay({ cards, title, onRequestClose, onReopen, closedRef
        */
       const tab = (e.target as HTMLElement)?.closest?.('.dockbar button')
       if (tab) {
-        const k = [...(tab.parentElement?.querySelectorAll('button') ?? [])].indexOf(tab as HTMLButtonElement)
-        const sel = DOCK_ANCHORS[k]          //  第四个是折叠钮，没有对应的卡
+        //  按 id 认，不按下标 —— 收起钮没有 data-dock-tab，自然落空，正合适
+        const id = (tab as HTMLElement).dataset.dockTab
+        const sel = id ? DOCK_ANCHORS[id] : undefined
         const m = sel ? cards.findIndex(c => c.anchor === sel) : -1
         if (m >= 0) { setI(m); setDropped(false) }
         return
       }
       if ((e.target as HTMLElement)?.closest?.('.nav button')) return
+      /*
+       * ⚠️ **播放控件是中立区。**
+       * 按「下一步」是在推进轨迹 —— 用户想看的是下一步的解释，
+       * 结果整条轴锚着「轴上的柱子」那张卡，一按就被弹回去说"轴是什么"。
+       * 「这一步为什么是这样」那张卡跟着状态走，正是要在按步进时留在原地看它变。
+       *
+       * 判据：点「下一步」，卡片 id 不该变（冒烟第 13 组）。
+       */
+      if ((e.target as HTMLElement)?.closest?.('.ctl')) return
+      /*
+       * ⚠️ **引导式笔记整层是中立区。**
+       *
+       * 它盖在中列上，讲解卡说的那些东西全在它底下。点它里面任何地方
+       * （尤其是「关闭笔记」）都不是"点了别处"，而是**把底下的东西露出来** ——
+       * 走默认分支的话，刚一关掉笔记高亮就被自己撤了，
+       * 30 个实验的第 1 页全报「声明了锚点却没落下」。
+       * 跟上面播放控件那一条是同一个道理：这一下的语义不是"我要看别的"。
+       */
+      if ((e.target as HTMLElement)?.closest?.('.gnote')) return
       const n = cardIndexAt(e.target, cards)
       if (n >= 0) { setI(n); setDropped(false) }
       //  点到没有卡的东西：不跳，但把高亮撤掉 ——
@@ -209,16 +270,15 @@ export function GuideOverlay({ cards, title, onRequestClose, onReopen, closedRef
      * 浮层因此不需要知道坞的存在，坞也不需要知道浮层 —— 中间靠
      * `data-dock-tab` 这一个属性。
      */
+    /*  锚点落在旁栏某一格里时，替用户把那一格切出来 —— 否则"讲的东西"是藏着的。
+        ⚠️ 这一下是程序点的，不能再被自己的「点哪讲哪」接住（会来回弹）。 */
     const pane = el.closest<HTMLElement>('[data-dock-tab]')
-    if (pane?.hidden) {
-      const bar = document.querySelector<HTMLElement>('.dockbar')
-      const idxOfTab = DOCK_TABS.indexOf(pane.dataset.dockTab ?? '')
-      bar?.querySelectorAll<HTMLElement>('button')[idxOfTab]?.click()
-      /*
-       * 切页签是 React 的状态更新，这个 effect 的依赖一个都没变、不会再跑一遍。
-       * 所以**不能 return** —— 那等于"把抽屉拉开了却没指里面哪一格"，
-       * 30 个实验里日志/真题/边界三张卡共 90 处全落空过一次，而且不报错。
-       */
+    if (pane?.dataset.dockTab) {
+      const t = document.querySelector<HTMLElement>(
+        `.dockbar [data-dock-tab="${pane.dataset.dockTab}"]`)
+      selfClick.current = true
+      t?.click()
+      selfClick.current = false
     }
     el.classList.add('guide-lit')
     return () => el.classList.remove('guide-lit')
@@ -248,14 +308,30 @@ export function GuideOverlay({ cards, title, onRequestClose, onReopen, closedRef
       const el = box.current
       const on = !dropped && !pos && el
       root.style.setProperty('--guide-w', on ? `${el.offsetWidth + 24}px` : '0px')
+      /*
+       * `--guide-h`：**只有真的压到实验区时才发布**，舞台照这个数在底部让出一条。
+       *
+       * ⚠️ 相交要跟 `.stagerow` 比，不能跟 `.stagewrap` 比 —— 后者的高度会被
+       * 这条留位本身改掉：让位 → 舞台变矮 → 不再相交 → 撤回让位 → 又相交……
+       * 一帧一个来回。`.stagerow` 的高度由 flex 定死，不随留位变，是稳定的参照系。
+       */
+      const row = document.querySelector('.stagerow')?.getBoundingClientRect()
+      const g = el?.getBoundingClientRect()
+      const hitStage = !!(on && row && g && g.right > row.left && g.left < row.right
+                                       && g.bottom > row.top && g.top < row.bottom)
+      /*  让出**实际重叠的那一段**，不是整张卡的高度 —— 卡片下缘往往已经探出实验区，
+          按整高让会白割掉几十像素（实测 129px 里有 30 多是白让的，
+          代价是 7 个实验的图在 720p 上多缺一截）。 */
+      const depth = hitStage ? Math.max(0, Math.ceil(row!.bottom - g!.top) + 8) : 0
+      root.style.setProperty('--guide-h', `${depth}px`)
     }
     set()
     const el = box.current
-    if (!el) return () => root.style.setProperty('--guide-w', '0px')
+    if (!el) return () => { root.style.setProperty('--guide-w', '0px'); root.style.setProperty('--guide-h', '0px') }
     //  折叠、翻页、换实验都会改高度 —— 盯着元素本身比列依赖靠谱
     const ro = new ResizeObserver(set)
     ro.observe(el)
-    return () => { ro.disconnect(); root.style.setProperty('--guide-w', '0px') }
+    return () => { ro.disconnect(); root.style.setProperty('--guide-w', '0px'); root.style.setProperty('--guide-h', '0px') }
   }, [closedRef, dropped, pos, folded, idx, cards])
 
   /**
@@ -304,10 +380,86 @@ export function GuideOverlay({ cards, title, onRequestClose, onReopen, closedRef
    *
    * 组件本身不卸载，所以 `i` 还在 —— 再打开时回到关掉前那一页，不是从头来。
    */
+  /*
+   * ⚠️ **这三个钩子必须待在所有提前 return 上面。**
+   * 第一版写在 `const card = cards[idx]` 旁边（渲染前一行），
+   * 那里已经在 `if (closedRef) return …` 下面了 —— 讲解收起来的那一次渲染
+   * 少跑三个钩子，React 报 "Rendered fewer hooks than expected"，
+   * 整个 App 白屏。冒烟是在**收起讲解**那一步炸的，而报错说的是 hooks，
+   * 两头对不上，找起来最费劲。
+   *
+   * 主干 = 没标 `tier: 'ref'` 的那几张（对象 / 单步规则 / 第一项实验）。
+   * `trunk` 存的是它们在 `cards` 里的下标 —— 卡片本身仍然是一个数组，
+   * 因为"点哪讲哪"要按下标跳，分成两个数组会多一层映射，而那层映射
+   * 正是坞页签、预置那几次翻车的形状（拿位置当键）。
+   */
+  const trunk = useMemo(
+    () => cards.map((c, i) => (c.tier === 'ref' ? -1 : i)).filter(i => i >= 0),
+    [cards],
+  )
+  const at = trunk.indexOf(idx)
+  const onTrunk = at >= 0
+  /*  从参考层回来时落回**刚才那一张**主干卡，不是回第一张 ——
+      点开一个术语再回来，被弹回开头会把刚读到的位置丢掉。 */
+  const lastTrunk = useRef(0)
+  /*  正在由本组件程序化点击页面（替用户切旁栏页签）—— 这期间不认自己的点击 */
+  const selfClick = useRef(false)
+  useEffect(() => { if (at >= 0) lastTrunk.current = at }, [at])
+
+
   if (closedRef) {
     return (
-      <button className="guide-fab" onClick={() => { writeClosed(false); onReopen() }}
-              title="打开讲解">
+      /*
+       * 收起之后那颗「? 讲解」**也要能拖**。
+       *
+       * 它跟展开态共用同一个 `pos`：从哪儿拖走的，请回来还在哪儿。
+       * 而且它本来就压着东西 —— 默认落在右下角，正好盖住走带右端
+       * 那行「第 1 步 / 共 12 步」。展开态能拖、收起态不能拖，
+       * 等于"挡住你的时候你反而没法挪它"。
+       *
+       * ⚠️ **4px 门槛**：一上来就 `setPointerCapture` 会把随后的 click 劫走，
+       * 这颗按钮的正事恰恰是被点开。位移超过 4px 才算拖，否则仍然是一次点击。
+       * （同一个坑在走带那条刻度带上栽过一次，见 AxisBand。）
+       */
+      <button className="guide-fab" title="打开讲解 · 也可以拖着挪窝"
+              style={pos ? { left: pos.x, top: pos.y, right: 'auto', bottom: 'auto' } : undefined}
+              onPointerDown={e => {
+                /*  ⚠️ **按下就抓指针**，不能等过了 4px 门槛再抓。
+                    这颗按钮只有 81×35：鼠标一动就出了它的范围，
+                    而没有捕获的话，后续 pointermove 落到光标底下那个元素上 ——
+                    门槛永远等不到第二个 move，拖动一动不动（实测：整段拖拽只收到
+                    一个 pointerdown，一个 move 都没有）。
+                    卡片那边的拖动没这毛病，纯粹是因为卡片够大。 */
+                const el = e.currentTarget as HTMLElement
+                const r = el.getBoundingClientRect()
+                fabDrag.current = { dx: e.clientX - r.left, dy: e.clientY - r.top,
+                                    x0: e.clientX, y0: e.clientY, moved: false }
+                el.setPointerCapture(e.pointerId)
+              }}
+              onPointerMove={e => {
+                const d = fabDrag.current
+                if (!d) return
+                //  门槛只用来分辨"点"和"拖"，不再兼管抓指针
+                if (!d.moved && Math.abs(e.clientX - d.x0) < 4 && Math.abs(e.clientY - d.y0) < 4) return
+                d.moved = true
+                const el = e.currentTarget as HTMLElement
+                setPos({ x: Math.max(4, Math.min(innerWidth - el.offsetWidth - 4, e.clientX - d.dx)),
+                         y: Math.max(4, Math.min(innerHeight - el.offsetHeight - 4, e.clientY - d.dy)) })
+              }}
+              onPointerUp={() => {
+                /*  抓了指针，随后那一下 click 一定会打到这颗按钮上（哪怕光标早已离开）。
+                    所以"刚才是不是在拖"得**留到 click 之后**再清，不能在这里就清掉。 */
+                justDragged.current = fabDrag.current?.moved ?? false
+                fabDrag.current = null
+                if (justDragged.current) {
+                  try { if (pos) localStorage.setItem(POS, JSON.stringify(pos)) } catch { /* 隐私模式 */ }
+                }
+              }}
+              onClick={() => {
+                //  刚拖完那一下不算点击 —— 否则挪一下窝就顺手把它打开了
+                if (justDragged.current) { justDragged.current = false; return }
+                writeClosed(false); onReopen()
+              }}>
         <span className="gq-mark">?</span>讲解
       </button>
     )
@@ -321,7 +473,17 @@ export function GuideOverlay({ cards, title, onRequestClose, onReopen, closedRef
            /* 这一页该不该在页面上点亮点什么。名词页不锚东西，其余都该锚。
               冒烟拿它区分"没锚点"和"锚点落空了" —— 这两件事看起来一样（屏幕上都没反应），
               但一个是设计、一个是 bug。让组件自己说，比在测试里拿正则猜可靠得多。 */
-           data-anchored={String(!!(card.anchor || card.param || card.preset))}>
+           data-anchored={String(!!(card.anchor || card.param || card.preset))}
+           /*  把卡片 id 挂出来 —— 判据认它，不认标题。
+               标题是**给人读的文案**，随时会重写（这一轮就在重写几百张）；
+               拿文案当键，每改一个字就红一次，最后只会把判据改成跟着实现走。
+               这是同一个病的第四次：坞的页签按下标、预置按文字、高亮按文字、这里按标题。 */
+           data-card={card.id}
+           /*  把这张卡**锚在哪儿**也挂出来。判据原来拿 `tourN` 里的 N 当期望值，
+               而 N 是 TOUR 数组的下标 —— 数组增删一条，三处判据一起错位、
+               应用却一点没坏（「拿位置当键」的第八次）。锚点是这张卡的本质，
+               不会因为别人增删而变。 */
+           data-anchor={card.anchor ?? ''}>
       {/* 标题栏就是把手 —— 不另加一根拖动条：那会多占一行，而这块地方本来就紧张 */}
       <header className="ghead" onPointerDown={e => {
         if ((e.target as HTMLElement).closest('button')) return
@@ -342,12 +504,47 @@ export function GuideOverlay({ cards, title, onRequestClose, onReopen, closedRef
           try { if (pos) localStorage.setItem(POS, JSON.stringify(pos)) } catch { /* 隐私模式 */ }
         }}>
         <h3>{card.title}</h3>
+        {/*
+          翻页栏并进标题行。原来它自成一行（上边框 + 内边距 + 进度条），
+          在这张卡上要花掉 40px —— 而整张卡在短屏上只有 110px 的位置
+          （高度封在坞那一条带子里，见 stage.css）。省掉这一行，正文从 2.5 行变成 5 行。
+          **元素名一个没改**：冒烟有 6 处选择器挂在 `.gfoot .gnav` 上，
+          为了排版顺手改掉别人的判据，是把检查改成"跟着实现走"。
+          去掉的只有那根进度条 —— 「13 / 27」已经把它说了一遍。
+        */}
+        {/*
+          翻页只走**主干**那三张（对象 → 单步规则 → 第一项实验）。
+          参考层的二十几张照样点得到，但不堵在这条路上 —— 见 `guide.ts` 的 `tier`。
+          现在停在参考层时，这里不报"第几 / 共几"（那会让人以为主干有 28 张），
+          只给一条回主干的路。
+        */}
+        <footer className="gfoot">
+          {/*  ⚠️ `data-nav` 不是装饰：翻页栏在主干和参考层是**两套按钮**，
+               「最后一个 .gnav」在主干是「下一条」、在参考层是「回主干」。
+               判据按位置找按钮，就会在参考层点了回主干还以为自己翻了页 ——
+               这是"拿位置当键"的第五次（坞页签按下标 · 预置按文字 · 高亮按文字 ·
+               卡片按标题 · 这里按位置）。名字挂上去，位置怎么变都不影响。 */}
+          {onTrunk
+            ? <>
+                <button className="gnav" data-nav="prev" onClick={() => go(trunk[at - 1]!)}
+                        disabled={at <= 0} aria-label="上一条">‹</button>
+                <span className="gnum">{at + 1} / {trunk.length}</span>
+                <button className="gnav" data-nav="next" onClick={() => go(trunk[at + 1]!)}
+                        disabled={at < 0 || at >= trunk.length - 1} aria-label="下一条">›</button>
+              </>
+            : <>
+                <span className="gnum gref">参考</span>
+                <button className="gnav gback" data-nav="back"
+                        onClick={() => go(trunk[lastTrunk.current] ?? trunk[0]!)}
+                        aria-label="回到主干">回主干</button>
+              </>}
+        </footer>
         <button className="gx" onClick={() => setFolded(f => !f)}
                 aria-label={folded ? '展开讲解' : '折叠讲解'}>{folded ? '▴' : '▾'}</button>
         <button className="gx" onClick={() => { writeClosed(true); onRequestClose() }} aria-label="隐藏讲解">✕</button>
       </header>
 
-      {!folded && <p className="gbody">{card.body}</p>}
+      {!folded && <p className="gbody">{rich(card.body)}</p>}
 
       {!folded && card.see && card.see.length > 0 && (
         <div className="gsee">
@@ -361,12 +558,6 @@ export function GuideOverlay({ cards, title, onRequestClose, onReopen, closedRef
         </div>
       )}
 
-      <footer className="gfoot">
-        <button className="gnav" onClick={() => go(idx - 1)} disabled={idx === 0} aria-label="上一条">‹</button>
-        <div className="gbar"><i style={{ width: `${((idx + 1) / cards.length) * 100}%` }} /></div>
-        <span className="gnum">{idx + 1} / {cards.length}</span>
-        <button className="gnav" onClick={() => go(idx + 1)} disabled={idx === cards.length - 1} aria-label="下一条">›</button>
-      </footer>
     </aside>
   )
 }

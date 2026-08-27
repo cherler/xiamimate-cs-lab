@@ -78,11 +78,15 @@ function Frames({ state, nFrames }: { state: PageState; nFrames: number }) {
           {Array.from({ length: nFrames }, (_, f) => {
             const cell = state.frames[f]
             const touched = state.frameUsed === f
+            const fault = state.outcome === 'fault'
             const isHand = state.hand === f
+            //  缺页时被换入的那个块：让新页"落进来"（keyframe 见 stage.css）。
+            //  key 只在这个块上按步变，才让它每步重播、别的块不动。
+            const landing = touched && fault
             return (
-              <div key={f} className={`frame ${cell ? '' : 'empty'} ${touched ? 'touched' : ''}`}>
+              <div key={f} className={`frame ${cell ? '' : 'empty'} ${touched ? 'touched' : ''} ${landing ? 'landing' : ''}`}>
                 <div className="fno">块 {f}{isHand && <span className="hand" title="CLOCK 指针">▸</span>}</div>
-                <div className="fpage">{cell ? cell.page : '空'}</div>
+                <div className="fpage" key={landing ? `p${state.i}` : 'static'}>{cell ? cell.page : '空'}</div>
                 <div className="fmeta">
                   {cell ? <>stamp {cell.stamp}　使用位 <b className={cell.use ? 'on' : ''}>{cell.use ? 1 : 0}</b></> : '—'}
                 </div>
@@ -91,7 +95,7 @@ function Frames({ state, nFrames }: { state: PageState; nFrames: number }) {
           })}
         </div>
         {state.evictedPage !== null && (
-          <p className="evnote">本步换出页 <b>{state.evictedPage}</b>，换入页 <b>{state.page}</b></p>
+          <p className="evnote" key={state.i}>本步换出页 <b className="evout">{state.evictedPage}</b>，换入页 <b className="evin">{state.page}</b></p>
         )}
       </div>
     </div>
