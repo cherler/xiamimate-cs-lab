@@ -77,7 +77,7 @@ export default function App() {
   /** 「看懂这一屏」引导图弹层开关 */
   const [diagramOpen, setDiagramOpen] = useState(false)
   //  学科切换（默认 cs；不落本机——每次加载都回到有内容的计算机学科，冒烟也稳）
-  const [activeDisc, setActiveDisc] = useState('cs')
+  const [activeDisc, setActiveDisc] = useState('backend')
   const [guideOpen, setGuideOpen] = useState(false)
 
 

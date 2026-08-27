@@ -5204,14 +5204,34 @@ export const SOFT_LINKS: Record<string, string[]> = {
 }
 
 export const DISCIPLINES: Discipline[] = [
+  // 一级菜单 = 职业岗位(2026-08-27 从「学科」重构)。每条轨的 groups 由地基→进阶排序。
+  // 实验的 group 字段不变,只是重新归到职业轨下;一个实验可 SOFT_LINKS 跨轨挂载
+  // (如 dijkstra 真身在后端轨「数据结构」,软链进算法轨「经典算法」)。
+  // 物理及其它非 CS 学科已下线(碰撞实验代码保留,collision 的 group '力学' 成孤儿不显示)。
   {
-    key: 'cs', title: '计算机', icon: '💻', sub: '从 408 地基到大模型推理机制', status: 'active',
-    groups: ['计算机组成原理', '操作系统', '数据结构', '计算机网络', '数据库系统', '概率统计原理', '机器学习基础', 'Transformer 原理', '大模型推理'],
-    guide: { from: '408 地基', to: '大模型推理引擎', toIcon: '🤖', url: 'https://claude.ai/code/artifact/4a5e0921-6a29-4ad8-8ce3-c763b4a20ff5' },
+    key: 'backend', title: '后端工程师', icon: '🖥️', status: 'active',
+    sub: '408 地基 → 扛住高并发的后端',
+    groups: ['计算机组成原理', '操作系统', '数据结构', '计算机网络', '数据库系统'],
+    guide: { from: '一次内存访问', to: '扛住高并发的后端', toIcon: '🖥️' },
   },
-  { key: 'algo', title: '算法', icon: '🧮', sub: '经典 → 机器学习 → 深度学习 → 大模型', groups: ['经典算法', '机器学习算法', '深度学习算法', '大模型算法'], status: 'active', guide: { from: '一次排序', to: '会学习的模型', toIcon: '🧠' } },
-  // 转向「计算机全学科」(2026-08-27)：物理与其它非 CS 学科从导航移除。
-  // 物理的碰撞实验代码(kernel/stage)保留不删，仅从这里下线，需要时把这条加回即可。
+  {
+    key: 'algo', title: '算法工程师', icon: '🧠', status: 'active',
+    sub: '经典算法 → 会学习的模型',
+    groups: ['经典算法', '概率统计原理', '机器学习基础', '机器学习算法', '深度学习算法'],
+    guide: { from: '一次排序', to: '会学习的模型', toIcon: '🧠' },
+  },
+  {
+    key: 'llm', title: '大模型工程师', icon: '🤖', status: 'active',
+    sub: 'Transformer → 推理引擎',
+    groups: ['Transformer 原理', '大模型算法', '大模型推理'],
+    guide: { from: '一次注意力', to: '大模型推理引擎', toIcon: '🤖' },
+  },
+  {
+    key: 'security', title: '安全工程师', icon: '🔐', status: 'planned',
+    sub: '密码学 → 可信系统',
+    groups: [],
+    guide: { from: '一次异或', to: '一套加密协议', toIcon: '🔐' },
+  },
 ]
 
 export type Anchor = {
