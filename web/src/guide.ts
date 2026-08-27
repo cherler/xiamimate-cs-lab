@@ -298,6 +298,72 @@ export const TERMS: Term[] = [
 
 /** 每个实验一段。**加实验必须加这一段** —— 冒烟会数够不够 30 个。 */
 export const GUIDES: Record<string, Guide> = {
+  caesar: {
+    question: '每个字母后移固定几位，怎么把明文变成密文？',
+    read: [{ at: '对照', is: '明文/密文逐字母对照，绿=已加密、蓝框=当前。', anchor: '.cx-rows' }, { at: '变换', is: '当前字母 code→+k mod26→新字母。', anchor: '.cx-calc' }],
+    step: (s: never) => { const st = s as { pos: number; ch: string; code: number; key: number; shifted: number; out: string; cipher: string; phase: string }; return [
+      { k: '本步输入', v: st.phase === 'done' ? `明文全部加密完` : `第 ${st.pos + 1} 个字母 ${st.ch}(=${st.code})` },
+      { k: '判定规则', v: `字母转数字(A=0..Z=25)，加密钥 k=${st.key}，对 26 取模(越过 Z 绕回 A)，再转回字母。` },
+      { k: '本步结果', v: st.phase === 'done' ? `密文 = **${st.cipher}**` : `(${st.code}+${st.key})mod26=${st.shifted} → **${st.out}**` },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; cipher: string; out: string }; return st.phase === 'done' ? st.cipher : (st.out || '—') },
+    try: [{ act: '按「下一步」逐字母移位', watch: 'A→D、越过 Z 就绕回；HELLO 变 KHOOR。' }, { act: '想想怎么破', watch: '只有 26 种密钥，暴力试一遍就出；字母频率也没变。' }], terms: [],
+  },
+  vigenere: {
+    question: '用一个关键词而不是固定位移，能挡住频率分析吗？',
+    read: [{ at: '三行', is: '明文/密钥(关键词循环)/密文对照。', anchor: '.cx-rows' }, { at: '变换', is: '(明文码+关键词码)mod26。', anchor: '.cx-calc' }],
+    step: (s: never) => { const st = s as { pos: number; ch: string; chCode: number; keyCh: string; keyCode: number; shifted: number; out: string; cipher: string; phase: string }; return [
+      { k: '本步输入', v: st.phase === 'done' ? '全部加密完' : `第 ${st.pos + 1} 位：明文 ${st.ch}、关键词 ${st.keyCh}` },
+      { k: '判定规则', v: '位移不再固定，而是**当前关键词字母的值**；关键词循环套在明文上。' },
+      { k: '本步结果', v: st.phase === 'done' ? `密文 = **${st.cipher}**(两个 L 变成不同字母)` : `(${st.chCode}+${st.keyCode})mod26=${st.shifted} → **${st.out}**` },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; cipher: string; out: string }; return st.phase === 'done' ? st.cipher : (st.out || '—') },
+    try: [{ act: '按「下一步」看多表替换', watch: '同一个字母 L 在不同位置加密成不同字母。' }, { act: '想弱点', watch: '关键词周期重复——找出周期就能拆成几个凯撒破。' }], terms: [],
+  },
+  xor: {
+    question: '最基础的加密原语——异或，凭什么加解密同一套？',
+    read: [{ at: '三行', is: '明文位/密钥位/密文位。', anchor: '.cx-rows' }, { at: '本位', is: 'm XOR k = c。', anchor: '.cx-calc' }],
+    step: (s: never) => { const st = s as { pos: number; mBit: number; kBit: number; cBit: number; cBits: number[]; phase: string }; return [
+      { k: '本步输入', v: st.phase === 'done' ? '全部位加密完' : `第 ${st.pos + 1} 位：明文 ${st.mBit}、密钥 ${st.kBit}` },
+      { k: '判定规则', v: '异或：相同得 0、不同得 1。它**自反**——再异或一次同一个密钥就抵消。' },
+      { k: '本步结果', v: st.phase === 'done' ? `密文 = **${st.cBits.join('')}**` : `${st.mBit} ⊕ ${st.kBit} = **${st.cBit}**` },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; cBits: number[]; cBit: number }; return st.phase === 'done' ? st.cBits.join('') : (st.cBit >= 0 ? String(st.cBit) : '—') },
+    try: [{ act: '按「下一步」逐位异或', watch: '相同得 0、不同得 1。' }, { act: '想解密', watch: '密文再 XOR 同一密钥就还原——加解密同一套代码。' }], terms: [],
+  },
+  modpow: {
+    question: '指数上千位的 a^b mod n，怎么算得动？',
+    read: [{ at: '数值盒', is: '当前底数、结果，都对 n 取模。', anchor: '.cx-kv' }, { at: '读数', is: '要算什么、指数位、结果。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { a: number; b: number; n: number; bitPos: number; bit: number; baseNow: number; result: number; phase: string }; return [
+      { k: '本步输入', v: st.phase === 'done' ? `算完 ${st.a}^${st.b} mod ${st.n}` : `指数第 ${st.bitPos} 位 = ${st.bit}` },
+      { k: '判定规则', v: '把指数拆二进制；底数每步平方(a→a²→a⁴…)，这一位是 1 就把当前底数乘进结果，全程对 n 取模。' },
+      { k: '本步结果', v: st.phase === 'done' ? `= **${st.result}**` : st.bit === 1 ? `位是 1 → 乘进结果 → **${st.result}**` : `位是 0 → 跳过` },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; result: number; bit: number }; return st.phase === 'done' ? `=${st.result}` : `位${st.bit >= 0 ? st.bit : '?'}` },
+    try: [{ act: '按「下一步」平方-乘', watch: '底数逐步平方，指数位是 1 才乘进结果。' }, { act: '数乘法次数', watch: '13 位的指数只要几次乘法，不是连乘 13 次——这才跑得动 RSA。' }], terms: [],
+  },
+  diffiehellman: {
+    question: '所有人都能偷听的信道上，怎么商量出只有你俩知道的密钥？',
+    read: [{ at: 'Alice', is: '私钥 a、公钥 A、算出的共享。', anchor: '.cx-kv' }, { at: '读数', is: '公开参数、公钥 A/B、共享密钥。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { p: number; g: number; A: number; B: number; aliceShared: number; stage: string; phase: string }; return [
+      { k: '本步输入', v: st.stage === 'setup' ? `公开 p=${st.p}、g=${st.g}` : st.stage === 'pubA' ? 'Alice 公布公钥' : st.stage === 'pubB' ? 'Bob 公布公钥' : st.stage.startsWith('shared') ? '各自算共享' : '完成' },
+      { k: '判定规则', v: '私钥保密、公钥=g^私钥 mod p 公开；共享=**对方公钥^自己私钥 mod p**，双方都等于 g^(ab) mod p。' },
+      { k: '本步结果', v: st.stage === 'pubA' ? `A=${st.A}` : st.stage === 'pubB' ? `B=${st.B}` : st.aliceShared >= 0 ? `共享密钥 = **${st.aliceShared}**` : '公开参数已定' },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; aliceShared: number }; return st.phase === 'done' ? `共享 ${st.aliceShared}` : '协商中' },
+    try: [{ act: '按「下一步」看协商', watch: 'A、B 都公开，但共享密钥双方各自算、从不上信道。' }, { act: '想安全根基', watch: '偷听者要从 A=g^a 反推 a=解离散对数，大数下算不动。' }], terms: [],
+  },
+  rsa: {
+    question: '加密的人不知道解密的钥，公钥体制怎么做到？',
+    read: [{ at: '密钥盒', is: 'p/q/n/φ/e/d 的生成关系。', anchor: '.cx-kv' }, { at: '读数', is: '模数、公私钥、密文、解密。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { p: number; q: number; n: number; phi: number; e: number; d: number; m: number; c: number; dec: number; stage: string; phase: string }; return [
+      { k: '本步输入', v: st.stage === 'keygen' ? `选素数 p=${st.p}、q=${st.q}` : st.stage === 'pub' ? '定公钥 e' : st.stage === 'priv' ? '求私钥 d' : st.stage === 'encrypt' ? `加密明文 ${st.m}` : st.stage === 'decrypt' ? '私钥解密' : '完成' },
+      { k: '判定规则', v: 'n=pq、φ=(p-1)(q-1)；e 与 φ 互质(公钥)；d 满足 e·d≡1(mod φ)(私钥)；加密 c=m^e mod n、解密 m=c^d mod n。' },
+      { k: '本步结果', v: st.stage === 'keygen' ? `n=${st.n}、φ=${st.phi}` : st.stage === 'priv' ? `d=**${st.d}**` : st.stage === 'encrypt' ? `c=**${st.c}**` : st.stage === 'decrypt' ? `解回 **${st.dec}**` : `${st.m}→${st.c}→${st.dec}` },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; c: number; dec: number; stage: string }; return st.phase === 'done' ? `解回 ${st.dec}` : st.stage },
+    try: [{ act: '按「下一步」走完 RSA', watch: '生成密钥→公钥加密 4→31→私钥解密回 4。' }, { act: '想安全', watch: '公开 n，但反推 p、q=大数分解，几百位就算不动，所以 d 算不出。' }], terms: [],
+  },
   mvcc: {
     question: '别人改了 x 并提交，先前已开始的事务为什么还读到旧值？',
     read: [

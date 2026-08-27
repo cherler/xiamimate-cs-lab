@@ -303,6 +303,42 @@ const bitmapFree = (t: unknown[]) => { const s = last<{ freeCount?: Num }>(t)
   return typeof s?.freeCount === 'number' ? s.freeCount : null }
 
 export const BRIEFS: Record<string, Brief> = {
+  caesar: {
+    care: '最古老的替换密码：把每个字母在字母表上**向后移 k 位**，超过 Z 就绕回 A(mod 26)。解密反着移 k 位。\n\n骨架是「字母↔数字、加密钥、取模绕回」——后面维吉尼亚乃至一切对称加密都从这儿长出来。\n\n弱点两条：密钥只有 26 种(暴力可破)；不改字母频率(频率分析可破)。',
+    guess: { q: '明文 HELLO 用 k=3 加密，结果是？', opts: ['KHOOR', 'EBIIL', 'IFMMP'] },
+    tasks: [{ act: '按「下一步」逐字母移位', watch: 'A→D、越过 Z 绕回；HELLO→KHOOR。' }, { act: '想怎么破', watch: '只有 26 种密钥，暴力一遍就出。' }],
+    verdict: ctx => { const t = ctx.trace as { cipher?: string }[]; const l = t[t.length - 1]; return l ? { pick: 0, say: `HELLO → ${l.cipher}。`, why: '每个字母后移 3 位，越过 Z 绕回 A。' } : null },
+  },
+  vigenere: {
+    care: '凯撒的升级：不用固定位移，而用一个**关键词**，关键词每个字母给一个位移，循环套在明文上。\n\n于是同一个明文字母在不同位置加密成不同字母——**频率分析失效**，几百年没被破，人称「不可破译」。\n\n直到发现关键词**周期重复**：找出周期就能拆成几个凯撒分别破。它是「一次一密」的前身。',
+    guess: { q: 'HELLO 用关键词 KEY 加密，两个 L 会？', opts: ['变成不同字母', '变成相同字母', '保持不变'] },
+    tasks: [{ act: '按「下一步」看多表替换', watch: '同一字母 L 在不同位置加密成不同字母。' }, { act: '想弱点', watch: '关键词周期重复，可被卡西斯基法破。' }],
+    verdict: ctx => { const t = ctx.trace as { cipher?: string }[]; const l = t[t.length - 1]; return l ? { pick: 0, say: `HELLO → ${l.cipher}，两个 L 变成了不同字母。`, why: '不同位置用不同关键词字母做位移，所以频率被打散。' } : null },
+  },
+  xor: {
+    care: '计算机里最基础的加密原语：**密文 = 明文 XOR 密钥**。异或**自反**：再异或一次同一密钥就还原(c⊕k⊕k=m)——加解密同一套代码。\n\n流密码(RC4、ChaCha20)、一次一密(OTP)全靠它。\n\n安全**完全取决于密钥**：真随机 + 和明文等长 + 只用一次(OTP)=理论不可破；密钥一重复或有规律就漏底。',
+    guess: { q: '密文=明文XOR密钥，怎么解回明文？', opts: ['密文再 XOR 同一密钥', '密文减密钥', '密文再加密一次'] },
+    tasks: [{ act: '按「下一步」逐位异或', watch: '相同得 0、不同得 1。' }, { act: '想解密', watch: '密文再 XOR 同一密钥就还原。' }],
+    verdict: ctx => { const t = ctx.trace as { cBits?: number[] }[]; const l = t[t.length - 1]; return l ? { pick: 0, say: `密文 = ${l.cBits?.join('')}。`, why: '逐位异或；再异或同一密钥即还原(自反)。' } : null },
+  },
+  modpow: {
+    care: 'RSA、DH、椭圆曲线全在算 **a^b mod n**，而 b 动辄几百上千位，直接乘会爆炸。\n\n快速模幂(平方-乘)：把指数拆二进制，底数每步**平方**(a→a²→a⁴…)，指数这一位是 1 就把当前底数**乘进结果**，全程对 n 取模。\n\nO(log b) 次乘法搞定——这是公钥密码能在大数上跑起来的前提。',
+    guess: { q: '快速模幂算 3^13 mod 7 = ？', opts: ['3', '2', '5'] },
+    tasks: [{ act: '按「下一步」平方-乘', watch: '底数逐步平方，指数位是 1 才乘进结果。' }, { act: '数乘法次数', watch: '不是连乘 13 次，而是几次——这才跑得动 RSA。' }],
+    verdict: ctx => { const t = ctx.trace as { result?: number }[]; const l = t[t.length - 1]; return l ? { pick: 0, say: `3^13 mod 7 = ${l.result}。`, why: '13=1101₂，= 3^1·3^4·3^8 mod 7，逐位平方-乘。' } : null },
+  },
+  diffiehellman: {
+    care: '怎么在**所有人都能偷听**的信道上，商量出只有你俩知道的密钥？\n\n公开 p、g；Alice 私选 a、公布 A=g^a mod p；Bob 私选 b、公布 B=g^b mod p；各自算「对方公钥^自己私钥 mod p」，都等于 **g^(ab) mod p**，一致！\n\n偷听者只见 p、g、A、B，想反推私钥要解**离散对数**——大数下算不动，这就是安全根基。TLS 握手就用它。',
+    guess: { q: 'p=23,g=5,a=6,b=15，双方的共享密钥是？', opts: ['2', '8', '19'] },
+    tasks: [{ act: '按「下一步」看协商', watch: 'A、B 公开，共享密钥双方各自算、从不上信道。' }, { act: '想安全根基', watch: '从 A=g^a 反推 a = 解离散对数，算不动。' }],
+    verdict: ctx => { const t = ctx.trace as { aliceShared?: number }[]; const l = t[t.length - 1]; return l ? { pick: 0, say: `双方得到共享密钥 ${l.aliceShared}。`, why: 'B^a 与 A^b 都等于 g^(ab) mod p，所以一致，且从不在信道上传。' } : null },
+  },
+  rsa: {
+    care: '第一个实用的公钥体制：公钥加密、私钥解密，加密的人不需要知道解密的钥。基于「大数分解难」。\n\n选素数 p、q → n=pq(公开)、φ=(p-1)(q-1)(保密)；选 e 与 φ 互质(公钥)；求 d 使 e·d≡1(mod φ)(私钥)；加密 c=m^e mod n、解密 m=c^d mod n。\n\n公开的 n 谁都看得见，但从 n 反推 p、q(才能算 d)= 大数分解，几百位就算不动了。',
+    guess: { q: 'p=3,q=11,e=3，私钥 d(满足 e·d≡1 mod φ)=？', opts: ['7', '3', '11'] },
+    tasks: [{ act: '按「下一步」走完 RSA', watch: '生成密钥→公钥加密 4→31→私钥解密回 4。' }, { act: '想安全', watch: '反推 p、q = 大数分解，所以 d 算不出。' }],
+    verdict: ctx => { const t = ctx.trace as { c?: number; dec?: number; d?: number }[]; const l = t[t.length - 1]; return l ? { pick: 0, say: `私钥 d=${l.d}；明文 4→密文 ${l.c}→解回 ${l.dec}。`, why: 'd 满足 e·d≡1(mod φ)；公开 n 难分解出 p、q，故 d 算不出。' } : null },
+  },
   mvcc: {
     care:
       'MVCC = 多版本并发控制，MySQL(InnoDB)/PostgreSQL 扛高并发的地基。两条铁律：\n\n'

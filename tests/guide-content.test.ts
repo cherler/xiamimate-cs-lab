@@ -223,6 +223,36 @@ console.log('\n【「这一步为什么」真的在跟着走】')
    * 不这么要求的话，最省事的写法（返回一句不看状态的通用话）能一路绿着混过去。
    */
   const FIX: Record<string, { doc: unknown; a: unknown; b: unknown }> = {
+    caesar: {
+      doc: { kind: 'caesar', params: {}, entities: [], streams: [] },
+      a: { pos: 0, ch: 'H', code: 7, key: 3, shifted: 10, out: 'K', cipher: 'K', phase: 'run' },
+      b: { pos: -1, ch: '', code: -1, key: 3, shifted: -1, out: '', cipher: 'KHOOR', phase: 'done' },
+    },
+    vigenere: {
+      doc: { kind: 'vigenere', params: {}, entities: [], streams: [] },
+      a: { pos: 0, ch: 'H', chCode: 7, keyCh: 'K', keyCode: 10, shifted: 17, out: 'R', cipher: 'R', phase: 'run' },
+      b: { pos: -1, ch: '', chCode: -1, keyCh: '', keyCode: -1, shifted: -1, out: '', cipher: 'RIJVS', phase: 'done' },
+    },
+    xor: {
+      doc: { kind: 'xor', params: {}, entities: [], streams: [] },
+      a: { pos: 1, mBit: 1, kBit: 1, cBit: 0, cBits: [0, 0], phase: 'run' },
+      b: { pos: -1, mBit: -1, kBit: -1, cBit: -1, cBits: [0, 0, 1, 0, 1, 0, 1, 1], phase: 'done' },
+    },
+    modpow: {
+      doc: { kind: 'modpow', params: {}, entities: [], streams: [] },
+      a: { a: 3, b: 13, n: 7, bitPos: 1, bit: 0, baseNow: 2, result: 3, phase: 'run' },
+      b: { a: 3, b: 13, n: 7, bitPos: -1, bit: -1, baseNow: 4, result: 3, phase: 'done' },
+    },
+    diffiehellman: {
+      doc: { kind: 'diffiehellman', params: {}, entities: [], streams: [] },
+      a: { p: 23, g: 5, A: 8, B: -1, aliceShared: -1, stage: 'pubA', phase: 'run' },
+      b: { p: 23, g: 5, A: 8, B: 19, aliceShared: 2, stage: 'sharedA', phase: 'run' },
+    },
+    rsa: {
+      doc: { kind: 'rsa', params: {}, entities: [], streams: [] },
+      a: { p: 3, q: 11, n: 33, phi: 20, e: 3, d: 7, m: 4, c: -1, dec: -1, stage: 'priv', phase: 'run' },
+      b: { p: 3, q: 11, n: 33, phi: 20, e: 3, d: 7, m: 4, c: 31, dec: -1, stage: 'encrypt', phase: 'run' },
+    },
     mvcc: {
       doc: { kind: 'mvcc', params: {}, entities: [], streams: [] },
       //  A T1 读到 100 · B 调度结束(两次都 100) —— 结果换一套说法
