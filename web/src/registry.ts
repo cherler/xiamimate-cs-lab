@@ -254,6 +254,8 @@ import { walKernel, type WALState } from '@engine/kernels/wal.ts'
 import { WALStage } from './stages/WALStage.tsx'
 import { lsmKernel, type LSMState } from '@engine/kernels/lsm.ts'
 import { LSMStage } from './stages/LSMStage.tsx'
+import { minikvKernel, type MiniKVState } from '@engine/kernels/minikv.ts'
+import { MiniKVStage } from './stages/MiniKVStage.tsx'
 import { CollisionStage } from './stages/CollisionStage.tsx'
 import { gcnKernel, type GcnState } from '@engine/kernels/gcn.ts'
 import { GcnStage } from './stages/GcnStage.tsx'
@@ -5514,11 +5516,28 @@ const lsm: Experiment<LSMState> = {
   readouts: s => [{ label: '本步', value: s.act === 'flush' ? '刷成 SSTable' : s.act === 'write' ? `写 ${s.cur}` : '完成' }, { label: 'memtable', value: `[${s.memtable.join(',')}] ${s.memtable.length}/${s.cap}` }, { label: 'SSTable 数', value: `${s.sstables.length}`, tone: s.phase === 'done' ? 'good' : undefined }, { label: '写模式', value: '顺序写(快)' }],
 }
 
+const minikv: Experiment<MiniKVState> = {
+  id: 'minikv', group: '项目实战', title: '迷你 KV 存储', subtitle: '把 WAL+跳表+LSM+布隆 拼成一个数据库',
+  kernel: minikvKernel, defaultDoc: { kind: 'minikv', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '组合式项目：一条 put/get 流水把五个零件（WAL/memtable跳表/LSM/布隆/一致性哈希）拼成迷你数据库。面试能讲的「我造过 X」。详见讲解卡。',
+  bounds: ['put:先WAL→memtable→满了刷SSTable+入布隆', 'get:先问布隆(说没有就不查盘)→memtable→SSTable', 'get(a)走磁盘命中;get(z)被布隆挡下(可核)', '=LevelDB/RocksDB骨架;面试项目叙事'],
+  tabs: [{ id: 'kv', label: '写读全流程' }], Stage: MiniKVStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: 'KV 跑通' } : s.op === 'get' ? (s.result === '不存在' ? { key: 'bad', label: '布隆挡下' } : { key: 'good', label: `读到 ${s.result}` }) : s.op === 'flush' ? { key: 'good', label: '刷盘' } : { key: 'idle', label: `写 ${s.key}` }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 8)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.op === 'get' ? '读' : s.op === 'flush' ? '刷' : '写'),
+  readouts: s => [
+    { label: '本步', value: s.op === 'put' ? `put(${s.key},${s.val})` : s.op === 'get' ? `get(${s.key})` : s.op === 'flush' ? '刷 SSTable' : '完成' },
+    { label: 'memtable', value: `[${s.memtable.map(e => e[0]).join(',')}]` },
+    { label: 'SSTable', value: `${s.sstables.length} 个` },
+    { label: 'get 结果', value: s.op === 'get' ? `${s.result}${s.bloomHit ? '' : '(布隆挡下)'}` : '—', tone: s.op === 'get' ? (s.result === '不存在' ? 'bad' : 'good') : undefined },
+  ],
+}
+
 export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
   caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt,
-  tokenbucket, consistenthash, skiplist, twopc, otpreuse, wal, lsm, otpreuse, wal, lsm,
+  tokenbucket, consistenthash, skiplist, twopc, otpreuse, wal, lsm, minikv,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,
@@ -5673,8 +5692,8 @@ export const DISCIPLINES: Discipline[] = [
   },
   {
     key: 'backend', title: '后端', icon: '🖥️', status: 'active',
-    sub: '数据库 · 并发 · 分布式',
-    groups: ['数据库系统', '并发编程', '分布式系统'],
+    sub: '数据库 · 并发 · 分布式 · 项目',
+    groups: ['数据库系统', '并发编程', '分布式系统', '项目实战'],
     guide: { from: '一次数据库查询', to: '扛住高并发的后端', toIcon: '🖥️' },
   },
   {
@@ -5726,6 +5745,7 @@ export const GROUP_ANCHOR: Record<string, string> = {
   '数据库系统': 'software',
   '并发编程': 'software',
   '分布式系统': 'internet',
+  '项目实战': 'software',
   '密码学': 'internet',
   '计算机网络': 'internet',
   '概率统计原理': 'llm',

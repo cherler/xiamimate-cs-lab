@@ -71,6 +71,7 @@ import { twopcKernel } from '../src/kernels/twopc.ts'
 import { otpreuseKernel } from '../src/kernels/otpreuse.ts'
 import { walKernel } from '../src/kernels/wal.ts'
 import { lsmKernel } from '../src/kernels/lsm.ts'
+import { minikvKernel } from '../src/kernels/minikv.ts'
 // 与 registry 同源的预设常量：直接 import 保证 doc 逐字一致（引擎侧，无 React）。
 import { CRC_PRESETS, HAMMING_PRESETS, SUBNET_PRESETS, HUFF_PRESETS, BPLUS_PRESETS } from '../src/presets/sequences.ts'
 import { ROUTE_PRESETS } from '../src/presets/entities.ts'
@@ -1085,6 +1086,23 @@ export const CATALOG: CatalogEntry[] = [
       compute: () => ({ answer: '写进内存表、满了整块顺序刷盘，把随机写变顺序写', step: 0, evidence: '避免了改磁盘 B+树的随机写' }),
       distractors: () => ['直接原地改磁盘 B+树', '不落盘只在内存', '用更快的哈希'],
     }],
+  },
+  {
+    id: 'minikv', title: '迷你 KV 存储', kernel: minikvKernel as Kernel<unknown>, doc: trivialDoc('minikv'),
+    facts: [
+      {
+        id: 'bloom_role', label: '布隆过滤器在读路径上的作用',
+        ask: 'LSM 型 KV 存储的读路径上，布隆过滤器起什么作用?', kind: 'choice',
+        compute: () => ({ answer: '布隆说"一定不在"时直接返回，省掉查磁盘 SSTable 的 I/O', step: 0, evidence: 'get(z) 被布隆挡下，不查盘' }),
+        distractors: () => ['加密存储的键', '给键排序', '压缩 SSTable'],
+      },
+      {
+        id: 'write_path', label: 'KV 写入的第一步',
+        ask: '这个迷你 KV 存储执行 put(k,v) 时，第一步做什么（保证宕机不丢）?', kind: 'choice',
+        compute: () => ({ answer: '先写 WAL 日志并落盘', step: 0, evidence: '先日志后数据，崩溃可重放' }),
+        distractors: () => ['先写进 SSTable', '先更新布隆过滤器', '先分片到其它节点'],
+      },
+    ],
   },
 ]
 

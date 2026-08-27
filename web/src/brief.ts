@@ -303,6 +303,12 @@ const bitmapFree = (t: unknown[]) => { const s = last<{ freeCount?: Num }>(t)
   return typeof s?.freeCount === 'number' ? s.freeCount : null }
 
 export const BRIEFS: Record<string, Brief> = {
+  minikv: {
+    care: '这不是又一个孤立知识点，而是把前面学的零件**拼成一个真能跑的迷你数据库**——面试里能讲的「我造过 X」。\n\n**写(put)**：① 先写 WAL 日志(持久，崩溃能恢复) → ② 存进内存 memtable(跳表，有序极快) → ③ memtable 满了整块顺序刷成 SSTable(LSM)，同时把键放进布隆过滤器。\n\n**读(get)**：① 先问布隆「这键可能在吗」——说"不在"就直接返回、连磁盘都不查(省 I/O)；说"可能在"再 ② 查 memtable → ③ 从新到旧查各 SSTable。多机时用一致性哈希分片。\n\n这就是 LevelDB/RocksDB/Cassandra 的骨架。',
+    guess: { q: '读 get(k) 时，布隆过滤器说"一定不在"，接下来?', opts: ['直接返回，不查磁盘', '还是要查所有 SSTable', '去问其它节点'] },
+    tasks: [{ act: '按「下一步」走 put/get', watch: 'put 先写日志、进内存、满了刷盘；get 先问布隆。' }, { act: '看 get(z)', watch: '布隆挡下，不查盘——省 I/O 的关键。' }],
+    verdict: ctx => { const t = ctx.trace as { sstables?: unknown[] }[]; const l = t[t.length - 1]; return l ? { pick: 0, say: '五个零件咬合成一个能 put/get 的迷你数据库。', why: '写路径快(内存+顺序刷)、读路径省(布隆挡无效查)、WAL 保证持久——这就是 LevelDB 的骨架。' } : null },
+  },
   otpreuse: {
     care: '一次一密(OTP)理论上不可破——前提是密钥**真随机、和明文等长、只用一次**。\n\n一旦**同一个密钥加密两条消息**就全垮：c1=m1⊕k、c2=m2⊕k，那么 c1⊕c2 = m1⊕m2⊕(k⊕k) = **m1⊕m2**——密钥被异或抵消了！\n\n攻击者不需要密钥，只要拿到两段密文异或，就得到两条明文的异或关系，再结合语言规律就能还原。这是「密钥只能用一次」的铁律来历，WEP、某些 RC4 用法就栽在这。',
     guess: { q: '同密钥加密两消息，攻击者异或两段密文得到？', opts: ['m1⊕m2（密钥消失）', '密钥 k', '乱码'] },

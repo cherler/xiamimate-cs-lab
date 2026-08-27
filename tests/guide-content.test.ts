@@ -223,6 +223,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
    * 不这么要求的话，最省事的写法（返回一句不看状态的通用话）能一路绿着混过去。
    */
   const FIX: Record<string, { doc: unknown; a: unknown; b: unknown }> = {
+    minikv: {
+      doc: { kind: 'minikv', params: {}, entities: [], streams: [] },
+      a: { op: 'get', key: 'a', val: -1, memtable: [['d', 4]], sstables: [[['a', 1], ['b', 2], ['c', 3]]], bloom: ['a', 'b', 'c', 'd'], result: '1', bloomHit: true, foundIn: 'SSTable1', phase: 'run' },
+      b: { op: 'get', key: 'z', val: -1, memtable: [['d', 4]], sstables: [[['a', 1], ['b', 2], ['c', 3]]], bloom: ['a', 'b', 'c', 'd'], result: '不存在', bloomHit: false, foundIn: 'none', phase: 'run' },
+    },
     otpreuse: {
       doc: { kind: 'otpreuse', params: {}, entities: [], streams: [] },
       a: { m1: [0, 1], m2: [0, 0], k: [1, 0], c1: [1, 1], c2: [1, 0], pos: 1, xorbit: 1, m1xm2: [0, 1], phase: 'run' },

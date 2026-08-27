@@ -298,6 +298,17 @@ export const TERMS: Term[] = [
 
 /** 每个实验一段。**加实验必须加这一段** —— 冒烟会数够不够 30 个。 */
 export const GUIDES: Record<string, Guide> = {
+  minikv: {
+    question: '把学过的零件拼起来，能造一个真能跑的数据库吗？',
+    read: [{ at: '五个零件', is: 'WAL/memtable/SSTable/布隆四块 + 当前操作路径。', anchor: '.kv-grid' }, { at: '读数', is: '本步、memtable、SSTable、get 结果。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { op: string; key: string; val: number; memtable: [string, number][]; sstables: unknown[]; result: string; bloomHit: boolean; foundIn: string; phase: string }; return [
+      { k: '本步输入', v: st.phase === 'done' ? '一条 put/get 流水跑完' : st.op === 'put' ? `写 put(${st.key}, ${st.val})` : st.op === 'get' ? `读 get(${st.key})` : st.op === 'flush' ? 'memtable 满，刷盘' : '开始' },
+      { k: '判定规则', v: '写：先 WAL(持久)→memtable(跳表)→满了刷 SSTable+入布隆。读：先问布隆(说没有就不查盘)→memtable→从新到旧查 SSTable。' },
+      { k: '本步结果', v: st.op === 'put' ? `memtable=[${st.memtable.map(e => e[0]).join(',')}]，${st.sstables.length} 个 SSTable` : st.op === 'get' ? (st.bloomHit ? `布隆说可能在→查到 ${st.key}=${st.result}(在 ${st.foundIn})` : `布隆说一定不在→直接返回"不存在"，不查盘`) : st.op === 'flush' ? `刷成第 ${st.sstables.length} 个 SSTable` : '五零件就位' },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; op: string; result: string }; return st.phase === 'done' ? 'KV跑通' : (st.op === 'get' ? (st.result || 'get') : st.op) },
+    try: [{ act: '按「下一步」走 put/get', watch: 'put 先写日志、进内存、满了刷盘；get 先问布隆。' }, { act: '看 get(z)', watch: '布隆说"一定不在"，连磁盘都不查——省 I/O 的关键。' }], terms: [],
+  },
   otpreuse: {
     question: '一次一密理论不可破，为什么密钥绝不能重复用？',
     read: [{ at: '三行', is: '两段密文与它们的异或；红=已揭示的 m1⊕m2。', anchor: '.cx-rows' }, { at: '读数', is: '本位异或、泄露的 m1⊕m2。', anchor: '.scdim' }],

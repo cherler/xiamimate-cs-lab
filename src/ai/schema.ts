@@ -312,6 +312,7 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   otpreuse: {},
   wal: {},
   lsm: {},
+  minikv: {},
   astar: {},
   perceptron: {},
   pooling: { kind: 'string' },

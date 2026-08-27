@@ -3899,3 +3899,18 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
   border:1.5px solid var(--hit); border-radius:8px; background:color-mix(in srgb, var(--hit) 9%, var(--panel)); }
 .lsm-sst b { font-size:11px; color:var(--hit); }
 .lsm-sst span { font-size:13px; font-family:var(--mono); color:var(--ink); }
+
+/* ── 迷你 KV 项目 ── */
+.kv-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:8px 0 12px; }
+.kv-comp { padding:8px 11px; border:1.5px solid var(--line); border-radius:9px; background:var(--panel); }
+.kv-comp.active { border-color:var(--now); box-shadow:0 0 0 1px var(--now); }
+.kv-lbl { display:flex; align-items:baseline; gap:6px; font-size:12px; font-weight:600; color:var(--ink); margin-bottom:6px; }
+.kv-lbl em { font-size:10px; font-weight:400; color:var(--faint); font-style:normal; }
+.kv-list { display:flex; flex-wrap:wrap; gap:5px; align-items:center; min-height:24px; }
+.kv-item { font-size:12px; font-family:var(--mono); padding:2px 7px; border-radius:5px; border:1px solid var(--line); background:var(--sunk-1); color:var(--ink); }
+.kv-item.sst { border-color:var(--hit); color:var(--hit); }
+.kv-item.mono { color:var(--dim); }
+.kv-empty { font-size:11px; color:var(--faint); }
+.kv-bloom { font-size:11px; padding:2px 8px; border-radius:10px; font-weight:600; }
+.kv-bloom.hit { color:var(--now); background:color-mix(in srgb, var(--now) 12%, transparent); }
+.kv-bloom.block { color:var(--miss); background:color-mix(in srgb, var(--miss) 12%, transparent); }
