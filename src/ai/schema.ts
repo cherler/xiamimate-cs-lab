@@ -313,6 +313,7 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   wal: {},
   lsm: {},
   minikv: {},
+  urlshortener: {},
   astar: {},
   perceptron: {},
   pooling: { kind: 'string' },

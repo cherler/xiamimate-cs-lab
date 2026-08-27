@@ -72,6 +72,7 @@ import { otpreuseKernel } from '../src/kernels/otpreuse.ts'
 import { walKernel } from '../src/kernels/wal.ts'
 import { lsmKernel } from '../src/kernels/lsm.ts'
 import { minikvKernel } from '../src/kernels/minikv.ts'
+import { urlshortenerKernel } from '../src/kernels/urlshortener.ts'
 // 与 registry 同源的预设常量：直接 import 保证 doc 逐字一致（引擎侧，无 React）。
 import { CRC_PRESETS, HAMMING_PRESETS, SUBNET_PRESETS, HUFF_PRESETS, BPLUS_PRESETS } from '../src/presets/sequences.ts'
 import { ROUTE_PRESETS } from '../src/presets/entities.ts'
@@ -1110,6 +1111,23 @@ export const CATALOG: CatalogEntry[] = [
           return { answer: String(reads[0]?.result ?? 9), step: 0, evidence: '读时从新到旧扫 SSTable，最新版本先命中' }
         },
         distractors: () => ['1', '报错', '0'],
+      },
+    ],
+  },
+  {
+    id: 'urlshortener', title: '设计短链系统', kernel: urlshortenerKernel as Kernel<unknown>, doc: trivialDoc('urlshortener'),
+    facts: [
+      {
+        id: 'read_heavy', label: '短链系统读多写少该怎么扛',
+        ask: '短链系统读:写约 100:1（跳转远多于生成）。为扛住读，第一个该加的组件是?', kind: 'choice',
+        compute: () => ({ answer: '缓存（Redis 缓存热点短码）', step: 0, evidence: '读多写少，热点短链几乎全走缓存' }),
+        distractors: () => ['消息队列', '更多写库', '分布式锁'],
+      },
+      {
+        id: 'shortcode', label: '短码生成为什么用发号器+Base62',
+        ask: '短链的短码生成，为什么推荐「唯一发号器 + Base62 编码」，而不是「哈希长链」?', kind: 'choice',
+        compute: () => ({ answer: '哈希会碰撞、要处理冲突；发号器保证唯一，Base62 让短码又短又不易被爬', step: 0, evidence: '62^6≈568亿够用；自增 ID 又会暴露业务量' }),
+        distractors: () => ['哈希更快所以更好', '发号器不需要唯一性', '两者完全一样'],
       },
     ],
   },

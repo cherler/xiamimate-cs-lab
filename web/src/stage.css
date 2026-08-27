@@ -3926,3 +3926,14 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .kv-item.upd { border-color:var(--now); background:color-mix(in srgb, var(--now) 16%, var(--panel)); color:var(--now); font-weight:700; }
 .kv-note { margin:0 0 10px; padding:6px 11px; font-size:12px; border-radius:6px; line-height:1.5;
   border:1px solid var(--f-tag); background:color-mix(in srgb, var(--f-tag) 8%, var(--panel)); color:var(--t-body); }
+
+/* ── 系统设计 ── */
+.sd-arch { margin:6px 0 12px; }
+.sd-comps { display:flex; gap:7px; flex-wrap:wrap; margin-top:5px; }
+.sd-comp { display:flex; flex-direction:column; gap:1px; padding:6px 10px; border:1.5px solid var(--now); border-radius:8px;
+  background:color-mix(in srgb, var(--now) 7%, var(--panel)); }
+.sd-comp b { font-size:12.5px; color:var(--ink); }
+.sd-comp em { font-size:10px; color:var(--faint); font-style:normal; }
+.sd-decision { margin:0 0 10px; padding:9px 12px; border:1px solid var(--line); border-left:3px solid var(--f-tag); border-radius:8px; background:var(--sunk-1); }
+.sd-focus { font-size:13px; font-weight:600; color:var(--ink); margin-bottom:4px; }
+.sd-detail { margin:0; font-size:12px; line-height:1.6; color:var(--t-body); }

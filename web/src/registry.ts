@@ -256,6 +256,8 @@ import { lsmKernel, type LSMState } from '@engine/kernels/lsm.ts'
 import { LSMStage } from './stages/LSMStage.tsx'
 import { minikvKernel, type MiniKVState } from '@engine/kernels/minikv.ts'
 import { MiniKVStage } from './stages/MiniKVStage.tsx'
+import { urlshortenerKernel, type SysDesignState } from '@engine/kernels/urlshortener.ts'
+import { SysDesignStage } from './stages/SysDesignStage.tsx'
 import { CollisionStage } from './stages/CollisionStage.tsx'
 import { gcnKernel, type GcnState } from '@engine/kernels/gcn.ts'
 import { GcnStage } from './stages/GcnStage.tsx'
@@ -5537,11 +5539,28 @@ const minikv: Experiment<MiniKVState> = {
   ],
 }
 
+const urlshortener: Experiment<SysDesignState> = {
+  id: 'urlshortener', group: '系统设计', title: '设计短链系统', subtitle: '需求→估算→核心→扩展→权衡',
+  kernel: urlshortenerKernel, defaultDoc: { kind: 'urlshortener', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '系统设计题：以短链系统为例走一遍框架——需求澄清→容量估算→发号+Base62编码→存储→缓存→分片扩展→权衡。详见讲解卡。',
+  bounds: ['读:写≈100:1;发号器+Base62(62^6≈568亿短码)', '读多写少→Redis缓存扛读;量大→一致性哈希分片', '权衡:发号器>哈希>自增;301永久vs302可统计', '框架换成秒杀/Feed/消息队列照样用'],
+  tabs: [{ id: 'design', label: '架构逐步搭' }], Stage: SysDesignStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: '设计完成' } : { key: 'idle', label: s.stage.replace(/^[①②③④⑤⑥⑦]\s*/, '') || '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 7)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.stage.slice(0, 1) || '设'),
+  readouts: s => [
+    { label: '阶段', value: s.stage || '就绪' },
+    { label: '关键', value: s.metric || '—' },
+    { label: '已定组件', value: `${s.components.length} 个` },
+    { label: '架构', value: s.components.map(c => c.label).join('→') || '—' },
+  ],
+}
+
 export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
   caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt,
-  tokenbucket, consistenthash, skiplist, twopc, otpreuse, wal, lsm, minikv,
+  tokenbucket, consistenthash, skiplist, twopc, otpreuse, wal, lsm, minikv, urlshortener,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,
@@ -5696,8 +5715,8 @@ export const DISCIPLINES: Discipline[] = [
   },
   {
     key: 'backend', title: '后端', icon: '🖥️', status: 'active',
-    sub: '数据库 · 并发 · 分布式 · 项目',
-    groups: ['数据库系统', '并发编程', '分布式系统', '项目实战'],
+    sub: '数据库 · 并发 · 分布式 · 系统设计 · 项目',
+    groups: ['数据库系统', '并发编程', '分布式系统', '系统设计', '项目实战'],
     guide: { from: '一次数据库查询', to: '扛住高并发的后端', toIcon: '🖥️' },
   },
   {
@@ -5749,6 +5768,7 @@ export const GROUP_ANCHOR: Record<string, string> = {
   '数据库系统': 'software',
   '并发编程': 'software',
   '分布式系统': 'internet',
+  '系统设计': 'internet',
   '项目实战': 'software',
   '密码学': 'internet',
   '计算机网络': 'internet',

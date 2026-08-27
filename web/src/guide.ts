@@ -298,6 +298,17 @@ export const TERMS: Term[] = [
 
 /** 每个实验一段。**加实验必须加这一段** —— 冒烟会数够不够 30 个。 */
 export const GUIDES: Record<string, Guide> = {
+  urlshortener: {
+    question: '给你「设计一个短链系统」，怎么从需求推到架构？',
+    read: [{ at: '架构', is: '一步步搭起来的组件。', anchor: '.sd-arch' }, { at: '读数', is: '当前阶段、关键数、组件。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { stage: string; focus: string; metric: string; components: unknown[]; phase: string }; return [
+      { k: '本步输入', v: st.phase === 'done' ? '走完整套设计框架' : `${st.stage}` },
+      { k: '判定规则', v: '系统设计的框架：需求澄清(边界)→容量估算(定规模)→核心设计(发号+编码+存储)→缓存/扩展→权衡。每步都要说"为什么这么选"。' },
+      { k: '本步结果', v: st.phase === 'done' ? '一套短链系统搭好，可讲清权衡' : `${st.focus}；关键：${st.metric}（已定 ${st.components.length} 个组件）` },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; stage: string }; return st.phase === 'done' ? '设计完成' : st.stage.replace(/^[①②③④⑤⑥⑦]\s*/, '') },
+    try: [{ act: '按「下一步」走框架', watch: '需求→估算→发号编码→存储→缓存→扩展，架构一块块搭。' }, { act: '记住权衡', watch: '发号器 vs 哈希 vs 自增；301 vs 302——这些取舍是面试加分项。' }], terms: [],
+  },
   minikv: {
     question: '把学过的零件拼起来，能造一个真能跑的数据库吗？',
     read: [{ at: '五个零件', is: 'WAL/memtable/SSTable/布隆四块 + 当前操作路径。', anchor: '.kv-grid' }, { at: '读数', is: '本步、memtable、SSTable、get 结果。', anchor: '.scdim' }],
