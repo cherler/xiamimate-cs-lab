@@ -204,6 +204,8 @@ import { ToTStage } from './stages/ToTStage.tsx'
 import { collisionKernel, type CollisionState } from '@engine/kernels/collision.ts'
 import { mvccKernel, type MvccState } from '@engine/kernels/mvcc.ts'
 import { MvccStage } from './stages/MvccStage.tsx'
+import { isoKernel, type IsoState } from '@engine/kernels/iso.ts'
+import { IsoStage } from './stages/IsoStage.tsx'
 import { CollisionStage } from './stages/CollisionStage.tsx'
 import { gcnKernel, type GcnState } from '@engine/kernels/gcn.ts'
 import { GcnStage } from './stages/GcnStage.tsx'
@@ -5063,9 +5065,42 @@ const mvcc: Experiment<MvccState> = {
   ],
 }
 
+const iso: Experiment<IsoState> = {
+  id: 'iso',
+  group: '数据库系统',
+  title: '事务隔离级别',
+  subtitle: '切级别，看脏读 / 不可重复读出现或消失',
+  kernel: isoKernel,
+  defaultDoc: { kind: 'iso', params: { level: '读已提交' }, entities: [], streams: [] },
+  params: [{ key: 'level', label: '隔离级别', kind: 'enum', options: ['读未提交', '读已提交', '可重复读', '串行化'] }],
+  paramsNote: '隔离级别是并发事务「互相能看到多少」的旋钮,后端面试必考。同一段并发调度(T1 读同一行 x 三次、中间 T2 改 x 并提交),级别不同,T1 读到的就不同:读未提交会读到 T2 没提交的值(**脏读**),还会两次读不一致(**不可重复读**);读已提交挡住脏读、挡不住不可重复读;可重复读(MySQL InnoDB 默认)靠快照两个都挡住;串行化最严(还能挡幻读,但本例无区间查询,表现同可重复读)。级别越高越安全、并发越低。改「隔离级别」参数即刻重跑,看现象出现或消失。',
+  bounds: [
+    '固定调度:T1 读 x 三次,中间 T2 改 x=200 并提交',
+    '读未提交:100→200(脏读)→200(不可重复读)',
+    '读已提交:100→100→200(不可重复读);可重复读:100→100→100',
+    '每次读的值与现象都可核对(和隔离级别的读规则一致)',
+  ],
+  tabs: [{ id: 'level', label: '级别×读现象' }],
+  Stage: IsoStage,
+  tone: s => (s.phase === 'done'
+    ? (s.reads.some(r => r.a === '脏读' || r.a === '不可重复读') ? { key: 'bad', label: '有读现象' } : { key: 'good', label: '干净' })
+    : s.anomaly === '脏读' || s.anomaly === '不可重复读' ? { key: 'bad', label: s.anomaly }
+      : s.op === 'read' ? { key: 'good', label: `读到 ${s.readValue}` }
+        : { key: 'idle', label: s.curTx ? `T${s.curTx} 动作` : '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 9)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.op === 'read' ? '读' : s.op === 'write' ? '写' : s.op === 'commit' ? '交' : '始'),
+  whyInRail: true,
+  readouts: s => [
+    { label: '隔离级别', value: s.level },
+    { label: '本次现象', value: s.anomaly || '—', tone: (s.anomaly === '脏读' || s.anomaly === '不可重复读') ? 'bad' : s.anomaly === '正常' ? 'good' : undefined },
+    { label: 'T1 读序列', value: s.reads.length ? s.reads.map(r => r.v).join('→') : '—' },
+    { label: 'x 已提交', value: `${s.committedX}` },
+  ],
+}
+
 export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
-  page, scheduler, disk, banker, mvcc,
+  page, scheduler, disk, banker, mvcc, iso,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,

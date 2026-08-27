@@ -46,6 +46,7 @@ import { subnetKernel } from '../src/kernels/subnet.ts'
 import { huffmanKernel } from '../src/kernels/huffman.ts'
 import { mvccKernel } from '../src/kernels/mvcc.ts'
 import { bplusKernel } from '../src/kernels/bplus.ts'
+import { isoKernel } from '../src/kernels/iso.ts'
 // 与 registry 同源的预设常量：直接 import 保证 doc 逐字一致（引擎侧，无 React）。
 import { CRC_PRESETS, HAMMING_PRESETS, SUBNET_PRESETS, HUFF_PRESETS, BPLUS_PRESETS } from '../src/presets/sequences.ts'
 import { ROUTE_PRESETS } from '../src/presets/entities.ts'
@@ -739,6 +740,33 @@ export const CATALOG: CatalogEntry[] = [
         kind: 'number',
         compute: t => ({ answer: String(last(t).splits), step: t.length - 1, evidence: `终态 splits=${last(t).splits}` }),
         distractors: numDistractors,
+      },
+    ],
+  },
+  {
+    id: 'iso',
+    title: '事务隔离级别',
+    kernel: isoKernel as Kernel<unknown>,
+    // 与 registry defaultDoc 一致:读已提交。
+    doc: { kind: 'iso', params: { level: '读已提交' }, entities: [], streams: [] },
+    facts: [
+      {
+        id: 'rc_third_read', label: '读已提交下 T1 第三次读到的值',
+        ask: '读已提交(RC)隔离级别下：T1 读 x=100，之后 T2 把 x 改成 200 并提交，T1 第三次读 x 读到多少?',
+        kind: 'number',
+        compute: t => {
+          const reads = t.filter(f => f.op === 'read')
+          const f = reads[reads.length - 1] ?? last(t)
+          return { answer: String(f.readValue), step: t.indexOf(f), evidence: String(f.log ?? '') }
+        },
+        distractors: () => ['100', '150', '0'],
+      },
+      {
+        id: 'rc_anomaly', label: '读已提交挡不住的读现象',
+        ask: '读已提交(RC)能挡住脏读，但挡不住下面哪一种读现象?',
+        kind: 'choice',
+        compute: () => ({ answer: '不可重复读', step: 0, evidence: 'RC 只读已提交值→无脏读；但两次读之间别的事务提交了新值→不可重复读' }),
+        distractors: () => ['脏读', '幻读', '三种都能挡住'],
       },
     ],
   },

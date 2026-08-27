@@ -3683,3 +3683,24 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .mvcc-txid { font-size:15px; color:var(--ink); }
 .mvcc-txstat { font-size:11px; color:var(--dim); }
 .mvcc-snap { font-size:11px; color:var(--faint); font-family:var(--mono); margin-left:auto; }
+
+/* ── 事务隔离级别 ── */
+.iso-x { display:flex; align-items:center; gap:8px; margin:6px 0 12px; }
+.iso-x-lbl { font-family:var(--mono); font-weight:700; color:var(--ink); }
+.iso-x-val { font-size:12px; font-family:var(--mono); padding:3px 9px; border-radius:6px; border:1px solid var(--line); }
+.iso-x-val.committed { border-color:var(--hit); background:color-mix(in srgb, var(--hit) 10%, var(--panel)); color:var(--hit); }
+.iso-x-val.uncommitted { border-style:dashed; color:var(--dim); }
+.iso-reads { margin:4px 0 10px; }
+.iso-lbl { display:block; font-size:11px; color:var(--dim); margin-bottom:5px; }
+.iso-seq { display:flex; gap:10px; align-items:stretch; flex-wrap:wrap; }
+.iso-empty { color:var(--faint); font-size:12px; }
+.iso-read { min-width:66px; padding:8px 10px; border-radius:8px; border:1.5px solid var(--line);
+  background:var(--panel); display:flex; flex-direction:column; gap:3px; align-items:center; }
+.iso-read.ok { border-color:var(--hit); background:color-mix(in srgb, var(--hit) 10%, var(--panel)); }
+.iso-read.bad { border-color:var(--miss); background:color-mix(in srgb, var(--miss) 12%, var(--panel)); }
+.iso-read.base { border-color:var(--dim); }
+.iso-rv { font-size:20px; font-weight:700; font-family:var(--mono); color:var(--ink); }
+.iso-ra { font-size:10.5px; }
+.iso-read.bad .iso-ra { color:var(--miss); font-weight:600; }
+.iso-read.ok .iso-ra { color:var(--hit); }
+.iso-read.base .iso-ra { color:var(--faint); }
