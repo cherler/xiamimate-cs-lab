@@ -298,6 +298,50 @@ export const TERMS: Term[] = [
 
 /** 每个实验一段。**加实验必须加这一段** —— 冒烟会数够不够 30 个。 */
 export const GUIDES: Record<string, Guide> = {
+  extgcd: {
+    question: 'RSA 求私钥 d 那一步——怎么求 e 关于模 m 的逆元？',
+    read: [{ at: '数值盒', is: '余数 r、商 q、系数 t，迭代更新。', anchor: '.cx-kv' }, { at: '读数', is: '要求什么、本步商、逆元。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { e: number; m: number; q: number; r: number; newr: number; t: number; newt: number; result: number; phase: string }; return [
+      { k: '本步输入', v: st.phase === 'done' ? `辗转相除结束` : `余数 ${st.r}、${st.newr}` },
+      { k: '判定规则', v: '一边辗转相除求 gcd，一边回带系数 t：q=⌊r/newr⌋，同步更新余数和系数。gcd=1 才有逆。' },
+      { k: '本步结果', v: st.phase === 'done' ? `逆元 **d=${st.result}**（${st.e}×${st.result}≡1 mod ${st.m}）` : `商 q=${st.q}，系数更新为 ${st.t - st.q * st.newt}` },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; result: number; q: number }; return st.phase === 'done' ? `d=${st.result}` : `q=${st.q}` },
+    try: [{ act: '按「下一步」迭代', watch: '每步一个商，系数跟着回带。' }, { act: '看结果', watch: 'gcd=1，系数取模就是逆元 d=7——RSA 私钥就这么来。' }], terms: [],
+  },
+  signature: {
+    question: '怎么证明消息没被改、且确实是你发的？',
+    read: [{ at: '数值盒', is: '哈希 h、签名 s、验证结果。', anchor: '.cx-kv' }, { at: '读数', is: '哈希、签名、验证。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { hash: number; sig: number; recvHash: number; verified: number; ok: boolean; stage: string; phase: string }; return [
+      { k: '本步输入', v: st.stage === 'hash' ? '对消息算哈希' : st.stage === 'sign' ? '用私钥签名' : st.stage === 'verify' ? '接收方重算哈希' : st.stage === 'check' ? '用公钥验证' : '完成' },
+      { k: '判定规则', v: '加密是公钥加/私钥解；签名反过来——**私钥签名 s=h^d mod n、公钥验证 s^e mod n**，等于哈希就通过。' },
+      { k: '本步结果', v: st.stage === 'sign' ? `签名 s=**${st.sig}**` : st.stage === 'check' ? `验证=${st.verified}，${st.ok ? '通过✓' : '失败'}` : st.stage === 'hash' ? `h=${st.hash}` : st.stage === 'verify' ? `h'=${st.recvHash}` : `验证${st.ok ? '通过' : '失败'}` },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; ok: boolean; stage: string }; return st.phase === 'done' ? (st.ok ? '验证通过' : '验证失败') : st.stage },
+    try: [{ act: '按「下一步」签名+验证', watch: '私钥签出 s，公钥验证 s^e=哈希。' }, { act: '想篡改', watch: '消息一改，重算的 h′ 变，而验证仍得原 h，对不上就露馅。' }], terms: [],
+  },
+  hashaval: {
+    question: '好的哈希函数，输入改一点点，输出会怎样？',
+    read: [{ at: '两行', is: '两个哈希的二进制；红=翻转、绿=相同。', anchor: '.cx-rows' }, { at: '读数', is: '对比对象、两个哈希、翻转位数。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { a: string; b: string; bitsA: number[]; bitsB: number[]; pos: number; flipped: number; phase: string }; return [
+      { k: '本步输入', v: st.phase === 'done' ? `16 位比较完` : `第 ${st.pos + 1} 位：${st.bitsA[st.pos]} vs ${st.bitsB[st.pos]}` },
+      { k: '判定规则', v: '好的密码学哈希有**雪崩效应**：输入 1 位之差，输出约一半的位翻转，且不可预测。' },
+      { k: '本步结果', v: st.phase === 'done' ? `共翻转 **${st.flipped}/16** 位(≈一半)` : `${st.bitsA[st.pos] !== st.bitsB[st.pos] ? '翻转' : '相同'}，累计 ${st.flipped}` },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; flipped: number }; return st.phase === 'done' ? `翻转 ${st.flipped}/16` : `翻 ${st.flipped}` },
+    try: [{ act: '按「下一步」逐位比', watch: '"cat"→"cot" 一个字母，哈希翻了 8/16 位。' }, { act: '想意义', watch: '改一点就面目全非，攻击者没法一点点凑出想要的哈希——防篡改根基。' }], terms: [],
+  },
+  merkle: {
+    question: '怎么用一个小哈希，守住一大堆数据没被改？',
+    read: [{ at: '树', is: '叶子→父→根，自底向上；亮=已算。', anchor: '.mk-tree' }, { at: '读数', is: '本步、叶子/父/根哈希。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { data: number[]; leaves: number[]; parents: number[]; root: number; act: string; focus: number; phase: string }; return [
+      { k: '本步输入', v: st.act === 'leaf' ? `数据块 ${st.data[st.focus]}` : st.act === 'parent' ? `两个子哈希 L${st.focus * 2}、L${st.focus * 2 + 1}` : st.act === 'root' ? '两个父 P0、P1' : '完成' },
+      { k: '判定规则', v: '每块先算叶子哈希；相邻两哈希拼起来再哈希成父；层层向上汇成一个根哈希。' },
+      { k: '本步结果', v: st.act === 'leaf' ? `L${st.focus}=${st.leaves[st.focus]}` : st.act === 'parent' ? `P${st.focus}=${st.parents[st.focus]}` : st.act === 'root' ? `Root=**${st.root}**` : `根=${st.root}` },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; root: number; act: string }; return st.phase === 'done' ? `根 ${st.root}` : st.act },
+    try: [{ act: '按「下一步」自底向上', watch: '4 叶子→2 父→1 根，一层层哈希上去。' }, { act: '想篡改', watch: '改任何一块，它的叶子→父→根都变，根一对就露馅。' }], terms: [],
+  },
   caesar: {
     question: '每个字母后移固定几位，怎么把明文变成密文？',
     read: [{ at: '对照', is: '明文/密文逐字母对照，绿=已加密、蓝框=当前。', anchor: '.cx-rows' }, { at: '变换', is: '当前字母 code→+k mod26→新字母。', anchor: '.cx-calc' }],

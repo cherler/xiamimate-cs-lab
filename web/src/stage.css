@@ -3821,3 +3821,17 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .cx-bk { font-size:10.5px; color:var(--dim); }
 .cx-bv { font-size:17px; font-weight:700; font-family:var(--mono); color:var(--ink); }
 .cx-bv.small { font-size:13px; }
+.cx-cell.flip { border-color:var(--miss); background:color-mix(in srgb, var(--miss) 16%, var(--panel)); color:var(--miss); font-weight:700; }
+.cx-cell.same { border-color:var(--hit); color:var(--hit); }
+/* Merkle 树 */
+.mk-tree { display:flex; flex-direction:column; gap:14px; margin:8px 0 12px; align-items:center; }
+.mk-level { display:flex; gap:14px; justify-content:center; }
+.mk-node { display:flex; flex-direction:column; align-items:center; gap:2px; min-width:52px;
+  padding:6px 10px; border:1.5px solid var(--line); border-radius:8px; background:var(--sunk-1); }
+.mk-node.filled { border-color:var(--now); background:color-mix(in srgb, var(--now) 8%, var(--panel)); }
+.mk-node.cur { box-shadow:0 0 0 2px var(--now); }
+.mk-lbl { font-size:10px; color:var(--dim); }
+.mk-val { font-size:17px; font-weight:700; font-family:var(--mono); color:var(--ink); }
+.mk-data-box { display:flex; flex-direction:column; align-items:center; font-size:10px; color:var(--faint);
+  padding:4px 9px; border:1px dashed var(--line); border-radius:6px; }
+.mk-data-box b { font-size:14px; color:var(--dim); font-family:var(--mono); }

@@ -303,6 +303,30 @@ const bitmapFree = (t: unknown[]) => { const s = last<{ freeCount?: Num }>(t)
   return typeof s?.freeCount === 'number' ? s.freeCount : null }
 
 export const BRIEFS: Record<string, Brief> = {
+  extgcd: {
+    care: 'RSA 生成私钥那一步（求 d 使 e·d≡1 mod φ），以及一切「模运算里的除法」，都要**模逆**。\n\n求法是扩展欧几里得：一边辗转相除求 gcd，一边**回带系数**。gcd=1（e 与 m 互质）才有逆。\n\n迭代版每步记 (商 q、余数、系数 t)，最后系数取模 m 就是逆元。',
+    guess: { q: '3 关于模 20 的逆元 d（3·d≡1 mod 20）是？', opts: ['7', '3', '13'] },
+    tasks: [{ act: '按「下一步」迭代', watch: '每步一个商，系数跟着回带。' }, { act: '看结果', watch: 'gcd=1，系数取模就是 d=7。' }],
+    verdict: ctx => { const t = ctx.trace as { result?: number }[]; const l = t[t.length - 1]; return l ? { pick: 0, say: `3⁻¹ mod 20 = ${l.result}。`, why: '辗转相除 gcd=1，回带的系数取模 20 即逆元；3×7=21≡1。' } : null },
+  },
+  signature: {
+    care: '加密是「公钥加密、私钥解密」；签名反过来——**私钥签名、公钥验证**。\n\n发送方对消息算哈希 h，用**私钥**算 s=h^d mod n 作为签名。接收方对收到的消息重算哈希 h′，用**公钥**算 s^e mod n，若 ==h′ 就通过。\n\n这证明：消息没被改（完整性）、且确实来自私钥持有者（不可抵赖，别人没私钥签不出）。',
+    guess: { q: '数字签名用哪个钥签名？', opts: ['私钥', '公钥', '共享密钥'] },
+    tasks: [{ act: '按「下一步」签名+验证', watch: '私钥签出 s，公钥验证 s^e=哈希。' }, { act: '想篡改', watch: '消息一改 h′ 就变，对不上原 h。' }],
+    verdict: ctx => { const t = ctx.trace as { ok?: boolean; verified?: number }[]; const l = t[t.length - 1]; return l ? { pick: 0, say: l.ok ? `验证通过（s^e mod n = ${l.verified} = 哈希）。` : '验证失败。', why: '私钥签、公钥验；改消息则重算哈希变，验证结果对不上。' } : null },
+  },
+  hashaval: {
+    care: '密码学哈希（SHA-256 等）要有**雪崩效应**：输入哪怕只改 1 位，输出也要有约**一半**的位翻转，且改法不可预测。\n\n这样才防篡改——改一点点，指纹就面目全非，攻击者没法一点点凑出想要的哈希（碰撞）。\n\n反例：输入小改、输出也小改，就能被逐步逼近攻破。',
+    guess: { q: '"cat"→"cot"（一字母之差），16 位哈希大约翻转多少位？', opts: ['约一半(8位)', '1 位', '全部 16 位'] },
+    tasks: [{ act: '按「下一步」逐位比', watch: '一个字母之差，哈希翻了 8/16 位。' }, { act: '想意义', watch: '改一点就面目全非——防篡改的根基。' }],
+    verdict: ctx => { const t = ctx.trace as { flipped?: number }[]; const l = t[t.length - 1]; return l ? { pick: 0, say: `一个字母之差，翻转了 ${l.flipped}/16 位。`, why: '雪崩效应：输入微小变化引起约一半输出位翻转。' } : null },
+  },
+  merkle: {
+    care: '怎么用一个小指纹保证一大堆数据没被改？**Merkle 树**：每块先算叶子哈希，相邻两哈希拼起来再哈希成父节点，层层向上汇成一个**根哈希**。\n\n任何一块被改，它的叶子→父→…→根都会变，根一对就知道。\n\n而且验证某个块只需 O(log n) 个兄弟哈希，不用下载全部数据。区块链、Git、IPFS、BitTorrent 全靠它。',
+    guess: { q: '验证某一个块没被改，需要多少个哈希（n 个块）？', opts: ['O(log n) 个', '全部 n 个', '只要根 1 个'] },
+    tasks: [{ act: '按「下一步」自底向上', watch: '4 叶子→2 父→1 根。' }, { act: '想篡改', watch: '改任何一块，根就变。' }],
+    verdict: ctx => { const t = ctx.trace as { root?: number }[]; const l = t[t.length - 1]; return l ? { pick: 0, say: `根哈希 = ${l.root}。`, why: '自底向上两两哈希汇成根；改任何块根都变，验证只需 O(log n) 个兄弟哈希。' } : null },
+  },
   caesar: {
     care: '最古老的替换密码：把每个字母在字母表上**向后移 k 位**，超过 Z 就绕回 A(mod 26)。解密反着移 k 位。\n\n骨架是「字母↔数字、加密钥、取模绕回」——后面维吉尼亚乃至一切对称加密都从这儿长出来。\n\n弱点两条：密钥只有 26 种(暴力可破)；不改字母频率(频率分析可破)。',
     guess: { q: '明文 HELLO 用 k=3 加密，结果是？', opts: ['KHOOR', 'EBIIL', 'IFMMP'] },

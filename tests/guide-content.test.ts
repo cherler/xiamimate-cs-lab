@@ -223,6 +223,26 @@ console.log('\n【「这一步为什么」真的在跟着走】')
    * 不这么要求的话，最省事的写法（返回一句不看状态的通用话）能一路绿着混过去。
    */
   const FIX: Record<string, { doc: unknown; a: unknown; b: unknown }> = {
+    extgcd: {
+      doc: { kind: 'extgcd', params: {}, entities: [], streams: [] },
+      a: { e: 3, m: 20, q: 6, r: 20, newr: 3, t: 0, newt: 1, result: -1, phase: 'run' },
+      b: { e: 3, m: 20, q: -1, r: 1, newr: 0, t: 7, newt: -20, result: 7, phase: 'done' },
+    },
+    signature: {
+      doc: { kind: 'signature', params: {}, entities: [], streams: [] },
+      a: { n: 33, e: 3, d: 7, hash: 4, sig: 16, recvHash: -1, verified: -1, ok: false, stage: 'sign', phase: 'run' },
+      b: { n: 33, e: 3, d: 7, hash: 4, sig: 16, recvHash: 4, verified: 4, ok: true, stage: 'check', phase: 'run' },
+    },
+    hashaval: {
+      doc: { kind: 'hashaval', params: {}, entities: [], streams: [] },
+      a: { a: 'cat', b: 'cot', bitsA: [1, 1, 1, 0, 0, 1, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0], bitsB: [1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0, 1, 1], pos: 2, flipped: 1, phase: 'run' },
+      b: { a: 'cat', b: 'cot', bitsA: [1, 1, 1, 0, 0, 1, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0], bitsB: [1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0, 1, 1], pos: -1, flipped: 8, phase: 'done' },
+    },
+    merkle: {
+      doc: { kind: 'merkle', params: {}, entities: [], streams: [] },
+      a: { data: [10, 20, 30, 40], leaves: [26, -1, -1, -1], parents: [-1, -1], root: -1, act: 'leaf', focus: 0, phase: 'run' },
+      b: { data: [10, 20, 30, 40], leaves: [26, 45, 64, 83], parents: [12, 34], root: 59, act: 'root', focus: 0, phase: 'run' },
+    },
     caesar: {
       doc: { kind: 'caesar', params: {}, entities: [], streams: [] },
       a: { pos: 0, ch: 'H', code: 7, key: 3, shifted: 10, out: 'K', cipher: 'K', phase: 'run' },

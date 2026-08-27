@@ -226,6 +226,14 @@ import { dhKernel, type DHState } from '@engine/kernels/diffiehellman.ts'
 import { DHStage } from './stages/DHStage.tsx'
 import { rsaKernel, type RSAState } from '@engine/kernels/rsa.ts'
 import { RSAStage } from './stages/RSAStage.tsx'
+import { extgcdKernel, type ExtGcdState } from '@engine/kernels/extgcd.ts'
+import { ExtGcdStage } from './stages/ExtGcdStage.tsx'
+import { signKernel, type SignState } from '@engine/kernels/signature.ts'
+import { SignStage } from './stages/SignStage.tsx'
+import { hashavalKernel, type HashAvalState } from '@engine/kernels/hashaval.ts'
+import { HashAvalStage } from './stages/HashAvalStage.tsx'
+import { merkleKernel, type MerkleState } from '@engine/kernels/merkle.ts'
+import { MerkleStage } from './stages/MerkleStage.tsx'
 import { CollisionStage } from './stages/CollisionStage.tsx'
 import { gcnKernel, type GcnState } from '@engine/kernels/gcn.ts'
 import { GcnStage } from './stages/GcnStage.tsx'
@@ -5328,10 +5336,55 @@ const rsa: Experiment<RSAState> = {
   readouts: s => [{ label: '模数 n', value: `${s.n}` }, { label: '公钥/私钥', value: `e=${s.e} / d=${s.d}` }, { label: '密文 c', value: s.c >= 0 ? `${s.c}` : '—' }, { label: '解密', value: s.dec >= 0 ? `${s.dec}(还原成 ${s.m})` : '—', tone: s.phase === 'done' ? 'good' : undefined }],
 }
 
+const extgcd: Experiment<ExtGcdState> = {
+  id: 'extgcd', group: '密码学', title: '扩展欧几里得求模逆', subtitle: '求 d 使 e·d ≡ 1 (mod m)',
+  kernel: extgcdKernel, defaultDoc: { kind: 'extgcd', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '无可调参数。迭代辗转相除+回带系数，求 3 关于模 20 的逆元 = 7（3×7=21≡1）。这是 RSA 求私钥 d 的算法。详见讲解卡。',
+  bounds: ['求 3⁻¹ mod 20', '每步 q=⌊r/newr⌋,同步更新余数与系数(可核)', 'gcd=1 时系数取模即逆元 → d=7', '正是 RSA 求私钥 d 那一步'],
+  tabs: [{ id: 'inv', label: '迭代求逆' }], Stage: ExtGcdStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: `d=${s.result}` } : { key: 'idle', label: `q=${s.q}` }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 4)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : `q${s.q}`),
+  readouts: s => [{ label: '求', value: `${s.e}⁻¹ mod ${s.m}` }, { label: '本步商', value: s.q >= 0 ? `${s.q}` : '完成' }, { label: '系数 t', value: `${s.t}` }, { label: '逆元 d', value: s.result >= 0 ? `${s.result}` : '?', tone: s.result >= 0 ? 'good' : undefined }],
+}
+const signature: Experiment<SignState> = {
+  id: 'signature', group: '密码学', title: '数字签名', subtitle: '私钥签名、公钥验证',
+  kernel: signKernel, defaultDoc: { kind: 'signature', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '无可调参数。消息哈希 h=4 → 私钥签名 s=4^7 mod 33=16 → 公钥验证 16^3 mod 33=4=h，通过。改消息就验不过。详见讲解卡。',
+  bounds: ['n=33,e=3,d=7;消息哈希 h=4', '签名 s=h^d mod n=16;验证 s^e mod n(可核)', '验证=4=h → 通过', '私钥签、公钥验;篡改则 h′ 变、对不上'],
+  tabs: [{ id: 'sign', label: '签名+验证' }], Stage: SignStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? (s.ok ? { key: 'good', label: '验证通过' } : { key: 'bad', label: '验证失败' }) : { key: 'idle', label: s.stage }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 5)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.stage === 'sign' ? '签' : s.stage === 'check' ? '验' : '哈'),
+  readouts: s => [{ label: '消息哈希 h', value: `${s.hash}` }, { label: '签名 s', value: s.sig >= 0 ? `${s.sig}` : '—' }, { label: '验证 s^e', value: s.verified >= 0 ? `${s.verified}` : '—' }, { label: '结果', value: s.phase === 'done' ? (s.ok ? '通过 ✓' : '失败 ✕') : '…', tone: s.phase === 'done' ? (s.ok ? 'good' : 'bad') : undefined }],
+}
+const hashaval: Experiment<HashAvalState> = {
+  id: 'hashaval', group: '密码学', title: '哈希雪崩效应', subtitle: '输入改一点，输出翻一半',
+  kernel: hashavalKernel, defaultDoc: { kind: 'hashaval', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '无可调参数。对比 "cat" 与 "cot"（差一个字母）的 16 位哈希，逐位数翻转——翻了 8 位（约一半）。这就是雪崩效应。详见讲解卡。',
+  bounds: ['对比 cat / cot 的 16 位哈希', '逐位比较,数翻转位(可核)', '一个字母之差→翻转 8/16 位(≈一半)', '雪崩=防篡改根基;真实 SHA-256 更彻底'],
+  tabs: [{ id: 'aval', label: '逐位对比' }], Stage: HashAvalStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: `翻转 ${s.flipped}/16` } : { key: 'idle', label: `翻 ${s.flipped}` }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 17)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : `${s.flipped}`),
+  readouts: s => [{ label: '对比', value: `"${s.a}" vs "${s.b}"` }, { label: '两个哈希', value: `${s.hashA} / ${s.hashB}` }, { label: '当前位', value: s.pos >= 0 ? `第${s.pos + 1}位` : '完成' }, { label: '翻转位数', value: `${s.flipped}/16`, tone: s.phase === 'done' ? 'good' : undefined }],
+}
+const merkle: Experiment<MerkleState> = {
+  id: 'merkle', group: '密码学', title: 'Merkle 树', subtitle: '一个根哈希守住一堆数据',
+  kernel: merkleKernel, defaultDoc: { kind: 'merkle', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '无可调参数。4 个数据块自底向上两两哈希，汇成一个根哈希（=59）。改任何一块，根就变。区块链/Git/IPFS 都靠它。详见讲解卡。',
+  bounds: ['4 块 [10,20,30,40],玩具哈希', '叶子→两两哈希成父→汇成根(可核)', '根哈希=59;改任何块根就变', '验证某块只需 O(log n) 个兄弟哈希'],
+  tabs: [{ id: 'tree', label: '自底向上' }], Stage: MerkleStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: `根 ${s.root}` } : { key: 'idle', label: s.act === 'leaf' ? `L${s.focus}` : s.act === 'parent' ? `P${s.focus}` : s.act }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 8)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.act === 'root' ? '根' : s.act === 'parent' ? '父' : '叶'),
+  readouts: s => [{ label: '本步', value: s.act === 'leaf' ? `叶子 L${s.focus}` : s.act === 'parent' ? `父 P${s.focus}` : s.act === 'root' ? '根' : '完成' }, { label: '叶子哈希', value: s.leaves.filter(x => x >= 0).join(',') || '—' }, { label: '父节点', value: s.parents.filter(x => x >= 0).join(',') || '—' }, { label: '根哈希', value: s.root >= 0 ? `${s.root}` : '?', tone: s.root >= 0 ? 'good' : undefined }],
+}
+
 export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
-  caesar, vigenere, xorcipher, modpow, diffiehellman, rsa,
+  caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,

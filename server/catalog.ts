@@ -57,6 +57,10 @@ import { xorKernel } from '../src/kernels/xorcipher.ts'
 import { modpowKernel } from '../src/kernels/modpow.ts'
 import { dhKernel } from '../src/kernels/diffiehellman.ts'
 import { rsaKernel } from '../src/kernels/rsa.ts'
+import { extgcdKernel } from '../src/kernels/extgcd.ts'
+import { signKernel } from '../src/kernels/signature.ts'
+import { hashavalKernel } from '../src/kernels/hashaval.ts'
+import { merkleKernel } from '../src/kernels/merkle.ts'
 // 与 registry 同源的预设常量：直接 import 保证 doc 逐字一致（引擎侧，无 React）。
 import { CRC_PRESETS, HAMMING_PRESETS, SUBNET_PRESETS, HUFF_PRESETS, BPLUS_PRESETS } from '../src/presets/sequences.ts'
 import { ROUTE_PRESETS } from '../src/presets/entities.ts'
@@ -945,6 +949,42 @@ export const CATALOG: CatalogEntry[] = [
         distractors: () => ['64', '4', '27'],
       },
     ],
+  },
+  {
+    id: 'extgcd', title: '扩展欧几里得求模逆', kernel: extgcdKernel as Kernel<unknown>, doc: trivialDoc('extgcd'),
+    facts: [{
+      id: 'inverse', label: '3 关于模 20 的逆元',
+      ask: '用扩展欧几里得求 3 关于模 20 的逆元 d（使 3·d ≡ 1 mod 20），d 等于多少?', kind: 'number',
+      compute: t => ({ answer: String(last(t).result), step: t.length - 1, evidence: String(last(t).log ?? '') }),
+      distractors: () => ['13', '3', '9'],
+    }],
+  },
+  {
+    id: 'signature', title: '数字签名', kernel: signKernel as Kernel<unknown>, doc: trivialDoc('signature'),
+    facts: [{
+      id: 'who', label: '数字签名用哪个钥签、哪个钥验',
+      ask: '数字签名（与加密相反）：签名和验证分别用什么钥?', kind: 'choice',
+      compute: () => ({ answer: '私钥签名、公钥验证', step: 0, evidence: '只有私钥持有者签得出，任何人用公钥都能验' }),
+      distractors: () => ['公钥签名、私钥验证', '都用私钥', '都用公钥'],
+    }],
+  },
+  {
+    id: 'hashaval', title: '哈希雪崩效应', kernel: hashavalKernel as Kernel<unknown>, doc: trivialDoc('hashaval'),
+    facts: [{
+      id: 'flipped', label: 'cat→cot 后 16 位哈希翻转的位数',
+      ask: '哈希雪崩：把 "cat" 改成 "cot"（一个字母），16 位哈希翻转了多少位?', kind: 'number',
+      compute: t => ({ answer: String(last(t).flipped), step: t.length - 1, evidence: `翻转 ${last(t).flipped}/16 位，约一半` }),
+      distractors: answer => { const f = Number(answer); return [String(f + 2), String(Math.max(0, f - 3)), '1'] },
+    }],
+  },
+  {
+    id: 'merkle', title: 'Merkle 树', kernel: merkleKernel as Kernel<unknown>, doc: trivialDoc('merkle'),
+    facts: [{
+      id: 'verify_cost', label: '验证一个块需要几个兄弟哈希',
+      ask: 'Merkle 树最大的好处：验证某一个数据块没被改，需要多少个哈希（n 个块）?', kind: 'choice',
+      compute: () => ({ answer: 'O(log n) 个兄弟哈希', step: 0, evidence: '沿路径到根，每层一个兄弟，不用下载全部数据' }),
+      distractors: () => ['全部 n 个块的哈希', '只要根哈希 1 个', 'O(n) 个'],
+    }],
   },
 ]
 
