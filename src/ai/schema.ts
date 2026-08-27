@@ -289,6 +289,7 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   mvcc: {},
   iso: { level: 'string' },
   cas: {},
+  mesi: {},
   astar: {},
   perceptron: {},
   pooling: { kind: 'string' },

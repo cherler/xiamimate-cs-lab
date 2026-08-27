@@ -48,6 +48,7 @@ import { mvccKernel } from '../src/kernels/mvcc.ts'
 import { bplusKernel } from '../src/kernels/bplus.ts'
 import { isoKernel } from '../src/kernels/iso.ts'
 import { casKernel } from '../src/kernels/cas.ts'
+import { mesiKernel } from '../src/kernels/mesi.ts'
 // 与 registry 同源的预设常量：直接 import 保证 doc 逐字一致（引擎侧，无 React）。
 import { CRC_PRESETS, HAMMING_PRESETS, SUBNET_PRESETS, HUFF_PRESETS, BPLUS_PRESETS } from '../src/presets/sequences.ts'
 import { ROUTE_PRESETS } from '../src/presets/entities.ts'
@@ -790,6 +791,28 @@ export const CATALOG: CatalogEntry[] = [
         kind: 'number',
         compute: t => ({ answer: String(last(t).fails), step: t.length - 1, evidence: String(last(t).log ?? '') }),
         distractors: numDistractors,
+      },
+    ],
+  },
+  {
+    id: 'mesi',
+    title: 'MESI 缓存一致性',
+    kernel: mesiKernel as Kernel<unknown>,
+    doc: trivialDoc('mesi'),
+    facts: [
+      {
+        id: 'invalidations', label: '缓存行被失效的总次数',
+        ask: 'MESI 协议：两个核对同一个 x 交替读写。整个过程里，缓存行副本一共被失效(Invalidate)了多少次?',
+        kind: 'number',
+        compute: t => ({ answer: String(last(t).invalidated), step: t.length - 1, evidence: `终态 invalidated=${last(t).invalidated}` }),
+        distractors: numDistractors,
+      },
+      {
+        id: 'write_invalidate', label: '一个核写时其它核副本的状态',
+        ask: 'MESI 里，某个核要写 x 时，会先把其它核持有的这个缓存行副本置为哪个状态?',
+        kind: 'choice',
+        compute: () => ({ answer: 'I（Invalid 失效）', step: 0, evidence: '写前先 Invalidate 其它副本，自己升 M' }),
+        distractors: () => ['S（Shared 共享）', 'E（Exclusive 独占）', 'M（Modified 已改）'],
       },
     ],
   },

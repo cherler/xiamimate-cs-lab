@@ -208,6 +208,8 @@ import { isoKernel, type IsoState } from '@engine/kernels/iso.ts'
 import { IsoStage } from './stages/IsoStage.tsx'
 import { casKernel, type CasState } from '@engine/kernels/cas.ts'
 import { CasStage } from './stages/CasStage.tsx'
+import { mesiKernel, type MesiState } from '@engine/kernels/mesi.ts'
+import { MesiStage } from './stages/MesiStage.tsx'
 import { CollisionStage } from './stages/CollisionStage.tsx'
 import { gcnKernel, type GcnState } from '@engine/kernels/gcn.ts'
 import { GcnStage } from './stages/GcnStage.tsx'
@@ -5132,9 +5134,41 @@ const cas: Experiment<CasState> = {
   ],
 }
 
+const mesi: Experiment<MesiState> = {
+  id: 'mesi',
+  group: '并发编程',
+  title: 'MESI 缓存一致性',
+  subtitle: '谁写了，别人的副本立刻失效',
+  kernel: mesiKernel,
+  defaultDoc: { kind: 'mesi', params: {}, entities: [], streams: [] },
+  params: [],
+  paramsNote: '多核各有自己的缓存,同一个变量 x 可能在好几个核里都有副本——谁改了别人怎么知道?MESI 协议给每个缓存行标四态:M(Modified 已改·脏·独占)、E(Exclusive 干净·独占)、S(Shared 共享·只读)、I(Invalid 失效)。规则:读未命中要上总线找(别人有 M 先回写、大家降 S;没人有则我独占 E);**写之前要把其它核的副本全失效(Invalidate),自己升 M**。本实验两个核对 x 读写:C1 独占→C2 来读变共享→C1 写把 C2 失效→C2 再读触发 C1 回写→C2 写又把 C1 失效。招牌时刻:一核写、另一核副本立刻变 I,这就是「一个核的写另一个核不会自动看见」的硬件真相,也是 volatile / 内存屏障存在的理由。',
+  bounds: [
+    '两核对同一个 x 读写,缓存行走 M/E/S/I 四态',
+    '读未命中上总线;写=先失效别人再升 M(可核)',
+    'C1 写→C2 变 I;C2 读到 C1 的 M→C1 回写降 S',
+    '全程副本被失效 2 次;终态内存 x=1(脏值 2 还在 C2 的 M 里)',
+  ],
+  tabs: [{ id: 'coherence', label: 'M/E/S/I 状态转移' }],
+  Stage: MesiStage,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: `失效 ${s.invalidated} 次` }
+    : s.op === 'write' ? { key: 'bad', label: `C${s.cur} 写·失效别人` }
+      : s.op === 'read' ? { key: 'idle', label: `C${s.cur} 读` }
+        : { key: 'idle', label: '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.op === 'write' ? '写' : '读'),
+  whyInRail: true,
+  readouts: s => [
+    { label: '本步', value: s.op === 'read' ? `C${s.cur} 读` : s.op === 'write' ? `C${s.cur} 写` : '完成' },
+    { label: '核状态', value: s.cores.map(c => `C${c.id}:${c.state}`).join(' ') },
+    { label: '内存 x', value: `${s.memX}` },
+    { label: '失效次数', value: `${s.invalidated}`, tone: s.op === 'write' ? 'bad' : undefined },
+  ],
+}
+
 export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
-  page, scheduler, disk, banker, mvcc, iso, cas,
+  page, scheduler, disk, banker, mvcc, iso, cas, mesi,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,
