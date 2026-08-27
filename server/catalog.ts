@@ -39,6 +39,14 @@ import { pageKernel } from '../src/kernels/page.ts'
 import { diskKernel } from '../src/kernels/disk.ts'
 import { cacheKernel } from '../src/kernels/cache.ts'
 import { tcpKernel } from '../src/kernels/tcp.ts'
+import { bankerKernel } from '../src/kernels/banker.ts'
+import { hammingKernel } from '../src/kernels/hamming.ts'
+import { crcKernel } from '../src/kernels/crc.ts'
+import { subnetKernel } from '../src/kernels/subnet.ts'
+import { huffmanKernel } from '../src/kernels/huffman.ts'
+// 与 registry 同源的预设常量：直接 import 保证 doc 逐字一致（引擎侧，无 React）。
+import { CRC_PRESETS, HAMMING_PRESETS, SUBNET_PRESETS, HUFF_PRESETS } from '../src/presets/sequences.ts'
+import { ROUTE_PRESETS } from '../src/presets/entities.ts'
 
 // trace 的一帧就是内核的可见状态；出题只读字段，用宽松类型即可。
 type Frame = Record<string, unknown>
@@ -577,6 +585,106 @@ export const CATALOG: CatalogEntry[] = [
         ask: 'TCP Reno，初始 cwnd=1、ssthresh=16，第 8 轮三次重复 ACK、第 13 轮超时，跑到第 20 轮时 cwnd 是多少?',
         kind: 'number',
         compute: t => ({ answer: String(last(t).cwnd), step: t.length - 1, evidence: String(last(t).log ?? '') }),
+        distractors: numDistractors,
+      },
+    ],
+  },
+  {
+    id: 'banker',
+    title: '银行家算法',
+    kernel: bankerKernel as Kernel<unknown>,
+    doc: {
+      kind: 'banker', params: { resources: 'A,B,C' }, streams: [],
+      entities: [
+        { id: 'A', type: 'resource', attrs: { total: 10 } },
+        { id: 'B', type: 'resource', attrs: { total: 5 } },
+        { id: 'C', type: 'resource', attrs: { total: 7 } },
+        { id: 'P0', type: 'process', attrs: { max_A: 7, max_B: 5, max_C: 3, alloc_A: 0, alloc_B: 1, alloc_C: 0 } },
+        { id: 'P1', type: 'process', attrs: { max_A: 3, max_B: 2, max_C: 2, alloc_A: 2, alloc_B: 0, alloc_C: 0 } },
+        { id: 'P2', type: 'process', attrs: { max_A: 9, max_B: 0, max_C: 2, alloc_A: 3, alloc_B: 0, alloc_C: 2 } },
+        { id: 'P3', type: 'process', attrs: { max_A: 2, max_B: 2, max_C: 2, alloc_A: 2, alloc_B: 1, alloc_C: 1 } },
+        { id: 'P4', type: 'process', attrs: { max_A: 4, max_B: 3, max_C: 3, alloc_A: 0, alloc_B: 0, alloc_C: 2 } },
+      ],
+    },
+    facts: [
+      {
+        id: 'is_safe', label: '该状态是否处于安全状态',
+        ask: '银行家算法：给定各进程的 Max 与 Allocation、可用资源，判断当前系统是否处于安全状态?',
+        kind: 'choice',
+        compute: t => ({ answer: last(t).act === 'safe' ? '安全' : '不安全', step: t.length - 1, evidence: String(last(t).log ?? '') }),
+        distractors: answer => (answer === '安全' ? ['不安全'] : ['安全']),
+      },
+      {
+        id: 'first_proc', label: '安全序列中第一个执行的进程',
+        ask: '银行家算法找到的安全序列里，第一个可以安全执行完的进程是哪个?',
+        kind: 'choice',
+        compute: t => {
+          const m = String(last(t).log ?? '').match(/P\d/)
+          return { answer: m ? m[0] : 'P1', step: t.length - 1, evidence: String(last(t).log ?? '') }
+        },
+        distractors: answer => ['P0', 'P1', 'P2', 'P3', 'P4'].filter(x => x !== answer).slice(0, 3),
+      },
+    ],
+  },
+  {
+    id: 'hamming',
+    title: '海明码',
+    kernel: hammingKernel as Kernel<unknown>,
+    doc: { kind: 'hamming', params: { operation: 'check', errorAt: 5, evenParity: 1 }, entities: [], streams: [{ name: 'dataBits', values: HAMMING_PRESETS[0]!.values }] },
+    facts: [
+      {
+        id: 'syndrome', label: '海明码校验子指出的出错位号',
+        ask: '对收到的这个偶校验海明码字做校验，各校验位算出的校验子(syndrome)指出第几位出错?',
+        kind: 'number',
+        compute: t => ({ answer: String(last(t).syndrome), step: t.length - 1, evidence: String(last(t).log ?? '') }),
+        distractors: numDistractors,
+      },
+    ],
+  },
+  {
+    id: 'crc',
+    title: 'CRC 校验',
+    kernel: crcKernel as Kernel<unknown>,
+    doc: { kind: 'crc', params: { generator: '10011', operation: 'encode', errorAt: -1 }, entities: [], streams: [{ name: 'dataBits', values: CRC_PRESETS[0]!.values }] },
+    facts: [
+      {
+        id: 'remainder', label: 'CRC 编码的余数 FCS',
+        ask: 'CRC 用生成多项式 10011(即 x⁴+x+1)对数据做模 2 除法，得到的余数(FCS)是多少?',
+        kind: 'choice',
+        compute: t => ({ answer: String(last(t).remainder), step: t.length - 1, evidence: String(last(t).log ?? '') }),
+        distractors: answer => ['1111', '1010', '0110', '1101'].filter(x => x !== answer).slice(0, 3),
+      },
+    ],
+  },
+  {
+    id: 'subnet',
+    title: '子网划分',
+    kernel: subnetKernel as Kernel<unknown>,
+    doc: { kind: 'subnet', params: { operation: 'subnet', prefix: 25, splitBits: 0 }, entities: ROUTE_PRESETS[0]!.entities, streams: [{ name: 'addresses', values: SUBNET_PRESETS[0]!.values }] },
+    facts: [
+      {
+        id: 'addr_total', label: '/25 子网的地址总数',
+        ask: '前缀长度为 /25 的子网，一共包含多少个 IP 地址(含网络号与广播地址)?',
+        kind: 'number',
+        compute: t => {
+          const total = 2 ** (32 - Number(last(t).prefix))
+          return { answer: String(total), step: t.length - 1, evidence: `主机号 ${32 - Number(last(t).prefix)} 位 → 2^${32 - Number(last(t).prefix)} = ${total}` }
+        },
+        distractors: answer => [String(Number(answer) / 2), String(Number(answer) * 2), String(Number(answer) - 2)].filter(x => x !== answer).slice(0, 3),
+      },
+    ],
+  },
+  {
+    id: 'huffman',
+    title: 'Huffman 编码',
+    kernel: huffmanKernel as Kernel<unknown>,
+    doc: { kind: 'huffman', params: {}, entities: [], streams: [{ name: 'weights', values: HUFF_PRESETS[0]!.values }] },
+    facts: [
+      {
+        id: 'wpl', label: 'Huffman 树的带权路径长度 WPL',
+        ask: '按这些字符频率建 Huffman 树，最终的带权路径长度(WPL，也就是编码总位数)是多少?',
+        kind: 'number',
+        compute: t => ({ answer: String(last(t).wpl), step: t.length - 1, evidence: String(last(t).log ?? '') }),
         distractors: numDistractors,
       },
     ],
