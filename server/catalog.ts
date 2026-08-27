@@ -28,6 +28,13 @@ import { gbdtKernel } from '../src/kernels/gbdt.ts'
 import { pcaKernel } from '../src/kernels/pca.ts'
 import { poolingKernel } from '../src/kernels/pooling.ts'
 import { wordvecKernel } from '../src/kernels/wordvec.ts'
+import { knnKernel } from '../src/kernels/knn.ts'
+import { bpeKernel } from '../src/kernels/bpe.ts'
+import { moeKernel } from '../src/kernels/moe.ts'
+import { quantKernel } from '../src/kernels/quant.ts'
+import { specdecKernel } from '../src/kernels/specdec.ts'
+import { selfconsistKernel } from '../src/kernels/selfconsist.ts'
+import { convKernel } from '../src/kernels/conv.ts'
 
 // trace 的一帧就是内核的可见状态；出题只读字段，用宽松类型即可。
 type Frame = Record<string, unknown>
@@ -384,6 +391,127 @@ export const CATALOG: CatalogEntry[] = [
         kind: 'choice',
         compute: t => ({ answer: String(last(t).nearest), step: t.length - 1, evidence: String(last(t).log ?? '') }),
         distractors: answer => ['王后', '国王', '男人', '女人'].filter(x => x !== answer).slice(0, 3),
+      },
+    ],
+  },
+
+  // ── 大模型 / 深度学习(需带 params 的 doc,与 registry 一致) ──
+  {
+    id: 'knn',
+    title: 'k-近邻 k-NN',
+    kernel: knnKernel as Kernel<unknown>,
+    doc: { kind: 'knn', params: { k: 3 }, entities: [], streams: [] },
+    facts: [
+      {
+        id: 'voteB', label: 'k=3 时最近邻中 B 类的个数',
+        ask: 'k-NN 取 k=3，这个查询点的 3 个最近邻里，有几个属于 B 类?',
+        kind: 'number',
+        compute: t => ({ answer: String(last(t).voteB), step: t.length - 1, evidence: String(last(t).log ?? '') }),
+        distractors: numDistractors,
+      },
+    ],
+  },
+  {
+    id: 'bpe',
+    title: 'BPE 分词',
+    kernel: bpeKernel as Kernel<unknown>,
+    doc: { kind: 'bpe', params: { text: '英文 lowest' }, entities: [], streams: [] },
+    facts: [
+      {
+        id: 'merges', label: '把 lowest 合并成 1 个 token 的合并次数',
+        ask: 'BPE 把 lowest(6 个字符)按 merge 表逐条合并，一共发生了几次合并(merge)?',
+        kind: 'number',
+        compute: t => {
+          const n = t.filter(f => f.act === 'merge').length
+          return { answer: String(n), step: t.length - 1, evidence: `trace 中 act='merge' 的帧数 = ${n}；6 符号 → ${6 - n} token` }
+        },
+        distractors: numDistractors,
+      },
+    ],
+  },
+  {
+    id: 'moe',
+    title: '混合专家 MoE',
+    kernel: moeKernel as Kernel<unknown>,
+    doc: { kind: 'moe', params: { topk: 2 }, entities: [], streams: [] },
+    facts: [
+      {
+        id: 'active_pct', label: 'MoE 每 token 激活的参数比例',
+        ask: 'MoE 有 4 个专家、每个 token 选 top-2，那么每个 token 实际只激活了百分之多少的专家参数?',
+        kind: 'number',
+        compute: t => ({ answer: String(Math.round((last(t).activeFrac as number) * 100)), step: t.length - 1, evidence: String(last(t).log ?? '') }),
+        distractors: numDistractors,
+      },
+    ],
+  },
+  {
+    id: 'quant',
+    title: '权重量化 W8',
+    kernel: quantKernel as Kernel<unknown>,
+    doc: { kind: 'quant', params: { bits: 8 }, entities: [], streams: [] },
+    facts: [
+      {
+        id: 'qmax', label: 'int8 的正整数上限 qmax',
+        ask: 'int8 量化用带符号 8 位整数表示，它的正数上限 qmax 是多少?',
+        kind: 'number',
+        compute: t => ({ answer: String(last(t).qmax), step: t.length - 1, evidence: `int8 范围 ±127；终态 qmax=${last(t).qmax}` }),
+        distractors: numDistractors,
+      },
+      {
+        id: 'bytesQ', label: '8 个权重量化后占的字节数',
+        ask: '把 8 个 fp32 权重量化成 int8 后，一共占多少字节(原本 fp32 是 32 字节)?',
+        kind: 'number',
+        compute: t => ({ answer: String(last(t).bytesQ), step: t.length - 1, evidence: `fp32=32B → int8=${last(t).bytesQ}B，压 4 倍` }),
+        distractors: numDistractors,
+      },
+    ],
+  },
+  {
+    id: 'specdec',
+    title: '投机解码',
+    kernel: specdecKernel as Kernel<unknown>,
+    doc: { kind: 'specdec', params: { k: 3 }, entities: [], streams: [] },
+    facts: [
+      {
+        id: 'target_passes', label: '生成 8 token 大模型的前向次数',
+        ask: '投机解码用小模型起草、大模型验证。最终生成 8 个 token，大模型(target)一共只做了几次前向?',
+        kind: 'number',
+        compute: t => ({ answer: String(last(t).targetPasses), step: t.length - 1, evidence: String(last(t).log ?? '') }),
+        distractors: numDistractors,
+      },
+    ],
+  },
+  {
+    id: 'selfconsist',
+    title: '自洽性 Self-Consistency',
+    kernel: selfconsistKernel as Kernel<unknown>,
+    doc: trivialDoc('selfconsist'),
+    facts: [
+      {
+        id: 'winner', label: '多数投票胜出的答案',
+        ask: '自洽性采样多条推理链再多数投票。「小明有 5 个苹果，又买了 3 袋每袋 4 个」这题，多数链投出的最终答案是多少?',
+        kind: 'number',
+        compute: t => ({ answer: String(last(t).winner), step: t.length - 1, evidence: String(last(t).log ?? '') }),
+        distractors: numDistractors,
+      },
+    ],
+  },
+  {
+    id: 'conv',
+    title: '卷积 CNN',
+    kernel: convKernel as Kernel<unknown>,
+    // registry defaultDoc 带 params:{kernel:'边缘'}，必须一致。
+    doc: { kind: 'conv', params: { kernel: '边缘' }, entities: [], streams: [] },
+    facts: [
+      {
+        id: 'out_cells', label: '3×3 核在 5×5 图上 valid 卷积的输出格子数',
+        ask: '一个 3×3 卷积核在 5×5 输入上做 valid 卷积(不补零)，会滑过多少个位置(即输出特征图有多少个格子)?',
+        kind: 'number',
+        compute: t => {
+          const n = t.filter(f => f.phase === 'run').length
+          return { answer: String(n), step: t.length - 1, evidence: `5-3+1=3，输出 3×3；trace 中卷积步 = ${n}` }
+        },
+        distractors: numDistractors,
       },
     ],
   },
