@@ -35,6 +35,10 @@ import { quantKernel } from '../src/kernels/quant.ts'
 import { specdecKernel } from '../src/kernels/specdec.ts'
 import { selfconsistKernel } from '../src/kernels/selfconsist.ts'
 import { convKernel } from '../src/kernels/conv.ts'
+import { pageKernel } from '../src/kernels/page.ts'
+import { diskKernel } from '../src/kernels/disk.ts'
+import { cacheKernel } from '../src/kernels/cache.ts'
+import { tcpKernel } from '../src/kernels/tcp.ts'
 
 // trace 的一帧就是内核的可见状态；出题只读字段，用宽松类型即可。
 type Frame = Record<string, unknown>
@@ -511,6 +515,68 @@ export const CATALOG: CatalogEntry[] = [
           const n = t.filter(f => f.phase === 'run').length
           return { answer: String(n), step: t.length - 1, evidence: `5-3+1=3，输出 3×3；trace 中卷积步 = ${n}` }
         },
+        distractors: numDistractors,
+      },
+    ],
+  },
+
+  // ── 计算机系统组(408 核心；doc 含 params/streams/entities，与 registry 逐字一致) ──
+  {
+    id: 'page',
+    title: '页面置换',
+    kernel: pageKernel as Kernel<unknown>,
+    doc: { kind: 'page', params: { algorithm: 'FIFO', frames: 3 }, entities: [], streams: [{ name: 'referenceString', values: [1, 2, 3, 4, 1, 2, 5, 1, 2, 3, 4, 5] }] },
+    facts: [
+      {
+        id: 'faults', label: 'FIFO 3 帧的缺页次数',
+        ask: 'FIFO 置换、3 个物理帧，引用串 1,2,3,4,1,2,5,1,2,3,4,5 一共缺页(page fault)多少次?',
+        kind: 'number',
+        compute: t => ({ answer: String(last(t).faults), step: t.length - 1, evidence: `终态 faults=${last(t).faults}、hits=${last(t).hits}` }),
+        distractors: numDistractors,
+      },
+    ],
+  },
+  {
+    id: 'disk',
+    title: '磁盘调度',
+    kernel: diskKernel as Kernel<unknown>,
+    doc: { kind: 'disk', params: { algorithm: 'SSTF', headStart: 53, maxTrack: 199, direction: 1 }, entities: [], streams: [{ name: 'requests', values: [98, 183, 37, 122, 14, 124, 65, 67] }] },
+    facts: [
+      {
+        id: 'total_move', label: 'SSTF 磁头总移动磁道数',
+        ask: 'SSTF 磁盘调度，磁头从 53 出发，请求队列 98,183,37,122,14,124,65,67，磁头总共移动多少个磁道?',
+        kind: 'number',
+        compute: t => ({ answer: String(last(t).total), step: t.length - 1, evidence: String(last(t).log ?? '') }),
+        distractors: numDistractors,
+      },
+    ],
+  },
+  {
+    id: 'cache',
+    title: 'Cache 组相联',
+    kernel: cacheKernel as Kernel<unknown>,
+    doc: { kind: 'cache', params: { addressBits: 32, cacheSizeBytes: 256, blockSizeBytes: 16, associativity: 2, replacement: 'LRU' }, entities: [], streams: [{ name: 'accessSequence', values: [0x000, 0x010, 0x020, 0x000, 0x110, 0x210, 0x010, 0x020, 0x110, 0x000, 0x030, 0x210] }] },
+    facts: [
+      {
+        id: 'hits', label: '2 路组相联 LRU 的命中次数',
+        ask: '2 路组相联、块 16 字节、LRU，这 12 次访问里一共命中(hit)多少次?',
+        kind: 'number',
+        compute: t => ({ answer: String(last(t).hits), step: t.length - 1, evidence: `终态 hits=${last(t).hits}、misses=${last(t).misses}` }),
+        distractors: numDistractors,
+      },
+    ],
+  },
+  {
+    id: 'tcp',
+    title: 'TCP 拥塞控制',
+    kernel: tcpKernel as Kernel<unknown>,
+    doc: { kind: 'tcp', params: { variant: 'Reno', initialCwnd: 1, initialSsthresh: 16, rounds: 20 }, entities: [{ id: 'L1', type: 'loss', at: 8, attrs: { type: 'tripleDup' } }, { id: 'L2', type: 'loss', at: 13, attrs: { type: 'timeout' } }], streams: [] },
+    facts: [
+      {
+        id: 'final_cwnd', label: '第 20 轮的拥塞窗口 cwnd',
+        ask: 'TCP Reno，初始 cwnd=1、ssthresh=16，第 8 轮三次重复 ACK、第 13 轮超时，跑到第 20 轮时 cwnd 是多少?',
+        kind: 'number',
+        compute: t => ({ answer: String(last(t).cwnd), step: t.length - 1, evidence: String(last(t).log ?? '') }),
         distractors: numDistractors,
       },
     ],
