@@ -223,6 +223,21 @@ console.log('\n【「这一步为什么」真的在跟着走】')
    * 不这么要求的话，最省事的写法（返回一句不看状态的通用话）能一路绿着混过去。
    */
   const FIX: Record<string, { doc: unknown; a: unknown; b: unknown }> = {
+    crt: {
+      doc: { kind: 'crt', params: {}, entities: [], streams: [] },
+      a: { ns: [3, 5, 7], as: [2, 3, 2], N: 105, idx: 0, Ni: 35, yi: 2, term: 140, acc: 140, x: -1, phase: 'run' },
+      b: { ns: [3, 5, 7], as: [2, 3, 2], N: 105, idx: -1, Ni: -1, yi: -1, term: -1, acc: 233, x: 23, phase: 'done' },
+    },
+    fermat: {
+      doc: { kind: 'fermat', params: {}, entities: [], streams: [] },
+      a: { n: 15, a: 2, bitPos: 1, bit: 1, baseNow: 4, result: 4, verdict: '', phase: 'run' },
+      b: { n: 15, a: 2, bitPos: -1, bit: -1, baseNow: 1, result: 4, verdict: '合数', phase: 'done' },
+    },
+    salt: {
+      doc: { kind: 'salt', params: {}, entities: [], streams: [] },
+      a: { pw: '123456', saltA: 'x7', saltB: 'q2', noSaltA: 55778, noSaltB: 55778, saltedA: -1, saltedB: -1, stage: 'nosalt', phase: 'run' },
+      b: { pw: '123456', saltA: 'x7', saltB: 'q2', noSaltA: 55778, noSaltB: 55778, saltedA: 2029, saltedB: 29185, stage: 'salted', phase: 'run' },
+    },
     extgcd: {
       doc: { kind: 'extgcd', params: {}, entities: [], streams: [] },
       a: { e: 3, m: 20, q: 6, r: 20, newr: 3, t: 0, newt: 1, result: -1, phase: 'run' },

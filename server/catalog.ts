@@ -61,6 +61,9 @@ import { extgcdKernel } from '../src/kernels/extgcd.ts'
 import { signKernel } from '../src/kernels/signature.ts'
 import { hashavalKernel } from '../src/kernels/hashaval.ts'
 import { merkleKernel } from '../src/kernels/merkle.ts'
+import { crtKernel } from '../src/kernels/crt.ts'
+import { fermatKernel } from '../src/kernels/fermat.ts'
+import { saltKernel } from '../src/kernels/salt.ts'
 // 与 registry 同源的预设常量：直接 import 保证 doc 逐字一致（引擎侧，无 React）。
 import { CRC_PRESETS, HAMMING_PRESETS, SUBNET_PRESETS, HUFF_PRESETS, BPLUS_PRESETS } from '../src/presets/sequences.ts'
 import { ROUTE_PRESETS } from '../src/presets/entities.ts'
@@ -984,6 +987,33 @@ export const CATALOG: CatalogEntry[] = [
       ask: 'Merkle 树最大的好处：验证某一个数据块没被改，需要多少个哈希（n 个块）?', kind: 'choice',
       compute: () => ({ answer: 'O(log n) 个兄弟哈希', step: 0, evidence: '沿路径到根，每层一个兄弟，不用下载全部数据' }),
       distractors: () => ['全部 n 个块的哈希', '只要根哈希 1 个', 'O(n) 个'],
+    }],
+  },
+  {
+    id: 'crt', title: '中国剩余定理', kernel: crtKernel as Kernel<unknown>, doc: trivialDoc('crt'),
+    facts: [{
+      id: 'x', label: '除3余2、除5余3、除7余2 的数',
+      ask: '一个数除以 3 余 2、除以 5 余 3、除以 7 余 2。用中国剩余定理，这个数(0~104 内)是几?', kind: 'number',
+      compute: t => ({ answer: String(last(t).x), step: t.length - 1, evidence: String(last(t).log ?? '') }),
+      distractors: () => ['128', '17', '52'],
+    }],
+  },
+  {
+    id: 'fermat', title: '费马素性测试', kernel: fermatKernel as Kernel<unknown>, doc: trivialDoc('fermat'),
+    facts: [{
+      id: 'verdict', label: '费马测试对 15 的判定',
+      ask: '费马素性测试：2^14 mod 15 = 4 ≠ 1。这说明 15 是什么?', kind: 'choice',
+      compute: () => ({ answer: '一定是合数', step: 0, evidence: 'a^(n-1) mod n ≠ 1 是合数的铁证' }),
+      distractors: () => ['一定是素数', '可能是素数', '无法判断'],
+    }],
+  },
+  {
+    id: 'salt', title: '盐与密码哈希', kernel: saltKernel as Kernel<unknown>, doc: trivialDoc('salt'),
+    facts: [{
+      id: 'why', label: '加盐的作用',
+      ask: '存密码哈希时为什么要「加盐」(每个用户配一个随机盐再哈希)?', kind: 'choice',
+      compute: () => ({ answer: '让相同密码的哈希也不同，使彩虹表失效', step: 0, evidence: '盐打散哈希，攻击者必须对每个盐单独暴力' }),
+      distractors: () => ['让哈希更快', '让密码更短', '让密码可以解密还原'],
     }],
   },
 ]

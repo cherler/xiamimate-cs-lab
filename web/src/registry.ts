@@ -234,6 +234,12 @@ import { hashavalKernel, type HashAvalState } from '@engine/kernels/hashaval.ts'
 import { HashAvalStage } from './stages/HashAvalStage.tsx'
 import { merkleKernel, type MerkleState } from '@engine/kernels/merkle.ts'
 import { MerkleStage } from './stages/MerkleStage.tsx'
+import { crtKernel, type CRTState } from '@engine/kernels/crt.ts'
+import { CRTStage } from './stages/CRTStage.tsx'
+import { fermatKernel, type FermatState } from '@engine/kernels/fermat.ts'
+import { FermatStage } from './stages/FermatStage.tsx'
+import { saltKernel, type SaltState } from '@engine/kernels/salt.ts'
+import { SaltStage } from './stages/SaltStage.tsx'
 import { CollisionStage } from './stages/CollisionStage.tsx'
 import { gcnKernel, type GcnState } from '@engine/kernels/gcn.ts'
 import { GcnStage } from './stages/GcnStage.tsx'
@@ -5381,10 +5387,44 @@ const merkle: Experiment<MerkleState> = {
   readouts: s => [{ label: '本步', value: s.act === 'leaf' ? `叶子 L${s.focus}` : s.act === 'parent' ? `父 P${s.focus}` : s.act === 'root' ? '根' : '完成' }, { label: '叶子哈希', value: s.leaves.filter(x => x >= 0).join(',') || '—' }, { label: '父节点', value: s.parents.filter(x => x >= 0).join(',') || '—' }, { label: '根哈希', value: s.root >= 0 ? `${s.root}` : '?', tone: s.root >= 0 ? 'good' : undefined }],
 }
 
+const crt: Experiment<CRTState> = {
+  id: 'crt', group: '密码学', title: '中国剩余定理', subtitle: '几个余数条件拼出唯一的数',
+  kernel: crtKernel, defaultDoc: { kind: 'crt', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '无可调参数。x 除 3 余 2、除 5 余 3、除 7 余 2 → 唯一解 x=23（mod 105）。RSA 解密用它加速。详见讲解卡。',
+  bounds: ['x≡2(3),3(5),2(7);模两两互质', '每条算 N_i、逆 y_i、贡献项 a·N·y(可核)', '唯一解 x=23(mod105)', 'RSA解密用CRT拆成模p/q两小幂,快3~4倍'],
+  tabs: [{ id: 'crt', label: '构造解' }], Stage: CRTStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: `x=${s.x}` } : { key: 'idle', label: s.idx >= 0 ? `第${s.idx + 1}条` : '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 5)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.idx >= 0 ? `${s.idx + 1}` : '设'),
+  readouts: s => [{ label: '总模 N', value: `${s.N}` }, { label: '本步', value: s.idx >= 0 ? `模${s.ns[s.idx]}: N=${s.Ni} y=${s.yi}` : '完成' }, { label: '累加和', value: `${s.acc}` }, { label: '解 x', value: s.x >= 0 ? `${s.x}` : '?', tone: s.x >= 0 ? 'good' : undefined }],
+}
+const fermat: Experiment<FermatState> = {
+  id: 'fermat', group: '密码学', title: '费马素性测试', subtitle: 'a^(n-1) mod n ≠ 1 就是合数',
+  kernel: fermatKernel, defaultDoc: { kind: 'fermat', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '无可调参数。测 n=15、底 a=2：2^14 mod 15 = 4 ≠ 1 → 15 一定是合数。RSA 选素数先用它筛。详见讲解卡。',
+  bounds: ['费马小定理:素数 p 有 a^(p-1)≡1(mod p)', '测 n=15,a=2:算 2^14 mod 15(快速模幂,可核)', '= 4 ≠1 → 15 一定是合数', '=1只是"可能素数";实用中用米勒-拉宾'],
+  tabs: [{ id: 'test', label: '模幂检测' }], Stage: FermatStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? (s.verdict === '合数' ? { key: 'bad', label: '合数' } : { key: 'good', label: '可能素数' }) : { key: 'idle', label: `结果${s.result}` }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 5)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.bit >= 0 ? String(s.bit) : '测'),
+  readouts: s => [{ label: '测试 n', value: `${s.n}` }, { label: '要算', value: `${s.a}^${s.n - 1} mod ${s.n}` }, { label: '当前结果', value: `${s.result}` }, { label: '判定', value: s.verdict || '…', tone: s.phase === 'done' ? (s.verdict === '合数' ? 'bad' : 'good') : undefined }],
+}
+const salt: Experiment<SaltState> = {
+  id: 'salt', group: '密码学', title: '盐与密码哈希', subtitle: '同一密码，加盐后哈希各不同',
+  kernel: saltKernel, defaultDoc: { kind: 'salt', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '无可调参数。两人同用密码 123456：不加盐哈希相同(彩虹表可批量破)、加盐后不同。详见讲解卡。',
+  bounds: ['两用户同密码 123456', '不加盐:hash(密码)两人相同(可核)', '加盐:hash(盐+密码)两人不同', '盐不保密,作用是打散;真实系统叠 bcrypt'],
+  tabs: [{ id: 'salt', label: '不加盐 vs 加盐' }], Stage: SaltStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: '加盐即不同' } : { key: 'idle', label: s.stage }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 4)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.stage === 'nosalt' ? '素' : s.stage === 'salted' ? '盐' : '码'),
+  readouts: s => [{ label: '密码', value: `"${s.pw}"` }, { label: '不加盐', value: s.noSaltA >= 0 ? `${s.noSaltA} = ${s.noSaltB}` : '—', tone: s.noSaltA >= 0 ? 'bad' : undefined }, { label: '加盐', value: s.saltedA >= 0 ? `${s.saltedA} ≠ ${s.saltedB}` : '—', tone: s.saltedA >= 0 ? 'good' : undefined }, { label: '盐的作用', value: '打散(防彩虹表)' }],
+}
+
 export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
-  caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle,
+  caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,

@@ -298,6 +298,39 @@ export const TERMS: Term[] = [
 
 /** 每个实验一段。**加实验必须加这一段** —— 冒烟会数够不够 30 个。 */
 export const GUIDES: Record<string, Guide> = {
+  crt: {
+    question: '除 3 余 2、除 5 余 3、除 7 余 2 的数，怎么系统地求出来？',
+    read: [{ at: '条件盒', is: '几个余数条件与最终解 x。', anchor: '.cx-kv' }, { at: '读数', is: '总模、累加和、解 x。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { ns: number[]; as: number[]; N: number; idx: number; Ni: number; yi: number; term: number; acc: number; x: number; phase: string }; return [
+      { k: '本步输入', v: st.idx < 0 && st.phase !== 'done' ? `${st.ns.length} 个条件、总模 N=${st.N}` : st.phase === 'done' ? '全部条件已合并' : `第 ${st.idx + 1} 条：x mod ${st.ns[st.idx]} = ${st.as[st.idx]}` },
+      { k: '判定规则', v: '模两两互质则唯一解。对每条算 N_i=N/n_i、它模 n_i 的逆 y_i，x = Σ a_i·N_i·y_i mod N——每项只在自己模下生效。' },
+      { k: '本步结果', v: st.phase === 'done' ? `x = **${st.x}**` : st.idx >= 0 ? `贡献项 ${st.as[st.idx]}×${st.Ni}×${st.yi}=${st.term}，累加 ${st.acc}` : `准备构造` },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; x: number; idx: number }; return st.phase === 'done' ? `x=${st.x}` : `第${st.idx + 1}条` },
+    try: [{ act: '按「下一步」逐条合并', watch: '每条算出一个贡献项，累加起来。' }, { act: '验证', watch: 'x=23：÷3余2、÷5余3、÷7余2，全对。' }], terms: [],
+  },
+  fermat: {
+    question: '几百位的数怎么快速判断是不是素数？',
+    read: [{ at: '数值盒', is: '测试对象 n、底 a、a^(n-1) mod n。', anchor: '.cx-kv' }, { at: '读数', is: '测试对象、要算的式子、结果、判定。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { n: number; a: number; bitPos: number; bit: number; result: number; verdict: string; phase: string }; return [
+      { k: '本步输入', v: st.phase === 'done' ? `算完 ${st.a}^${st.n - 1} mod ${st.n}` : st.bitPos < 0 ? `测 n=${st.n}、底 a=${st.a}` : `指数第 ${st.bitPos} 位=${st.bit}` },
+      { k: '判定规则', v: '费马小定理：素数 p 有 a^(p-1)≡1 (mod p)。反过来：算 a^(n-1) mod n，≠1 铁证是合数；=1 只是"很可能素数"。' },
+      { k: '本步结果', v: st.phase === 'done' ? `= ${st.result} → **${st.verdict}**` : st.bit >= 0 ? `当前结果 ${st.result}` : '开始模幂' },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; verdict: string; result: number }; return st.phase === 'done' ? st.verdict : `${st.result}` },
+    try: [{ act: '按「下一步」算模幂', watch: '用快速模幂算 2^14 mod 15。' }, { act: '看判定', watch: '结果=4≠1 → 15 一定是合数，当场揪出。' }], terms: [],
+  },
+  salt: {
+    question: '密码存哈希还不够——为什么一定要「加盐」？',
+    read: [{ at: '哈希盒', is: '两个用户不加盐/加盐后存的哈希。', anchor: '.cx-kv' }, { at: '读数', is: '密码、不加盐、加盐。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { pw: string; noSaltA: number; saltedA: number; saltedB: number; stage: string; phase: string }; return [
+      { k: '本步输入', v: st.stage === 'pw' ? `两人同用密码 "${st.pw}"` : st.stage === 'nosalt' ? '不加盐直接哈希' : st.stage === 'salted' ? '每人配随机盐再哈希' : '完成' },
+      { k: '判定规则', v: '不加盐：hash(密码)——同密码同哈希，彩虹表可批量破。加盐：hash(盐+密码)——同密码因盐不同而哈希不同，彩虹表失效。' },
+      { k: '本步结果', v: st.stage === 'nosalt' ? `两人哈希都是 ${st.noSaltA}(**相同**)` : st.stage === 'salted' || st.phase === 'done' ? `加盐后 ${st.saltedA} ≠ ${st.saltedB}(**不同**)` : '两人密码相同' },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; stage: string }; return st.phase === 'done' ? '加盐即不同' : st.stage },
+    try: [{ act: '按「下一步」对比', watch: '不加盐两人哈希一样，加盐就不一样了。' }, { act: '想意义', watch: '盐打散哈希，让彩虹表和批量破解失效。' }], terms: [],
+  },
   extgcd: {
     question: 'RSA 求私钥 d 那一步——怎么求 e 关于模 m 的逆元？',
     read: [{ at: '数值盒', is: '余数 r、商 q、系数 t，迭代更新。', anchor: '.cx-kv' }, { at: '读数', is: '要求什么、本步商、逆元。', anchor: '.scdim' }],

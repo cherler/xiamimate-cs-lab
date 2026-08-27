@@ -303,6 +303,24 @@ const bitmapFree = (t: unknown[]) => { const s = last<{ freeCount?: Num }>(t)
   return typeof s?.freeCount === 'number' ? s.freeCount : null }
 
 export const BRIEFS: Record<string, Brief> = {
+  crt: {
+    care: '「物不知数」：一个数除 3 余 2、除 5 余 3、除 7 余 2，问这数是几？\n\n**中国剩余定理**：只要模两两互质，这组同余式在 0..N-1(N=∏n_i) 内有**唯一解**。\n\n构造：对每个条件算 N_i=N/n_i、它模 n_i 的逆 y_i，则 x = Σ a_i·N_i·y_i mod N——每项只在自己那个模下"生效"、对别的模贡献 0。RSA 解密用 CRT 拆成模 p、模 q 两个小幂，快 3~4 倍。',
+    guess: { q: '除 3 余 2、除 5 余 3、除 7 余 2 的数(0~104)是？', opts: ['23', '17', '52'] },
+    tasks: [{ act: '按「下一步」逐条合并', watch: '每条算出一个贡献项，累加。' }, { act: '验证', watch: 'x=23：÷3余2、÷5余3、÷7余2。' }],
+    verdict: ctx => { const t = ctx.trace as { x?: number }[]; const l = t[t.length - 1]; return l ? { pick: 0, say: `唯一解 x = ${l.x}。`, why: '模两两互质保证唯一解；构造法把三个条件的贡献加起来取模。' } : null },
+  },
+  fermat: {
+    care: 'RSA 要选大素数，可几百位的数没法试除。\n\n**费马小定理**：若 p 是素数，则对任意 1<a<p 有 a^(p-1)≡1 (mod p)。反过来当检测：算 a^(n-1) mod n，**若 ≠1，n 一定是合数**(铁证)；若 =1，n 很可能是素数(概率判定)。\n\n极少数「卡迈克尔数」会骗过它，所以实用中用更强的米勒-拉宾，但骨架就是这个模幂。',
+    guess: { q: '2^14 mod 15 = 4 ≠ 1，说明 15 是？', opts: ['一定是合数', '一定是素数', '可能是素数'] },
+    tasks: [{ act: '按「下一步」算模幂', watch: '快速模幂算 2^14 mod 15。' }, { act: '看判定', watch: '结果=4≠1 → 15 一定是合数。' }],
+    verdict: ctx => { const t = ctx.trace as { result?: number; verdict?: string }[]; const l = t[t.length - 1]; return l ? { pick: 0, say: `2^14 mod 15 = ${l.result} → ${l.verdict}。`, why: '结果 ≠1 是合数的铁证；素数一定满足 a^(p-1)≡1。' } : null },
+  },
+  salt: {
+    care: '密码不能明文存，得存哈希。但**只哈希不加盐**有大漏洞：两个人用同一个密码，存下的哈希就一样——攻击者拿一张「常见密码→哈希」的**彩虹表**一撞，一批人同时沦陷；还一眼看出谁和谁密码相同。\n\n**加盐**：每个用户配一个随机盐，存 hash(盐+密码)。同一密码因盐不同→哈希不同，彩虹表失效，必须对每个盐单独暴力。\n\n盐不用保密，随哈希一起存即可，作用是**打散**。真实系统再叠 bcrypt/argon2 故意放慢哈希。',
+    guess: { q: '加盐（每人配随机盐再哈希）的作用是？', opts: ['让相同密码哈希也不同，彩虹表失效', '让哈希更快', '让密码可解密还原'] },
+    tasks: [{ act: '按「下一步」对比', watch: '不加盐两人哈希一样，加盐就不一样。' }, { act: '想意义', watch: '盐打散哈希，让批量破解失效。' }],
+    verdict: ctx => { const t = ctx.trace as { saltedA?: number; saltedB?: number }[]; const l = t[t.length - 1]; return l ? { pick: 0, say: `加盐后两人哈希 ${l.saltedA} ≠ ${l.saltedB}。`, why: '同一密码因盐不同而哈希不同，彩虹表和批量破解都失效。' } : null },
+  },
   extgcd: {
     care: 'RSA 生成私钥那一步（求 d 使 e·d≡1 mod φ），以及一切「模运算里的除法」，都要**模逆**。\n\n求法是扩展欧几里得：一边辗转相除求 gcd，一边**回带系数**。gcd=1（e 与 m 互质）才有逆。\n\n迭代版每步记 (商 q、余数、系数 t)，最后系数取模 m 就是逆元。',
     guess: { q: '3 关于模 20 的逆元 d（3·d≡1 mod 20）是？', opts: ['7', '3', '13'] },
