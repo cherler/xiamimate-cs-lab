@@ -44,6 +44,7 @@ import { hammingKernel } from '../src/kernels/hamming.ts'
 import { crcKernel } from '../src/kernels/crc.ts'
 import { subnetKernel } from '../src/kernels/subnet.ts'
 import { huffmanKernel } from '../src/kernels/huffman.ts'
+import { mvccKernel } from '../src/kernels/mvcc.ts'
 // 与 registry 同源的预设常量：直接 import 保证 doc 逐字一致（引擎侧，无 React）。
 import { CRC_PRESETS, HAMMING_PRESETS, SUBNET_PRESETS, HUFF_PRESETS } from '../src/presets/sequences.ts'
 import { ROUTE_PRESETS } from '../src/presets/entities.ts'
@@ -685,6 +686,34 @@ export const CATALOG: CatalogEntry[] = [
         ask: '按这些字符频率建 Huffman 树，最终的带权路径长度(WPL，也就是编码总位数)是多少?',
         kind: 'number',
         compute: t => ({ answer: String(last(t).wpl), step: t.length - 1, evidence: String(last(t).log ?? '') }),
+        distractors: numDistractors,
+      },
+    ],
+  },
+
+  // ── 数据库系统(求职核心) ──
+  {
+    id: 'mvcc',
+    title: 'MVCC 快照读',
+    kernel: mvccKernel as Kernel<unknown>,
+    doc: trivialDoc('mvcc'),
+    facts: [
+      {
+        id: 'reread', label: '快照隔离下 T1 第二次读到的值',
+        ask: 'MVCC 可重复读：T1、T2 同时开始，T1 先读 x=100，随后 T2 把 x 改成 200 并提交。T1 再次读 x，读到的值是多少?',
+        kind: 'number',
+        compute: t => {
+          const reads = t.filter(f => f.op === 'read')
+          const f = reads[reads.length - 1] ?? last(t)
+          return { answer: String(f.readValue), step: t.indexOf(f), evidence: String(f.log ?? '') }
+        },
+        distractors: () => ['200', '150', '50'],
+      },
+      {
+        id: 'versions', label: '调度结束后 x 的版本数',
+        ask: 'MVCC 写不覆盖旧值而是追加版本。这个调度全部结束后，行 x 一共有多少个版本?',
+        kind: 'number',
+        compute: t => ({ answer: String((last(t).versions as unknown[]).length), step: t.length - 1, evidence: `版本链长度 = ${(last(t).versions as unknown[]).length}` }),
         distractors: numDistractors,
       },
     ],

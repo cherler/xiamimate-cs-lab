@@ -202,6 +202,8 @@ import { BestOfNStage } from './stages/BestOfNStage.tsx'
 import { totKernel, type ToTState } from '@engine/kernels/tot.ts'
 import { ToTStage } from './stages/ToTStage.tsx'
 import { collisionKernel, type CollisionState } from '@engine/kernels/collision.ts'
+import { mvccKernel, type MvccState } from '@engine/kernels/mvcc.ts'
+import { MvccStage } from './stages/MvccStage.tsx'
 import { CollisionStage } from './stages/CollisionStage.tsx'
 import { gcnKernel, type GcnState } from '@engine/kernels/gcn.ts'
 import { GcnStage } from './stages/GcnStage.tsx'
@@ -5028,9 +5030,42 @@ const lln: Experiment<LlnState> = {
   ],
 }
 
+const mvcc: Experiment<MvccState> = {
+  id: 'mvcc',
+  group: '数据库系统',
+  title: 'MVCC 快照读',
+  subtitle: '写追加版本，读按快照挑版本',
+  kernel: mvccKernel,
+  defaultDoc: { kind: 'mvcc', params: {}, entities: [], streams: [] },
+  params: [],
+  paramsNote: 'MVCC(多版本并发控制)是 MySQL(InnoDB)、PostgreSQL 扛高并发的地基,也是后端面试的高频题。它的两条铁律:写不覆盖旧值,而是给这一行**追加一个新版本**(带创建它的事务号、是否已提交);读不加锁,而是按自己的**快照(read-view)**从新到旧挑第一个「已提交、且创建者在快照里(或就是自己)」的版本。快照在事务开始那一刻拍定,于是同一个事务反复读同一行,读到的永远是同一个值——这就是「可重复读(RR)」。本实验是经典调度:T1、T2 同时开始(快照都是 {T0}),T1 读到 x=100;T2 把 x 改成 200 并提交;T1 再读 x,**仍是 100**——因为 T2 不在 T1 的快照里。读写因此互不阻塞。',
+  bounds: [
+    'T1、T2 开始时各拍一张快照(此刻 = {T0})',
+    '写=追加新版本(未提交只有自己可见);读=按快照挑可见版本',
+    'T2 提交 x=200 后,已拿快照的 T1 仍读到 100(可重复读)',
+    '值可核:版本链、每次读命中的版本、快照集合都在状态里',
+  ],
+  tabs: [{ id: 'chain', label: '版本链+快照' }],
+  Stage: MvccStage,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: '快照读' }
+    : s.op === 'commit' ? { key: 'good', label: `T${s.curTx} 提交` }
+      : s.op === 'read' ? { key: 'idle', label: `T${s.curTx} 读到 ${s.readValue}` }
+        : s.op === 'write' ? { key: 'idle', label: `T${s.curTx} 追加版本` }
+          : { key: 'idle', label: s.curTx ? `T${s.curTx} 开始` : '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 8)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.op === 'read' ? '读' : s.op === 'write' ? '写' : s.op === 'commit' ? '交' : '始'),
+  whyInRail: true,
+  readouts: s => [
+    { label: '本步', value: s.op === 'read' ? `T${s.curTx} 读 x` : s.op === 'write' ? `T${s.curTx} 写 x` : s.op === 'commit' ? `T${s.curTx} 提交` : s.op === 'begin' ? `T${s.curTx} 开始` : '完成' },
+    { label: '读到的值', value: s.readValue >= 0 ? `${s.readValue}` : '—', tone: s.readValue >= 0 ? 'good' : undefined },
+    { label: 'x 版本数', value: `${s.versions.length}` },
+    { label: '已提交版本', value: `${s.versions.filter(v => v.committed).length}` },
+  ],
+}
+
 export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
-  page, scheduler, disk, banker,
+  page, scheduler, disk, banker, mvcc,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,
@@ -5171,7 +5206,7 @@ export const SOFT_LINKS: Record<string, string[]> = {
 export const DISCIPLINES: Discipline[] = [
   {
     key: 'cs', title: '计算机', icon: '💻', sub: '从 408 地基到大模型推理机制', status: 'active',
-    groups: ['计算机组成原理', '操作系统', '数据结构', '计算机网络', '概率统计原理', '机器学习基础', 'Transformer 原理', '大模型推理'],
+    groups: ['计算机组成原理', '操作系统', '数据结构', '计算机网络', '数据库系统', '概率统计原理', '机器学习基础', 'Transformer 原理', '大模型推理'],
     guide: { from: '408 地基', to: '大模型推理引擎', toIcon: '🤖', url: 'https://claude.ai/code/artifact/4a5e0921-6a29-4ad8-8ce3-c763b4a20ff5' },
   },
   { key: 'algo', title: '算法', icon: '🧮', sub: '经典 → 机器学习 → 深度学习 → 大模型', groups: ['经典算法', '机器学习算法', '深度学习算法', '大模型算法'], status: 'active', guide: { from: '一次排序', to: '会学习的模型', toIcon: '🧠' } },
@@ -5205,6 +5240,7 @@ export const GROUP_ANCHOR: Record<string, string> = {
   '计算机组成原理': 'computer',
   '操作系统': 'computer',
   '数据结构': 'software',
+  '数据库系统': 'software',
   '计算机网络': 'internet',
   '概率统计原理': 'llm',
   '机器学习基础': 'llm',

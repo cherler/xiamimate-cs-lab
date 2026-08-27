@@ -286,6 +286,7 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   quicksort: {},
   mergesort: {},
   fastpow: {},
+  mvcc: {},
   astar: {},
   perceptron: {},
   pooling: { kind: 'string' },
