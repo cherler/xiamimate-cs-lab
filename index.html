@@ -288,7 +288,7 @@ const CO={bg0:'#050a12',bg1:'#0a141f',line:'rgba(90,150,190,.22)',panel:'rgba(12
 function startRun(k){KIT=k;RUN=newRun(Date.now()&0xffff,k);enter()}
 function enter(){RUN.opts=rollNode(RUN,RUN.node)
  intel=RUN.opts.map(o=>Object.assign(intelOf(RUN.deck,o.foe,o.flaw,RUN.node),o))
- offer=null;hist=[100]
+ offer=null;hist=[100];flo=null
  S=newFight(1,RUN.deck,RUN.opts[0].foe,RUN.budget,RUN.opts[0].flaw,RUN.node)}
 function pickNode(k){const o=RUN.opts[k];RUN.used.push(o.foe)
  S=newFight((Date.now()&0xffff)+RUN.node,RUN.deck,o.foe,RUN.budget,o.flaw,RUN.node)
@@ -298,13 +298,32 @@ function afterFight(){ if(S.over==='lose'){RUN.over='lose';return}
  if(RUN.node>=SHAPE.length){RUN.over='win';return} offer=offer3(RUN)}
 function takeCard(id){if(id)RUN.deck.push(id);offer=null;enter()}
 function snap(){return alive(S).map(b=>({id:b.id,v:b.v}))}
+const stat=()=>({n:N(S),work:remainWork(S),budget:S.budget,memo:S.memo,debt:S.debt,
+  splits:S.splits,tier:tier(S),hand:S.hand.length,mult:S.mult,inflow:S.inflow,ex:S.exhaust.length})
+function readout(a,b){const o=[],G=CO.green,A=CO.amber,R=CO.red,Cy=CO.cyan,P='#b39ddb'
+ if(b.n<a.n)      o.push(['−'+(a.n-b.n)+' 个元素',G])
+ else if(b.work<a.work) o.push(['处理量 −'+Math.round(a.work-b.work),G])
+ if(b.tier>a.tier)o.push(['有序层数 '+a.tier+' → '+b.tier,A])
+ if(b.splits>a.splits)o.push(['段数 '+a.splits+' → '+b.splits,P])
+ if(b.memo>a.memo)o.push(['预处理值 +'+(b.memo-a.memo),G])
+ if(b.budget>a.budget)o.push(['预算 +'+(b.budget-a.budget),G])
+ const drew=(b.hand-a.hand)+1; if(drew>0)o.push(['抽 '+drew+' 张',Cy])
+ if(b.debt>a.debt)o.push(['债务 +'+(b.debt-a.debt),R])
+ if(b.debt<a.debt)o.push(['债务清零',G])
+ if(b.mult<a.mult)o.push(['增长倍率 '+a.mult.toFixed(2)+' → '+b.mult.toFixed(2),G])
+ if(b.inflow<a.inflow)o.push(['涌入 '+a.inflow+' → '+b.inflow,G])
+ if(!o.length)o.push(['这张没起作用',R])
+ return o}
+let flo=null
 function uiPlay(i){ if(anim||!canPlay(S,i))return
- const id=S.hand[i],before=snap()
+ const id=S.hand[i],before=snap(),s0=stat()
  play(S,i); hist.push(hpPct(S))
- anim={id,kind:AK[id]||'gen',t0:performance.now(),dur:AK[id]==='sort'?900:620,before,
+ const kind=AK[id]||'gen', dur=kind==='sort'?1150:kind==='gen'?700:860
+ anim={id,kind,t0:performance.now(),dur,before,
   after:new Map(S.bars.map(b=>[b.id,b.dead?null:b.v]))}
- if(S.over)setTimeout(afterFight,300)
- else if(S.steps<=0)setTimeout(()=>{if(!S.over){endTurn(S);hist.push(hpPct(S));if(S.over)afterFight()}},anim.dur+60)}
+ flo={lines:readout(s0,stat()),name:C[id].name,t0:performance.now(),dur:1500}
+ if(S.over)setTimeout(afterFight,700)
+ else if(S.steps<=0)setTimeout(()=>{if(!S.over){endTurn(S);hist.push(hpPct(S));if(S.over)afterFight()}},dur+300)}
 const AK={scan:'sweep',lookup:'sweep',dp:'sweep',parallel:'sweep',
  bubble:'sort',merge:'sort',quick:'sort',
  bsearch:'split',median:'split',divide:'split',recur:'split',
@@ -428,7 +447,7 @@ function grid(){ctx.strokeStyle='rgba(70,130,170,.07)';ctx.lineWidth=1
  for(let y=0;y<H;y+=48){ctx.beginPath();ctx.moveTo(0,y+.5);ctx.lineTo(W,y+.5);ctx.stroke()}}
 
 function fightScreen(){
- const HANDY=H-158,ARENA={x:236,y:150,w:W-236-244,h:HANDY-190}
+ const HANDY=H-172,ARENA={x:236,y:150,w:W-236-244,h:HANDY-190}
  topBar(); enemyHeader(ARENA)
  legendPanel(16,150,204,(S.mult>1?352:330)+(S.FL?66:0))
  statsPanel(W-228,150,212,ARENA.h+40)
@@ -560,16 +579,91 @@ function arena(A){
   const lg=ctx.createLinearGradient(sx-44,0,sx+44,0)
   lg.addColorStop(0,'rgba(95,208,232,0)');lg.addColorStop(.5,'rgba(191,242,255,.95)');lg.addColorStop(1,'rgba(95,208,232,0)')
   ctx.fillStyle=lg;ctx.fillRect(sx-44,A.y,88,A.h)}
+ // 移除类:被打掉的位置炸一下白光
+ if(anim&&anim.kind==='burst'){const k=1-ease(t)
+  anim.before.forEach(o=>{ if(anim.after.get(o.id)!==null)return
+   const idx=anim.before.indexOf(o),x=x0+idx*bw+bw/2
+   ctx.fillStyle='rgba(255,236,190,'+(k*.85)+')'
+   ctx.fillRect(x-bw*.9,base-(o.v/S.vmax)*hM-6,bw*1.8,(o.v/S.vmax)*hM+12)
+   ctx.strokeStyle='rgba(255,180,120,'+(k*.7)+')';ctx.lineWidth=2
+   ctx.beginPath();ctx.arc(x,base-8,(1-k)*38,0,7);ctx.stroke()
+   if(t<.3&&Math.random()<.55)parts.push({x,y:base-(o.v/S.vmax)*hM,
+     vx:(Math.random()-.5)*5,vy:-Math.random()*4-1,life:1,c:'#ffd08a'})})}
+ // 排序:把「正在变有序」这件事显出来 —— 相邻逆序对高亮
+ if(anim&&anim.kind==='sort'){const k=Math.sin(t*Math.PI)
+  for(let i=0;i<a.length-1;i++) if(a[i].v>a[i+1].v){
+   const sg=Math.floor(i/seg),x=x0+i*bw+sg*18
+   ctx.fillStyle='rgba(255,140,110,'+(k*.4)+')';ctx.fillRect(x,base-6,bw*2-3,5)}
+  }
  // 二分刀口
  if(anim&&anim.kind==='split'){const sx=x0+tw*.5
   ctx.strokeStyle='rgba(255,216,138,'+(1-t*.5)+')';ctx.lineWidth=2;ctx.setLineDash([7,6])
   ctx.beginPath();ctx.moveTo(sx,A.y-6);ctx.lineTo(sx,base+8);ctx.stroke();ctx.setLineDash([])}
  parts=parts.filter(p=>p.life>0)
  parts.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=.1;p.life-=.02
-  ctx.globalAlpha=Math.max(p.life,0);ctx.fillStyle=p.c;ctx.fillRect(p.x,p.y,2.6,2.6);ctx.globalAlpha=1})}
+  ctx.globalAlpha=Math.max(p.life,0);ctx.fillStyle=p.c;ctx.fillRect(p.x,p.y,2.6,2.6);ctx.globalAlpha=1})
+ floatRead(A)}
+/* 飘字读数:每出一张牌都说清「这一下到底改了什么」,
+   不碰柱子的那 7 张(批处理/观察/预处理/建表/剪枝/回溯/边界条件)全靠它 */
+function floatRead(A){ if(!flo)return
+ const ft=(performance.now()-flo.t0)/flo.dur
+ if(ft>=1){flo=null;return}
+ const al=ft<.12?ft/.12:ft>.72?(1-ft)/.28:1
+ // 起点要避开敌人说明和失误横幅(它们在 A.y 上方到 A.y+45)
+ const cx=A.x+A.w/2, y0=A.y+96-ft*30
+ ctx.textAlign='center';ctx.globalAlpha=Math.max(0,al)
+ ctx.font='600 11px system-ui';ctx.fillStyle=CO.faint;ctx.fillText(flo.name,cx,y0-16)
+ flo.lines.forEach((l,i)=>{const y=y0+i*23
+  ctx.font='700 17px system-ui';const w=ctx.measureText(l[0]).width
+  ctx.fillStyle='rgba(5,10,17,.9)';ctx.fillRect(cx-w/2-15,y-18,w+30,26)
+  ctx.strokeStyle=l[1];ctx.globalAlpha=Math.max(0,al)*.45;ctx.lineWidth=1
+  ctx.strokeRect(cx-w/2-14.5,y-17.5,w+29,25);ctx.globalAlpha=Math.max(0,al)
+  ctx.fillStyle=l[1];ctx.fillText(l[0],cx,y)})
+ ctx.globalAlpha=1;ctx.textAlign='left'}
 const ease=t=>1-Math.pow(1-t,3)
 
-function cardFace(id,x,y,cw,ch,on,sel){
+/* 卡面第二行:把「1+有序层数×2」这种公式换算成此刻的真实数字。
+   R2「卡面可推,不许查表」的补完 —— 光有规则不够,得让人看见规则算出来是多少。 */
+function live(id){ if(!S)return null
+ const n=N(S),t=tier(S),sp=S.splits,m=S.memo,d=S.debt,seq=S.E.seqOnly,half=S.E.noSplit?.4:1
+ const G=CO.green,A=CO.amber,Cy=CO.cyan,R=CO.red,P='#b39ddb'
+ switch(id){
+  case 'scan':     return ['处理量 16 摊到 '+n+' 个元素上',Cy]
+  case 'batch':    return ['预算 '+S.budget+' → '+(S.budget+5),G]
+  case 'watch':    return ['抽 2 · 牌库还剩 '+S.draw.length+' 张',Cy]
+  case 'bubble': case 'merge': case 'quick':
+    return ['有序层数 '+t+'/4'+(S.E.antiSort?' · 最坏用例下趟数只剩两五折':''),A]
+  case 'bsearch':{const f=1+t*2,act=seq?Math.max(1,Math.round(f*seq)):f
+    return ['现在移除 '+act+' 个 ← 有序层数 '+t+'/4'+(seq?' 且顺序访问打七折':''),act>=5?G:act>1?A:R]}
+  case 'median':   return t>=3?['现在移除 '+Math.ceil(n/3)+' 个 ← 规模 '+n+' 的 1/3',G]
+                              :['有序层数 '+t+',不到 3 —— 现在出会落空',R]
+  case 'divide':   return sp<(S.E.noSplit??4)?['段数 '+sp+' → '+(sp+1),G]
+                              :['段数已到上限 '+sp+' —— 现在出会落空',R]
+  case 'mergeup':  return ['现在移除 '+(2*sp)+' 个 ← 段数 '+sp+' × 每段 2',sp>=3?G:A]
+  case 'parallel': return ['现在处理量 '+Math.round(sp*14*half)+' ← 段数 '+sp+' × 14'+(half<1?' × 不可分四折':''),sp>=3?G:A]
+  case 'recur':    return sp>=3?['现在移除 '+Math.ceil(n/3)+' 个 ← 规模 '+n+' 的 1/3',G]
+                              :['段数 '+sp+',不到 3 —— 现在出会落空',R]
+  case 'pre':      return ['预处理值 '+m+' → '+Math.min(S.E.memoCap??999,m+8),G]
+  case 'table':{const g=10+Math.ceil(n/4)
+    return ['预处理值 '+m+' → '+Math.min(S.E.memoCap??999,m+g)+'(按规模 '+n+' 算)',G]}
+  case 'lookup':   return m>0?['现在处理量 '+m+' ← 预处理值 '+m+',而且不消耗它',G]
+                             :['预处理值还是 0 —— 现在出会落空',R]
+  case 'dp':       return m>0?['现在处理量 '+(m*2)+' ← 预处理值 '+m+' ×2',G]:['预处理值还是 0 —— 现在出会落空',R]
+  case 'greedy':   return ['移除 2 个 · 债务 '+d+' → '+(d+1),A]
+  case 'local':    return ['移除 5 个 · 债务 '+d+' → '+(d+2),A]
+  case 'heur':     return ['现在移除 '+(2+Math.min(d,6))+' 个 ← 债务 '+d+'(按 6 封顶)',d>=3?G:A]
+  case 'anneal':   return d>0?['现在移除 '+(d*2)+' 个,债务清零',G]:['债务是 0 —— 现在出会落空',R]
+  case 'approx':   return ['现在移除 '+Math.ceil(n/4)+' 个 ← 规模 '+n+' 的 1/4 · 债务 +3',G]
+  case 'prune':    return (S.mult>1||S.inflow>0)
+    ?['倍率 '+S.mult.toFixed(2)+' → '+Math.max(1,S.mult-.25).toFixed(2)+' · 涌入 '+S.inflow+' → '+Math.max(0,S.inflow-1),G]
+    :['倍率和涌入都到底了 —— 现在出会落空',R]
+  case 'backtrack':return ['预算 '+S.budget+' → '+(S.budget+12),G]
+  case 'guard':    return S.FL?['本回合免疫「'+S.FL.name+'」',G]:['这一关没挂失误 —— 现在出会落空',R]
+  case 'hash':     return ['抽 1 · 移除 2 个',Cy]
+ }
+ return null}
+
+function cardFace(id,x,y,cw,ch,on,sel,why){
  const c=C[id],col=CO.tag[c.tag]
  ctx.fillStyle=on?'rgba(14,26,40,.96)':'rgba(12,20,30,.9)';ctx.fillRect(x,y,cw,ch)
  ctx.strokeStyle=on?col:'rgba(110,140,170,.3)';ctx.lineWidth=on?1.8:1;ctx.strokeRect(x+.5,y+.5,cw-1,ch-1)
@@ -582,19 +676,30 @@ function cardFace(id,x,y,cw,ch,on,sel){
  ctx.fillStyle=CO.ink;ctx.font='700 14.5px system-ui';ctx.fillText(c.name,x+40,y+25)
  if(c.exhaust){ctx.fillStyle='#ff8f6b';ctx.font='600 9.5px system-ui'
   ctx.textAlign='right';ctx.fillText('消耗',x+cw-10,y+22);ctx.textAlign='left'}
- const f=ICON[CARDIC[id]]; if(f)f(x+cw*.22,y+40,cw*.56,34)
- ctx.fillStyle=CO.dim;ctx.font='400 11px system-ui';wrap(c.note,x+11,y+92,cw-22,15)
- ctx.globalAlpha=1;C[id].box=[x,y,cw,ch]}
+ const f=ICON[CARDIC[id]]; if(f)f(x+cw*.22,y+36,cw*.56,32)
+ const L=live(id)
+ if(L){ctx.fillStyle=L[1];ctx.font='600 11.5px system-ui';wrap(L[0],x+11,y+84,cw-22,14)}
+ ctx.fillStyle=CO.faint;ctx.font='400 10.5px system-ui';wrap(c.note,x+11,y+(L?116:96),cw-22,13)
+ ctx.globalAlpha=1
+ if(why){ctx.fillStyle='rgba(8,14,22,.72)';ctx.fillRect(x+1,y+ch-24,cw-2,23)
+  ctx.fillStyle=CO.amber;ctx.font='600 11px system-ui';ctx.textAlign='center'
+  ctx.fillText(why,x+cw/2,y+ch-8);ctx.textAlign='left'}
+ C[id].box=[x,y,cw,ch]}
 
 function handRow(y){
  const n=S.hand.length; if(!n)return
- const cw=Math.min(184,(W-460)/n-12),ch=142,gap=12
+ const cw=Math.min(184,(W-460)/n-12),ch=154,gap=12
  const x0=(W-(n*cw+(n-1)*gap))/2
- S.hand.forEach((id,i)=>{const x=x0+i*(cw+gap);cardFace(id,x,y,cw,ch,canPlay(S,i)&&!anim)
-  if(S.locked===i&&!S.guarded){ctx.fillStyle='rgba(255,107,94,.14)';ctx.fillRect(x,y,cw,ch)
+ S.hand.forEach((id,i)=>{const x=x0+i*(cw+gap),c=C[id]
+  const locked=S.locked===i&&!S.guarded
+  // 出不了要说清是哪一种:步数不够,还是被失误锁了。动画期间不再整排变灰(那看着像卡死)
+  const why=locked?null:(S.steps<c.cost?'步数不够 · 需 '+c.cost+',只剩 '+S.steps:null)
+  cardFace(id,x,y,cw,ch,canPlay(S,i),false,why)
+  if(locked){ctx.fillStyle='rgba(255,107,94,.14)';ctx.fillRect(x,y,cw,ch)
    ctx.strokeStyle=CO.red;ctx.lineWidth=1.5;ctx.strokeRect(x+.5,y+.5,cw-1,ch-1)
-   ctx.fillStyle=CO.red;ctx.font='700 12px system-ui';ctx.textAlign='center'
-   ctx.fillText('空指针 · 不可用',x+cw/2,y+ch-14);ctx.textAlign='left'}})}
+   ctx.fillStyle='rgba(8,14,22,.8)';ctx.fillRect(x+1,y+ch-24,cw-2,23)
+   ctx.fillStyle=CO.red;ctx.font='700 11px system-ui';ctx.textAlign='center'
+   ctx.fillText('空指针锁住了这张',x+cw/2,y+ch-8);ctx.textAlign='left'}})}
 
 function pile(x,y,label,n,c){
  ctx.fillStyle='rgba(16,28,44,.9)';ctx.fillRect(x,y,64,88)
