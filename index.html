@@ -356,7 +356,7 @@ window.__demo=(foe,flaw,kit)=>{ if(kit)KIT=kit
  S=newFight(7,RUN.deck,foe,T.BUDGET,flaw); offer=null;hist=[100];intel=null}
 Object.assign(window,{__anim:()=>!!anim,__auto:autoTurn,__S:()=>S,__RUN:()=>RUN,__offer:()=>offer,__intel2:()=>intel,
  __play:i=>uiPlay(i),__end:()=>{if(!anim){endTurn(S);hist.push(hpPct(S));if(S.over)afterFight()}},
- __FB:v=>{FLAWBONUS=v},__HITBOX:()=>HITBOX,__CARD:id=>C[id],__take:takeCard,__startRun:startRun,__skipIntel:()=>{if(intel)pickNode(0)},__pickNode:k=>pickNode(k),__SHAPE:SHAPE})
+ __draw:()=>draw(),__FB:v=>{FLAWBONUS=v},__HITBOX:()=>HITBOX,__CARD:id=>C[id],__take:takeCard,__startRun:startRun,__skipIntel:()=>{if(intel)pickNode(0)},__pickNode:k=>pickNode(k),__SHAPE:SHAPE})
 
 /* ── 面板与基础件 ── */
 function panel(x,y,w,h,title){
@@ -764,6 +764,7 @@ function wprev(tot){const a=alive(S); if(!a.length)return null
  return{per:per<1?per.toFixed(2):per.toFixed(1),k:a.filter(b=>b.v<=per).length,n:a.length,
         hp,tail:(a.filter(b=>b.v<=per).length?' · 打掉 '+a.filter(b=>b.v<=per).length+' 个':'')+' · 血条 −'+hp+'%'}}
 function live(id){ if(!S)return null
+ if(!alive(S).length)return null   // 元素清零(赢了)时 wprev 返回 null,别再往下算
  const n=N(S),t=tier(S),sp=S.splits,m=S.memo,d=S.debt,seq=S.E.seqOnly,half=S.E.noSplit?.4:1
  const G=CO.green,A=CO.amber,Cy=CO.cyan,R=CO.red,P='#b39ddb'
  switch(id){
@@ -940,7 +941,20 @@ function overScreen(){
 function wrap(t,x,y,w,lh){let l='',yy=y
  for(const ch of t){if(ctx.measureText(l+ch).width>w){ctx.fillText(l,x,yy);l=ch;yy+=lh}else l+=ch}
  ctx.fillText(l,x,yy)}
-const req=()=>requestAnimationFrame(draw)
+/* 渲染里抛一次异常就掐断 rAF 链、画面永久冻结 —— 一个卡面小 bug 直接变成「游戏卡死」。
+   兜住它:循环必须继续,并且把错误摆到屏幕上,而不是只躺在控制台里。 */
+let drawErr=null
+const req=()=>requestAnimationFrame(()=>{
+ try{ draw() }
+ catch(err){
+  if(!drawErr){drawErr=err;console.error('渲染异常:',err)}
+  try{
+   ctx.fillStyle='rgba(120,20,16,.92)';ctx.fillRect(0,H-46,W,46)
+   ctx.fillStyle='#ffd9d4';ctx.font='600 13px system-ui';ctx.textAlign='left'
+   ctx.fillText('渲染出错(游戏还在跑,按 1–5 可重开):'+err.message,20,H-18)
+  }catch(_){}
+  requestAnimationFrame(()=>{try{draw()}catch(_){requestAnimationFrame(()=>{try{draw()}catch(_){}})}})
+ }})
 const inBox=(mx,my,b)=>b&&mx>b[0]&&mx<b[0]+b[2]&&my>b[1]&&my<b[1]+b[3]
 cv.addEventListener('click',e=>{const mx=e.clientX,my=e.clientY
  if(RUN.over){startRun(KIT);return}

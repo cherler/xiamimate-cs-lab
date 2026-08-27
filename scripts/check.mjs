@@ -113,6 +113,34 @@ process.stdout.write('\r\x1b[K')
 for (const [k, t] of Object.entries(turns))
   check(`G4 ${k} 平均回合`, t, v => v >= 4 && v <= 14, '4–14 回合')
 
+/* ── G5 渲染健壮性:每张卡 × 每种极端局面都得画得出来 ── */
+process.stdout.write(`${D}G5 渲染…${X}`)
+const render = await page.evaluate(() => {
+  const bad = []
+  const cards = Object.keys(window.__KITS).flatMap(k => window.__KITS[k])
+    .concat(['scan','batch','watch','prune','backtrack','guard','hash'])
+  const uniq = [...new Set(cards)]
+  // 极端局面:元素清零(刚打赢)/ 预处理值 0 / 段数 1 / 债务 0 / 手牌爆满
+  const cases = [
+    ['元素清零', S => S.bars.forEach(b => b.dead = true)],
+    ['全新开局', () => {}],
+    ['预算见底', S => { S.budget = 0 }],
+    ['段数满格', S => { S.splits = 4 }],
+    ['债务很高', S => { S.debt = 9 }],
+  ]
+  for (const [label, setup] of cases)
+    for (const id of uniq) {
+      try {
+        __demo('tape', null, 'sort')
+        const S = __S(); setup(S); S.hand = [id]; S.steps = 3
+        __draw()
+      } catch (err) { bad.push(`${label}/${id}: ${err.message}`) }
+    }
+  return bad
+})
+process.stdout.write('\r\x1b[K')
+check('G5 每张卡 × 5 种极端局面能渲染', render.length ? render[0].slice(0, 46) : 0, v => v === 0, '0 处崩溃')
+
 /* ── 控制台 ── */
 check('全程无控制台报错', consoleErrors.length ? consoleErrors[0].slice(0, 60) : 0, v => v === 0, '0 条')
 
