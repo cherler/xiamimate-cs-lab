@@ -45,8 +45,9 @@ import { crcKernel } from '../src/kernels/crc.ts'
 import { subnetKernel } from '../src/kernels/subnet.ts'
 import { huffmanKernel } from '../src/kernels/huffman.ts'
 import { mvccKernel } from '../src/kernels/mvcc.ts'
+import { bplusKernel } from '../src/kernels/bplus.ts'
 // 与 registry 同源的预设常量：直接 import 保证 doc 逐字一致（引擎侧，无 React）。
-import { CRC_PRESETS, HAMMING_PRESETS, SUBNET_PRESETS, HUFF_PRESETS } from '../src/presets/sequences.ts'
+import { CRC_PRESETS, HAMMING_PRESETS, SUBNET_PRESETS, HUFF_PRESETS, BPLUS_PRESETS } from '../src/presets/sequences.ts'
 import { ROUTE_PRESETS } from '../src/presets/entities.ts'
 
 // trace 的一帧就是内核的可见状态；出题只读字段，用宽松类型即可。
@@ -714,6 +715,29 @@ export const CATALOG: CatalogEntry[] = [
         ask: 'MVCC 写不覆盖旧值而是追加版本。这个调度全部结束后，行 x 一共有多少个版本?',
         kind: 'number',
         compute: t => ({ answer: String((last(t).versions as unknown[]).length), step: t.length - 1, evidence: `版本链长度 = ${(last(t).versions as unknown[]).length}` }),
+        distractors: numDistractors,
+      },
+    ],
+  },
+  {
+    id: 'bplus',
+    title: 'B+ 树索引',
+    kernel: bplusKernel as Kernel<unknown>,
+    // registry defaultDoc:order 3 + BPLUS_PRESETS[1]，逐字复刻。
+    doc: { kind: 'bplus', params: { order: 3 }, entities: [], streams: [{ name: 'keys', values: BPLUS_PRESETS[1]!.values }] },
+    facts: [
+      {
+        id: 'height', label: '插入完成后 B+ 树的高度',
+        ask: '阶 m=3 的 B+ 树(每个节点最多 2 个键)，按顺序插入这串键后，树的高度是多少?',
+        kind: 'number',
+        compute: t => ({ answer: String(last(t).height), step: t.length - 1, evidence: String(last(t).log ?? '') }),
+        distractors: numDistractors,
+      },
+      {
+        id: 'splits', label: '插入过程中的节点分裂次数',
+        ask: 'B+ 树插入时节点满了就分裂。整个插入过程一共发生了多少次节点分裂(split)?',
+        kind: 'number',
+        compute: t => ({ answer: String(last(t).splits), step: t.length - 1, evidence: `终态 splits=${last(t).splits}` }),
         distractors: numDistractors,
       },
     ],

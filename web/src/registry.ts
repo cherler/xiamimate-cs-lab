@@ -5201,6 +5201,8 @@ export const SOFT_LINKS: Record<string, string[]> = {
   //  注意力/Transformer 也是深度学习——真身在计算机学科的「Transformer 原理」，软链进这里。
   '深度学习算法': ['attention', 'scaledmask', 'mha', 'rope', 'forward'],
   '大模型算法': ['sampling', 'specdec', 'bpe', 'quant', 'moe'],
+  //  B+ 树是数据库索引的地基——真身在地基轨「数据结构」，软链进后端轨「数据库系统」。
+  '数据库系统': ['bplus'],
 }
 
 export const DISCIPLINES: Discipline[] = [
@@ -5227,7 +5229,7 @@ export const DISCIPLINES: Discipline[] = [
     guide: { from: '一次排序', to: '会学习的模型', toIcon: '🧠' },
   },
   {
-    key: 'llm', title: '大模型', icon: '🤖', status: 'active',
+    key: 'llm', title: '大模型', icon: '🧩', status: 'active',
     sub: 'Transformer → 推理引擎',
     groups: ['Transformer 原理', '大模型算法', '大模型推理'],
     guide: { from: '一次注意力', to: '大模型推理引擎', toIcon: '🤖' },
