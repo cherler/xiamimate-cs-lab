@@ -5204,30 +5204,36 @@ export const SOFT_LINKS: Record<string, string[]> = {
 }
 
 export const DISCIPLINES: Discipline[] = [
-  // 一级菜单 = 职业岗位(2026-08-27 从「学科」重构)。每条轨的 groups 由地基→进阶排序。
-  // 实验的 group 字段不变,只是重新归到职业轨下;一个实验可 SOFT_LINKS 跨轨挂载
-  // (如 dijkstra 真身在后端轨「数据结构」,软链进算法轨「经典算法」)。
-  // 物理及其它非 CS 学科已下线(碰撞实验代码保留,collision 的 group '力学' 成孤儿不显示)。
+  // 一级菜单 = 「408 地基 + 求职岗位」(2026-08-27 定)。地基轨在前,岗位轨在后。
+  // 实验的 group 字段不变,只是重新归轨;一个实验可 SOFT_LINKS 跨轨挂载
+  // (如 dijkstra 真身在地基轨「数据结构」,软链进算法轨「经典算法」)。
+  // 名字只留核心、不带「工程师」。物理等非 CS 学科已下线(collision 的 group '力学' 成孤儿不显示)。
   {
-    key: 'backend', title: '后端工程师', icon: '🖥️', status: 'active',
-    sub: '408 地基 → 扛住高并发的后端',
-    groups: ['计算机组成原理', '操作系统', '数据结构', '计算机网络', '数据库系统'],
-    guide: { from: '一次内存访问', to: '扛住高并发的后端', toIcon: '🖥️' },
+    key: 'base', title: '408 基础', icon: '🎓', status: 'active',
+    sub: '数据结构·组成·OS·网络 —— 考研与所有岗位的地基',
+    groups: ['数据结构', '计算机组成原理', '操作系统', '计算机网络'],
+    guide: { from: '一次内存访问', to: '吃透 408 四门', toIcon: '🎓' },
   },
   {
-    key: 'algo', title: '算法工程师', icon: '🧠', status: 'active',
+    key: 'backend', title: '后端', icon: '🖥️', status: 'active',
+    sub: '数据库 · 并发 · 分布式',
+    groups: ['数据库系统'],
+    guide: { from: '一次数据库查询', to: '扛住高并发的后端', toIcon: '🖥️' },
+  },
+  {
+    key: 'algo', title: '算法', icon: '🧮', status: 'active',
     sub: '经典算法 → 会学习的模型',
     groups: ['经典算法', '概率统计原理', '机器学习基础', '机器学习算法', '深度学习算法'],
     guide: { from: '一次排序', to: '会学习的模型', toIcon: '🧠' },
   },
   {
-    key: 'llm', title: '大模型工程师', icon: '🤖', status: 'active',
+    key: 'llm', title: '大模型', icon: '🤖', status: 'active',
     sub: 'Transformer → 推理引擎',
     groups: ['Transformer 原理', '大模型算法', '大模型推理'],
     guide: { from: '一次注意力', to: '大模型推理引擎', toIcon: '🤖' },
   },
   {
-    key: 'security', title: '安全工程师', icon: '🔐', status: 'planned',
+    key: 'security', title: '安全', icon: '🔐', status: 'planned',
     sub: '密码学 → 可信系统',
     groups: [],
     guide: { from: '一次异或', to: '一套加密协议', toIcon: '🔐' },
