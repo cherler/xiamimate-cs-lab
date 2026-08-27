@@ -1,0 +1,16 @@
+{
+  "name": "xiamimate-algo-cards",
+  "version": "0.6.0",
+  "private": true,
+  "description": "算法卡牌 —— 卡是算法,敌人是有性质的数据。回合制构筑对战原型。",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5190",
+    "check": "node scripts/check.mjs",
+    "doc": "python3 scripts/gen-doc.py"
+  },
+  "devDependencies": {
+    "playwright": "^1.62.1",
+    "vite": "^7.3.6"
+  }
+}

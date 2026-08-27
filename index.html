@@ -1,0 +1,711 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"/>
+<title>算法卡牌 · 原型 v6</title>
+<style>html,body{margin:0;height:100%;background:#070d16;overflow:hidden;
+font-family:"PingFang SC","Noto Sans SC",system-ui,sans-serif;color:#dfe8f2}
+#c{display:block;width:100vw;height:100vh}</style></head><body><canvas id="c"></canvas>
+<script type="module">
+/* ═══ 1. 调参 ═══ */
+const PASSMUL=6   // 实测:×2→sort 2.5% / ×6→41.5% / ×8→51.5%
+const T={VMIN:3,VMAX:20,BUDGET:60,STEPS:3,HAND:5,COST_DIV:6,DEBT_PEN:2,HANDMAX:9}
+const rng=s=>()=>{s|=0;s=s+0x6D2B79F5|0;let t=Math.imul(s^s>>>15,1|s);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}
+
+/* ═══ 2. 敌人:性质决定哪些算法好用 ═══ */
+const FOE={
+ shuffled:{n:36,inflow:1,shuffle:1,name:'一团乱序数字',note:'每回合涌入 +1、自我打乱(有序 −1)',kind:'小怪'},
+ tape:    {n:38,inflow:2,shuffle:0,seqOnly:.7,name:'只能从头读的磁带',note:'顺序访问:二分查找效果打七折',kind:'小怪'},
+ dupes:   {n:40,inflow:2,shuffle:0,vmax:8,name:'爬虫抓回来的重复页',note:'值域窄、量大:平铺处理占便宜',kind:'小怪'},
+ stream:  {n:38,inflow:2,shuffle:1,memoDecay:6,name:'实时价格流',note:'数据在变:预处理值每回合 −6',kind:'小怪'},
+ graph:   {n:38,inflow:1,shuffle:0,dense:.5,name:'社交网络的六度关系',note:'稠密:每多切两段,每回合多涌入 1',kind:'小怪'},
+ // 对抗性输入(精英):专门克制某一条流派
+ worst:   {n:40,inflow:1,shuffle:1,antiSort:1,name:'最坏用例',note:'专克排序流:所有排序卡趟数打两五折',kind:'精英'},
+ collide: {n:40,inflow:1,shuffle:0,evict:1,name:'哈希碰撞',note:'通用:每回合末随机丢 1 张手牌(键撞了,取不回来)',kind:'精英'},
+ regret:  {n:39,inflow:1,shuffle:0,antiGreedy:1,name:'反悔陷阱',note:'专克贪心流:债务惩罚 ×2.2',kind:'精英'},
+ explode2:{n:40,inflow:1,shuffle:0,memoCap:20,name:'状态爆炸',note:'专克预处理流:预处理值上限 20',kind:'精英'},
+ atomic:  {n:43,inflow:1,shuffle:0,noSplit:2,name:'不可分问题',note:'专克拆解流:段数上限 2、并行处理只剩四成',kind:'精英'},
+ // Boss
+}
+/* 第二类 · 失误:攻击的是「你的执行」,不是提供可被处理的对象 → 环境效果 */
+const FLAW={
+ offByOne:{name:'差一错误', note:'移除 ≥6 时 −1 个、处理量 −10%(边界都差一格)'},
+ nullPtr: {name:'空指针',   note:'每回合手牌里最贵的那张不可用'},
+ race:    {name:'竞态条件', note:'你出的平铺类卡有 25% 概率只生效一半(顺序乱了)'},
+ leak:    {name:'内存泄漏', note:'每回合末额外 −1 预算'},
+ stackOv: {name:'栈溢出',   note:'段数 ≥3 时每回合末额外 −2 预算'},
+ infinite:{name:'死循环',   note:'每三回合有一回合的第一张卡只生效 70%,除非出「边界条件」'},
+}
+const FOE2={
+ expo:    {n:22,mult:1.35,shuffle:0,name:'指数爆炸',note:'每回合末规模 ×倍率 — 加输出没用,得剪枝降阶',kind:'Boss'},
+}
+Object.assign(FOE,FOE2)
+/* ═══ 3. 卡池 ═══ */
+const C={},def=(id,name,cost,tag,note,fn,ex)=>C[id]={id,name,cost,tag,note,fn,exhaust:!!ex}
+def('scan','遍历',1,'base','总处理量 16(平铺)',S=>workTotal(S,16))
+def('batch','批处理',1,'base','预算 +5',S=>{S.budget+=5})
+def('watch','观察',1,'base','抽 2',S=>drawN(S,2))
+def('bubble','冒泡排序',1,'sort','有序 +1',S=>addSort(S,S.E.antiSort?.25:1))
+def('merge','归并排序',2,'sort','有序 +3',S=>addSort(S,S.E.antiSort?.75:3))
+def('quick','快速排序',2,'sort','有序 +4(最坏用例下只 +1)',S=>{if(S.E.antiSort)S.diag.lostSort+=3;addSort(S,S.E.antiSort?1:4)})
+def('bsearch','二分查找',1,'sort','移除 1+有序层数×2 个(顺序访问下打七折)',S=>{const full=1+tier(S)*2,act=S.E.seqOnly?Math.max(1,Math.round(full*S.E.seqOnly)):full;S.diag.lostKill+=full-act;kill(S,act)})
+def('median','中位数',2,'sort','需有序≥3:移除 1/3 元素',S=>{if(tier(S)>=3)kill(S,Math.ceil(N(S)/3))},1)
+def('recur','递归到底',2,'dc','需段数≥3:移除 1/3 元素',S=>{if(S.splits>=3)kill(S,Math.ceil(N(S)/3))},1)
+def('divide','分治',2,'dc','段数 +1(最多 4)',S=>{S.splits=Math.min(S.E.noSplit??4,S.splits+1)})
+def('mergeup','逐层合并',1,'dc','每段移除 2 个',S=>killSeg(S,2))
+def('parallel','并行处理',2,'dc','总处理量 = 段数×14(不可分问题下只剩四成)',S=>workTotal(S,S.splits*14*(S.E.noSplit?.4:1)))
+def('pre','预处理',1,'memo','预处理值 +8',S=>{const b=S.memo;addMemo(S,8);S.diag.lostMemo+=8-(S.memo-b)})
+def('table','建表',2,'memo','预处理值 + 10+规模/4',S=>{const g=10+Math.ceil(N(S)/4),b=S.memo;addMemo(S,g);S.diag.lostMemo+=g-(S.memo-b)})
+def('lookup','查表',0,'memo','处理量 = 预处理值(不消耗)',S=>workTotal(S,S.memo))
+def('dp','动态规划',2,'memo','处理量 = 预处理值×2',S=>workTotal(S,S.memo*2))
+def('approx','近似算法',2,'greedy','移除 1/4 元素,债务 +3',S=>{kill(S,Math.ceil(N(S)/4));S.debt+=3},1)
+def('greedy','贪心',0,'greedy','移除 2 个,债务 +1',S=>{kill(S,2);S.debt++})
+def('local','局部最优',1,'greedy','移除 5 个,债务 +2',S=>{kill(S,5);S.debt+=2})
+def('heur','启发式',1,'greedy','移除 2+债务 个(债务按 6 封顶)',S=>kill(S,2+Math.min(S.debt,6)))
+def('anneal','模拟退火',2,'greedy','移除 债务×2 个,清空债务',S=>{kill(S,S.debt*2);S.debt=0})
+def('prune','剪枝',1,'tool','增长倍率 −0.25;涌入 −1',S=>{S.mult=Math.max(1,S.mult-.25);S.inflow=Math.max(0,S.inflow-1)})
+def('backtrack','回溯',2,'tool','预算 +12(每场限一次)',S=>{S.budget+=12},1)
+def('guard','边界条件',1,'tool','解除死循环;本回合免疫失误',S=>{S.guarded=true;S.loopBroken=true})
+def('hash','哈希',1,'tool','抽 1;移除 2 个',S=>{drawN(S,1);kill(S,2)})
+
+const STARTER=['scan','scan','scan','scan','scan','batch','batch','batch','batch','watch']
+const KITS={base:[],sort:['bubble','merge','quick','bsearch','bsearch','median'],
+ dc:['divide','divide','mergeup','mergeup','parallel','recur'],
+ memo:['pre','pre','table','lookup','lookup','dp'],
+ greedy:['greedy','local','heur','heur','anneal','approx']}
+const REWARD_POOL=[...new Set([...KITS.sort,...KITS.dc,...KITS.memo,...KITS.greedy]),'prune','prune','prune','backtrack','hash','guard','guard']
+
+/* ═══ 4. 战斗引擎 ═══ */
+const alive=S=>S.bars.filter(b=>!b.dead),N=S=>alive(S).length
+function sortedness(S){const a=alive(S);if(a.length<2)return 1
+ let ok=0;for(let i=0;i<a.length-1;i++)if(a[i].v<=a[i+1].v)ok++
+ return Math.max(0,Math.min(1,(ok/(a.length-1)-.5)*2))}
+const tier=S=>Math.floor(sortedness(S)*4.999)
+function shuffle(S){for(let i=S.draw.length-1;i>0;i--){const j=Math.floor(S.R()*(i+1));[S.draw[i],S.draw[j]]=[S.draw[j],S.draw[i]]}}
+function drawN(S,n){for(let i=0;i<n;i++){if(S.hand.length>=T.HANDMAX)return
+ if(!S.draw.length){if(!S.discard.length)return;S.draw=S.discard;S.discard=[];shuffle(S)}
+ S.hand.push(S.draw.pop())}}
+function work(S,per){alive(S).forEach(b=>{b.v-=per;if(b.v<=0)b.dead=true})}
+function workTotal(S,tot){if(S.halfNext)tot*=.7
+ if(S.flawId==='offByOne'&&!S.guarded){S.diag.flawLoss+=tot*.1;tot*=.9}
+ const a=alive(S);if(!a.length)return;const per=tot/a.length
+ a.forEach(b=>{b.v-=per;if(b.v<=0)b.dead=true})}
+function kill(S,n){if(S.halfNext)n=Math.ceil(n*.7)
+ if(S.flawId==='offByOne'&&!S.guarded&&n>=6){S.diag.flawLoss+=1;n-=1}
+ const a=alive(S);for(let i=0;i<Math.min(n,a.length);i++)a[i].dead=true}
+function killSeg(S,n){const a=alive(S),seg=Math.ceil(a.length/S.splits)
+ for(let s=0;s<S.splits;s++)for(let i=0;i<n;i++){const b=a[s*seg+i];if(b)b.dead=true}}
+function addSort(S,n){const a=alive(S)
+ const P=Math.round(n*PASSMUL);for(let pass=0;pass<P;pass++)
+  for(let i=0;i<a.length-1;i++)
+   if(a[i].v>a[i+1].v){const t=a[i].v;a[i].v=a[i+1].v;a[i+1].v=t}}
+function addMemo(S,n){S.memo=Math.min(S.E.memoCap??999,S.memo+n)}
+const DEPTHMUL=.085  // 每深一关:规模 +8.5%(唯一的连续难度轴)
+function scaleFoe(E,d){ if(!d)return E
+ return{...E,n:Math.round(E.n*(1+DEPTHMUL*d)),inflow:E.inflow??0,
+   mult:E.mult,depth:d}}
+function newFight(seed,deck,foeId,budget,flawId,depth=0){
+ const E=scaleFoe(FOE[foeId],depth),R=rng(seed),vmax=E.vmax??T.VMAX,FL=flawId?FLAW[flawId]:null
+const FLAWBONUS=10
+ const S={R,E,foeId,bars:Array.from({length:E.n},(_,i)=>({id:i,v:T.VMIN+Math.floor(R()*(vmax-T.VMIN+1)),dead:false})),
+  splits:1,budget:budget+(FL?FLAWBONUS:0),steps:T.STEPS,turn:1,memo:0,debt:0,
+  inflow:E.inflow??0,mult:E.mult??1,vmax,flawId:flawId||null,FL,locked:null,guarded:false,loopBroken:false,firstPlay:true,
+  draw:[...deck],hand:[],discard:[],exhaust:[],over:null,
+  totalWork:0,diag:{plays:{},lostKill:0,lostWork:0,evicted:0,lostMemo:0,lostSort:0,flawLoss:0,extraDebt:0,extraInflow:0,sortDecay:0,memoDecayed:0,spent:0,turns:0}}
+ S.totalWork=S.bars.reduce((a,b)=>a+b.v,0)
+ shuffle(S);drawN(S,T.HAND);return S}
+const canPlay=(S,i)=>{const c=C[S.hand[i]];return c&&S.steps>=c.cost&&!S.over&&!(S.locked===i&&!S.guarded)}
+function play(S,i){if(!canPlay(S,i))return false
+ const c=C[S.hand[i]];S.steps-=c.cost;S.hand.splice(i,1);S.diag.plays[c.id]=(S.diag.plays[c.id]||0)+1
+ if(S.flawId==='infinite'&&S.firstPlay&&!S.loopBroken&&c.id!=='guard'&&S.turn%3===0){
+  S.firstPlay=false;S.diag.flawLoss+=2;(c.exhaust?S.exhaust:S.discard).push(c.id)
+  S.halfNext=true;c.fn(S);S.halfNext=false;check(S);return true}
+ S.firstPlay=false
+ if(S.flawId==='race'&&!S.guarded&&S.R()<.25&&['scan','lookup','dp','parallel'].includes(c.id)){
+  S.diag.flawLoss+=2;(c.exhaust?S.exhaust:S.discard).push(c.id);workTotal(S,8);check(S);return true}
+ ;(c.exhaust?S.exhaust:S.discard).push(c.id);c.fn(S);check(S);return true}
+function endTurn(S){if(S.over)return
+ const base=Math.ceil(N(S)/T.COST_DIV),debtPen=S.debt*T.DEBT_PEN*(S.E.antiGreedy?2.2:1)
+ if(S.E.antiGreedy)S.diag.extraDebt+=S.debt*T.DEBT_PEN
+ S.diag.spent+=base+debtPen;S.diag.turns++
+ S.budget-=base+debtPen
+ if(S.E.shuffle){S.diag.sortDecay+=S.E.shuffle
+  const a=alive(S);for(let k=0;k<S.E.shuffle*3;k++){
+   const i=Math.floor(S.R()*a.length),j=Math.floor(S.R()*a.length)
+   const t=a[i].v;a[i].v=a[j].v;a[j].v=t}}
+ if(S.E.memoDecay){S.diag.memoDecayed+=Math.min(S.memo,S.E.memoDecay);S.memo=Math.max(0,S.memo-S.E.memoDecay)}
+ if(S.mult>1){const add=Math.ceil(N(S)*(S.mult-1));for(let i=0;i<add;i++)push1(S)}
+ const dExtra=S.E.dense?Math.floor((S.splits-1)*S.E.dense):0;S.diag.extraInflow+=dExtra
+ const inf=S.inflow+dExtra
+ for(let i=0;i<inf;i++)push1(S)
+ if(S.flawId==='leak'&&!S.guarded){S.budget-=1;S.diag.flawLoss+=1}
+ if(S.flawId==='stackOv'&&S.splits>=3){S.budget-=2;S.diag.flawLoss+=2}
+ S.discard.push(...S.hand);S.hand=[];S.steps=T.STEPS;S.turn++;S.guarded=false;S.firstPlay=true
+ drawN(S,T.HAND)
+ if(S.E.evict&&S.hand.length){const i=Math.floor(S.R()*S.hand.length)
+  S.diag.evicted=(S.diag.evicted||0)+1;S.exhaust.push(S.hand.splice(i,1)[0])}
+ S.locked=null
+ if(S.flawId==='nullPtr'&&S.hand.length){let bi=0
+  for(let i=1;i<S.hand.length;i++)if(C[S.hand[i]].cost>C[S.hand[bi]].cost)bi=i
+  S.locked=bi;S.diag.flawLoss+=C[S.hand[bi]].cost}
+ check(S)}
+let _uid=1e6;const push1=S=>{const b={id:_uid++,v:T.VMIN+Math.floor(S.R()*(S.vmax-T.VMIN+1)),dead:false};S.totalWork+=b.v;S.bars.push(b)}
+function check(S){if(N(S)<=0)S.over='win';else if(S.budget<=0)S.over='lose'
+ // 牌被吃光后无牌可出:直接判负,不要拖成 70 回合的空转
+ else if(!S.hand.length&&!S.draw.length&&!S.discard.length){S.over='lose';S.diag.decked=1}}
+
+/* ═══ 5. RUN:三选一构筑 ═══ */
+const BUDGET_GROW=3   // 每过一关预算上限 +3:玩家侧的成长
+const MOBS=['shuffled','tape','dupes','stream','graph']
+const ELITES=['worst','collide','regret','explode2','atomic']
+const SHAPE=['MOB','MOB','ELITE','MOB','MOB','ELITE','MOB','BOSS']
+const PATH=SHAPE                                   // 关卡数 = SHAPE.length
+function newRun(seed,kit){const R=rng(seed)
+ return{R,seed,deck:[...STARTER,...KITS[kit]],kit,budget:T.BUDGET,cap:T.BUDGET,node:0,over:null,offer:null,
+   used:[],opts:null,log:[]}}
+const FLAWIDS=Object.keys(FLAW)
+function nodeFlaw(RUN,i){ if(i<1)return null              // 第 1 关不挂失误
+ return RUN.R()<Math.min(.8,.35+.07*i)?FLAWIDS[Math.floor(RUN.R()*FLAWIDS.length)]:null}
+function pickFoe(R,pool,used){const av=pool.filter(x=>!used.includes(x))
+ const p=av.length?av:pool;return p[Math.floor(R()*p.length)]}
+/* 每关 roll 出两个候选 → 玩家看情报后二选一(Boss 关没得选) */
+function rollNode(RUN,i){const t=SHAPE[i]
+ if(t==='BOSS')return[{foe:'expo',flaw:nodeFlaw(RUN,i)}]
+ if(t==='ELITE')return[{foe:pickFoe(RUN.R,ELITES,RUN.used),flaw:nodeFlaw(RUN,i)}]
+ const a=pickFoe(RUN.R,MOBS,RUN.used),b=pickFoe(RUN.R,MOBS,[...RUN.used,a])
+ return[{foe:a,flaw:nodeFlaw(RUN,i)},{foe:b,flaw:nodeFlaw(RUN,i)}]}
+function nodeFoe(RUN,i){return rollNode(RUN,i)[0].foe}   // 兼容旧调用
+function offer3(RUN){const o=[];while(o.length<3){const c=REWARD_POOL[Math.floor(RUN.R()*REWARD_POOL.length)];if(!o.includes(c))o.push(c)}return o}
+
+/* ═══ 6. 批量模拟 ═══ */
+const POL={
+ base:S=>pick(S,['scan','batch','watch']),
+ sort:S=>tier(S)>=3?pick(S,['median','bsearch','quick','merge','bubble','scan','hash','batch'])
+                   :pick(S,['quick','merge','bubble','bsearch','scan','hash','batch']),
+ dc:S=>S.splits<3?pick(S,['divide','mergeup','parallel','scan','hash','batch'])
+                 :pick(S,['recur','parallel','mergeup','divide','scan','hash','batch']),
+ memo:S=>S.memo>=17?pick(S,['dp','lookup','table','pre','scan','hash','batch'])
+                   :pick(S,['table','pre','lookup','scan','hash','batch']),
+ greedy:S=>S.debt>=4?pick(S,['anneal','heur','local','greedy','scan','hash','batch'])
+                    :pick(S,['approx','greedy','local','heur','scan','hash','batch'])}
+function pick(S,order){
+ if(S.E.antiGreedy)order=order.filter(x=>!['greedy','local'].includes(x))   // 债务翻倍:别再借
+ if(S.flawId==='infinite'&&!S.loopBroken){const i=S.hand.indexOf('guard');if(i>=0&&canPlay(S,i))return i}
+ if(S.mult>1){const i=S.hand.indexOf('prune');if(i>=0&&canPlay(S,i))return i}
+ if(S.budget<14){const i=S.hand.indexOf('backtrack');if(i>=0&&canPlay(S,i))return i}
+ for(const id of order){const i=S.hand.indexOf(id);if(i>=0&&canPlay(S,i))return i}
+ for(let i=0;i<S.hand.length;i++)if(canPlay(S,i))return i;return -1}
+function fight(kit,seed,foeId,deck,budget,maxTurn=45,flawId,depth=0){
+ const S=newFight(seed,deck??[...STARTER,...KITS[kit]],foeId,budget??T.BUDGET,flawId,depth),p=POL[kit]
+ while(!S.over&&S.turn<=maxTurn){let g=0
+  while(!S.over&&g++<14){const i=p(S);if(i<0)break;if(!play(S,i))break}
+  if(!S.over)endTurn(S)}
+ return{over:S.over||'timeout',turn:S.turn,budget:S.budget,left:N(S)}}
+function batchFoe(kit,foeId,n=250){let w=0,t=0
+ for(let s=1;s<=n;s++){const r=fight(kit,s*7919,foeId);if(r.over==='win'){w++;t+=r.turn}}
+ return{win:+(w/n*100).toFixed(0),turn:w?+(t/w).toFixed(1):null}}
+function chooseNode(RUN,opts){ if(opts.length<2)return opts[0]
+ const sc=o=>intelOf(RUN.deck,o.foe,o.flaw).score
+ return sc(opts[0])>=sc(opts[1])?opts[0]:opts[1]}
+function runOnce(kit,seed){const RUN=newRun(seed,kit)
+ for(let i=0;i<SHAPE.length;i++){
+  const ch=chooseNode(RUN,rollNode(RUN,i));RUN.used.push(ch.foe)
+  const f=ch.foe,fl=ch.flaw,r=fight(kit,seed*31+i,f,RUN.deck,RUN.budget,45,fl,i)
+  if(r.over!=='win')return{over:'lose',node:i,foe:f,flaw:fl,deck:RUN.deck.length}
+  RUN.cap+=BUDGET_GROW;RUN.budget=RUN.cap   // 每关重置,且上限随进度抬高
+  const o=offer3(RUN);const own=RUN.deck.filter(c=>KITS[kit].includes(c)).length
+  const best=(i>=2&&o.includes('prune'))?'prune':(i>=2&&o.includes('guard')&&!RUN.deck.includes('guard'))?'guard'
+    :(own>=8?(o.find(c=>C[c].tag==='tool')??o[0]):(o.find(c=>KITS[kit].includes(c))??o.find(c=>C[c].tag==='tool')))
+  if(best)RUN.deck.push(best)}
+ return{over:'win',node:SHAPE.length,deck:RUN.deck.length,budget:RUN.budget}}
+function batchRun(kit,n=250){let w=0,d=0;const stuck={}
+ for(let s=1;s<=n;s++){const r=runOnce(kit,s*104729)
+  if(r.over==='win'){w++;d+=r.deck}else stuck[r.foe]=(stuck[r.foe]||0)+1}
+ return{kit,win:+(w/n*100).toFixed(1),avgDeck:w?+(d/w).toFixed(1):null,stuck}}
+Object.assign(window,{__batchFoe:batchFoe,__batchRun:batchRun,__FOE:FOE,__FLAW:FLAW,__KITS:KITS,__fight:fight,__fightF:fight,__runOnce:runOnce,__PATH:PATH,__nodeFoe:nodeFoe,__nodeFlaw:nodeFlaw,__newRun:newRun,__T:T})
+
+/* ═══ 6.5 A:进关前情报 · 牌组适配度 ═══ */
+const PROPS=[
+ {k:'seqOnly', txt:'顺序访问:二分查找效果打七折',      hit:d=>cnt(d,'bsearch'),                 dir:-1},
+ {k:'shuffle', txt:e=>`自我打乱:有序度每回合 −${e.shuffle} 层`, hit:d=>cnt(d,'bubble','merge','quick'), dir:-1},
+ {k:'antiSort',txt:'最坏用例:快速排序只 +1 有序',    hit:d=>cnt(d,'quick'),                   dir:-1},
+{k:'evict',    txt:'每回合末随机丢 1 张手牌',              hit:d=>d.length,                         dir:-1},
+ {k:'memoCap', txt:e=>`预处理值上限 ${e.memoCap}`,    hit:d=>cnt(d,'pre','table'),             dir:-1},
+ {k:'memoDecay',txt:e=>`预处理值每回合 −${e.memoDecay}`,hit:d=>cnt(d,'pre','table','lookup','dp'),dir:-1},
+ {k:'antiGreedy',txt:'债务惩罚翻倍(每点 −4 预算)',   hit:d=>cnt(d,'greedy','local','heur','anneal'),dir:-1},
+ {k:'dense',   txt:'稠密:每多切一段,每回合多涌入 1', hit:d=>cnt(d,'divide'),                  dir:-1},
+ {k:'mult',    txt:e=>`规模每回合 ×${e.mult} — 加输出没用,得降阶`, hit:d=>cnt(d,'prune')-2,   dir:-1,
+   lbl:n=>n<0?[`缺 ${-n} 张剪枝`,'red']:[`剪枝 ${n+2} 张 ✓`,'green']},
+]
+const cnt=(deck,...ids)=>deck.filter(c=>ids.includes(c)).length
+function intelOf(deck,foeId,flawId,depth=0){
+ const E=scaleFoe(FOE[foeId],depth),rows=[]
+ for(const P of PROPS){ if(!E[P.k])continue
+  const n=P.hit(deck)
+  rows.push({txt:typeof P.txt==='function'?P.txt(E):P.txt,n,dir:P.dir,lbl:P.lbl}) }
+ if(E.noSplit)rows.push({txt:`不可分:段数上限 ${E.noSplit}、并行处理只剩四成`,n:cnt(deck,'divide','parallel'),dir:-1})
+ if(flawId){const F=FLAW[flawId]
+  rows.push({txt:`【失误】${F.name}:${F.note}`,n:flawId==='infinite'?(cnt(deck,'guard')?0:-1):1,dir:-1})}
+ if(E.vmax&&E.vmax<T.VMAX)rows.push({txt:`值域窄(${T.VMIN}–${E.vmax}):平铺处理占便宜`,
+   n:cnt(deck,'scan','lookup','dp','parallel'),dir:1})
+ const bad=rows.filter(r=>r.dir<0).reduce((a,r)=>a+Math.abs(r.n),0)
+ const good=rows.filter(r=>r.dir>0).reduce((a,r)=>a+r.n,0)
+ const load=(E.n-38)/5+(E.inflow??0)-1.5              // 体量本身就是难度
+ const pruneOK=E.mult&&cnt(deck,'prune')>=2?4:0       // Boss 带够剪枝就是顺手
+ const score=good-bad-load+pruneOK
+ return{E,flaw:flawId?FLAW[flawId]:null,rows,score,load,verdict:score>=1.5?['顺手','#8fd98f']:score<=-4?['不利','#ff7a6b']:score<=-1.5?['吃亏','#ffc46b']:['中性','#aebfd2']}
+}
+
+/* ═══ 6.6 B:失败诊断 ═══ */
+function diagnose(S){
+ const d=S.diag,out=[]
+ if(d.lostKill>0)out.push({w:d.lostKill*11,t:`二分查找被打折:你出了 ${d.plays.bsearch||0} 张,少移除 ${Math.round(d.lostKill)} 个元素`})
+ if(d.decked)out.push({w:900,t:'牌库、手牌、弃牌堆全空了 — 你没牌可出了'})
+ if(d.evicted>0)out.push({w:d.evicted*9,t:`哈希碰撞:累计有 ${d.evicted} 张手牌被丢进消耗区,再也抽不到`})
+ if(d.lostMemo>0)out.push({w:d.lostMemo*2,t:`预处理值撞上限:白投了 ${Math.round(d.lostMemo)} 点`})
+ if(d.memoDecayed>0)out.push({w:d.memoDecayed*2,t:`数据在变:预处理值累计被侵蚀 ${d.memoDecayed} 点`})
+ if(d.lostSort>0)out.push({w:d.lostSort*8,t:`最坏用例:快速排序累计少给 ${d.lostSort} 层有序`})
+ if(d.extraDebt>0)out.push({w:d.extraDebt*3,t:`债务惩罚翻倍:额外烧掉 ${d.extraDebt} 点预算`})
+ if(d.extraInflow>0)out.push({w:d.extraInflow*11,t:`稠密图惩罚切段:你切了 ${S.splits} 段,累计多涌入 ${d.extraInflow} 个元素`})
+ if(d.sortDecay>0)out.push({w:d.sortDecay*6,t:`数据自我打乱:${d.turns} 回合累计掉 ${d.sortDecay} 层有序,你一直在填坑`})
+ if(d.flawLoss>0)out.push({w:d.flawLoss*4,t:`【失误】${S.FL.name}:累计损失约 ${Math.round(d.flawLoss)} 点(移除/处理量/预算)`})
+ if(S.E.noSplit)out.push({w:60,t:`不可分问题:段数被压到 ${S.E.noSplit},并行处理只剩四成`})
+ if(S.mult>1)out.push({w:999,t:`增长倍率还有 ${S.mult.toFixed(2)} — 线性削减追不上,得靠剪枝降阶`})
+ out.sort((a,b)=>b.w-a.w)
+ return{lines:out.slice(0,3),turns:d.turns,spent:d.spent,left:N(S)}
+}
+const remainWork=S=>alive(S).reduce((a,b)=>a+b.v,0)
+const hpPct=S=>Math.max(0,Math.round(remainWork(S)/Math.max(S.totalWork,1)*100))
+Object.assign(window,{__intel:intelOf,__diag:diagnose,__hp:hpPct})
+
+/* ═══ 7. 渲染(复刻概念图) ═══ */
+const cv=document.getElementById('c'),ctx=cv.getContext('2d')
+let W,H,DPR=Math.min(devicePixelRatio||1,2)
+const fit=()=>{W=innerWidth;H=innerHeight;cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0)}
+addEventListener('resize',fit);fit()
+let RUN=null,S=null,offer=null,intel=null,parts=[],KIT='sort',anim=null,hist=[]
+const CO={bg0:'#050a12',bg1:'#0a141f',line:'rgba(90,150,190,.22)',panel:'rgba(12,24,38,.72)',
+ ink:'#e6eef7',dim:'#8ba3bb',faint:'#4d6076',cyan:'#5fd0e8',amber:'#f0a94a',red:'#ff6b5e',green:'#7fd98f',
+ tag:{base:'#a8c0d6',sort:'#f0a94a',dc:'#b39ddb',memo:'#7fd98f',greedy:'#ff8f6b',tool:'#5fd0e8'}}
+function startRun(k){KIT=k;RUN=newRun(Date.now()&0xffff,k);enter()}
+function enter(){RUN.opts=rollNode(RUN,RUN.node)
+ intel=RUN.opts.map(o=>Object.assign(intelOf(RUN.deck,o.foe,o.flaw,RUN.node),o))
+ offer=null;hist=[100]
+ S=newFight(1,RUN.deck,RUN.opts[0].foe,RUN.budget,RUN.opts[0].flaw,RUN.node)}
+function pickNode(k){const o=RUN.opts[k];RUN.used.push(o.foe)
+ S=newFight((Date.now()&0xffff)+RUN.node,RUN.deck,o.foe,RUN.budget,o.flaw,RUN.node)
+ intel=null;hist=[100]}
+function afterFight(){ if(S.over==='lose'){RUN.over='lose';return}
+ RUN.cap+=BUDGET_GROW;RUN.budget=RUN.cap;RUN.node++
+ if(RUN.node>=SHAPE.length){RUN.over='win';return} offer=offer3(RUN)}
+function takeCard(id){if(id)RUN.deck.push(id);offer=null;enter()}
+function snap(){return alive(S).map(b=>({id:b.id,v:b.v}))}
+function uiPlay(i){ if(anim||!canPlay(S,i))return
+ const id=S.hand[i],before=snap()
+ play(S,i); hist.push(hpPct(S))
+ anim={id,kind:AK[id]||'gen',t0:performance.now(),dur:AK[id]==='sort'?900:620,before,
+  after:new Map(S.bars.map(b=>[b.id,b.dead?null:b.v]))}
+ if(S.over)setTimeout(afterFight,300)
+ else if(S.steps<=0)setTimeout(()=>{if(!S.over){endTurn(S);hist.push(hpPct(S));if(S.over)afterFight()}},anim.dur+60)}
+const AK={scan:'sweep',lookup:'sweep',dp:'sweep',parallel:'sweep',
+ bubble:'sort',merge:'sort',quick:'sort',
+ bsearch:'split',median:'split',divide:'split',recur:'split',
+ greedy:'burst',local:'burst',heur:'burst',anneal:'burst',approx:'burst',mergeup:'burst',hash:'burst'}
+function autoTurn(){ if(!S||S.over||offer||RUN.over||anim)return
+ const i=POL[KIT](S); if(i<0){endTurn(S);hist.push(hpPct(S));if(S.over)afterFight();return}
+ uiPlay(i)}
+let autoTimer=null
+window.__demo=(foe,flaw,kit)=>{ if(kit)KIT=kit
+ RUN=RUN||newRun(1,KIT); RUN.over=null
+ S=newFight(7,RUN.deck,foe,T.BUDGET,flaw); offer=null;hist=[100];intel=null}
+Object.assign(window,{__anim:()=>!!anim,__auto:autoTurn,__S:()=>S,__RUN:()=>RUN,__offer:()=>offer,__intel2:()=>intel,
+ __play:i=>uiPlay(i),__end:()=>{if(!anim){endTurn(S);hist.push(hpPct(S));if(S.over)afterFight()}},
+ __take:takeCard,__startRun:startRun,__skipIntel:()=>{if(intel)pickNode(0)},__pickNode:k=>pickNode(k),__SHAPE:SHAPE})
+
+/* ── 面板与基础件 ── */
+function panel(x,y,w,h,title){
+ ctx.fillStyle=CO.panel;ctx.fillRect(x,y,w,h)
+ ctx.strokeStyle=CO.line;ctx.lineWidth=1;ctx.strokeRect(x+.5,y+.5,w-1,h-1)
+ ctx.strokeStyle='rgba(95,208,232,.55)';ctx.lineWidth=1.5
+ const c=9;[[x,y,1,1],[x+w,y,-1,1],[x,y+h,1,-1],[x+w,y+h,-1,-1]].forEach(([px,py,sx,sy])=>{
+  ctx.beginPath();ctx.moveTo(px+sx*c,py);ctx.lineTo(px,py);ctx.lineTo(px,py+sy*c);ctx.stroke()})
+ if(title){ctx.textAlign='left';ctx.font='600 10.5px system-ui';ctx.fillStyle=CO.faint
+  ctx.letterSpacing='2px';ctx.fillText(title,x+14,y+22);ctx.letterSpacing='0px'}}
+function hex(cx,cy,r,fill){ctx.beginPath()
+ for(let i=0;i<6;i++){const a=Math.PI/180*(60*i-30);const px=cx+r*Math.cos(a),py=cy+r*Math.sin(a)
+  i?ctx.lineTo(px,py):ctx.moveTo(px,py)} ctx.closePath();ctx.fillStyle=fill;ctx.fill()}
+function bar(x,y,w,h,v,mx,dim){const hue=v<=mx*.35?188:v<=mx*.7?38:22
+ const g=ctx.createLinearGradient(0,y,0,y+h)
+ g.addColorStop(0,`hsl(${hue} 88% ${62}%)`);g.addColorStop(1,`hsl(${hue} 78% 30%)`)
+ ctx.globalAlpha=dim??1;ctx.fillStyle=g;ctx.fillRect(x,y,w,h)
+ ctx.fillStyle=`hsla(${hue} 100% 78% / .9)`;ctx.fillRect(x,y,w,2);ctx.globalAlpha=1}
+function btn(x,y,w,h,t,c){c=c||CO.amber
+ ctx.fillStyle='rgba(240,169,74,.14)';ctx.fillRect(x,y,w,h)
+ ctx.strokeStyle=c;ctx.lineWidth=1.4;ctx.strokeRect(x+.5,y+.5,w-1,h-1)
+ ctx.fillStyle=c;ctx.font='700 13.5px system-ui';ctx.textAlign='center'
+ ctx.letterSpacing='1px';ctx.fillText(t,x+w/2,y+h/2+5);ctx.letterSpacing='0px';ctx.textAlign='left'
+ btn.last=[x,y,w,h]}
+
+/* ── 卡面小示意图(「卡面可推、不许查表」的视觉落地)── */
+const ICON={
+ sweep(x,y,w,h){const n=6,bw=w/(n*1.7)
+  for(let i=0;i<n;i++){const bh=h*(.3+.55*Math.abs(Math.sin(i*1.9)))
+   ctx.fillStyle=i<3?'rgba(95,208,232,.35)':'rgba(95,208,232,.85)';ctx.fillRect(x+i*bw*1.7,y+h-bh,bw,bh)}
+  ctx.strokeStyle='#bff2ff';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x-2,y+h*.55);ctx.lineTo(x+w*.62,y+h*.55);ctx.stroke()
+  ctx.fillStyle='#bff2ff';ctx.beginPath();ctx.moveTo(x+w*.62,y+h*.55-4);ctx.lineTo(x+w*.72,y+h*.55);ctx.lineTo(x+w*.62,y+h*.55+4);ctx.fill()},
+ sortic(x,y,w,h){const n=4,bw=w*.36/n
+  const a=[.9,.35,.7,.5],b=[.3,.5,.7,.95]
+  a.forEach((v,i)=>{ctx.fillStyle='rgba(240,169,74,.5)';ctx.fillRect(x+i*bw*1.35,y+h-h*v,bw,h*v)})
+  b.forEach((v,i)=>{ctx.fillStyle='#f0a94a';ctx.fillRect(x+w*.62+i*bw*1.35,y+h-h*v,bw,h*v)})
+  ctx.strokeStyle=CO.dim;ctx.lineWidth=1.4;ctx.beginPath()
+  ctx.moveTo(x+w*.44,y+h*.5);ctx.lineTo(x+w*.57,y+h*.5);ctx.stroke()
+  ctx.fillStyle=CO.dim;ctx.beginPath();ctx.moveTo(x+w*.57,y+h*.5-3);ctx.lineTo(x+w*.62,y+h*.5);ctx.lineTo(x+w*.57,y+h*.5+3);ctx.fill()},
+ split(x,y,w,h){const n=7,bw=w/(n*1.6)
+  for(let i=0;i<n;i++){const bh=h*(.25+.1*i)
+   ctx.fillStyle=i<3?'rgba(240,169,74,.22)':'#f0a94a';ctx.fillRect(x+i*bw*1.6,y+h-bh,bw,bh)}
+  ctx.strokeStyle='#ffd88a';ctx.lineWidth=1.6;ctx.setLineDash([3,3])
+  ctx.beginPath();ctx.moveTo(x+w*.44,y-2);ctx.lineTo(x+w*.44,y+h+2);ctx.stroke();ctx.setLineDash([])},
+ divideic(x,y,w,h){const bw=w*.1
+  for(let i=0;i<3;i++){ctx.fillStyle='#b39ddb';ctx.fillRect(x+i*bw*1.4,y+h*.35,bw,h*.6)}
+  for(let i=0;i<3;i++){ctx.fillStyle='rgba(179,157,219,.75)';ctx.fillRect(x+w*.6+i*bw*1.4,y+h*.35,bw,h*.6)}
+  ctx.strokeStyle=CO.dim;ctx.lineWidth=1.3
+  ctx.beginPath();ctx.moveTo(x+w*.5,y);ctx.lineTo(x+w*.5,y+h);ctx.stroke()},
+ stack(x,y,w,h){for(let i=0;i<3;i++){ctx.fillStyle=`rgba(127,217,143,${.45+i*.2})`
+  ctx.fillRect(x+w*.18,y+h-(i+1)*h*.28+2,w*.4,h*.24)}
+  ctx.fillStyle='#7fd98f';ctx.font='700 13px system-ui';ctx.fillText('+',x+w*.68,y+h*.55)},
+ table(x,y,w,h){ctx.fillStyle='rgba(127,217,143,.35)';ctx.fillRect(x,y+h*.2,w*.34,h*.7)
+  ctx.strokeStyle='#7fd98f';ctx.lineWidth=1;ctx.strokeRect(x+.5,y+h*.2+.5,w*.34,h*.7)
+  for(let i=1;i<3;i++){ctx.beginPath();ctx.moveTo(x,y+h*.2+i*h*.23);ctx.lineTo(x+w*.34,y+h*.2+i*h*.23);ctx.stroke()}
+  ctx.strokeStyle=CO.dim;ctx.beginPath();ctx.moveTo(x+w*.42,y+h*.55);ctx.lineTo(x+w*.56,y+h*.55);ctx.stroke()
+  ctx.fillStyle=CO.dim;ctx.beginPath();ctx.moveTo(x+w*.56,y+h*.55-3);ctx.lineTo(x+w*.62,y+h*.55);ctx.lineTo(x+w*.56,y+h*.55+3);ctx.fill()
+  for(let i=0;i<3;i++){const bh=h*(.3+.2*i);ctx.fillStyle='#7fd98f';ctx.fillRect(x+w*.68+i*w*.11,y+h-bh,w*.08,bh)}},
+ strike(x,y,w,h){for(let i=0;i<4;i++){const bh=h*(.4+.15*i)
+   ctx.fillStyle=i===1?'rgba(255,143,107,.3)':'#ff8f6b';ctx.fillRect(x+i*w*.2,y+h-bh,w*.13,bh)}
+  ctx.strokeStyle='#ff6b5e';ctx.lineWidth=2
+  ctx.beginPath();ctx.moveTo(x+w*.16,y+h*.25);ctx.lineTo(x+w*.34,y+h*.85)
+  ctx.moveTo(x+w*.34,y+h*.25);ctx.lineTo(x+w*.16,y+h*.85);ctx.stroke()},
+ prune(x,y,w,h){ctx.strokeStyle='#5fd0e8';ctx.lineWidth=1.6
+  ctx.beginPath();ctx.moveTo(x+w*.5,y+h);ctx.lineTo(x+w*.5,y+h*.55)
+  ctx.moveTo(x+w*.5,y+h*.55);ctx.lineTo(x+w*.24,y+h*.2)
+  ctx.moveTo(x+w*.5,y+h*.55);ctx.lineTo(x+w*.76,y+h*.2);ctx.stroke()
+  ctx.strokeStyle='rgba(255,107,94,.85)';ctx.setLineDash([2,3])
+  ctx.beginPath();ctx.moveTo(x+w*.62,y+h*.42);ctx.lineTo(x+w*.9,y+h*.1);ctx.stroke();ctx.setLineDash([])
+  ctx.strokeStyle='#ff6b5e';ctx.lineWidth=2
+  ctx.beginPath();ctx.moveTo(x+w*.58,y+h*.3);ctx.lineTo(x+w*.72,y+h*.46)
+  ctx.moveTo(x+w*.72,y+h*.3);ctx.lineTo(x+w*.58,y+h*.46);ctx.stroke()},
+ undo(x,y,w,h){ctx.strokeStyle='#5fd0e8';ctx.lineWidth=2
+  ctx.beginPath();ctx.arc(x+w*.5,y+h*.55,h*.34,Math.PI*.7,Math.PI*2.1);ctx.stroke()
+  ctx.fillStyle='#5fd0e8';ctx.beginPath()
+  ctx.moveTo(x+w*.5-h*.34,y+h*.55-6);ctx.lineTo(x+w*.5-h*.34-6,y+h*.55+3);ctx.lineTo(x+w*.5-h*.34+6,y+h*.55+3);ctx.fill()},
+ shield(x,y,w,h){const cx=x+w*.36,cy=y+h*.5,r=h*.4
+  ctx.strokeStyle='#a8c0d6';ctx.lineWidth=1.8;ctx.beginPath();ctx.arc(cx,cy,r,0,7);ctx.stroke()
+  ctx.beginPath();ctx.moveTo(cx,cy-r*.55);ctx.lineTo(cx,cy);ctx.lineTo(cx+r*.5,cy+r*.28);ctx.stroke()
+  ctx.fillStyle='#7fd98f';ctx.font='700 15px system-ui';ctx.fillText('+5',x+w*.62,cy+5)},
+ eye(x,y,w,h){ctx.strokeStyle='#9fb3c8';ctx.lineWidth=1.6;ctx.beginPath()
+  ctx.ellipse(x+w*.5,y+h*.5,w*.36,h*.3,0,0,7);ctx.stroke()
+  ctx.fillStyle='#9fb3c8';ctx.beginPath();ctx.arc(x+w*.5,y+h*.5,h*.14,0,7);ctx.fill()},
+ bucket(x,y,w,h){for(let i=0;i<3;i++){ctx.strokeStyle='rgba(95,208,232,.7)';ctx.lineWidth=1.2
+   ctx.strokeRect(x+i*w*.34+.5,y+h*.55+.5,w*.24,h*.42)
+   ctx.fillStyle='#5fd0e8';ctx.beginPath();ctx.arc(x+i*w*.34+w*.12,y+h*.22,3,0,7);ctx.fill()
+   ctx.strokeStyle='rgba(95,208,232,.5)';ctx.beginPath()
+   ctx.moveTo(x+i*w*.34+w*.12,y+h*.3);ctx.lineTo(x+i*w*.34+w*.12,y+h*.5);ctx.stroke()}},
+}
+const CARDIC={scan:'sweep',lookup:'table',dp:'table',parallel:'sweep',batch:'shield',watch:'eye',
+ bubble:'sortic',merge:'sortic',quick:'sortic',bsearch:'split',median:'split',
+ divide:'divideic',mergeup:'divideic',recur:'divideic',pre:'stack',table:'stack',
+ greedy:'strike',local:'strike',heur:'strike',anneal:'strike',approx:'strike',
+ prune:'prune',backtrack:'undo',hash:'bucket'}
+
+/* ── 主绘制 ── */
+function draw(){
+ const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,CO.bg1);g.addColorStop(1,CO.bg0)
+ ctx.fillStyle=g;ctx.fillRect(0,0,W,H)
+ grid()
+ if(RUN.over)  {overScreen();return req()}
+ if(intel)     {intelScreen();return req()}
+ if(offer)     {offerScreen();return req()}
+ fightScreen();req()}
+function grid(){ctx.strokeStyle='rgba(70,130,170,.07)';ctx.lineWidth=1
+ for(let x=0;x<W;x+=48){ctx.beginPath();ctx.moveTo(x+.5,0);ctx.lineTo(x+.5,H);ctx.stroke()}
+ for(let y=0;y<H;y+=48){ctx.beginPath();ctx.moveTo(0,y+.5);ctx.lineTo(W,y+.5);ctx.stroke()}}
+
+function fightScreen(){
+ const HANDY=H-158,ARENA={x:236,y:150,w:W-236-244,h:HANDY-190}
+ topBar(); enemyHeader(ARENA)
+ legendPanel(16,150,204,(S.mult>1?352:330)+(S.FL?66:0))
+ statsPanel(W-228,150,212,ARENA.h+40)
+ arena(ARENA); flawBanner()
+ deckPile(16,HANDY+16); handRow(HANDY)
+ btn(W-166,H-58,148,40,'结束回合'); discardPile(W-166,HANDY+16)}
+
+function topBar(){
+ ctx.font='600 10.5px system-ui';ctx.letterSpacing='2px';ctx.fillStyle=CO.faint
+ ctx.fillText('预算',20,28);ctx.fillText('步数',188,28);ctx.letterSpacing='0px'
+ ctx.font='700 30px system-ui';ctx.fillStyle=S.budget>18?CO.ink:CO.red
+ ctx.fillText(String(S.budget),20,60)
+ ctx.font='600 12px system-ui';ctx.fillStyle=CO.faint;ctx.fillText('/ '+(RUN?RUN.cap:T.BUDGET),20+ctx.measureText(String(S.budget)).width+34,60)
+ for(let i=0;i<T.STEPS;i++)hex(196+i*26,50,10,i<S.steps?CO.amber:'rgba(120,150,180,.22)')
+ ctx.textAlign='right';ctx.font='600 10.5px system-ui';ctx.letterSpacing='2px';ctx.fillStyle=CO.faint
+ ctx.fillText('回合',W-20,28);ctx.letterSpacing='0px'
+ ctx.font='700 30px system-ui';ctx.fillStyle=CO.ink;ctx.fillText(String(S.turn),W-20,60);ctx.textAlign='left'
+ ctx.font='600 11px system-ui';ctx.fillStyle=CO.faint;ctx.textAlign='center'
+ ctx.fillText(`第 ${RUN.node+1} / ${PATH.length} 关`,W/2,28);ctx.textAlign='left'}
+
+function enemyHeader(A){
+ const cx=W/2,kc=S.E.kind==='Boss'?CO.red:S.E.kind==='精英'?CO.amber:CO.dim
+ ctx.textAlign='center'
+ ctx.font='600 10.5px system-ui';ctx.letterSpacing='3px';ctx.fillStyle=kc
+ ctx.fillText(`敌人 · ${S.E.kind}`,cx,72);ctx.letterSpacing='0px'
+ ctx.font='700 23px system-ui';ctx.fillStyle=CO.ink;ctx.fillText(S.E.name,cx,102)
+ const hp=hpPct(S),bw=Math.min(420,A.w*.6),bx=cx-bw/2,by=116
+ ctx.fillStyle='rgba(255,255,255,.07)';ctx.fillRect(bx,by,bw,9)
+ const hg=ctx.createLinearGradient(bx,0,bx+bw,0)
+ hg.addColorStop(0,'#ff8f6b');hg.addColorStop(1,'#f0a94a')
+ ctx.fillStyle=hg;ctx.fillRect(bx,by,bw*hp/100,9)
+ ctx.strokeStyle=CO.line;ctx.strokeRect(bx+.5,by+.5,bw-1,9)
+ ctx.font='700 13px system-ui';ctx.fillStyle=CO.ink
+ ctx.fillText(`${hp} / 100`,cx,by+30)
+ ctx.font='400 11.5px system-ui';ctx.fillStyle=CO.faint;ctx.fillText(S.E.note,cx,by+48)
+ ctx.textAlign='left'}
+function flawBanner(){ if(!S.FL)return
+ const cx=W/2,t=`⚠ ${S.FL.name} · ${S.FL.note}`
+ ctx.textAlign='center';ctx.font='600 11.5px system-ui';const tw=ctx.measureText(t).width
+ ctx.fillStyle='rgba(10,18,28,.94)';ctx.fillRect(cx-tw/2-12,172,tw+24,22)
+ ctx.strokeStyle='rgba(255,107,94,.55)';ctx.lineWidth=1;ctx.strokeRect(cx-tw/2-11.5,172.5,tw+23,21)
+ ctx.fillStyle=CO.red;ctx.fillText(t,cx,187);ctx.textAlign='left'}
+
+function legendPanel(x,y,w,h){
+ panel(x,y,w,h,'图 例 / 状 态')
+ let yy=y+46
+ const row=(sw,label,val,c)=>{
+  if(sw==='bar'){ctx.fillStyle=c;ctx.fillRect(x+14,yy-8,10,10)}
+  else if(sw==='line'){ctx.strokeStyle=c;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x+14,yy-3);ctx.lineTo(x+26,yy-3);ctx.stroke()}
+  ctx.font='400 11.5px system-ui';ctx.fillStyle=CO.dim;ctx.fillText(label,x+32,yy)
+  if(val!=null){ctx.textAlign='right';ctx.font='700 12px system-ui'
+   ctx.fillStyle=val?c:CO.faint;ctx.fillText(String(val),x+w-14,yy);ctx.textAlign='left'}
+  yy+=23}
+ ctx.font='600 10px system-ui';ctx.fillStyle=CO.faint;ctx.fillText('柱 = 一个元素,高 = 剩余处理量',x+14,yy);yy+=20
+ row('bar','值小',null,'hsl(188 88% 58%)')
+ row('bar','值中',null,'hsl(38 88% 58%)')
+ row('bar','值大',null,'hsl(22 88% 58%)')
+ yy+=6
+ ctx.strokeStyle=CO.line;ctx.beginPath();ctx.moveTo(x+14,yy-10);ctx.lineTo(x+w-14,yy-10);ctx.stroke();yy+=6
+ ctx.font='600 10px system-ui';ctx.fillStyle=CO.faint;ctx.fillText('你的乘区',x+14,yy);yy+=20
+ row('bar','预处理值 · 查表按它结算',S.memo,CO.green)
+ row('bar','债务 · 回合末每点 −2 预算',S.debt,'#ff8f6b')
+ row('bar','段数 · 逐层类按它放大',S.splits,'#b39ddb')
+ if(S.mult>1)row('bar','增长倍率 · 剪枝可降',S.mult.toFixed(2),CO.red)
+ yy+=6
+ ctx.strokeStyle=CO.line;ctx.beginPath();ctx.moveTo(x+14,yy-10);ctx.lineTo(x+w-14,yy-10);ctx.stroke();yy+=6
+ ctx.font='600 10px system-ui';ctx.fillStyle=CO.faint;ctx.fillText('区',x+14,yy);yy+=20
+ row('bar','牌库',S.draw.length,CO.dim)
+ row('bar','弃牌堆',S.discard.length,CO.dim)
+ row('bar','消耗区 · 本局不再出现',S.exhaust.length,'#ff8f6b')
+ if(S.FL){yy+=6;ctx.strokeStyle=CO.line;ctx.beginPath();ctx.moveTo(x+14,yy-10);ctx.lineTo(x+w-14,yy-10);ctx.stroke();yy+=6
+  ctx.font='600 10px system-ui';ctx.fillStyle=CO.red;ctx.fillText('失误(环境)',x+14,yy);yy+=18
+  ctx.font='400 11px system-ui';ctx.fillStyle='#ff9f8a';wrap2(S.FL.name+':'+S.FL.note,x+14,yy,w-28,15)}}
+function wrap2(t,x,y,w,lh){let l='',yy=y
+ for(const ch of t){if(ctx.measureText(l+ch).width>w){ctx.fillText(l,x,yy);l=ch;yy+=lh}else l+=ch}
+ ctx.fillText(l,x,yy)}
+
+function statsPanel(x,y,w,h){
+ panel(x,y,w,h,'数 据 性 质')
+ const sd=sortedness(S),tr=tier(S)
+ let yy=y+50
+ const kv=(k,v,c)=>{ctx.font='400 11.5px system-ui';ctx.fillStyle=CO.dim;ctx.fillText(k,x+14,yy)
+  ctx.textAlign='right';ctx.font='700 14px system-ui';ctx.fillStyle=c||CO.ink
+  ctx.fillText(v,x+w-14,yy);ctx.textAlign='left';yy+=26}
+ kv('元素数',String(N(S)))
+ kv('有序度',(sd*100|0)+'%',sd>.6?CO.green:CO.amber)
+ ctx.fillStyle='rgba(255,255,255,.08)';ctx.fillRect(x+14,yy-16,w-28,3)
+ ctx.fillStyle=sd>.6?CO.green:CO.amber;ctx.fillRect(x+14,yy-16,(w-28)*sd,3);yy+=12
+ kv('混乱度',(100-(sd*100|0))+'%',CO.faint)
+ kv('有序层数',String(tr)+' / 4',tr>=3?CO.green:CO.amber)
+ kv('每回合涌入','+'+(S.inflow+(S.E.dense?Math.floor((S.splits-1)*S.E.dense):0)),CO.red)
+ kv('回合末开销','−'+Math.ceil(N(S)/T.COST_DIV),CO.red)
+ // 进度折线
+ ctx.font='600 10px system-ui';ctx.fillStyle=CO.faint;ctx.fillText('剩余工作量走势',x+14,yy+4)
+ const gx=x+14,gy=yy+14,gw=w-28,gh=44
+ ctx.strokeStyle=CO.line;ctx.strokeRect(gx+.5,gy+.5,gw,gh)
+ if(hist.length>1){ctx.strokeStyle=CO.amber;ctx.lineWidth=1.6;ctx.beginPath()
+  hist.slice(-40).forEach((v,i,arr)=>{const px=gx+gw*(i/Math.max(arr.length-1,1)),py=gy+gh*(1-v/100)
+   i?ctx.lineTo(px,py):ctx.moveTo(px,py)});ctx.stroke()}}
+
+function arena(A){
+ const a=alive(S); if(!a.length)return
+ const t=anim?Math.min(1,(performance.now()-anim.t0)/anim.dur):1
+ if(anim&&t>=1)anim=null
+ const bw=Math.min(24,A.w/Math.max(a.length,1)),seg=Math.ceil(a.length/S.splits)
+ const tw=a.length*bw+(S.splits-1)*18,x0=A.x+(A.w-tw)/2,base=A.y+A.h,hM=A.h-16
+ // 段分隔
+ if(S.splits>1)for(let s2=1;s2<S.splits;s2++){const sx=x0+s2*seg*bw+(s2-1)*18+9
+  ctx.strokeStyle='rgba(179,157,219,.35)';ctx.setLineDash([4,4]);ctx.lineWidth=1
+  ctx.beginPath();ctx.moveTo(sx,A.y);ctx.lineTo(sx,base);ctx.stroke();ctx.setLineDash([])}
+ a.forEach((b,i)=>{const sg=Math.floor(i/seg),x=x0+i*bw+sg*18
+  let v=b.v
+  if(anim){const before=anim.before.find(o=>o.id===b.id)
+   if(before)v=before.v+(b.v-before.v)*ease(t)}
+  const h=Math.max(2,(v/S.vmax)*hM)
+  let dim=1
+  if(anim&&anim.kind==='sweep'&&i>t*a.length)dim=.42
+  if(anim&&anim.kind==='split'){const half=a.length*.5
+   if(t<.7&&(i<half*(1-t)||i>a.length-half*(1-t)*.6))dim=.2}
+  bar(x,base-h,bw-3,h,v,S.vmax,dim)})
+ // 死掉的柱子:碎裂
+ if(anim){anim.before.forEach((o,i)=>{ if(anim.after.get(o.id)!==null)return
+   const idx=anim.before.indexOf(o),x=x0+idx*bw
+   const h=(o.v/S.vmax)*hM*(1-ease(t))
+   ctx.globalAlpha=1-t;bar(x,base-h,bw-3,Math.max(1,h),o.v,S.vmax);ctx.globalAlpha=1
+   if(t<.35&&Math.random()<.3)parts.push({x:x+bw/2,y:base-h,vx:(Math.random()-.5)*3,vy:-Math.random()*3-.5,life:1,c:'#f0a94a'})})}
+ // 扫描线
+ if(anim&&anim.kind==='sweep'){const sx=x0+tw*t
+  const lg=ctx.createLinearGradient(sx-44,0,sx+44,0)
+  lg.addColorStop(0,'rgba(95,208,232,0)');lg.addColorStop(.5,'rgba(191,242,255,.95)');lg.addColorStop(1,'rgba(95,208,232,0)')
+  ctx.fillStyle=lg;ctx.fillRect(sx-44,A.y,88,A.h)}
+ // 二分刀口
+ if(anim&&anim.kind==='split'){const sx=x0+tw*.5
+  ctx.strokeStyle='rgba(255,216,138,'+(1-t*.5)+')';ctx.lineWidth=2;ctx.setLineDash([7,6])
+  ctx.beginPath();ctx.moveTo(sx,A.y-6);ctx.lineTo(sx,base+8);ctx.stroke();ctx.setLineDash([])}
+ parts=parts.filter(p=>p.life>0)
+ parts.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=.1;p.life-=.02
+  ctx.globalAlpha=Math.max(p.life,0);ctx.fillStyle=p.c;ctx.fillRect(p.x,p.y,2.6,2.6);ctx.globalAlpha=1})}
+const ease=t=>1-Math.pow(1-t,3)
+
+function cardFace(id,x,y,cw,ch,on,sel){
+ const c=C[id],col=CO.tag[c.tag]
+ ctx.fillStyle=on?'rgba(14,26,40,.96)':'rgba(12,20,30,.9)';ctx.fillRect(x,y,cw,ch)
+ ctx.strokeStyle=on?col:'rgba(110,140,170,.3)';ctx.lineWidth=on?1.8:1;ctx.strokeRect(x+.5,y+.5,cw-1,ch-1)
+ if(on){ctx.strokeStyle=col;ctx.lineWidth=2.5;ctx.beginPath()
+  ctx.moveTo(x,y+ch-12);ctx.lineTo(x,y+ch);ctx.lineTo(x+12,y+ch);ctx.stroke()}
+ ctx.globalAlpha=on?1:.5
+ hex(x+20,y+20,13,col)
+ ctx.fillStyle='#08111c';ctx.font='700 13px system-ui';ctx.textAlign='center'
+ ctx.fillText(String(c.cost),x+20,y+25);ctx.textAlign='left'
+ ctx.fillStyle=CO.ink;ctx.font='700 14.5px system-ui';ctx.fillText(c.name,x+40,y+25)
+ if(c.exhaust){ctx.fillStyle='#ff8f6b';ctx.font='600 9.5px system-ui'
+  ctx.textAlign='right';ctx.fillText('消耗',x+cw-10,y+22);ctx.textAlign='left'}
+ const f=ICON[CARDIC[id]]; if(f)f(x+cw*.22,y+40,cw*.56,34)
+ ctx.fillStyle=CO.dim;ctx.font='400 11px system-ui';wrap(c.note,x+11,y+92,cw-22,15)
+ ctx.globalAlpha=1;C[id].box=[x,y,cw,ch]}
+
+function handRow(y){
+ const n=S.hand.length; if(!n)return
+ const cw=Math.min(184,(W-460)/n-12),ch=142,gap=12
+ const x0=(W-(n*cw+(n-1)*gap))/2
+ S.hand.forEach((id,i)=>{const x=x0+i*(cw+gap);cardFace(id,x,y,cw,ch,canPlay(S,i)&&!anim)
+  if(S.locked===i&&!S.guarded){ctx.fillStyle='rgba(255,107,94,.14)';ctx.fillRect(x,y,cw,ch)
+   ctx.strokeStyle=CO.red;ctx.lineWidth=1.5;ctx.strokeRect(x+.5,y+.5,cw-1,ch-1)
+   ctx.fillStyle=CO.red;ctx.font='700 12px system-ui';ctx.textAlign='center'
+   ctx.fillText('空指针 · 不可用',x+cw/2,y+ch-14);ctx.textAlign='left'}})}
+
+function pile(x,y,label,n,c){
+ ctx.fillStyle='rgba(16,28,44,.9)';ctx.fillRect(x,y,64,88)
+ ctx.strokeStyle=c;ctx.lineWidth=1.2;ctx.strokeRect(x+.5,y+.5,63,87)
+ for(let i=1;i<3;i++){ctx.strokeStyle='rgba(110,140,170,.25)'
+  ctx.strokeRect(x+i*2.5+.5,y-i*2.5+.5,63,87)}
+ ctx.fillStyle=c;ctx.font='700 20px system-ui';ctx.textAlign='center';ctx.fillText(String(n),x+32,y+50)
+ ctx.font='600 9.5px system-ui';ctx.fillStyle=CO.faint;ctx.letterSpacing='1.5px'
+ ctx.fillText(label,x+32,y+70);ctx.letterSpacing='0px';ctx.textAlign='left'}
+const deckPile=(x,y)=>pile(x,y,'牌库',S.draw.length,CO.cyan)
+const discardPile=(x,y)=>pile(x,y,'弃牌',S.discard.length,CO.dim)
+
+const NODEBOX=[]
+function intelCard(it,x,y,w,h,idx,only){
+ const E=it.E,acc=E.kind==='Boss'?CO.red:E.kind==='精英'?CO.amber:CO.cyan
+ panel(x,y,w,h,null)
+ ctx.strokeStyle=acc;ctx.lineWidth=2;ctx.strokeRect(x+.5,y+.5,w-1,3)
+ ctx.textAlign='center';const cx=x+w/2
+ ctx.font='600 10px system-ui';ctx.letterSpacing='2.5px';ctx.fillStyle=acc
+ ctx.fillText(E.kind.toUpperCase&&E.kind,cx,y+28);ctx.letterSpacing='0px'
+ ctx.font='700 22px system-ui';ctx.fillStyle=CO.ink;ctx.fillText(E.name,cx,y+56)
+ ctx.font='400 11.5px system-ui';ctx.fillStyle=CO.dim
+ ctx.fillStyle=it.load>1.2?'#ffc46b':it.load<-.6?CO.green:CO.dim
+ ctx.fillText(`规模 ${E.n} · 涌入 ${E.inflow??0}${E.mult?' · ×'+E.mult+'/回合':''}`,cx,y+78)
+ ctx.textAlign='left'
+ it.rows.slice(0,5).forEach((r,i)=>{const yy=y+108+i*26
+  ctx.fillStyle=r.dir<0?'#ff8f6b':CO.green;ctx.font='700 11px system-ui'
+  ctx.fillText(r.dir<0?'▼':'▲',x+14,yy)
+  ctx.fillStyle='#cfdcea';ctx.font='400 11.5px system-ui'
+  let t=r.txt;while(ctx.measureText(t).width>w-150)t=t.slice(0,-2)
+  ctx.fillText(t,x+30,yy)
+  ctx.textAlign='right';ctx.font='700 11px system-ui'
+  const L=r.lbl?r.lbl(r.n):[r.n>0?`${r.n} 张`:(r.n<0?`缺 ${-r.n}`:'—'),r.n>0?(r.dir<0?'red':'green'):(r.n<0?'red':'faint')]
+  ctx.fillStyle=CO[L[1]]||CO.faint;ctx.fillText(L[0],x+w-14,yy);ctx.textAlign='left'})
+ ctx.textAlign='center'
+ ctx.font='700 15px system-ui';ctx.fillStyle=it.verdict[1]
+ ctx.fillText(`适配度:${it.verdict[0]}`,cx,y+h-42)
+ ctx.font='600 12px system-ui';ctx.fillStyle=CO.cyan
+ ctx.fillText(only?'点击进入 · 回车':`点击迎战 · ${idx?'→':'←'}`,cx,y+h-18)
+ ctx.textAlign='left';NODEBOX[idx]=[x,y,w,h]}
+function intelScreen(){
+ const cx=W/2,only=intel.length<2,kind=SHAPE[RUN.node]
+ const TITLE={ELITE:['对抗性输入','它是冲着你这套牌来的 — 精英不设岔口,躲不掉'],
+   BOSS:['最后一关','线性削减追不上指数增长'],MOB:['岔口 · 选一条路','两边都能过关,选哪边取决于你手上这副牌']}[kind]
+ ctx.textAlign='center'
+ ctx.font='600 10.5px system-ui';ctx.letterSpacing='3px';ctx.fillStyle=CO.faint
+ ctx.fillText(`第 ${RUN.node+1} / ${SHAPE.length} 关`,cx,H*.15);ctx.letterSpacing='0px'
+ ctx.font='700 26px system-ui';ctx.fillStyle=CO.ink
+ ctx.fillStyle=kind==='BOSS'?CO.red:kind==='ELITE'?CO.amber:CO.ink
+ ctx.fillText(TITLE[0],cx,H*.15+38)
+ ctx.font='400 12.5px system-ui';ctx.fillStyle=CO.dim
+ ctx.fillText(TITLE[1],cx,H*.15+62)
+ NODEBOX.length=0
+ const rmax=Math.max(...intel.map(i=>i.rows.length))
+ const cw=430,ch=190+rmax*26,gap=32,y=H*.15+92
+ if(only)intelCard(intel[0],cx-cw/2,y,cw,ch,0,true)
+ else{intelCard(intel[0],cx-cw-gap/2,y,cw,ch,0);intelCard(intel[1],cx+gap/2,y,cw,ch,1)}
+ ctx.textAlign='center';ctx.font='400 12px system-ui';ctx.fillStyle=CO.faint
+ ctx.fillText(`牌组 ${RUN.deck.length} 张 · 预算 ${RUN.budget} · 深度 +${Math.round(DEPTHMUL*RUN.node*100)}% 规模`,cx,y+ch+34)
+ ctx.textAlign='left'}
+
+function offerScreen(){
+ const cx=W/2
+ ctx.textAlign='center';ctx.font='700 30px system-ui';ctx.fillStyle=CO.ink
+ ctx.fillText('打完了 · 三选一',cx,H*.26)
+ ctx.font='400 13px system-ui';ctx.fillStyle=CO.dim
+ ctx.fillText(`牌组 ${RUN.deck.length} 张 · 预算上限升到 ${RUN.cap} · 跳过也是策略(不稀释牌库)`,cx,H*.26+26)
+ ctx.textAlign='left'
+ const cw=200,ch=170,gap=22,x0=cx-(3*cw+2*gap)/2
+ offer.forEach((id,i)=>cardFace(id,x0+i*(cw+gap),H*.36,cw,ch,true))
+ btn(cx-74,H*.36+ch+28,148,40,'跳 过')}
+
+function overScreen(){
+ const cx=W/2,win=RUN.over==='win'
+ ctx.textAlign='center';ctx.font='800 44px system-ui'
+ ctx.fillStyle=win?CO.green:CO.red
+ ctx.fillText(win?'通关':`倒在第 ${RUN.node+1} / ${SHAPE.length} 关`,cx,H*.26)
+ if(!win&&S){const d=diagnose(S)
+  ctx.font='400 13.5px system-ui';ctx.fillStyle=CO.dim
+  ctx.fillText(`${S.E.name} · 撑了 ${d.turns} 回合 · 烧掉 ${d.spent} 预算 · 还剩 ${d.left} 个元素`,cx,H*.26+32)
+  const pw=760,px=cx-pw/2,py=H*.26+58,ph=40+d.lines.length*32
+  panel(px,py,pw,ph,'你 输 在 这 里')
+  ctx.textAlign='left'
+  d.lines.forEach((l,i)=>{const y=py+52+i*32
+   ctx.fillStyle=i===0?CO.red:'#ff9f6b';ctx.font='700 14px system-ui';ctx.fillText(i===0?'▶':'·',px+20,y)
+   ctx.fillStyle=i===0?'#f4e8de':'#c3d0dd';ctx.font=(i===0?'600 14px':'400 13px')+' system-ui'
+   ctx.fillText(l.t,px+44,y)})
+  ctx.textAlign='center'}
+ ctx.font='400 13px system-ui';ctx.fillStyle=CO.faint
+ ctx.fillText(`牌组 ${RUN.deck.length} 张 · 点任意处重开 · 1–5 换流派`,cx,H*.80);ctx.textAlign='left'}
+
+function wrap(t,x,y,w,lh){let l='',yy=y
+ for(const ch of t){if(ctx.measureText(l+ch).width>w){ctx.fillText(l,x,yy);l=ch;yy+=lh}else l+=ch}
+ ctx.fillText(l,x,yy)}
+const req=()=>requestAnimationFrame(draw)
+const inBox=(mx,my,b)=>b&&mx>b[0]&&mx<b[0]+b[2]&&my>b[1]&&my<b[1]+b[3]
+cv.addEventListener('click',e=>{const mx=e.clientX,my=e.clientY
+ if(RUN.over){startRun(KIT);return}
+ if(intel){for(let k=0;k<NODEBOX.length;k++)if(inBox(mx,my,NODEBOX[k])){pickNode(k);return}
+  return}
+ if(inBox(mx,my,btn.last)){offer?takeCard(null):window.__end();return}
+ const ids=offer||S.hand
+ for(let i=0;i<ids.length;i++) if(inBox(mx,my,C[ids[i]].box)){offer?takeCard(ids[i]):uiPlay(i);return}})
+addEventListener('keydown',e=>{
+ if(intel){const k={ArrowLeft:0,ArrowRight:1,Enter:0,' ':0}[e.key]
+  if(k!==undefined&&NODEBOX[k]){e.preventDefault();pickNode(k);return}}
+ const k=['base','sort','dc','memo','greedy'][+e.key-1]; if(k){startRun(k);return}
+ if(e.key==='a'||e.key==='A'){ if(autoTimer){clearInterval(autoTimer);autoTimer=null}
+  else autoTimer=setInterval(()=>{ if(RUN.over){clearInterval(autoTimer);autoTimer=null;return}
+   if(intel){pickNode(intel.length>1&&intel[1].score>intel[0].score?1:0);return}
+   if(offer){takeCard(offer.find(c=>KITS[KIT].includes(c))??offer[0]);return}
+   autoTurn()},420)}})
+startRun('sort');draw()
+</script></body></html>
