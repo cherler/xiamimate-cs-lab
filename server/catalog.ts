@@ -51,6 +51,12 @@ import { casKernel } from '../src/kernels/cas.ts'
 import { mesiKernel } from '../src/kernels/mesi.ts'
 import { deadlockKernel } from '../src/kernels/deadlock.ts'
 import { raftKernel } from '../src/kernels/raft.ts'
+import { caesarKernel } from '../src/kernels/caesar.ts'
+import { vigenereKernel } from '../src/kernels/vigenere.ts'
+import { xorKernel } from '../src/kernels/xorcipher.ts'
+import { modpowKernel } from '../src/kernels/modpow.ts'
+import { dhKernel } from '../src/kernels/diffiehellman.ts'
+import { rsaKernel } from '../src/kernels/rsa.ts'
 // 与 registry 同源的预设常量：直接 import 保证 doc 逐字一致（引擎侧，无 React）。
 import { CRC_PRESETS, HAMMING_PRESETS, SUBNET_PRESETS, HUFF_PRESETS, BPLUS_PRESETS } from '../src/presets/sequences.ts'
 import { ROUTE_PRESETS } from '../src/presets/entities.ts'
@@ -862,6 +868,81 @@ export const CATALOG: CatalogEntry[] = [
         kind: 'choice',
         compute: () => ({ answer: '被复制到多数派(过半)节点后', step: 0, evidence: '复制到过半即提交；任何两个多数派必有交集，保证不丢' }),
         distractors: () => ['Leader 写入自己日志后', '所有节点都复制后', '客户端收到确认后'],
+      },
+    ],
+  },
+  {
+    id: 'caesar',
+    title: '凯撒密码',
+    kernel: caesarKernel as Kernel<unknown>,
+    doc: trivialDoc('caesar'),
+    facts: [
+      {
+        id: 'cipher', label: 'HELLO 用 k=3 加密的结果',
+        ask: '凯撒密码，密钥 k=3（每个字母后移 3 位）：明文 HELLO 加密后是什么?',
+        kind: 'choice',
+        compute: t => ({ answer: String(last(t).cipher), step: t.length - 1, evidence: String(last(t).log ?? '') }),
+        distractors: () => ['EBIIL', 'KHOOS', 'IFMMP'],
+      },
+      {
+        id: 'keyspace', label: '凯撒密码的密钥空间大小',
+        ask: '凯撒密码一共只有多少种不同的密钥（因此暴力破解极其容易）?',
+        kind: 'number',
+        compute: () => ({ answer: '25', step: 0, evidence: '26 个字母，位移 1~25 共 25 种有效密钥（0 位移=不加密）' }),
+        distractors: () => ['26', '52', '128'],
+      },
+    ],
+  },
+  {
+    id: 'vigenere', title: '维吉尼亚密码', kernel: vigenereKernel as Kernel<unknown>, doc: trivialDoc('vigenere'),
+    facts: [{
+      id: 'cipher', label: 'HELLO 用关键词 KEY 加密的结果',
+      ask: '维吉尼亚密码，关键词 KEY（循环）：明文 HELLO 加密后是什么?', kind: 'choice',
+      compute: t => ({ answer: String(last(t).cipher), step: t.length - 1, evidence: String(last(t).log ?? '') }),
+      distractors: () => ['RIJVX', 'HIJVS', 'KHOOR'],
+    }],
+  },
+  {
+    id: 'xor', title: '异或加密', kernel: xorKernel as Kernel<unknown>, doc: trivialDoc('xor'),
+    facts: [{
+      id: 'selfinverse', label: '异或加密如何解密',
+      ask: '异或加密：密文 = 明文 XOR 密钥。要把密文解回明文，该怎么做?', kind: 'choice',
+      compute: () => ({ answer: '密文再 XOR 同一个密钥', step: 0, evidence: '异或自反：c XOR k XOR k = m' }),
+      distractors: () => ['密文 XOR 反转的密钥', '密文减去密钥', '密文再加密一次'],
+    }],
+  },
+  {
+    id: 'modpow', title: '快速模幂', kernel: modpowKernel as Kernel<unknown>, doc: trivialDoc('modpow'),
+    facts: [{
+      id: 'result', label: '3^13 mod 7 的值',
+      ask: '用快速模幂计算 3^13 mod 7，结果是多少?', kind: 'number',
+      compute: t => ({ answer: String(last(t).result), step: t.length - 1, evidence: String(last(t).log ?? '') }),
+      distractors: () => ['2', '5', '1'],
+    }],
+  },
+  {
+    id: 'diffiehellman', title: 'DH 密钥交换', kernel: dhKernel as Kernel<unknown>, doc: trivialDoc('diffiehellman'),
+    facts: [{
+      id: 'shared', label: 'DH 双方算出的共享密钥',
+      ask: 'Diffie-Hellman：p=23、g=5，Alice 私钥 a=6、Bob 私钥 b=15。双方算出的共享密钥是多少?', kind: 'number',
+      compute: t => ({ answer: String(last(t).aliceShared), step: t.length - 1, evidence: String(last(t).log ?? '') }),
+      distractors: () => ['8', '19', '5'],
+    }],
+  },
+  {
+    id: 'rsa', title: 'RSA 公钥加密', kernel: rsaKernel as Kernel<unknown>, doc: trivialDoc('rsa'),
+    facts: [
+      {
+        id: 'privkey', label: 'RSA 私钥 d',
+        ask: 'RSA：p=3、q=11、e=3。私钥 d 满足 e·d≡1 (mod φ)，φ=(p-1)(q-1)。d 等于多少?', kind: 'number',
+        compute: t => ({ answer: String(last(t).d), step: t.length - 1, evidence: `φ=${last(t).phi}，${last(t).e}·d≡1 → d=${last(t).d}` }),
+        distractors: () => ['3', '11', '20'],
+      },
+      {
+        id: 'cipher', label: 'RSA 加密 m=4 的密文',
+        ask: 'RSA：n=33、e=3，明文 m=4。密文 c=m^e mod n 是多少?', kind: 'number',
+        compute: t => ({ answer: String(last(t).c), step: t.length - 1, evidence: `4^3 mod 33 = 64 mod 33 = ${last(t).c}` }),
+        distractors: () => ['64', '4', '27'],
       },
     ],
   },

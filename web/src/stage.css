@@ -3799,3 +3799,25 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .raft-entry.committed small { color:var(--hit); }
 .raft-client { margin:0 0 10px; padding:6px 11px; font-size:12px; width:fit-content;
   border-radius:6px; border:1px solid var(--now); color:var(--now); background:color-mix(in srgb, var(--now) 8%, transparent); }
+
+/* ── 密码学通用(.cx-*) ── */
+.cx-rows { display:flex; flex-direction:column; gap:8px; margin:6px 0 12px; }
+.cx-row { display:flex; align-items:center; gap:5px; flex-wrap:wrap; }
+.cx-lbl { font-size:11px; color:var(--dim); width:34px; flex:0 0 auto; }
+.cx-cell { min-width:26px; height:30px; display:inline-flex; align-items:center; justify-content:center;
+  font-family:var(--mono); font-size:15px; color:var(--ink); border:1px solid var(--line); border-radius:5px; background:var(--panel); }
+.cx-cell.done { border-color:var(--hit); background:color-mix(in srgb, var(--hit) 9%, var(--panel)); color:var(--hit); }
+.cx-cell.cur { box-shadow:0 0 0 2px var(--now); border-color:var(--now); }
+.cx-calc { margin:0 0 10px; padding:8px 12px; font-family:var(--mono); font-size:13px; line-height:1.7;
+  border:1px solid var(--line); border-left:3px solid var(--now); border-radius:6px; background:var(--sunk-1); }
+.cx-calc b { color:var(--ink); }
+.cx-out { color:var(--now) !important; }
+/* 数论/公钥类通用小盒 */
+.cx-kv { display:flex; gap:10px; flex-wrap:wrap; margin:6px 0 10px; }
+.cx-box { display:flex; flex-direction:column; gap:3px; padding:8px 11px; border:1px solid var(--line);
+  border-radius:8px; background:var(--panel); min-width:80px; }
+.cx-box.hot { border-color:var(--now); background:color-mix(in srgb, var(--now) 8%, var(--panel)); }
+.cx-box.ok { border-color:var(--hit); background:color-mix(in srgb, var(--hit) 9%, var(--panel)); }
+.cx-bk { font-size:10.5px; color:var(--dim); }
+.cx-bv { font-size:17px; font-weight:700; font-family:var(--mono); color:var(--ink); }
+.cx-bv.small { font-size:13px; }

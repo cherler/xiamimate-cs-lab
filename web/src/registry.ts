@@ -214,6 +214,18 @@ import { deadlockKernel, type DeadlockState } from '@engine/kernels/deadlock.ts'
 import { DeadlockStage } from './stages/DeadlockStage.tsx'
 import { raftKernel, type RaftState } from '@engine/kernels/raft.ts'
 import { RaftStage } from './stages/RaftStage.tsx'
+import { caesarKernel, type CaesarState } from '@engine/kernels/caesar.ts'
+import { CaesarStage } from './stages/CaesarStage.tsx'
+import { vigenereKernel, type VigenereState } from '@engine/kernels/vigenere.ts'
+import { VigenereStage } from './stages/VigenereStage.tsx'
+import { xorKernel, type XorState } from '@engine/kernels/xorcipher.ts'
+import { XorStage } from './stages/XorStage.tsx'
+import { modpowKernel, type ModPowState } from '@engine/kernels/modpow.ts'
+import { ModPowStage } from './stages/ModPowStage.tsx'
+import { dhKernel, type DHState } from '@engine/kernels/diffiehellman.ts'
+import { DHStage } from './stages/DHStage.tsx'
+import { rsaKernel, type RSAState } from '@engine/kernels/rsa.ts'
+import { RSAStage } from './stages/RSAStage.tsx'
 import { CollisionStage } from './stages/CollisionStage.tsx'
 import { gcnKernel, type GcnState } from '@engine/kernels/gcn.ts'
 import { GcnStage } from './stages/GcnStage.tsx'
@@ -5236,9 +5248,90 @@ const raft: Experiment<RaftState> = {
   ],
 }
 
+const caesar: Experiment<CaesarState> = {
+  id: 'caesar',
+  group: '密码学',
+  title: '凯撒密码',
+  subtitle: '每个字母在字母表上后移 k 位',
+  kernel: caesarKernel,
+  defaultDoc: { kind: 'caesar', params: {}, entities: [], streams: [] },
+  params: [],
+  paramsNote: '无可调参数。固定演示移位加密：HELLO 每个字母后移 3 位 → KHOOR。原理：字母转数字→加 k→mod 26→转回。详见讲解卡。',
+  bounds: ['明文 HELLO,密钥 k=3', '每字母:code→(code+k)mod26→新字母(可核)', 'HELLO→KHOOR', '只有26种密钥+不改频率,暴力/频率分析可破'],
+  tabs: [{ id: 'shift', label: '逐字母移位' }],
+  Stage: CaesarStage,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: s.cipher } : s.pos >= 0 ? { key: 'idle', label: `${s.ch}→${s.out}` } : { key: 'idle', label: '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / (s.plain.length + 1))),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.out || '移'),
+  whyInRail: true,
+  readouts: s => [
+    { label: '密钥 k', value: `${s.key}` },
+    { label: '本步', value: s.pos >= 0 ? `${s.ch}(${s.code}) → ${s.out}(${s.shifted})` : '完成' },
+    { label: '密文', value: s.cipher || '—', tone: s.phase === 'done' ? 'good' : undefined },
+    { label: '进度', value: `${s.pos >= 0 ? s.pos + 1 : s.plain.length}/${s.plain.length}` },
+  ],
+}
+
+const vigenere: Experiment<VigenereState> = {
+  id: 'vigenere', group: '密码学', title: '维吉尼亚密码', subtitle: '关键词循环给出每一位的位移',
+  kernel: vigenereKernel, defaultDoc: { kind: 'vigenere', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '无可调参数。关键词 KEY 循环套在 HELLO 上，每位位移=对应关键词字母值 → RIJVS。详见讲解卡。',
+  bounds: ['明文 HELLO,关键词 KEY(循环)', '每位:(明文码+关键词码)mod26(可核)', 'HELLO→RIJVS;两个L变成不同字母', '频率分析失效;弱点是关键词周期重复'],
+  tabs: [{ id: 'poly', label: '多表替换' }], Stage: VigenereStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: s.cipher } : s.pos >= 0 ? { key: 'idle', label: `${s.ch}→${s.out}` } : { key: 'idle', label: '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / (s.plain.length + 1))),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.out || '移'),
+  readouts: s => [{ label: '关键词', value: s.keyword }, { label: '本步', value: s.pos >= 0 ? `${s.ch}+${s.keyCh}→${s.out}` : '完成' }, { label: '密文', value: s.cipher || '—', tone: s.phase === 'done' ? 'good' : undefined }, { label: '进度', value: `${s.pos >= 0 ? s.pos + 1 : s.plain.length}/${s.plain.length}` }],
+}
+const xorcipher: Experiment<XorState> = {
+  id: 'xor', group: '密码学', title: '异或加密', subtitle: '明文 XOR 密钥 = 密文，自反可还原',
+  kernel: xorKernel, defaultDoc: { kind: 'xor', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '无可调参数。明文字节 A 逐位和密钥异或得密文；异或自反，再异或一次就还原。详见讲解卡。',
+  bounds: ['明文 A=01000001,密钥 01101010', '逐位:相同得0、不同得1(可核)', '密文=00101011;再XOR同密钥=还原', '安全全在密钥:随机+等长+只用一次=OTP不可破'],
+  tabs: [{ id: 'bits', label: '逐位异或' }], Stage: XorStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: '自反' } : s.pos >= 0 ? { key: 'idle', label: `${s.mBit}⊕${s.kBit}=${s.cBit}` } : { key: 'idle', label: '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 9)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.cBit >= 0 ? String(s.cBit) : '异'),
+  readouts: s => [{ label: '本位', value: s.pos >= 0 ? `${s.mBit} ⊕ ${s.kBit} = ${s.cBit}` : '完成' }, { label: '密文', value: s.cBits.join('') || '—', tone: s.phase === 'done' ? 'good' : undefined }, { label: '进度', value: `${s.pos >= 0 ? s.pos + 1 : 8}/8` }, { label: '性质', value: '自反(加解密同一套)' }],
+}
+const modpow: Experiment<ModPowState> = {
+  id: 'modpow', group: '密码学', title: '快速模幂', subtitle: 'a^b mod n：逐位平方、遇 1 就乘',
+  kernel: modpowKernel, defaultDoc: { kind: 'modpow', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '无可调参数。3^13 mod 7：指数拆二进制，底数逐步平方、遇 1 乘进结果，全程对 7 取模 → 3。详见讲解卡。',
+  bounds: ['算 3^13 mod 7', '指数13=1101₂,逐位平方-乘(可核)', '= 3^1·3^4·3^8 mod 7 = 3', 'O(log b)次乘法;RSA/DH上千位幂全靠它'],
+  tabs: [{ id: 'sqm', label: '平方-乘' }], Stage: ModPowStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: `=${s.result}` } : s.bitPos >= 0 ? { key: 'idle', label: `位${s.bit} 结果${s.result}` } : { key: 'idle', label: '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 5)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.bit >= 0 ? String(s.bit) : '幂'),
+  readouts: s => [{ label: '要算', value: `${s.a}^${s.b} mod ${s.n}` }, { label: '指数位', value: s.bitPos >= 0 ? `第${s.bitPos}位=${s.bit}` : '完成' }, { label: '当前底数', value: `${s.baseNow}` }, { label: '结果', value: `${s.result}`, tone: s.phase === 'done' ? 'good' : undefined }],
+}
+const diffiehellman: Experiment<DHState> = {
+  id: 'diffiehellman', group: '密码学', title: 'DH 密钥交换', subtitle: '公开信道上商量出共享密钥',
+  kernel: dhKernel, defaultDoc: { kind: 'diffiehellman', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '无可调参数。p=23,g=5；Alice a=6、Bob b=15。各算「对方公钥^自己私钥 mod p」都得共享密钥 2。详见讲解卡。',
+  bounds: ['公开 p=23,g=5;私钥 a=6,b=15', 'A=g^a=8,B=g^b=19(公开,可核)', '共享=B^a=A^b=g^(ab)=2(两边一致)', '偷听者要解离散对数,大数下算不动'],
+  tabs: [{ id: 'kex', label: '密钥协商' }], Stage: DHStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: `共享 ${s.aliceShared}` } : { key: 'idle', label: s.stage === 'pubA' ? `A=${s.A}` : s.stage === 'pubB' ? `B=${s.B}` : s.stage }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.stage === 'sharedA' || s.stage === 'sharedB' ? '享' : '公'),
+  readouts: s => [{ label: '公开参数', value: `p=${s.p} g=${s.g}` }, { label: '公钥 A/B', value: `${s.A >= 0 ? s.A : '?'} / ${s.B >= 0 ? s.B : '?'}` }, { label: '共享密钥', value: s.aliceShared >= 0 ? `${s.aliceShared}` : '—', tone: s.phase === 'done' ? 'good' : undefined }, { label: '安全根基', value: '离散对数难' }],
+}
+const rsa: Experiment<RSAState> = {
+  id: 'rsa', group: '密码学', title: 'RSA 公钥加密', subtitle: '公钥加密、私钥解密',
+  kernel: rsaKernel, defaultDoc: { kind: 'rsa', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '无可调参数。p=3,q=11→n=33,φ=20,e=3,d=7。明文 4 → 密文 31 → 解回 4。安全靠大数分解难。详见讲解卡。',
+  bounds: ['p=3,q=11→n=33,φ=20,e=3,d=7', 'd使e·d≡1(mod φ);加密c=m^e mod n(可核)', 'm=4→c=31→解密c^d=4', '公开n难分解出p,q,故私钥d算不出'],
+  tabs: [{ id: 'rsa', label: '密钥→加密→解密' }], Stage: RSAStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: `${s.m}→${s.c}→${s.dec}` } : { key: 'idle', label: s.stage }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.stage === 'encrypt' ? '密' : s.stage === 'decrypt' ? '解' : '钥'),
+  readouts: s => [{ label: '模数 n', value: `${s.n}` }, { label: '公钥/私钥', value: `e=${s.e} / d=${s.d}` }, { label: '密文 c', value: s.c >= 0 ? `${s.c}` : '—' }, { label: '解密', value: s.dec >= 0 ? `${s.dec}(还原成 ${s.m})` : '—', tone: s.phase === 'done' ? 'good' : undefined }],
+}
+
 export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
+  caesar, vigenere, xorcipher, modpow, diffiehellman, rsa,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,
@@ -5410,10 +5503,10 @@ export const DISCIPLINES: Discipline[] = [
     guide: { from: '一次注意力', to: '大模型推理引擎', toIcon: '🤖' },
   },
   {
-    key: 'security', title: '安全', icon: '🔐', status: 'planned',
+    key: 'security', title: '安全', icon: '🔐', status: 'active',
     sub: '密码学 → 可信系统',
-    groups: [],
-    guide: { from: '一次异或', to: '一套加密协议', toIcon: '🔐' },
+    groups: ['密码学'],
+    guide: { from: '一次移位', to: '一套加密协议', toIcon: '🔐' },
   },
 ]
 
@@ -5446,6 +5539,7 @@ export const GROUP_ANCHOR: Record<string, string> = {
   '数据库系统': 'software',
   '并发编程': 'software',
   '分布式系统': 'internet',
+  '密码学': 'internet',
   '计算机网络': 'internet',
   '概率统计原理': 'llm',
   '机器学习基础': 'llm',
