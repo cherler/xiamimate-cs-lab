@@ -298,6 +298,132 @@ export const TERMS: Term[] = [
 
 /** 每个实验一段。**加实验必须加这一段** —— 冒烟会数够不够 30 个。 */
 export const GUIDES: Record<string, Guide> = {
+  mvcc: {
+    question: '别人改了 x 并提交，先前已开始的事务为什么还读到旧值？',
+    read: [
+      { at: '版本链', is: 'x 的历史版本；绿=已提交、灰虚线=未提交、高亮=本次读命中的版本。', anchor: '.mvcc-chain' },
+      { at: '事务', is: '两个事务各自的快照(read-view)与状态。', anchor: '.mvcc-txns' },
+    ],
+    step: (s: never) => {
+      const st = s as { op: string; curTx: number; readValue: number; versions: unknown[]; phase: string }
+      return [
+        { k: '本步输入', v: st.op === 'begin' ? `T${st.curTx} 开始事务` : st.op === 'read' ? `T${st.curTx} 读 x` : st.op === 'write' ? `T${st.curTx} 写 x` : st.op === 'commit' ? `T${st.curTx} 提交` : '调度结束' },
+        { k: '判定规则', v: '读=按事务**开始时的快照**，从新到旧挑第一个「已提交且创建者在快照里」的版本；写=**追加**新版本(未提交)；提交=让新版本对**之后**开始的事务才可见。' },
+        { k: '本步结果', v: st.op === 'read' ? `读到 x=**${st.readValue}**` : st.op === 'write' ? '追加了一个未提交版本(只有自己看得见)' : st.op === 'commit' ? '该事务的版本已提交(但先前拿了快照的看不到)' : st.op === 'begin' ? '拍下当前快照' : `x 共 ${st.versions.length} 个版本；T1 两次都读到 100` },
+      ]
+    },
+    verdict: (s: never) => { const st = s as { phase: string; readValue: number }; return st.phase === 'done' ? 'T1 两次读 100' : (st.readValue >= 0 ? `读到 ${st.readValue}` : '—') },
+    try: [
+      { act: '按「下一步」走完调度', watch: 'T1 前后两次读 x 都是 100——尽管中间 T2 已把它改成 200 并提交。' },
+      { act: '盯住版本链', watch: '写 x 追加未提交版本(灰)，提交后变绿；T1 读的始终是它快照里那个旧版本。' },
+    ],
+    terms: [],
+  },
+  iso: {
+    question: '同一段并发调度，切隔离级别，T1 三次读到的会怎么变？',
+    read: [
+      { at: 'T1 读序列', is: 'T1 依次读到的值；红=脏读/不可重复读，绿=一致。', anchor: '.iso-reads' },
+      { at: 'x 状态', is: 'x 的已提交值与未提交值。', anchor: '.iso-x' },
+    ],
+    step: (s: never) => {
+      const st = s as { level: string; op: string; curTx: number; readValue: number; anomaly: string; phase: string }
+      return [
+        { k: '本步输入', v: st.op === 'read' ? `T${st.curTx} 读 x（级别：${st.level}）` : st.op === 'write' ? `T${st.curTx} 写 x` : st.op === 'commit' ? `T${st.curTx} 提交` : st.op === 'begin' ? `T${st.curTx} 开始` : '调度结束' },
+        { k: '判定规则', v: '读未提交=读最新值(含未提交)；读已提交=读最新已提交值；可重复读/串行化=读事务开始时的快照。读到的值≠第一次读→若读的是未提交值=**脏读**，否则=**不可重复读**。' },
+        { k: '本步结果', v: st.op === 'read' ? `读到 **${st.readValue}**${st.anomaly && st.anomaly !== '首次读' && st.anomaly !== '正常' ? `——${st.anomaly}!` : st.anomaly === '正常' ? '(一致)' : '(基准)'}` : st.op === 'write' ? 'T2 写了未提交的 200' : st.op === 'commit' ? 'x 的已提交值更新' : st.op === 'begin' ? '事务开始' : `${st.level} 下的读现象已定` },
+      ]
+    },
+    verdict: (s: never) => { const st = s as { level: string; anomaly: string }; return st.anomaly === '脏读' || st.anomaly === '不可重复读' ? st.anomaly : st.level },
+    try: [
+      { act: '把「隔离级别」调到读未提交，走一遍', watch: 'T1 第二次读到 200(脏读)、第三次也不一致(不可重复读)。', param: '隔离级别' },
+      { act: '再调到可重复读', watch: 'T1 三次读全是 100——现象消失了。', param: '隔离级别' },
+    ],
+    terms: [],
+  },
+  cas: {
+    question: '两个线程同时读到 0 都想 +1，为什么最后不会丢更新？',
+    read: [
+      { at: '共享 x', is: '内存里 x 的当前值。', anchor: '.cas-shared' },
+      { at: '线程', is: '每个线程读到的本地值与状态；绿=写入成功、红=被抢先重试。', anchor: '.cas-threads' },
+    ],
+    step: (s: never) => {
+      const st = s as { op: string; cur: number; x: number; expected: number; next: number; casOk: boolean; fails: number; phase: string }
+      return [
+        { k: '本步输入', v: st.op === 'read' ? `T${st.cur} 读 x` : st.op === 'cas' ? `T${st.cur} CAS(期望 ${st.expected}→${st.next})` : '完成' },
+        { k: '判定规则', v: 'CAS(地址, 期望值, 新值)：**当且仅当**内存仍等于期望值时才写入、返回成功；否则说明被别人抢先改了、返回失败，调用者自旋重试。' },
+        { k: '本步结果', v: st.op === 'read' ? `读到本地 = ${st.x}` : st.op === 'cas' ? (st.casOk ? `x 仍是期望值 → **成功**，x=${st.x}` : `x 已是 ${st.x}≠期望 → **失败**，重读再来`) : `x=${st.x}，一个没丢；失败重试 ${st.fails} 次` },
+      ]
+    },
+    verdict: (s: never) => { const st = s as { phase: string; x: number; op: string; casOk: boolean }; return st.phase === 'done' ? `x=${st.x}` : st.op === 'cas' ? (st.casOk ? '成功' : '重试') : `x=${st.x}` },
+    try: [
+      { act: '按「下一步」看竞争', watch: 'T1、T2 都读到 0，T1 先 CAS 成功，T2 CAS 就失败了。' },
+      { act: '数失败次数', watch: '每次被抢先就重读再 CAS，最终三个 ++ 一个不丢、x=3。' },
+    ],
+    terms: [],
+  },
+  mesi: {
+    question: '一个核改了 x，另一个核为什么不会自动看见？',
+    read: [
+      { at: '缓存行', is: '每个核的状态 M/E/S/I 与值；M=红脏、E=独占、S=共享、I=虚线失效。', anchor: '.mesi-cores' },
+      { at: '总线', is: '本步的总线消息(BusRd / Invalidate / 回写)。', anchor: '.mesi-bus' },
+    ],
+    step: (s: never) => {
+      const st = s as { op: string; cur: number; bus: string; invalidated: number; phase: string }
+      return [
+        { k: '本步输入', v: st.op === 'read' ? `C${st.cur} 读 x` : st.op === 'write' ? `C${st.cur} 写 x` : '完成' },
+        { k: '判定规则', v: '读未命中→上总线找(别人有 M 先回写、大家降 S；没人有则我独占 E)；**写之前把其它核的副本全失效(I)、自己升 M**。' },
+        { k: '本步结果', v: st.op === 'write' ? `其它核副本被置 **I(失效)**，本核升 M(脏)` : st.op === 'read' ? `总线：${st.bus}` : `全程失效 ${st.invalidated} 次——这就是 volatile 存在的理由` },
+      ]
+    },
+    verdict: (s: never) => { const st = s as { phase: string; invalidated: number; op: string }; return st.phase === 'done' ? `失效 ${st.invalidated} 次` : st.op === 'write' ? '失效别人' : '读' },
+    try: [
+      { act: '按「下一步」看两核读写', watch: 'C1 独占→C2 来读变共享→C1 一写就把 C2 的副本置为 I。' },
+      { act: '盯 I 状态', watch: '被失效的核下次读只能重新加载——一个核的写另一个核不会自动看见。' },
+    ],
+    terms: [],
+  },
+  deadlock: {
+    question: '几个线程交叉加锁，怎么判断它们死锁了没有？',
+    read: [
+      { at: '线程', is: '各线程持有/等待的锁；红=在死锁环上。', anchor: '.dl-threads' },
+      { at: '等待图', is: '边 Ti→Tj = Ti 等 Tj 攥着的锁；成环即死锁。', anchor: '.dl-graph' },
+    ],
+    step: (s: never) => {
+      const st = s as { op: string; cur: number; lock: string; deadlock: boolean; cycle: number[]; phase: string }
+      return [
+        { k: '本步输入', v: st.op === 'acquire' ? `T${st.cur} 申请锁 ${st.lock}` : st.op === 'request' ? `T${st.cur} 申请被占的锁 ${st.lock}` : '完成' },
+        { k: '判定规则', v: '锁空闲→拿到；锁被别人攥着→阻塞，在等待图上加一条边 T申请→T持有。等待图**成环**=循环等待=死锁。' },
+        { k: '本步结果', v: st.op === 'acquire' ? `拿到 ${st.lock}` : st.deadlock ? `等待图成环 T${[...st.cycle, st.cycle[0]].join('→')} → **死锁!**` : st.op === 'request' ? `阻塞，加一条等待边` : '检出死锁' },
+      ]
+    },
+    verdict: (s: never) => { const st = s as { deadlock: boolean; cycle: number[] }; return st.deadlock ? `死锁(环长 ${st.cycle.length})` : '正常' },
+    try: [
+      { act: '按「下一步」逐个加锁', watch: 'T1/T2/T3 各拿一把、又都去要下一把，等待边一条条加。' },
+      { act: '看环闭合那一刻', watch: '最后一条边 3→1 补上，等待图成环，当场判死锁。' },
+    ],
+    terms: [],
+  },
+  raft: {
+    question: 'Raft 靠什么选出唯一的主、又保证日志不丢？',
+    read: [
+      { at: '节点', is: '每个节点的角色(Follower/Candidate/Leader)、任期、日志；绿✓=已提交。', anchor: '.raft-nodes' },
+      { at: '读数', is: '当前任期、候选人票数、已提交日志数。', anchor: '.scdim' },
+    ],
+    step: (s: never) => {
+      const st = s as { op: string; cur: number; term: number; votes: number; majority: number; committed: number; phase: string }
+      return [
+        { k: '本步输入', v: st.op === 'timeout' ? `N${st.cur} 选举超时` : st.op === 'requestVote' ? `N${st.cur} 拉票` : st.op === 'grantVote' ? `N${st.cur} 投票` : st.op === 'becomeLeader' ? `N${st.cur} 计票` : st.op === 'clientCmd' ? '客户端提交命令' : st.op === 'append' ? `复制日志到 N${st.cur}` : '完成' },
+        { k: '判定规则', v: '选主：超时→Candidate、任期+1、给自己投票、拉票，拿到**过半票**当选 Leader。日志：客户端命令只发 Leader，Leader 复制给 Follower，**复制到过半**即提交。' },
+        { k: '本步结果', v: st.op === 'becomeLeader' ? `拿 ${st.votes}/${st.majority} 票 → **当选 Leader**` : st.op === 'grantVote' ? `候选人 ${st.votes}/${st.majority} 票${st.votes >= st.majority ? '(过半!)' : ''}` : st.op === 'append' && st.committed ? `已复制到过半 → **提交**` : st.op === 'clientCmd' ? 'Leader 追加日志(未提交)' : st.op === 'timeout' ? `变 Candidate(term ${st.term})` : `已提交 ${st.committed} 条` },
+      ]
+    },
+    verdict: (s: never) => { const st = s as { phase: string; committed: number; op: string; cur: number }; return st.phase === 'done' ? `已提交 ${st.committed} 条` : st.op === 'becomeLeader' ? `N${st.cur} 当选` : '共识中' },
+    try: [
+      { act: '按「下一步」看选主', watch: 'N1 超时参选→拿到 2/2 票→当选 Leader。' },
+      { act: '看日志复制', watch: '客户端命令由 Leader 复制到过半节点，就打勾提交了。' },
+    ],
+    terms: [],
+  },
   cache: {
     question: '同一串内存地址，Cache 怎么摆能少跑几趟内存？',
     /*

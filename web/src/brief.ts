@@ -303,6 +303,84 @@ const bitmapFree = (t: unknown[]) => { const s = last<{ freeCount?: Num }>(t)
   return typeof s?.freeCount === 'number' ? s.freeCount : null }
 
 export const BRIEFS: Record<string, Brief> = {
+  mvcc: {
+    care:
+      'MVCC = 多版本并发控制，MySQL(InnoDB)/PostgreSQL 扛高并发的地基。两条铁律：\n\n'
+      + '**写不覆盖旧值** —— 而是给这一行**追加一个新版本**，每个版本带「谁创建的、是否已提交」。\n\n'
+      + '**读不加锁** —— 而是按自己的**快照(read-view)**，从新到旧挑第一个「已提交、且创建者在快照里(或就是自己)」的版本。\n\n'
+      + '快照在**事务开始那一刻**拍定：之后别人提交的新版本不在这张快照里，于是同一事务反复读同一行，读到的永远是同一个值——这就是「可重复读」。',
+    guess: { q: 'T2 把 x 改成 200 并提交后，先前已开始的 T1 再读 x，读到几？', opts: ['100', '200', '报错'] },
+    tasks: [
+      { act: '按「下一步」走完调度', watch: 'T1 前后两次读 x 都是 100——尽管中间 T2 已把它改成 200 并提交。' },
+      { act: '盯住版本链', watch: '写 x 追加未提交版本(灰)、提交后变绿；T1 读的始终是它快照里那个旧版本。' },
+    ],
+    verdict: ctx => { const t = ctx.trace as { readValue?: number }[]; if (!t.length) return null; return { pick: 0, say: 'T1 两次读 x 都是 100，尽管中间 T2 已提交 200。', why: '快照在事务开始时拍定，T2 不在 T1 的快照里，所以读不可见——可重复读。' } },
+  },
+  iso: {
+    care:
+      '隔离级别是并发事务「互相能看到多少」的旋钮，后端面试必考。同一段调度，级别不同，读到的就不同：\n\n'
+      + '**读未提交(RU)** —— 读最新值(含别人没提交的) → 会**脏读**、也会**不可重复读**。\n\n'
+      + '**读已提交(RC)** —— 只读最新已提交值 → 挡住脏读，挡不住不可重复读。\n\n'
+      + '**可重复读(RR，MySQL 默认)** —— 读事务开始时的快照 → 两个都挡住。\n\n'
+      + '**串行化** —— 最严，还能挡幻读(本例无区间查询，表现同 RR)。级别越高越安全、并发越低。',
+    guess: { q: '读已提交(RC) 挡住了脏读，但挡不住哪种读现象？', opts: ['不可重复读', '脏读', '三种都能挡'] },
+    tasks: [
+      { act: '把「隔离级别」调到读未提交走一遍', watch: 'T1 第二次读到 200(脏读)、第三次也不一致(不可重复读)。', param: '隔离级别' },
+      { act: '再调到可重复读', watch: 'T1 三次读全是 100——现象消失了。', param: '隔离级别' },
+    ],
+    verdict: ctx => { const lv = String((ctx.doc.params as { level?: string })?.level ?? '读已提交'); return { pick: 0, say: `当前「${lv}」下，T1 的三次读现象已定。`, why: '级别越高挡掉的读现象越多：RU 全放、RC 只挡脏读、RR 全挡。' } },
+  },
+  cas: {
+    care:
+      'CAS(compare-and-swap，比较并交换)是无锁并发的原子地基：AtomicInteger、自旋锁、无锁队列全靠它。\n\n'
+      + '一条硬件原子指令 **CAS(地址, 期望值, 新值)**：当且仅当内存里还等于期望值时，才写入新值、返回成功；否则说明有人先改了，返回失败，由调用者**自旋重试**。\n\n'
+      + '于是「读-改-写」不会丢更新：两个线程同时读到 0 都想写 1，先到的 CAS 成功，后到的发现值变了、CAS 失败，只能重读再来。',
+    guess: { q: '3 个线程各用 CAS 做一次 x++（x 初值 0），最终 x = ？', opts: ['3', '2', '1'] },
+    tasks: [
+      { act: '按「下一步」看竞争', watch: 'T1、T2 都读到 0，T1 先 CAS 成功，T2 CAS 就失败了。' },
+      { act: '数失败次数', watch: '每次被抢先就重读再 CAS，最终三个 ++ 一个不丢、x=3、重试 2 次。' },
+    ],
+    verdict: ctx => { const t = ctx.trace as { x?: number; fails?: number }[]; const last = t[t.length - 1]; if (!last) return null; return { pick: 0, say: `最终 x=${last.x ?? 3}，一个更新都没丢。`, why: `CAS 让被抢先的线程失败重试(共 ${last.fails ?? 2} 次)，而不是覆盖别人的写。` } },
+  },
+  mesi: {
+    care:
+      '多核各有自己的缓存，同一个变量 x 可能在好几个核里都有副本——谁改了别人怎么知道？MESI 给每个缓存行标四态：\n\n'
+      + '**M**(Modified)已改·脏·独占　**E**(Exclusive)干净·独占　**S**(Shared)共享·只读　**I**(Invalid)失效。\n\n'
+      + '规则：读未命中要上总线找(别人有 M 先回写、大家降 S；没人有则我独占 E)；**写之前把其它核的副本全失效(I)、自己升 M**。\n\n'
+      + '所以「一个核的写，另一个核不会自动立刻看见」——它的副本被置为 I 了，下次读得重新加载。这正是 volatile / 内存屏障存在的理由。',
+    guess: { q: 'C1 写 x 时，C2 手里的那份副本会变成什么状态？', opts: ['I 失效', 'S 共享', '不变'] },
+    tasks: [
+      { act: '按「下一步」看两核读写', watch: 'C1 独占→C2 来读变共享→C1 一写就把 C2 的副本置为 I。' },
+      { act: '盯 I 状态', watch: '被失效的核下次读只能重新加载——一个核的写另一个核不会自动看见。' },
+    ],
+    verdict: ctx => { const t = ctx.trace as { invalidated?: number }[]; const last = t[t.length - 1]; if (!last) return null; return { pick: 0, say: `全程副本被失效 ${last.invalidated ?? 2} 次。`, why: '每次有核写 x，其它核的副本立刻置 I，得重新加载才看得到新值。' } },
+  },
+  deadlock: {
+    care:
+      '和银行家算法(死锁**避免**：分配前先判安全)不同，这里是死锁**检测**：先让它发生，再用**等待图**找出来。\n\n'
+      + '节点是线程，边 **Ti→Tj** 表示「Ti 正等一把被 Tj 攥着的锁」。等待图一旦出现**环**，环上的线程互相等、谁也动不了 = 死锁。\n\n'
+      + '本例经典循环等待：T1 持 A 等 B、T2 持 B 等 C、T3 持 C 等 A，边 1→2→3→1 闭合成环。\n\n'
+      + '破环最实用的办法是**所有线程按固定顺序加锁**——这也是死锁四条件(互斥/占有并等待/不可抢占/循环等待)里最好打破的一条。',
+    guess: { q: 'T1持A等B、T2持B等C、T3持C等A，会发生什么？', opts: ['死锁', '正常跑完', '其中一个报错'] },
+    tasks: [
+      { act: '按「下一步」逐个加锁', watch: 'T1/T2/T3 各拿一把、又都去要下一把，等待边一条条加。' },
+      { act: '看环闭合那一刻', watch: '最后一条边 3→1 补上，等待图成环，当场判死锁。' },
+    ],
+    verdict: ctx => { const t = ctx.trace as { deadlock?: boolean; cycle?: number[] }[]; const last = t[t.length - 1]; if (!last) return null; return { pick: 0, say: last.deadlock ? `等待图成环，${last.cycle?.length ?? 3} 个线程死锁。` : '未死锁。', why: '每个线程都攥着一把、又在等下一把，形成循环等待，谁也进不去。' } },
+  },
+  raft: {
+    care:
+      '分布式系统里多台机器要对「谁是主、日志长什么样」达成一致，又不能有单点——Raft 是最主流的答案。两件事：\n\n'
+      + '**选主** —— 节点默认 Follower；选举超时→变 Candidate、任期+1、给自己投票、向别人拉票；**拿到过半票**当选 Leader。任期号保证一个任期最多一个 Leader。\n\n'
+      + '**日志复制** —— 客户端命令只发 Leader；Leader 追加到自己日志，再复制给 Follower；**一旦复制到过半**，这条日志就**提交**、可安全应用。\n\n'
+      + '「过半」是灵魂：任何两个多数派必有交集，于是不会有两个主、不会提交冲突日志。etcd、Consul、TiKV 底下都是它。',
+    guess: { q: 'Raft 3 节点集群，一条日志复制到几个节点才算提交？', opts: ['2（过半）', '3（全部）', '1（Leader 自己）'] },
+    tasks: [
+      { act: '按「下一步」看选主', watch: 'N1 超时参选→拿到 2/2 票→当选 Leader。' },
+      { act: '看日志复制', watch: '客户端命令由 Leader 复制到过半节点，就打勾提交了。' },
+    ],
+    verdict: ctx => { const t = ctx.trace as { committed?: number; majority?: number }[]; const last = t[t.length - 1]; if (!last) return null; return { pick: 0, say: `N1 过半票当选，日志复制到过半(${last.majority ?? 2}/3)即提交。`, why: '任何两个多数派必有交集，所以不会有两个主、不会提交冲突日志。' } },
+  },
   cache: {
     care:
       '地址 = **Tag** + **Index** + **Offset**；Index 决定去哪组，Tag 决定是不是它，'

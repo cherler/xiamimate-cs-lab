@@ -223,6 +223,42 @@ console.log('\n【「这一步为什么」真的在跟着走】')
    * 不这么要求的话，最省事的写法（返回一句不看状态的通用话）能一路绿着混过去。
    */
   const FIX: Record<string, { doc: unknown; a: unknown; b: unknown }> = {
+    mvcc: {
+      doc: { kind: 'mvcc', params: {}, entities: [], streams: [] },
+      //  A T1 读到 100 · B 调度结束(两次都 100) —— 结果换一套说法
+      a: { op: 'read', curTx: 1, readValue: 100, versions: [{}, {}], phase: 'run' },
+      b: { op: 'done', curTx: 0, readValue: -1, versions: [{}, {}], phase: 'done' },
+    },
+    iso: {
+      doc: { kind: 'iso', params: { level: '读未提交' }, entities: [], streams: [] },
+      //  A 脏读(读到 200) · B 首次读(基准 100) —— 结果换一套说法
+      a: { level: '读未提交', op: 'read', curTx: 1, readValue: 200, anomaly: '脏读', phase: 'run' },
+      b: { level: '读未提交', op: 'read', curTx: 1, readValue: 100, anomaly: '首次读', phase: 'run' },
+    },
+    cas: {
+      doc: { kind: 'cas', params: {}, entities: [], streams: [] },
+      //  A CAS 成功 · B CAS 失败 —— 结果换一套说法
+      a: { op: 'cas', cur: 1, x: 1, expected: 0, next: 1, casOk: true, fails: 0, phase: 'run' },
+      b: { op: 'cas', cur: 2, x: 1, expected: 0, next: 1, casOk: false, fails: 1, phase: 'run' },
+    },
+    mesi: {
+      doc: { kind: 'mesi', params: {}, entities: [], streams: [] },
+      //  A 写→别人失效 · B 读→上总线 —— 结果换一套说法
+      a: { op: 'write', cur: 1, bus: 'BusRdX / Invalidate', invalidated: 1, phase: 'run' },
+      b: { op: 'read', cur: 2, bus: 'BusRd', invalidated: 1, phase: 'run' },
+    },
+    deadlock: {
+      doc: { kind: 'deadlock', params: {}, entities: [], streams: [] },
+      //  A 加锁成功 · B 成环死锁 —— 结果换一套说法
+      a: { op: 'acquire', cur: 1, lock: 'A', deadlock: false, cycle: [], phase: 'run' },
+      b: { op: 'request', cur: 3, lock: 'A', deadlock: true, cycle: [1, 2, 3], phase: 'run' },
+    },
+    raft: {
+      doc: { kind: 'raft', params: {}, entities: [], streams: [] },
+      //  A 当选 Leader · B 日志提交 —— 结果换一套说法
+      a: { op: 'becomeLeader', cur: 1, term: 1, votes: 2, majority: 2, committed: 0, phase: 'run' },
+      b: { op: 'append', cur: 2, term: 1, votes: 2, majority: 2, committed: 1, phase: 'run' },
+    },
     knn: {
       doc: { kind: 'knn', params: { k: 3 }, entities: [], streams: [] },
       //  A 第 1 近邻(暂判 A) · B 看完 3 个(判 B) —— 结论必须换一套说法
