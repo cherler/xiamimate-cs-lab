@@ -223,6 +223,21 @@ console.log('\n【「这一步为什么」真的在跟着走】')
    * 不这么要求的话，最省事的写法（返回一句不看状态的通用话）能一路绿着混过去。
    */
   const FIX: Record<string, { doc: unknown; a: unknown; b: unknown }> = {
+    otpreuse: {
+      doc: { kind: 'otpreuse', params: {}, entities: [], streams: [] },
+      a: { m1: [0, 1], m2: [0, 0], k: [1, 0], c1: [1, 1], c2: [1, 0], pos: 1, xorbit: 1, m1xm2: [0, 1], phase: 'run' },
+      b: { m1: [0, 1], m2: [0, 0], k: [1, 0], c1: [1, 1], c2: [1, 0], pos: -1, xorbit: -1, m1xm2: [0, 0, 0, 0, 0, 0, 1, 1], phase: 'done' },
+    },
+    wal: {
+      doc: { kind: 'wal', params: {}, entities: [], streams: [] },
+      a: { data: 5, wal: ['SET x=5', 'SET x=8'], applied: 1, act: 'crash', crashed: true, phase: 'run' },
+      b: { data: 8, wal: ['SET x=5', 'SET x=8'], applied: 2, act: 'replay', crashed: false, phase: 'run' },
+    },
+    lsm: {
+      doc: { kind: 'lsm', params: {}, entities: [], streams: [] },
+      a: { cap: 3, memtable: ['a', 'b'], sstables: [], cur: 'b', act: 'write', phase: 'run' },
+      b: { cap: 3, memtable: [], sstables: [['a', 'b', 'c']], cur: '', act: 'flush', phase: 'run' },
+    },
     tokenbucket: {
       doc: { kind: 'tokenbucket', params: {}, entities: [], streams: [] },
       a: { cap: 5, rate: 1, tick: 1, tokens: 0, arrived: 4, allowed: 3, rejected: 1, totalAllowed: 6, totalRejected: 1, phase: 'run' },

@@ -303,6 +303,24 @@ const bitmapFree = (t: unknown[]) => { const s = last<{ freeCount?: Num }>(t)
   return typeof s?.freeCount === 'number' ? s.freeCount : null }
 
 export const BRIEFS: Record<string, Brief> = {
+  otpreuse: {
+    care: '一次一密(OTP)理论上不可破——前提是密钥**真随机、和明文等长、只用一次**。\n\n一旦**同一个密钥加密两条消息**就全垮：c1=m1⊕k、c2=m2⊕k，那么 c1⊕c2 = m1⊕m2⊕(k⊕k) = **m1⊕m2**——密钥被异或抵消了！\n\n攻击者不需要密钥，只要拿到两段密文异或，就得到两条明文的异或关系，再结合语言规律就能还原。这是「密钥只能用一次」的铁律来历，WEP、某些 RC4 用法就栽在这。',
+    guess: { q: '同密钥加密两消息，攻击者异或两段密文得到？', opts: ['m1⊕m2（密钥消失）', '密钥 k', '乱码'] },
+    tasks: [{ act: '按「下一步」异或两密文', watch: '每位 k⊕k 抵消，剩下 m1⊕m2。' }, { act: '想后果', watch: '知道一条明文，另一条直接还原。' }],
+    verdict: ctx => { const t = ctx.trace as { m1xm2?: number[] }[]; const l = t[t.length - 1]; return l ? { pick: 0, say: `异或两密文得到 ${l.m1xm2?.join('')} = m1⊕m2，密钥消失。`, why: 'k⊕k=0 被抵消，泄露两明文的异或关系——所以 OTP 密钥绝不能重复用。' } : null },
+  },
+  wal: {
+    care: '数据库怎么保证「已提交的写不会因宕机而丢」(持久性 D)？**WAL(Write-Ahead Log)**：任何对数据的修改，**先把这条操作顺序追加到日志(fsync 落盘)、再去改数据页**。\n\n日志是顺序写(快)，数据页可以攒着慢慢刷。崩溃后重启：扫日志，把「记了但没落到数据页」的操作**重放**一遍，数据就恢复到崩溃前的已提交状态。\n\n顺带把随机写变顺序写，性能也上去了。MySQL redo log、PostgreSQL WAL、etcd 都用它。',
+    guess: { q: 'WAL 的核心规则是？', opts: ['先写日志落盘，再改数据', '先改数据，再写日志', '只写数据不写日志'] },
+    tasks: [{ act: '按「下一步」走一遍', watch: '先写日志、再改数据；宕机后重放恢复。' }, { act: '想为什么', watch: '日志顺序写快，落盘后数据页没刷也能补回来。' }],
+    verdict: ctx => { const t = ctx.trace as { data?: number }[]; const l = t[t.length - 1]; return l ? { pick: 0, say: `重放日志后 x=${l.data}，崩溃前的写没丢。`, why: '先日志后数据：只要日志落盘，数据页没刷也能重放恢复。' } : null },
+  },
+  lsm: {
+    care: 'LevelDB、RocksDB、Cassandra、HBase 写为什么快？**LSM-Tree**：写入不去改磁盘上的 B+树(随机写、慢)，而是**先写进内存里的有序表 memtable**(极快)；\n\nmemtable 满了就**整块顺序写成一个不可变文件 SSTable**(顺序写，磁盘最爱)；读取时从新到旧查各层。后台再把多个 SSTable **归并压实(compaction)** 去掉旧值。\n\n它把随机写换成顺序写+批量刷，吞吐暴涨；代价是读要查多层(布隆过滤器加速)、以及压实开销。写多读少是它的主场。',
+    guess: { q: 'LSM-Tree 写得快的原因？', opts: ['写内存表+顺序刷盘，随机写变顺序写', '原地改磁盘 B+树', '只在内存不落盘'] },
+    tasks: [{ act: '按「下一步」写入', watch: '写进内存表，满 3 个就整块刷成 SSTable。' }, { act: '想为什么快', watch: '随机写换成内存收集+顺序刷盘。' }],
+    verdict: ctx => { const t = ctx.trace as { sstables?: string[][]; memtable?: string[] }[]; const l = t[t.length - 1]; return l ? { pick: 0, say: `${l.sstables?.length} 个 SSTable 落盘 + memtable 剩 [${l.memtable?.join(',')}]。`, why: '写进内存表、满了整块顺序刷盘——把随机写换成顺序写，吞吐暴涨。' } : null },
+  },
   tokenbucket: {
     care: '后端网关最常用的限流算法。一个**桶**，容量 C；每个时间单位匀速放 r 个令牌进去（满了溢出丢弃）；每个请求要拿走 1 个令牌才放行，拿不到就拒绝。\n\n妙处：**既能限住平均速率(=r)，又允许短时突发**（桶里攒的令牌能一次放出去）——这正是真实流量的样子。\n\n对比漏桶（恒定速率、不容突发），令牌桶更适合「平时限速、偶尔放突发」的接口。',
     guess: { q: '桶容量 5、速率 1/tick，到达 [3,4,2,1,5]，共放行多少？', opts: ['9', '15', '5'] },

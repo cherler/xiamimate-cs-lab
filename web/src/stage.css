@@ -3877,3 +3877,25 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .pc-pid { font-size:15px; color:var(--ink); }
 .pc-pstate { font-size:11px; color:var(--dim); }
 .pc-part.s-committed .pc-pstate { color:var(--hit); }
+
+/* ── WAL ── */
+.wal-cols { display:flex; gap:14px; margin:6px 0 12px; align-items:flex-start; }
+.wal-log { flex:1; display:flex; flex-direction:column; gap:5px; }
+.wal-entry { font-size:12px; font-family:var(--mono); padding:5px 9px; border-radius:6px; border:1px solid var(--line); }
+.wal-entry.applied { border-color:var(--hit); color:var(--hit); background:color-mix(in srgb, var(--hit) 8%, var(--panel)); }
+.wal-entry.pending { border-style:dashed; color:var(--dim); }
+.wal-data { flex:0 0 120px; display:flex; flex-direction:column; gap:5px; padding:8px 10px;
+  border:1.5px solid var(--now); border-radius:9px; background:color-mix(in srgb, var(--now) 7%, var(--panel)); }
+.wal-data.crashed { border-color:var(--miss); background:color-mix(in srgb, var(--miss) 9%, var(--panel)); }
+.wal-x { font-size:22px; font-weight:700; font-family:var(--mono); color:var(--ink); }
+/* ── LSM ── */
+.lsm-mem, .lsm-disk { margin:6px 0 10px; }
+.lsm-slots { display:flex; gap:6px; margin-top:5px; }
+.lsm-slot { width:34px; height:34px; display:inline-flex; align-items:center; justify-content:center;
+  font-family:var(--mono); font-size:15px; color:var(--ink); border:1.5px solid var(--line); border-radius:6px; background:var(--sunk-1); }
+.lsm-slot.on { border-color:var(--now); background:color-mix(in srgb, var(--now) 12%, var(--panel)); }
+.lsm-ssts { display:flex; gap:10px; margin-top:5px; flex-wrap:wrap; }
+.lsm-sst { display:flex; flex-direction:column; align-items:center; gap:2px; padding:7px 11px;
+  border:1.5px solid var(--hit); border-radius:8px; background:color-mix(in srgb, var(--hit) 9%, var(--panel)); }
+.lsm-sst b { font-size:11px; color:var(--hit); }
+.lsm-sst span { font-size:13px; font-family:var(--mono); color:var(--ink); }

@@ -68,6 +68,9 @@ import { tokenbucketKernel } from '../src/kernels/tokenbucket.ts'
 import { consistentHashKernel } from '../src/kernels/consistenthash.ts'
 import { skiplistKernel } from '../src/kernels/skiplist.ts'
 import { twopcKernel } from '../src/kernels/twopc.ts'
+import { otpreuseKernel } from '../src/kernels/otpreuse.ts'
+import { walKernel } from '../src/kernels/wal.ts'
+import { lsmKernel } from '../src/kernels/lsm.ts'
 // 与 registry 同源的预设常量：直接 import 保证 doc 逐字一致（引擎侧，无 React）。
 import { CRC_PRESETS, HAMMING_PRESETS, SUBNET_PRESETS, HUFF_PRESETS, BPLUS_PRESETS } from '../src/presets/sequences.ts'
 import { ROUTE_PRESETS } from '../src/presets/entities.ts'
@@ -1054,6 +1057,33 @@ export const CATALOG: CatalogEntry[] = [
       ask: '两阶段提交：协调者在阶段二什么情况下才广播 Commit（否则全体 Abort）?', kind: 'choice',
       compute: () => ({ answer: '所有参与者阶段一都投 Yes', step: 0, evidence: '只要有一个 No 或超时就 Abort' }),
       distractors: () => ['多数参与者投 Yes', '协调者自己决定', '第一个参与者投 Yes'],
+    }],
+  },
+  {
+    id: 'otpreuse', title: '一次一密密钥重用', kernel: otpreuseKernel as Kernel<unknown>, doc: trivialDoc('otpreuse'),
+    facts: [{
+      id: 'leak', label: '同密钥加密两消息，异或密文得到什么',
+      ask: '一次一密用同一个密钥 k 加密了两条消息(c1=m1⊕k, c2=m2⊕k)。攻击者把两段密文异或 c1⊕c2，得到什么?', kind: 'choice',
+      compute: () => ({ answer: 'm1⊕m2（密钥被抵消，泄露明文关系）', step: 0, evidence: 'k⊕k=0，剩下 m1⊕m2' }),
+      distractors: () => ['密钥 k', '乱码，什么也得不到', 'm1 和 m2'],
+    }],
+  },
+  {
+    id: 'wal', title: '预写日志 WAL', kernel: walKernel as Kernel<unknown>, doc: trivialDoc('wal'),
+    facts: [{
+      id: 'order', label: 'WAL 的核心规则',
+      ask: '预写日志(WAL)保证持久性的核心规则是什么?', kind: 'choice',
+      compute: () => ({ answer: '先把操作写入日志并落盘，再改数据页', step: 0, evidence: '日志落盘后崩溃可重放恢复' }),
+      distractors: () => ['先改数据页，再写日志', '数据和日志同时写', '只写数据不写日志'],
+    }],
+  },
+  {
+    id: 'lsm', title: 'LSM-Tree', kernel: lsmKernel as Kernel<unknown>, doc: trivialDoc('lsm'),
+    facts: [{
+      id: 'why_fast', label: 'LSM-Tree 写得快的原因',
+      ask: 'LSM-Tree(LevelDB/RocksDB 用)为什么写入这么快?', kind: 'choice',
+      compute: () => ({ answer: '写进内存表、满了整块顺序刷盘，把随机写变顺序写', step: 0, evidence: '避免了改磁盘 B+树的随机写' }),
+      distractors: () => ['直接原地改磁盘 B+树', '不落盘只在内存', '用更快的哈希'],
     }],
   },
 ]

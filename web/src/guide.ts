@@ -298,6 +298,39 @@ export const TERMS: Term[] = [
 
 /** 每个实验一段。**加实验必须加这一段** —— 冒烟会数够不够 30 个。 */
 export const GUIDES: Record<string, Guide> = {
+  otpreuse: {
+    question: '一次一密理论不可破，为什么密钥绝不能重复用？',
+    read: [{ at: '三行', is: '两段密文与它们的异或；红=已揭示的 m1⊕m2。', anchor: '.cx-rows' }, { at: '读数', is: '本位异或、泄露的 m1⊕m2。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { pos: number; c1: number[]; c2: number[]; xorbit: number; m1xm2: number[]; phase: string }; return [
+      { k: '本步输入', v: st.phase === 'done' ? '8 位异或完' : `第 ${st.pos + 1} 位：c1=${st.c1[st.pos]}、c2=${st.c2[st.pos]}` },
+      { k: '判定规则', v: 'c1=m1⊕k、c2=m2⊕k。把两段密文异或：c1⊕c2 = m1⊕m2⊕(k⊕k) = m1⊕m2——**密钥被抵消**。' },
+      { k: '本步结果', v: st.phase === 'done' ? `泄露 m1⊕m2 = **${st.m1xm2.join('')}**` : `c1⊕c2 = **${st.xorbit}** (= m1⊕m2 这一位)` },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; m1xm2: number[]; xorbit: number }; return st.phase === 'done' ? '密钥泄露' : `${st.xorbit >= 0 ? st.xorbit : '?'}` },
+    try: [{ act: '按「下一步」异或两密文', watch: '每位 k⊕k 抵消，剩下的正是 m1⊕m2。' }, { act: '想后果', watch: '拿到 m1⊕m2，若知道一条明文，另一条直接还原。' }], terms: [],
+  },
+  wal: {
+    question: '已提交的写，怎么保证宕机也不丢？',
+    read: [{ at: '日志/数据', is: '左=WAL 日志(先落盘)、右=数据页。', anchor: '.wal-cols' }, { at: '读数', is: '本步、数据页、日志/已应用。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { data: number; wal: string[]; applied: number; act: string; crashed: boolean; phase: string }; return [
+      { k: '本步输入', v: st.crashed ? '宕机发生' : st.act === 'log' ? '要改数据，先写日志' : st.act === 'apply' ? '日志已落盘' : st.act === 'replay' ? '重启恢复' : '完成' },
+      { k: '判定规则', v: '铁律「先日志后数据」：任何修改先顺序追加到日志并 fsync 落盘，再改数据页。崩溃后扫日志，重放"记了没应用"的操作。' },
+      { k: '本步结果', v: st.crashed ? `数据页停在 x=${st.data}，但日志里记着后续写` : st.act === 'replay' ? `重放 → 数据页 x=${st.data}，没丢` : st.act === 'log' ? `日志 +1 条(数据页仍 ${st.data})` : `数据页 x=${st.data}` },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; data: number; crashed: boolean }; return st.crashed ? '宕机' : st.phase === 'done' ? `恢复 x=${st.data}` : `x=${st.data}` },
+    try: [{ act: '按「下一步」走一遍', watch: '先写日志、再改数据；宕机后重放日志恢复。' }, { act: '想为什么', watch: '日志是顺序写(快)，只要它落盘，数据页没刷也能补回来。' }], terms: [],
+  },
+  lsm: {
+    question: 'LevelDB/RocksDB 写为什么这么快？',
+    read: [{ at: 'memtable', is: '内存里的有序缓冲(满格=容量)。', anchor: '.lsm-mem' }, { at: 'SSTable', is: '磁盘上不可变的有序文件。', anchor: '.lsm-disk' }],
+    step: (s: never) => { const st = s as { cap: number; memtable: string[]; sstables: string[][]; cur: string; act: string; phase: string }; return [
+      { k: '本步输入', v: st.act === 'write' ? `写入 "${st.cur}"` : st.act === 'flush' ? `memtable 满(${st.cap})` : '完成' },
+      { k: '判定规则', v: '写入直接进内存表 memtable(不改磁盘 B+树那种随机写)；memtable 满了就整块顺序写成一个不可变 SSTable，然后清空。' },
+      { k: '本步结果', v: st.act === 'flush' ? `刷成 SSTable${st.sstables.length}，memtable 清空(0/${st.cap})` : st.act === 'write' ? `memtable=[${st.memtable.join(',')}]，${st.memtable.length}/${st.cap} 满` : `${st.sstables.length} 个 SSTable + memtable [${st.memtable.join(',')}]` },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; sstables: string[][]; act: string }; return st.phase === 'done' ? `${st.sstables.length}个SST` : st.act },
+    try: [{ act: '按「下一步」写入', watch: '写进内存表，满 3 个就整块刷成 SSTable。' }, { act: '想为什么快', watch: '把随机写换成内存收集+顺序刷盘，写吞吐暴涨。' }], terms: [],
+  },
   tokenbucket: {
     question: '既想限住平均速率、又想容忍短时突发，怎么做？',
     read: [{ at: '桶', is: '桶里当前令牌数（满格数=容量）。', anchor: '.tb-bucket' }, { at: '读数', is: '桶中令牌、这刻放行/拒绝、累计。', anchor: '.scdim' }],

@@ -248,6 +248,12 @@ import { skiplistKernel, type SkipListState } from '@engine/kernels/skiplist.ts'
 import { SkipListStage } from './stages/SkipListStage.tsx'
 import { twopcKernel, type TwoPCState } from '@engine/kernels/twopc.ts'
 import { TwoPCStage } from './stages/TwoPCStage.tsx'
+import { otpreuseKernel, type OTPReuseState } from '@engine/kernels/otpreuse.ts'
+import { OTPReuseStage } from './stages/OTPReuseStage.tsx'
+import { walKernel, type WALState } from '@engine/kernels/wal.ts'
+import { WALStage } from './stages/WALStage.tsx'
+import { lsmKernel, type LSMState } from '@engine/kernels/lsm.ts'
+import { LSMStage } from './stages/LSMStage.tsx'
 import { CollisionStage } from './stages/CollisionStage.tsx'
 import { gcnKernel, type GcnState } from '@engine/kernels/gcn.ts'
 import { GcnStage } from './stages/GcnStage.tsx'
@@ -5474,11 +5480,45 @@ const twopc: Experiment<TwoPCState> = {
   readouts: s => [{ label: '协调者', value: s.coord || '就绪' }, { label: 'Yes 票', value: `${s.yesVotes}/3` }, { label: '决定', value: s.decision || '未决', tone: s.decision === 'commit' ? 'good' : undefined }, { label: '参与者', value: s.parts.map(p => p.state === 'committed' ? '交' : p.state === 'prepared' ? '备' : '空').join('') }],
 }
 
+const otpreuse: Experiment<OTPReuseState> = {
+  id: 'otpreuse', group: '密码学', title: '一次一密密钥重用', subtitle: '同一密钥加密两条消息=送人头',
+  kernel: otpreuseKernel, defaultDoc: { kind: 'otpreuse', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '无可调参数。两条消息用同一密钥，把两段密文异或 → k⊕k 抵消，得到 m1⊕m2，密钥消失。详见讲解卡。',
+  bounds: ['两条8位消息用同一密钥k', 'c1⊕c2=(m1⊕k)⊕(m2⊕k)=m1⊕m2(可核)', '密钥被抵消,泄露两明文异或关系', 'OTP密钥绝不能重复用;WEP/RC4栽在这'],
+  tabs: [{ id: 'reuse', label: '异或消钥' }], Stage: OTPReuseStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'bad', label: '密钥泄露' } : { key: 'idle', label: `位${s.pos + 1}` }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 9)),
+  tickLabel: s => (s.phase === 'done' ? '破' : s.xorbit >= 0 ? String(s.xorbit) : '异'),
+  readouts: s => [{ label: '密钥', value: '两条消息共用(错误!)' }, { label: '本位', value: s.pos >= 0 ? `c1⊕c2=${s.xorbit}` : '完成' }, { label: 'm1⊕m2', value: s.m1xm2.join('') || '—', tone: s.phase === 'done' ? 'bad' : undefined }, { label: '结论', value: '密钥不能重复用' }],
+}
+const wal: Experiment<WALState> = {
+  id: 'wal', group: '数据库系统', title: '预写日志 WAL', subtitle: '先写日志后改数据，崩溃能恢复',
+  kernel: walKernel, defaultDoc: { kind: 'wal', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '无可调参数。写 x=5(先日志后应用)、写 x=8(只写日志就崩溃) → 重启重放日志，x 恢复成 8。详见讲解卡。',
+  bounds: ['先日志后数据(预写)', '崩溃在日志已落盘、数据页未改时', '重启重放日志→x恢复成8(可核)', '持久性D的实现;MySQL redo/PG WAL/etcd用它'],
+  tabs: [{ id: 'wal', label: '日志+数据' }], Stage: WALStage, whyInRail: true,
+  tone: s => (s.crashed ? { key: 'bad', label: '宕机' } : s.phase === 'done' ? { key: 'good', label: `恢复 x=${s.data}` } : { key: 'idle', label: s.act === 'replay' ? '重放' : s.act === 'log' ? '写日志' : '改数据' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => (s.crashed ? '💥' : s.phase === 'done' ? '毕' : s.act === 'replay' ? '放' : s.act === 'log' ? '志' : '据'),
+  readouts: s => [{ label: '本步', value: s.crashed ? '💥宕机' : s.act === 'replay' ? '重放恢复' : s.act === 'log' ? '写日志' : s.act === 'apply' ? '改数据' : '完成' }, { label: '数据页 x', value: `${s.data}` }, { label: '日志条数', value: `${s.wal.length}` }, { label: '已应用', value: `${s.applied}`, tone: s.phase === 'done' ? 'good' : undefined }],
+}
+const lsm: Experiment<LSMState> = {
+  id: 'lsm', group: '数据库系统', title: 'LSM-Tree', subtitle: '写进内存、批量顺序刷盘',
+  kernel: lsmKernel, defaultDoc: { kind: 'lsm', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '无可调参数。memtable 容量 3：写 a/b/c 满→刷成 SSTable1；再写 d/e。随机写换成顺序写。详见讲解卡。',
+  bounds: ['memtable容量3;写a/b/c/d/e', '写进内存表,满了整块顺序刷SSTable(可核)', 'a/b/c→SSTable1,memtable剩d/e', '写吞吐暴涨;LevelDB/RocksDB/Cassandra用它'],
+  tabs: [{ id: 'lsm', label: '内存表+SSTable' }], Stage: LSMStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: `${s.sstables.length} SSTable` } : { key: 'idle', label: s.act === 'flush' ? '刷盘' : `写${s.cur}` }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 8)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.act === 'flush' ? '刷' : s.cur || '写'),
+  readouts: s => [{ label: '本步', value: s.act === 'flush' ? '刷成 SSTable' : s.act === 'write' ? `写 ${s.cur}` : '完成' }, { label: 'memtable', value: `[${s.memtable.join(',')}] ${s.memtable.length}/${s.cap}` }, { label: 'SSTable 数', value: `${s.sstables.length}`, tone: s.phase === 'done' ? 'good' : undefined }, { label: '写模式', value: '顺序写(快)' }],
+}
+
 export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
   caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt,
-  tokenbucket, consistenthash, skiplist, twopc,
+  tokenbucket, consistenthash, skiplist, twopc, otpreuse, wal, lsm, otpreuse, wal, lsm,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,
@@ -5614,8 +5654,8 @@ export const SOFT_LINKS: Record<string, string[]> = {
   //  注意力/Transformer 也是深度学习——真身在计算机学科的「Transformer 原理」，软链进这里。
   '深度学习算法': ['attention', 'scaledmask', 'mha', 'rope', 'forward'],
   '大模型算法': ['sampling', 'specdec', 'bpe', 'quant', 'moe'],
-  //  B+ 树是数据库索引的地基——真身在地基轨「数据结构」，软链进后端轨「数据库系统」。
-  '数据库系统': ['bplus'],
+  //  B+树是数据库索引地基、布隆过滤器是缓存穿透/LSM 读加速的常客——真身在地基轨，软链进后端。
+  '数据库系统': ['bplus', 'bloom'],
   //  信号量/生产者消费者、银行家(死锁)本身就是后端并发面试核心——真身在 408「操作系统」，软链进后端轨。
   '并发编程': ['semaphore', 'banker'],
 }
