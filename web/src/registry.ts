@@ -5238,6 +5238,8 @@ export const SOFT_LINKS: Record<string, string[]> = {
   '大模型算法': ['sampling', 'specdec', 'bpe', 'quant', 'moe'],
   //  B+ 树是数据库索引的地基——真身在地基轨「数据结构」，软链进后端轨「数据库系统」。
   '数据库系统': ['bplus'],
+  //  信号量/生产者消费者、银行家(死锁)本身就是后端并发面试核心——真身在 408「操作系统」，软链进后端轨。
+  '并发编程': ['semaphore', 'banker'],
 }
 
 export const DISCIPLINES: Discipline[] = [
@@ -5254,7 +5256,7 @@ export const DISCIPLINES: Discipline[] = [
   {
     key: 'backend', title: '后端', icon: '🖥️', status: 'active',
     sub: '数据库 · 并发 · 分布式',
-    groups: ['数据库系统'],
+    groups: ['数据库系统', '并发编程'],
     guide: { from: '一次数据库查询', to: '扛住高并发的后端', toIcon: '🖥️' },
   },
   {
@@ -5304,6 +5306,7 @@ export const GROUP_ANCHOR: Record<string, string> = {
   '操作系统': 'computer',
   '数据结构': 'software',
   '数据库系统': 'software',
+  '并发编程': 'software',
   '计算机网络': 'internet',
   '概率统计原理': 'llm',
   '机器学习基础': 'llm',
