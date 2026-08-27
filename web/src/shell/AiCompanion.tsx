@@ -43,7 +43,8 @@ async function postJSON<T>(path: string, body: unknown): Promise<T> {
   return data as T
 }
 
-type Mode = 'quiz' | 'ask' | 'review'
+type Mode = 'quiz' | 'ask' | 'review' | 'interview'
+type Turn = { role: 'interviewer' | 'candidate'; text: string }
 
 export function AiCompanion({ expId }: { expId: string }) {
   const [supported, setSupported] = useState<boolean | null>(null)
@@ -71,10 +72,12 @@ export function AiCompanion({ expId }: { expId: string }) {
         <button className={mode === 'quiz' ? 'on' : ''} onClick={() => setMode('quiz')}>出题</button>
         <button className={mode === 'ask' ? 'on' : ''} onClick={() => setMode('ask')}>答疑</button>
         <button className={mode === 'review' ? 'on' : ''} onClick={() => setMode('review')}>复习</button>
+        <button className={mode === 'interview' ? 'on' : ''} onClick={() => setMode('interview')}>面试</button>
       </div>
       {mode === 'quiz' && <QuizView expId={expId} />}
       {mode === 'ask' && <AskView expId={expId} />}
       {mode === 'review' && <ReviewView expId={expId} />}
+      {mode === 'interview' && <InterviewView expId={expId} />}
     </div>
   )
 }
@@ -197,6 +200,62 @@ function ReviewView({ expId }: { expId: string }) {
           )}
         </>
       )}
+    </div>
+  )
+}
+
+// ── 面试（模拟面试官，多轮对话） ──
+function InterviewView({ expId }: { expId: string }) {
+  const [history, setHistory] = useState<Turn[]>([])
+  const [input, setInput] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [done, setDone] = useState(false)
+
+  async function post(nextHistory: Turn[]) {
+    setLoading(true); setError('')
+    try {
+      const d = await postJSON<{ reply: string; done: boolean }>('/lab/ai/interview', { expId, history: nextHistory })
+      setHistory([...nextHistory, { role: 'interviewer', text: d.reply }])
+      setDone(d.done)
+    } catch (e) { setError((e as Error).message) } finally { setLoading(false) }
+  }
+
+  function start() { setHistory([]); setDone(false); post([]) }
+  function answer() {
+    if (!input.trim() || loading || done) return
+    const next: Turn[] = [...history, { role: 'candidate', text: input.trim() }]
+    setHistory(next); setInput('')
+    post(next)
+  }
+
+  return (
+    <div className="aic-body">
+      {history.length === 0
+        ? <>
+            <p className="aic-hint">AI 当<b>面试官</b>，就本实验的知识点面你：问 → 你答 → 它点评+追问，几轮后给评分。答案由实验要点<b>钉死</b>当判据，它挑得出你哪里没答到。</p>
+            <button className="aic-go" disabled={loading} onClick={start}>{loading ? '面试官准备中…' : '开始模拟面试'}</button>
+          </>
+        : <>
+            <div className="aic-chat">
+              {history.map((t, i) => (
+                <div key={i} className={`aic-msg ${t.role}`}>
+                  <span className="aic-msg-who">{t.role === 'interviewer' ? '面试官' : '你'}</span>
+                  <span className="aic-msg-text">{t.text}</span>
+                </div>
+              ))}
+              {loading && <div className="aic-msg interviewer"><span className="aic-msg-who">面试官</span><span className="aic-msg-text" style={{ opacity: .6 }}>思考中…</span></div>}
+            </div>
+            {done
+              ? <button className="aic-go" onClick={start}>再面一轮</button>
+              : <>
+                  <textarea className="aic-ta" value={input} placeholder="输入你的回答（⌘/Ctrl+Enter 提交）"
+                    onChange={e => setInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) answer() }} />
+                  <button className="aic-go" disabled={loading || !input.trim()} onClick={answer}>{loading ? '面试官思考中…' : '回答'}</button>
+                </>}
+          </>}
+      {error && <p className="aic-err">出错了：{error}</p>}
     </div>
   )
 }
