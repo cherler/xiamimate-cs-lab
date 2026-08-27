@@ -288,6 +288,7 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   fastpow: {},
   mvcc: {},
   iso: { level: 'string' },
+  cas: {},
   astar: {},
   perceptron: {},
   pooling: { kind: 'string' },

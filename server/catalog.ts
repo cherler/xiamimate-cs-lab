@@ -47,6 +47,7 @@ import { huffmanKernel } from '../src/kernels/huffman.ts'
 import { mvccKernel } from '../src/kernels/mvcc.ts'
 import { bplusKernel } from '../src/kernels/bplus.ts'
 import { isoKernel } from '../src/kernels/iso.ts'
+import { casKernel } from '../src/kernels/cas.ts'
 // 与 registry 同源的预设常量：直接 import 保证 doc 逐字一致（引擎侧，无 React）。
 import { CRC_PRESETS, HAMMING_PRESETS, SUBNET_PRESETS, HUFF_PRESETS, BPLUS_PRESETS } from '../src/presets/sequences.ts'
 import { ROUTE_PRESETS } from '../src/presets/entities.ts'
@@ -767,6 +768,28 @@ export const CATALOG: CatalogEntry[] = [
         kind: 'choice',
         compute: () => ({ answer: '不可重复读', step: 0, evidence: 'RC 只读已提交值→无脏读；但两次读之间别的事务提交了新值→不可重复读' }),
         distractors: () => ['脏读', '幻读', '三种都能挡住'],
+      },
+    ],
+  },
+  {
+    id: 'cas',
+    title: 'CAS 无锁自增',
+    kernel: casKernel as Kernel<unknown>,
+    doc: trivialDoc('cas'),
+    facts: [
+      {
+        id: 'final_x', label: '3 线程 CAS 自增后的最终值',
+        ask: '3 个线程各用 CAS 做一次 x++（x 初值 0），期间有线程读到旧值发生竞争。CAS 保证不丢更新，最终 x 等于多少?',
+        kind: 'number',
+        compute: t => ({ answer: String(last(t).x), step: t.length - 1, evidence: `终值 x=${last(t).x}、成功 ${last(t).succeeds} 次` }),
+        distractors: () => ['2', '1', '4'],
+      },
+      {
+        id: 'retries', label: 'CAS 失败重试次数',
+        ask: '上题中，因为被别的线程抢先修改，CAS 一共失败并重试了多少次?',
+        kind: 'number',
+        compute: t => ({ answer: String(last(t).fails), step: t.length - 1, evidence: String(last(t).log ?? '') }),
+        distractors: numDistractors,
       },
     ],
   },

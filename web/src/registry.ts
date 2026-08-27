@@ -206,6 +206,8 @@ import { mvccKernel, type MvccState } from '@engine/kernels/mvcc.ts'
 import { MvccStage } from './stages/MvccStage.tsx'
 import { isoKernel, type IsoState } from '@engine/kernels/iso.ts'
 import { IsoStage } from './stages/IsoStage.tsx'
+import { casKernel, type CasState } from '@engine/kernels/cas.ts'
+import { CasStage } from './stages/CasStage.tsx'
 import { CollisionStage } from './stages/CollisionStage.tsx'
 import { gcnKernel, type GcnState } from '@engine/kernels/gcn.ts'
 import { GcnStage } from './stages/GcnStage.tsx'
@@ -5098,9 +5100,41 @@ const iso: Experiment<IsoState> = {
   ],
 }
 
+const cas: Experiment<CasState> = {
+  id: 'cas',
+  group: '并发编程',
+  title: 'CAS 无锁自增',
+  subtitle: '读到旧值就 CAS，被抢先就重试',
+  kernel: casKernel,
+  defaultDoc: { kind: 'cas', params: {}, entities: [], streams: [] },
+  params: [],
+  paramsNote: 'CAS(compare-and-swap,比较并交换)是无锁并发的原子地基:AtomicInteger、自旋锁、无锁队列全靠它。一条硬件原子指令 CAS(地址, 期望值, 新值)——当且仅当内存里还等于期望值时才写入新值、返回成功,否则说明有人先改了、返回失败,由调用者自旋重试。本实验:3 个线程各做一次 x++。T1、T2 会同时读到 x=0 都想写 1(经典竞争);naive 的「读-改-写」会丢更新(两个 ++ 只涨 1),而 CAS 让先到的赢、后到的失败重读再来,于是三个 ++ 一个不丢,最终 x=3、失败重试 2 次。',
+  bounds: [
+    '3 个线程各 x++;T1、T2 同时读到 x=0(竞争)',
+    'CAS 成功=内存仍等于期望值;否则失败重试(可核)',
+    '最终 x=3(无丢更新),失败重试 2 次',
+    '这就是 AtomicInteger / 自旋锁 / 无锁队列的地基',
+  ],
+  tabs: [{ id: 'race', label: '竞争+重试' }],
+  Stage: CasStage,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: `x=${s.x}` }
+    : s.op === 'cas' ? (s.casOk ? { key: 'good', label: `T${s.cur} 成功` } : { key: 'bad', label: `T${s.cur} 重试` })
+      : s.op === 'read' ? { key: 'idle', label: `T${s.cur} 读 ${s.x}` }
+        : { key: 'idle', label: '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 11)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.op === 'cas' ? (s.casOk ? '成' : '败') : '读'),
+  whyInRail: true,
+  readouts: s => [
+    { label: '共享 x', value: `${s.x}` },
+    { label: '本步', value: s.op === 'read' ? `T${s.cur} 读到 ${s.x}` : s.op === 'cas' ? `T${s.cur} CAS ${s.casOk ? '成功' : '失败'}` : '完成' },
+    { label: '成功 / 失败', value: `${s.succeeds} / ${s.fails}`, tone: s.op === 'cas' && !s.casOk ? 'bad' : undefined },
+    { label: '结果', value: s.phase === 'done' ? `x=${s.x}（未丢更新）` : '进行中' },
+  ],
+}
+
 export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
-  page, scheduler, disk, banker, mvcc, iso,
+  page, scheduler, disk, banker, mvcc, iso, cas,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,
