@@ -28,7 +28,7 @@ const FOE={
 /* 第二类 · 失误:攻击的是「你的执行」,不是提供可被处理的对象 → 环境效果 */
 const FLAW={
  offByOne:{name:'差一错误', note:'移除 ≥6 时 −1 个、处理量 −10%(边界都差一格)'},
- nullPtr: {name:'空指针',   note:'每回合手牌里最贵的那张不可用'},
+ nullPtr: {name:'空指针',   note:'每回合随机一张手牌不可用'},
  race:    {name:'竞态条件', note:'你出的平铺类卡有 25% 概率只生效一半(顺序乱了)'},
  leak:    {name:'内存泄漏', note:'每回合末额外 −1 预算'},
  stackOv: {name:'栈溢出',   note:'段数 ≥3 时每回合末额外 −2 预算'},
@@ -98,13 +98,14 @@ function addSort(S,n){const a=alive(S)
   for(let i=0;i<a.length-1;i++)
    if(a[i].v>a[i+1].v){const t=a[i].v;a[i].v=a[i+1].v;a[i+1].v=t}}
 function addMemo(S,n){S.memo=Math.min(S.E.memoCap??999,S.memo+n)}
+let FLAWBONUS=4    // 挂失误的关卡补多少预算。实测:+10 时失误反而是净收益 +7.9 点(方向反了),
+                   // +5 中性,+3 净惩罚 5 点。取 4 —— 既不判死,也确实更难
 const DEPTHMUL=.085  // 每深一关:规模 +8.5%(唯一的连续难度轴)
 function scaleFoe(E,d){ if(!d)return E
  return{...E,n:Math.round(E.n*(1+DEPTHMUL*d)),inflow:E.inflow??0,
    mult:E.mult,depth:d}}
 function newFight(seed,deck,foeId,budget,flawId,depth=0){
  const E=scaleFoe(FOE[foeId],depth),R=rng(seed),vmax=E.vmax??T.VMAX,FL=flawId?FLAW[flawId]:null
-const FLAWBONUS=10
  const S={R,E,foeId,bars:Array.from({length:E.n},(_,i)=>({id:i,v:T.VMIN+Math.floor(R()*(vmax-T.VMIN+1)),dead:false})),
   splits:1,budget:budget+(FL?FLAWBONUS:0),steps:T.STEPS,turn:1,memo:0,debt:0,
   inflow:E.inflow??0,mult:E.mult??1,vmax,flawId:flawId||null,FL,locked:null,guarded:false,loopBroken:false,firstPlay:true,
@@ -114,7 +115,9 @@ const FLAWBONUS=10
  shuffle(S);drawN(S,T.HAND);return S}
 const canPlay=(S,i)=>{const c=C[S.hand[i]];return c&&S.steps>=c.cost&&!S.over&&!(S.locked===i&&!S.guarded)}
 function play(S,i){if(!canPlay(S,i))return false
- const c=C[S.hand[i]];S.steps-=c.cost;S.hand.splice(i,1);S.diag.plays[c.id]=(S.diag.plays[c.id]||0)+1
+ const c=C[S.hand[i]];S.steps-=c.cost;S.hand.splice(i,1)
+ if(S.locked!=null&&i<S.locked)S.locked--   // 手牌左移,锁定的下标要跟着挪,否则锁到别人头上
+ ;S.diag.plays[c.id]=(S.diag.plays[c.id]||0)+1
  if(S.flawId==='infinite'&&S.firstPlay&&!S.loopBroken&&c.id!=='guard'&&S.turn%3===0){
   S.firstPlay=false;S.diag.flawLoss+=2;(c.exhaust?S.exhaust:S.discard).push(c.id)
   S.halfNext=true;c.fn(S);S.halfNext=false;check(S);return true}
@@ -144,8 +147,8 @@ function endTurn(S){if(S.over)return
  if(S.E.evict&&S.hand.length){const i=Math.floor(S.R()*S.hand.length)
   S.diag.evicted=(S.diag.evicted||0)+1;S.exhaust.push(S.hand.splice(i,1)[0])}
  S.locked=null
- if(S.flawId==='nullPtr'&&S.hand.length){let bi=0
-  for(let i=1;i<S.hand.length;i++)if(C[S.hand[i]].cost>C[S.hand[bi]].cost)bi=i
+ if(S.flawId==='nullPtr'&&S.hand.length){
+  const bi=Math.floor(S.R()*S.hand.length)   // 随机,不是最贵 —— 锁最贵等于系统性锁掉收尾牌,那是专克
   S.locked=bi;S.diag.flawLoss+=C[S.hand[bi]].cost}
  if(typeof foeTurnReport==='function')foeTurnReport(_b,S)
  check(S)}
@@ -328,7 +331,10 @@ function foeTurnReport(b,S2){ if(S2!==S)return
  if(S.exhaust.length>b.ex) o.push(['哈希碰撞 · 丢了 '+(S.exhaust.length-b.ex)+' 张手牌',R])
  if(S.locked!=null) o.push(['空指针 · 锁住了「'+C[S.hand[S.locked]].name+'」',R])
  if(o.length>1||N(S)>b.n) flo={lines:o.slice(0,4),name:'敌人回合',t0:performance.now(),dur:1700}}
-function uiPlay(i){ if(anim||!canPlay(S,i))return
+function uiPlay(i){
+ // 动画期间不该把点击默默吞掉 —— 直接把当前动画收尾,让这一下立刻生效
+ if(anim)anim=null
+ if(!canPlay(S,i))return
  const id=S.hand[i],before=snap(),s0=stat()
  play(S,i); hist.push(hpPct(S))
  const kind=AK[id]||'gen', dur=kind==='sort'?1150:kind==='gen'?700:860
@@ -350,7 +356,7 @@ window.__demo=(foe,flaw,kit)=>{ if(kit)KIT=kit
  S=newFight(7,RUN.deck,foe,T.BUDGET,flaw); offer=null;hist=[100];intel=null}
 Object.assign(window,{__anim:()=>!!anim,__auto:autoTurn,__S:()=>S,__RUN:()=>RUN,__offer:()=>offer,__intel2:()=>intel,
  __play:i=>uiPlay(i),__end:()=>{if(!anim){endTurn(S);hist.push(hpPct(S));if(S.over)afterFight()}},
- __take:takeCard,__startRun:startRun,__skipIntel:()=>{if(intel)pickNode(0)},__pickNode:k=>pickNode(k),__SHAPE:SHAPE})
+ __FB:v=>{FLAWBONUS=v},__HITBOX:()=>HITBOX,__CARD:id=>C[id],__take:takeCard,__startRun:startRun,__skipIntel:()=>{if(intel)pickNode(0)},__pickNode:k=>pickNode(k),__SHAPE:SHAPE})
 
 /* ── 面板与基础件 ── */
 function panel(x,y,w,h,title){
@@ -799,7 +805,8 @@ function live(id){ if(!S)return null
  }
  return null}
 
-function cardFace(id,x,y,cw,ch,on,sel,why){
+const HITBOX=[]
+function cardFace(id,x,y,cw,ch,on,sel,why,slot){
  const c=C[id],col=CO.tag[c.tag]
  ctx.fillStyle=on?'rgba(14,26,40,.96)':'rgba(12,20,30,.9)';ctx.fillRect(x,y,cw,ch)
  ctx.strokeStyle=on?col:'rgba(70,88,108,.55)';ctx.lineWidth=on?1.8:1;ctx.strokeRect(x+.5,y+.5,cw-1,ch-1)
@@ -821,9 +828,10 @@ function cardFace(id,x,y,cw,ch,on,sel,why){
  if(why){ctx.fillStyle='rgba(8,14,22,.72)';ctx.fillRect(x+1,y+ch-24,cw-2,23)
   ctx.fillStyle=CO.amber;ctx.font='600 11px system-ui';ctx.textAlign='center'
   ctx.fillText(why,x+cw/2,y+ch-8);ctx.textAlign='left'}
- C[id].box=[x,y,cw,ch]}
+ if(slot!=null)HITBOX[slot]=[x,y,cw,ch]}
 
 function handRow(y){
+ HITBOX.length=0
  const n=S.hand.length; if(!n)return
  const cw=Math.min(184,(W-460)/n-12),ch=154,gap=12
  const x0=(W-(n*cw+(n-1)*gap))/2
@@ -831,7 +839,7 @@ function handRow(y){
   const locked=S.locked===i&&!S.guarded
   // 出不了要说清是哪一种:步数不够,还是被失误锁了。动画期间不再整排变灰(那看着像卡死)
   const why=locked?null:(S.steps<c.cost?'步数不够 · 需 '+c.cost+',只剩 '+S.steps:null)
-  cardFace(id,x,y,cw,ch,canPlay(S,i),false,why)
+  cardFace(id,x,y,cw,ch,canPlay(S,i),false,why,i)
   if(locked){ctx.fillStyle='rgba(255,107,94,.14)';ctx.fillRect(x,y,cw,ch)
    ctx.strokeStyle=CO.red;ctx.lineWidth=1.5;ctx.strokeRect(x+.5,y+.5,cw-1,ch-1)
    ctx.fillStyle='rgba(8,14,22,.8)';ctx.fillRect(x+1,y+ch-24,cw-2,23)
@@ -906,7 +914,8 @@ function offerScreen(){
  ctx.fillText(`牌组 ${RUN.deck.length} 张 · 预算上限升到 ${RUN.cap} · 跳过也是策略(不稀释牌库)`,cx,H*.26+26)
  ctx.textAlign='left'
  const cw=200,ch=170,gap=22,x0=cx-(3*cw+2*gap)/2
- offer.forEach((id,i)=>cardFace(id,x0+i*(cw+gap),H*.36,cw,ch,true))
+ HITBOX.length=0
+ offer.forEach((id,i)=>cardFace(id,x0+i*(cw+gap),H*.36,cw,ch,true,false,null,i))
  btn(cx-74,H*.36+ch+28,148,40,'跳 过')}
 
 function overScreen(){
@@ -939,7 +948,7 @@ cv.addEventListener('click',e=>{const mx=e.clientX,my=e.clientY
   return}
  if(inBox(mx,my,btn.last)){offer?takeCard(null):window.__end();return}
  const ids=offer||S.hand
- for(let i=0;i<ids.length;i++) if(inBox(mx,my,C[ids[i]].box)){offer?takeCard(ids[i]):uiPlay(i);return}})
+ for(let i=0;i<ids.length;i++) if(inBox(mx,my,HITBOX[i])){offer?takeCard(ids[i]):uiPlay(i);return}})
 addEventListener('keydown',e=>{
  if(intel){const k={ArrowLeft:0,ArrowRight:1,Enter:0,' ':0}[e.key]
   if(k!==undefined&&NODEBOX[k]){e.preventDefault();pickNode(k);return}}
