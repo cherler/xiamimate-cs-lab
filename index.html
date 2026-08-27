@@ -285,6 +285,7 @@ let RUN=null,S=null,offer=null,intel=null,parts=[],KIT='sort',anim=null,hist=[]
 const CO={bg0:'#050a12',bg1:'#0a141f',line:'rgba(90,150,190,.22)',panel:'rgba(12,24,38,.72)',
  ink:'#e6eef7',dim:'#8ba3bb',faint:'#4d6076',cyan:'#5fd0e8',amber:'#f0a94a',red:'#ff6b5e',green:'#7fd98f',
  tag:{base:'#a8c0d6',sort:'#f0a94a',dc:'#b39ddb',memo:'#7fd98f',greedy:'#ff8f6b',tool:'#5fd0e8'}}
+const TAGNAME={base:'起始',sort:'排序流',dc:'拆解流',memo:'复利流',greedy:'激进流',tool:'工具'}
 function startRun(k){KIT=k;RUN=newRun(Date.now()&0xffff,k);enter()}
 function enter(){RUN.opts=rollNode(RUN,RUN.node)
  intel=RUN.opts.map(o=>Object.assign(intelOf(RUN.deck,o.foe,o.flaw,RUN.node),o))
@@ -558,12 +559,78 @@ function statsPanel(x,y,w,h){
   hist.slice(-40).forEach((v,i,arr)=>{const px=gx+gw*(i/Math.max(arr.length-1,1)),py=gy+gh*(1-v/100)
    i?ctx.lineTo(px,py):ctx.moveTo(px,py)});ctx.stroke()}}
 
+/* 十一个敌人本来共用同一套直方图 —— 名字讲了很多不一样,画面一个都没兑现。
+   这一层只画「这堆数据长什么样」,不参与任何判定。
+   back 画在柱子后面(压低透明度保证柱子可读),front 画在柱子上面。 */
+const MOTIF={
+ shuffled:{back(c){ // 乱序:顶端一条参差折线,直观「毫无秩序」
+   const{ctx:X,a,x0,bw,base,hM,S}=c;X.strokeStyle='rgba(255,140,110,.35)';X.lineWidth=1.2;X.beginPath()
+   a.forEach((b,i)=>{const x=x0+i*bw+bw/2,y=base-(b.v/S.vmax)*hM-7;i?X.lineTo(x,y):X.moveTo(x,y)});X.stroke()}},
+ tape:{front(c){ // 磁带:底部走带 + 齿孔 + 只能从这头读
+   const{ctx:X,x0,tw,base,A}=c,y=base+6
+   X.strokeStyle='rgba(240,169,74,.5)';X.lineWidth=1;X.strokeRect(x0-6,y,tw+12,13)
+   X.fillStyle='rgba(240,169,74,.45)'
+   for(let x=x0;x<x0+tw;x+=13)X.fillRect(x,y+5,5,3)
+   X.fillStyle=CO.amber;X.beginPath();X.moveTo(x0-14,y-4);X.lineTo(x0-3,y+6.5);X.lineTo(x0-14,y+17);X.closePath();X.fill()
+   X.font='600 10px system-ui';X.textAlign='left';X.fillText('读头 · 只能从这头往后读',x0+6,y+30);X.textAlign='left'}},
+ dupes:{back(c){ // 重复页:同值的柱子框成一组
+   const{ctx:X,a,x0,bw,base,hM,S}=c;let i=0
+   while(i<a.length){let j=i;while(j+1<a.length&&a[j+1].v===a[i].v)j++
+    if(j>i){X.strokeStyle='rgba(95,208,232,.3)';X.setLineDash([3,3]);X.lineWidth=1
+     X.strokeRect(x0+i*bw-2,base-(a[i].v/S.vmax)*hM-5,(j-i+1)*bw+1,(a[i].v/S.vmax)*hM+8);X.setLineDash([])}
+    i=j+1}}},
+ stream:{back(c){ // 价格流:一条流动的行情线
+   const{ctx:X,a,x0,bw,base,hM,S,t}=c;X.strokeStyle='rgba(127,217,143,.4)';X.lineWidth=1.4;X.beginPath()
+   a.forEach((b,i)=>{const x=x0+i*bw+bw/2
+    const y=base-(b.v/S.vmax)*hM-10-Math.sin(i*.6+t*3)*5;i?X.lineTo(x,y):X.moveTo(x,y)});X.stroke()}},
+ graph:{front(c){ // 稠密图:柱顶之间的连线网
+   const{ctx:X,a,x0,bw,base,hM,S}=c;X.strokeStyle='rgba(179,157,219,.26)';X.lineWidth=.9;X.beginPath()
+   for(let i=0;i<a.length;i++)for(const d of [3,7]){const j=i+d;if(j>=a.length)continue
+    X.moveTo(x0+i*bw+bw/2,base-(a[i].v/S.vmax)*hM-3)
+    X.lineTo(x0+j*bw+bw/2,base-(a[j].v/S.vmax)*hM-3)}X.stroke()}},
+ worst:{back(c){ // 最坏用例:警戒斜纹
+   const{ctx:X,A}=c;X.save();X.beginPath();X.rect(A.x,A.y,A.w,A.h);X.clip()
+   X.strokeStyle='rgba(255,107,94,.09)';X.lineWidth=9
+   for(let x=A.x-A.h;x<A.x+A.w;x+=34){X.beginPath();X.moveTo(x,A.y+A.h);X.lineTo(x+A.h,A.y);X.stroke()}X.restore()}},
+ collide:{front(c){ // 哈希碰撞:底部的桶,有的桶挤了好几根
+   const{ctx:X,x0,tw,base,a,bw}=c,B=8,w=tw/B
+   for(let k=0;k<B;k++){const x=x0+k*w,hit=Math.min(4,Math.round(a.length/B))
+    X.strokeStyle=hit>2?'rgba(255,107,94,.55)':'rgba(110,140,170,.3)';X.lineWidth=1
+    X.strokeRect(x+3,base+7,w-6,12)
+    X.fillStyle=hit>2?CO.red:CO.faint;X.font='600 9px system-ui';X.textAlign='center'
+    X.fillText(hit>2?'撞 '+hit:''+hit,x+w/2,base+16);X.textAlign='left'}}},
+ regret:{back(c){ // 反悔陷阱:一圈回退箭头
+   const{ctx:X,A}=c,cx=A.x+A.w/2,cy=A.y+A.h*.42,r=Math.min(A.w,A.h)*.32
+   X.strokeStyle='rgba(255,143,107,.16)';X.lineWidth=2.5
+   X.beginPath();X.arc(cx,cy,r,.6,5.4);X.stroke()
+   X.fillStyle='rgba(255,143,107,.22)';X.beginPath()
+   X.moveTo(cx+r*Math.cos(5.4),cy+r*Math.sin(5.4));X.lineTo(cx+r*Math.cos(5.4)-11,cy+r*Math.sin(5.4)-4)
+   X.lineTo(cx+r*Math.cos(5.4)-2,cy+r*Math.sin(5.4)+10);X.closePath();X.fill()}},
+ explode2:{back(c){ // 状态爆炸:放射线
+   const{ctx:X,A}=c,cx=A.x+A.w/2,cy=A.y+A.h
+   X.strokeStyle='rgba(127,217,143,.12)';X.lineWidth=1.2
+   for(let k=0;k<22;k++){const ang=-Math.PI*(k/21);X.beginPath();X.moveTo(cx,cy)
+    X.lineTo(cx+Math.cos(ang)*A.w*.62,cy+Math.sin(ang)*A.h*1.1);X.stroke()}}},
+ atomic:{front(c){ // 不可分:柱子底部焊成整块
+   const{ctx:X,x0,tw,base}=c
+   X.fillStyle='rgba(179,157,219,.3)';X.fillRect(x0-4,base+4,tw+8,7)
+   X.strokeStyle='rgba(179,157,219,.6)';X.lineWidth=1.2;X.strokeRect(x0-4.5,base+3.5,tw+9,8)
+   X.font='600 10px system-ui';X.fillStyle='rgba(179,157,219,.8)';X.textAlign='center'
+   X.fillText('焊死的一整块 · 切不开',x0+tw/2,base+26);X.textAlign='left'}},
+ expo:{back(c){ // Boss:指数曲线在背后长
+   const{ctx:X,A,t}=c;X.strokeStyle='rgba(255,107,94,.22)';X.lineWidth=2;X.beginPath()
+   for(let k=0;k<=60;k++){const u=k/60,x=A.x+u*A.w,y=A.y+A.h-Math.pow(u,2.6)*A.h*.95
+    k?X.lineTo(x,y):X.moveTo(x,y)}X.stroke()
+   X.fillStyle='rgba(255,107,94,'+(.10+.05*Math.sin(t*2))+')';X.fillRect(A.x,A.y,A.w,A.h)}},
+}
 function arena(A){
  const a=alive(S); if(!a.length)return
  const t=anim?Math.min(1,(performance.now()-anim.t0)/anim.dur):1
  if(anim&&t>=1)anim=null
  const bw=Math.min(24,A.w/Math.max(a.length,1)),seg=Math.ceil(a.length/S.splits)
- const tw=a.length*bw+(S.splits-1)*18,x0=A.x+(A.w-tw)/2,base=A.y+A.h,hM=A.h-16
+ const tw=a.length*bw+(S.splits-1)*18,x0=A.x+(A.w-tw)/2,base=A.y+A.h-30,hM=A.h-46
+ const mc={ctx,A,a,x0,tw,base,hM,bw,S,t:performance.now()/1000}
+ const M=MOTIF[S.foeId]; if(M&&M.back)M.back(mc)
  // 段分隔
  if(S.splits>1)for(let s2=1;s2<S.splits;s2++){const sx=x0+s2*seg*bw+(s2-1)*18+9
   ctx.strokeStyle='rgba(179,157,219,.35)';ctx.setLineDash([4,4]);ctx.lineWidth=1
@@ -578,6 +645,7 @@ function arena(A){
   if(anim&&anim.kind==='split'){const half=a.length*.5
    if(t<.7&&(i<half*(1-t)||i>a.length-half*(1-t)*.6))dim=.2}
   bar(x,base-h,bw-3,h,v,S.vmax,dim)})
+ if(M&&M.front)M.front(mc)
  // 死掉的柱子:碎裂
  if(anim){anim.before.forEach((o,i)=>{ if(anim.after.get(o.id)!==null)return
    const idx=anim.before.indexOf(o),x=x0+idx*bw
@@ -690,16 +758,17 @@ function live(id){ if(!S)return null
 function cardFace(id,x,y,cw,ch,on,sel,why){
  const c=C[id],col=CO.tag[c.tag]
  ctx.fillStyle=on?'rgba(14,26,40,.96)':'rgba(12,20,30,.9)';ctx.fillRect(x,y,cw,ch)
- ctx.strokeStyle=on?col:'rgba(110,140,170,.3)';ctx.lineWidth=on?1.8:1;ctx.strokeRect(x+.5,y+.5,cw-1,ch-1)
+ ctx.strokeStyle=on?col:'rgba(70,88,108,.55)';ctx.lineWidth=on?1.8:1;ctx.strokeRect(x+.5,y+.5,cw-1,ch-1)
  if(on){ctx.strokeStyle=col;ctx.lineWidth=2.5;ctx.beginPath()
   ctx.moveTo(x,y+ch-12);ctx.lineTo(x,y+ch);ctx.lineTo(x+12,y+ch);ctx.stroke()}
- ctx.globalAlpha=on?1:.5
+ ctx.globalAlpha=on?1:.34
  hex(x+20,y+20,13,col)
  ctx.fillStyle='#08111c';ctx.font='700 13px system-ui';ctx.textAlign='center'
  ctx.fillText(String(c.cost),x+20,y+25);ctx.textAlign='left'
  ctx.fillStyle=CO.ink;ctx.font='700 14.5px system-ui';ctx.fillText(c.name,x+40,y+25)
- if(c.exhaust){ctx.fillStyle='#ff8f6b';ctx.font='600 9.5px system-ui'
-  ctx.textAlign='right';ctx.fillText('消耗',x+cw-10,y+22);ctx.textAlign='left'}
+ ctx.textAlign='right';ctx.font='600 9.5px system-ui'
+ ctx.fillStyle=col;ctx.fillText(TAGNAME[c.tag]+(c.exhaust?' · 一次性':''),x+cw-10,y+22)
+ ctx.textAlign='left'
  const f=ICON[CARDIC[id]]; if(f)f(x+cw*.22,y+36,cw*.56,32)
  const L=live(id)
  if(L){ctx.fillStyle=L[1];ctx.font='600 11.5px system-ui';wrap(L[0],x+11,y+84,cw-22,14)}
