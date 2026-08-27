@@ -290,6 +290,7 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   iso: { level: 'string' },
   cas: {},
   mesi: {},
+  deadlock: {},
   astar: {},
   perceptron: {},
   pooling: { kind: 'string' },

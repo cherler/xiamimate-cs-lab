@@ -49,6 +49,7 @@ import { bplusKernel } from '../src/kernels/bplus.ts'
 import { isoKernel } from '../src/kernels/iso.ts'
 import { casKernel } from '../src/kernels/cas.ts'
 import { mesiKernel } from '../src/kernels/mesi.ts'
+import { deadlockKernel } from '../src/kernels/deadlock.ts'
 // 与 registry 同源的预设常量：直接 import 保证 doc 逐字一致（引擎侧，无 React）。
 import { CRC_PRESETS, HAMMING_PRESETS, SUBNET_PRESETS, HUFF_PRESETS, BPLUS_PRESETS } from '../src/presets/sequences.ts'
 import { ROUTE_PRESETS } from '../src/presets/entities.ts'
@@ -813,6 +814,31 @@ export const CATALOG: CatalogEntry[] = [
         kind: 'choice',
         compute: () => ({ answer: 'I（Invalid 失效）', step: 0, evidence: '写前先 Invalidate 其它副本，自己升 M' }),
         distractors: () => ['S（Shared 共享）', 'E（Exclusive 独占）', 'M（Modified 已改）'],
+      },
+    ],
+  },
+  {
+    id: 'deadlock',
+    title: '死锁检测',
+    kernel: deadlockKernel as Kernel<unknown>,
+    doc: trivialDoc('deadlock'),
+    facts: [
+      {
+        id: 'cycle_len', label: '死锁环上的线程数',
+        ask: '三个线程交叉加锁：T1 持 A 等 B、T2 持 B 等 C、T3 持 C 等 A。用等待图检测，死锁环上一共有几个线程?',
+        kind: 'number',
+        compute: t => {
+          const cyc = last(t).cycle as number[]
+          return { answer: String(cyc.length), step: t.length - 1, evidence: `环 = ${cyc.map(x => 'T' + x).join('→')}` }
+        },
+        distractors: () => ['2', '4', '1'],
+      },
+      {
+        id: 'detect_vs_avoid', label: '等待图找环属于哪种死锁处理',
+        ask: '用「等待图找环」来发现死锁，属于下面哪一种死锁处理策略?',
+        kind: 'choice',
+        compute: () => ({ answer: '死锁检测', step: 0, evidence: '先让死锁发生、再检测出来；银行家算法才是分配前判断的死锁避免' }),
+        distractors: () => ['死锁避免（银行家算法）', '死锁预防', '鸵鸟策略（不处理）'],
       },
     ],
   },

@@ -210,6 +210,8 @@ import { casKernel, type CasState } from '@engine/kernels/cas.ts'
 import { CasStage } from './stages/CasStage.tsx'
 import { mesiKernel, type MesiState } from '@engine/kernels/mesi.ts'
 import { MesiStage } from './stages/MesiStage.tsx'
+import { deadlockKernel, type DeadlockState } from '@engine/kernels/deadlock.ts'
+import { DeadlockStage } from './stages/DeadlockStage.tsx'
 import { CollisionStage } from './stages/CollisionStage.tsx'
 import { gcnKernel, type GcnState } from '@engine/kernels/gcn.ts'
 import { GcnStage } from './stages/GcnStage.tsx'
@@ -5166,9 +5168,42 @@ const mesi: Experiment<MesiState> = {
   ],
 }
 
+const deadlock: Experiment<DeadlockState> = {
+  id: 'deadlock',
+  group: '并发编程',
+  title: '死锁检测',
+  subtitle: '等待图成环 = 死锁',
+  kernel: deadlockKernel,
+  defaultDoc: { kind: 'deadlock', params: {}, entities: [], streams: [] },
+  params: [],
+  paramsNote: '和银行家算法(死锁**避免**:分配前先判安全)不同,这里是死锁**检测**:先让它发生,再用**等待图(wait-for graph)**找出来——节点是线程,边 Ti→Tj 表示「Ti 正等一把被 Tj 攥着的锁」。等待图一旦成**环**,环上的线程互相等、谁也动不了,就是死锁。本实验是经典的循环等待:T1 持 A 等 B、T2 持 B 等 C、T3 持 C 等 A,边 1→2→3→1 闭合成环,第 6 步当场检出死锁。破环最实用的办法是所有线程按固定顺序加锁——这也是死锁四条件(互斥/占有并等待/不可抢占/循环等待)里最好打破的一条。',
+  bounds: [
+    'T1持A等B、T2持B等C、T3持C等A(交叉加锁)',
+    '加锁成功=持有;要别人的锁=阻塞+加等待边(可核)',
+    '边 1→2→3→1 闭合成环 → 第 6 步检出死锁',
+    '环上 3 个线程互相等;按固定顺序加锁可防',
+  ],
+  tabs: [{ id: 'waitgraph', label: '等待图找环' }],
+  Stage: DeadlockStage,
+  tone: s => (s.deadlock ? { key: 'bad', label: '死锁!' }
+    : s.phase === 'done' ? { key: 'good', label: '无死锁' }
+      : s.op === 'request' ? { key: 'idle', label: `T${s.cur} 阻塞` }
+        : s.op === 'acquire' ? { key: 'good', label: `T${s.cur} 拿到 ${s.lock}` }
+          : { key: 'idle', label: '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 7)),
+  tickLabel: s => (s.deadlock ? '锁' : s.op === 'request' ? '等' : s.op === 'acquire' ? '取' : '毕'),
+  whyInRail: true,
+  readouts: s => [
+    { label: '本步', value: s.op === 'acquire' ? `T${s.cur} 拿 ${s.lock}` : s.op === 'request' ? `T${s.cur} 等 ${s.lock}` : '完成' },
+    { label: '等待边', value: s.waitFor.length ? s.waitFor.map(e => `${e[0]}→${e[1]}`).join(' ') : '—' },
+    { label: '是否死锁', value: s.deadlock ? '是' : '否', tone: s.deadlock ? 'bad' : undefined },
+    { label: '环上线程', value: s.cycle.length ? s.cycle.map(x => `T${x}`).join('→') : '—' },
+  ],
+}
+
 export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
-  page, scheduler, disk, banker, mvcc, iso, cas, mesi,
+  page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,
