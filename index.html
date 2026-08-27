@@ -40,7 +40,7 @@ const FOE2={
 Object.assign(FOE,FOE2)
 /* ═══ 3. 卡池 ═══ */
 const C={},def=(id,name,cost,tag,note,fn,ex)=>C[id]={id,name,cost,tag,note,fn,exhaust:!!ex}
-def('scan','遍历',1,'base','总处理量 16(平铺)',S=>workTotal(S,16))
+def('scan','遍历',1,'base','16 点处理量,平均分给每个元素',S=>workTotal(S,16))
 def('batch','批处理',1,'base','预算 +5',S=>{S.budget+=5})
 def('watch','观察',1,'base','抽 2',S=>drawN(S,2))
 def('bubble','冒泡排序',1,'sort','有序 +1',S=>addSort(S,S.E.antiSort?.25:1))
@@ -51,11 +51,11 @@ def('median','中位数',2,'sort','需有序≥3:移除 1/3 元素',S=>{if(tier(
 def('recur','递归到底',2,'dc','需段数≥3:移除 1/3 元素',S=>{if(S.splits>=3)kill(S,Math.ceil(N(S)/3))},1)
 def('divide','分治',2,'dc','段数 +1(最多 4)',S=>{S.splits=Math.min(S.E.noSplit??4,S.splits+1)})
 def('mergeup','逐层合并',1,'dc','每段移除 2 个',S=>killSeg(S,2))
-def('parallel','并行处理',2,'dc','总处理量 = 段数×14(不可分问题下只剩四成)',S=>workTotal(S,S.splits*14*(S.E.noSplit?.4:1)))
+def('parallel','并行处理',2,'dc','段数×14 点处理量,平均分给每个元素(不可分下只剩四成)',S=>workTotal(S,S.splits*14*(S.E.noSplit?.4:1)))
 def('pre','预处理',1,'memo','预处理值 +8',S=>{const b=S.memo;addMemo(S,8);S.diag.lostMemo+=8-(S.memo-b)})
 def('table','建表',2,'memo','预处理值 + 10+规模/4',S=>{const g=10+Math.ceil(N(S)/4),b=S.memo;addMemo(S,g);S.diag.lostMemo+=g-(S.memo-b)})
-def('lookup','查表',0,'memo','处理量 = 预处理值(不消耗)',S=>workTotal(S,S.memo))
-def('dp','动态规划',2,'memo','处理量 = 预处理值×2',S=>workTotal(S,S.memo*2))
+def('lookup','查表',0,'memo','处理量 = 预处理值,平均分给每个元素;不消耗预处理值',S=>workTotal(S,S.memo))
+def('dp','动态规划',2,'memo','处理量 = 预处理值×2,平均分给每个元素',S=>workTotal(S,S.memo*2))
 def('approx','近似算法',2,'greedy','移除 1/4 元素,债务 +3',S=>{kill(S,Math.ceil(N(S)/4));S.debt+=3},1)
 def('greedy','贪心',0,'greedy','移除 2 个,债务 +1',S=>{kill(S,2);S.debt++})
 def('local','局部最优',1,'greedy','移除 5 个,债务 +2',S=>{kill(S,5);S.debt+=2})
@@ -302,7 +302,7 @@ const stat=()=>({n:N(S),work:remainWork(S),budget:S.budget,memo:S.memo,debt:S.de
   splits:S.splits,tier:tier(S),hand:S.hand.length,mult:S.mult,inflow:S.inflow,ex:S.exhaust.length})
 function readout(a,b){const o=[],G=CO.green,A=CO.amber,R=CO.red,Cy=CO.cyan,P='#b39ddb'
  if(b.n<a.n)      o.push(['−'+(a.n-b.n)+' 个元素',G])
- else if(b.work<a.work) o.push(['处理量 −'+Math.round(a.work-b.work),G])
+ else if(b.work<a.work) o.push(['每根柱子矮了一截 · 血条 −'+(Math.round((a.work-b.work)/Math.max(S.totalWork,1)*1000)/10)+'%',G])
  if(b.tier>a.tier)o.push(['有序层数 '+a.tier+' → '+b.tier,A])
  if(b.splits>a.splits)o.push(['段数 '+a.splits+' → '+b.splits,P])
  if(b.memo>a.memo)o.push(['预处理值 +'+(b.memo-a.memo),G])
@@ -449,7 +449,7 @@ function grid(){ctx.strokeStyle='rgba(70,130,170,.07)';ctx.lineWidth=1
 function fightScreen(){
  const HANDY=H-172,ARENA={x:236,y:150,w:W-236-244,h:HANDY-190}
  topBar(); enemyHeader(ARENA)
- legendPanel(16,150,204,(S.mult>1?352:330)+(S.FL?66:0))
+ legendPanel(16,150,204,(S.mult>1?452:430)+(S.FL?66:0))
  statsPanel(W-228,150,212,ARENA.h+40)
  arena(ARENA); flawBanner()
  deckPile(16,HANDY+16); handRow(HANDY)
@@ -505,7 +505,17 @@ function legendPanel(x,y,w,h){
  row('bar','值小',null,'hsl(188 88% 58%)')
  row('bar','值中',null,'hsl(38 88% 58%)')
  row('bar','值大',null,'hsl(22 88% 58%)')
- yy+=6
+ yy+=10
+ ctx.font='600 10.5px system-ui';ctx.fillStyle=CO.faint;ctx.letterSpacing='1.5px'
+ ctx.fillText('两 类 卡',x+14,yy);ctx.letterSpacing='0px';yy+=18
+ ctx.font='400 11px system-ui';ctx.fillStyle=CO.cyan;ctx.fillText('摊平',x+14,yy)
+ ctx.fillStyle=CO.dim;ctx.fillText('总量 ÷ 元素数,每根矮一点',x+46,yy);yy+=15
+ ctx.fillStyle=CO.faint;ctx.font='400 10px system-ui'
+ ctx.fillText('规模越大越吃亏 · 遍历/并行/查表/DP',x+22,yy);yy+=19
+ ctx.font='400 11px system-ui';ctx.fillStyle=CO.amber;ctx.fillText('点杀',x+14,yy)
+ ctx.fillStyle=CO.dim;ctx.fillText('直接整根移除,不看高矮',x+46,yy);yy+=15
+ ctx.fillStyle=CO.faint;ctx.font='400 10px system-ui'
+ ctx.fillText('二分/中位数/贪心/逐层合并…',x+22,yy);yy+=16
  ctx.strokeStyle=CO.line;ctx.beginPath();ctx.moveTo(x+14,yy-10);ctx.lineTo(x+w-14,yy-10);ctx.stroke();yy+=6
  ctx.font='600 10px system-ui';ctx.fillStyle=CO.faint;ctx.fillText('你的乘区',x+14,yy);yy+=20
  row('bar','预处理值 · 查表按它结算',S.memo,CO.green)
@@ -624,11 +634,23 @@ const ease=t=>1-Math.pow(1-t,3)
 
 /* 卡面第二行:把「1+有序层数×2」这种公式换算成此刻的真实数字。
    R2「卡面可推,不许查表」的补完 —— 光有规则不够,得让人看见规则算出来是多少。 */
+/* 摊平型的卡(遍历/并行处理/查表/DP)把总处理量平分给每个元素。
+   规模越大每根分到越少 —— 这是「平铺处理不随规模缩放」的手感来源,
+   但只写「总处理量 16」玩家看不出后果,得把除法和打掉几个都算出来。 */
+function wprev(tot){const a=alive(S); if(!a.length)return null
+ let t=tot; if(S.halfNext)t*=.7
+ if(S.flawId==='offByOne'&&!S.guarded)t*=.9
+ const per=t/a.length
+ const hp=Math.min(100,Math.round(t/Math.max(S.totalWork,1)*1000)/10)
+ // 「打掉 0 个」会冤枉它 —— 摊平型的贡献在血条上,不在个数上
+ return{per:per<1?per.toFixed(2):per.toFixed(1),k:a.filter(b=>b.v<=per).length,n:a.length,
+        hp,tail:(a.filter(b=>b.v<=per).length?' · 打掉 '+a.filter(b=>b.v<=per).length+' 个':'')+' · 血条 −'+hp+'%'}}
 function live(id){ if(!S)return null
  const n=N(S),t=tier(S),sp=S.splits,m=S.memo,d=S.debt,seq=S.E.seqOnly,half=S.E.noSplit?.4:1
  const G=CO.green,A=CO.amber,Cy=CO.cyan,R=CO.red,P='#b39ddb'
  switch(id){
-  case 'scan':     return ['处理量 16 摊到 '+n+' 个元素上',Cy]
+  case 'scan':{const w=wprev(16)
+    return ['16 ÷ '+w.n+' 个 = 每根矮 '+w.per+w.tail,w.k>0?G:Cy]}
   case 'batch':    return ['预算 '+S.budget+' → '+(S.budget+5),G]
   case 'watch':    return ['抽 2 · 牌库还剩 '+S.draw.length+' 张',Cy]
   case 'bubble': case 'merge': case 'quick':
@@ -640,15 +662,17 @@ function live(id){ if(!S)return null
   case 'divide':   return sp<(S.E.noSplit??4)?['段数 '+sp+' → '+(sp+1),G]
                               :['段数已到上限 '+sp+' —— 现在出会落空',R]
   case 'mergeup':  return ['现在移除 '+(2*sp)+' 个 ← 段数 '+sp+' × 每段 2',sp>=3?G:A]
-  case 'parallel': return ['现在处理量 '+Math.round(sp*14*half)+' ← 段数 '+sp+' × 14'+(half<1?' × 不可分四折':''),sp>=3?G:A]
+  case 'parallel':{const tot=sp*14*half,w=wprev(tot)
+    return ['段数 '+sp+'×14'+(half<1?'×四折':'')+'='+Math.round(tot)+' ÷ '+w.n+' 个 = 每根矮 '+w.per+w.tail,w.k>0?G:sp>=3?G:A]}
   case 'recur':    return sp>=3?['现在移除 '+Math.ceil(n/3)+' 个 ← 规模 '+n+' 的 1/3',G]
                               :['段数 '+sp+',不到 3 —— 现在出会落空',R]
   case 'pre':      return ['预处理值 '+m+' → '+Math.min(S.E.memoCap??999,m+8),G]
   case 'table':{const g=10+Math.ceil(n/4)
     return ['预处理值 '+m+' → '+Math.min(S.E.memoCap??999,m+g)+'(按规模 '+n+' 算)',G]}
-  case 'lookup':   return m>0?['现在处理量 '+m+' ← 预处理值 '+m+',而且不消耗它',G]
-                             :['预处理值还是 0 —— 现在出会落空',R]
-  case 'dp':       return m>0?['现在处理量 '+(m*2)+' ← 预处理值 '+m+' ×2',G]:['预处理值还是 0 —— 现在出会落空',R]
+  case 'lookup':{ if(!m)return['预处理值还是 0 —— 现在出会落空',R]
+    const w=wprev(m);return['预处理值 '+m+' ÷ '+w.n+' 个 = 每根矮 '+w.per+w.tail+'(不消耗)',w.k>0?G:A]}
+  case 'dp':{ if(!m)return['预处理值还是 0 —— 现在出会落空',R]
+    const w=wprev(m*2);return['预处理值 '+m+'×2='+(m*2)+' ÷ '+w.n+' 个 = 每根矮 '+w.per+w.tail,w.k>0?G:A]}
   case 'greedy':   return ['移除 2 个 · 债务 '+d+' → '+(d+1),A]
   case 'local':    return ['移除 5 个 · 债务 '+d+' → '+(d+2),A]
   case 'heur':     return ['现在移除 '+(2+Math.min(d,6))+' 个 ← 债务 '+d+'(按 6 封顶)',d>=3?G:A]
