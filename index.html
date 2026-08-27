@@ -123,6 +123,7 @@ function play(S,i){if(!canPlay(S,i))return false
   S.diag.flawLoss+=2;(c.exhaust?S.exhaust:S.discard).push(c.id);workTotal(S,8);check(S);return true}
  ;(c.exhaust?S.exhaust:S.discard).push(c.id);c.fn(S);check(S);return true}
 function endTurn(S){if(S.over)return
+ const _b={n:N(S),budget:S.budget,memo:S.memo,tier:tier(S),hand:S.hand.length,ex:S.exhaust.length}
  const base=Math.ceil(N(S)/T.COST_DIV),debtPen=S.debt*T.DEBT_PEN*(S.E.antiGreedy?2.2:1)
  if(S.E.antiGreedy)S.diag.extraDebt+=S.debt*T.DEBT_PEN
  S.diag.spent+=base+debtPen;S.diag.turns++
@@ -146,6 +147,7 @@ function endTurn(S){if(S.over)return
  if(S.flawId==='nullPtr'&&S.hand.length){let bi=0
   for(let i=1;i<S.hand.length;i++)if(C[S.hand[i]].cost>C[S.hand[bi]].cost)bi=i
   S.locked=bi;S.diag.flawLoss+=C[S.hand[bi]].cost}
+ if(typeof foeTurnReport==='function')foeTurnReport(_b,S)
  check(S)}
 let _uid=1e6;const push1=S=>{const b={id:_uid++,v:T.VMIN+Math.floor(S.R()*(S.vmax-T.VMIN+1)),dead:false};S.totalWork+=b.v;S.bars.push(b)}
 function check(S){if(N(S)<=0)S.over='win';else if(S.budget<=0)S.over='lose'
@@ -316,6 +318,16 @@ function readout(a,b){const o=[],G=CO.green,A=CO.amber,R=CO.red,Cy=CO.cyan,P='#b
  if(!o.length)o.push(['这张没起作用',R])
  return o}
 let flo=null
+/* 回合末飘字 —— 和出牌飘字对称:那边说「我做了什么」,这边说「它做了什么」 */
+function foeTurnReport(b,S2){ if(S2!==S)return
+ const o=[],G=CO.green,A=CO.amber,R=CO.red
+ o.push(['预算 '+b.budget+' → '+S.budget+'(按规模 '+N(S)+' 收的开销)',R])
+ if(N(S)>b.n)   o.push(['涌入 +'+(N(S)-b.n)+' 个'+(S.mult>1?'(指数增长)':''),R])
+ if(tier(S)<b.tier) o.push(['自我打乱 · 有序层数 '+b.tier+' → '+tier(S),A])
+ if(S.memo<b.memo)  o.push(['数据在变 · 预处理值 '+b.memo+' → '+S.memo,A])
+ if(S.exhaust.length>b.ex) o.push(['哈希碰撞 · 丢了 '+(S.exhaust.length-b.ex)+' 张手牌',R])
+ if(S.locked!=null) o.push(['空指针 · 锁住了「'+C[S.hand[S.locked]].name+'」',R])
+ if(o.length>1||N(S)>b.n) flo={lines:o.slice(0,4),name:'敌人回合',t0:performance.now(),dur:1700}}
 function uiPlay(i){ if(anim||!canPlay(S,i))return
  const id=S.hand[i],before=snap(),s0=stat()
  play(S,i); hist.push(hpPct(S))
@@ -451,7 +463,8 @@ function fightScreen(){
  const HANDY=H-172,ARENA={x:236,y:150,w:W-236-244,h:HANDY-190}
  topBar(); enemyHeader(ARENA)
  legendPanel(16,150,204,(S.mult>1?452:430)+(S.FL?66:0))
- statsPanel(W-228,150,212,ARENA.h+40)
+ const th=traitPanel(W-228,150,212)
+ statsPanel(W-228,150+th+12,212,ARENA.h+28-th)
  arena(ARENA); flawBanner()
  deckPile(16,HANDY+16); handRow(HANDY)
  btn(W-166,H-58,148,40,'结束回合'); discardPile(W-166,HANDY+16)}
@@ -536,6 +549,37 @@ function wrap2(t,x,y,w,lh){let l='',yy=y
  for(const ch of t){if(ctx.measureText(l+ch).width>w){ctx.fillText(l,x,yy);l=ch;yy+=lh}else l+=ch}
  ctx.fillText(l,x,yy)}
 
+/* 十一个敌人共 13 个机制杠杆,每个身上生效 2~4 个。
+   这些差异一直只写在顶部那一行 note 里,打起来根本注意不到。
+   这里逐条摆出来,并且带上「此刻造成了多少」。 */
+function traits(){const E=S.E,o=[]
+ const add=(t,v,c)=>o.push([t,v,c])
+ if(E.shuffle)   add('自我打乱','每回合乱 '+(E.shuffle*3)+' 次 · 已累计 −'+S.diag.sortDecay+' 层',CO.amber)
+ if(E.seqOnly)   add('顺序访问','二分查找 ×'+E.seqOnly+' · 已少移除 '+Math.round(S.diag.lostKill)+' 个',CO.amber)
+ if(E.vmax&&E.vmax<T.VMAX) add('值域窄','柱高只到 '+E.vmax+'(常规 '+T.VMAX+')· 摊平型占便宜',CO.cyan)
+ if(E.memoDecay) add('数据在变','预处理值每回合 −'+E.memoDecay+' · 已侵蚀 '+S.diag.memoDecayed,CO.amber)
+ if(E.dense)     add('稠密','每多切 '+Math.round(1/E.dense)+' 段多涌入 1 · 已多来 '+S.diag.extraInflow+' 个',CO.amber)
+ if(E.antiSort)  add('专克排序流','排序卡趟数 ×0.25 · 快排已少给 '+S.diag.lostSort+' 层',CO.red)
+ if(E.antiGreedy)add('专克激进流','债务惩罚 ×2.2 · 已多烧 '+S.diag.extraDebt+' 预算',CO.red)
+ if(E.memoCap)   add('专克复利流','预处理值上限 '+E.memoCap+' · 已白投 '+Math.round(S.diag.lostMemo),CO.red)
+ if(E.noSplit)   add('专克拆解流','段数上限 '+E.noSplit+' · 并行处理只剩四成',CO.red)
+ if(E.evict)     add('通用压制','每回合末随机丢 1 张手牌 · 已丢 '+(S.diag.evicted||0)+' 张',CO.red)
+ if(E.mult>1)    add('指数增长','规模每回合 ×'+S.mult.toFixed(2)+' — 线性削减追不上',CO.red)
+ if(S.FL)        add('【失误】'+S.FL.name,S.FL.note,CO.red)
+ return o}
+function traitPanel(x,y,w){const ts=traits()
+ const h=44+ts.length*34
+ panel(x,y,w,h,'这 个 敌 人 在 做 什 么')
+ let yy=y+48
+ if(!ts.length){ctx.font='400 11.5px system-ui';ctx.fillStyle=CO.faint
+  ctx.fillText('只是量大,没有额外机制',x+14,yy);return h}
+ ts.forEach(([t,v,c])=>{
+  ctx.fillStyle=c;ctx.fillRect(x+14,yy-8,3,10)
+  ctx.font='600 11.5px system-ui';ctx.fillStyle=c;ctx.fillText(t,x+23,yy)
+  ctx.font='400 10.5px system-ui';ctx.fillStyle=CO.dim
+  let s2=v;while(ctx.measureText(s2).width>w-38)s2=s2.slice(0,-2)
+  ctx.fillText(s2,x+23,yy+14);yy+=34})
+ return h}
 function statsPanel(x,y,w,h){
  panel(x,y,w,h,'数 据 性 质')
  const sd=sortedness(S),tr=tier(S)
