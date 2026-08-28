@@ -320,6 +320,7 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   ecbcbc: {},
   birthday: {},
   aesround: {},
+  hmac: {},
   astar: {},
   perceptron: {},
   pooling: { kind: 'string' },

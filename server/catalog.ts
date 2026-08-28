@@ -72,6 +72,7 @@ import { otpreuseKernel } from '../src/kernels/otpreuse.ts'
 import { ecbcbcKernel } from '../src/kernels/ecbcbc.ts'
 import { birthdayKernel } from '../src/kernels/birthday.ts'
 import { aesroundKernel } from '../src/kernels/aesround.ts'
+import { hmacKernel } from '../src/kernels/hmac.ts'
 import { walKernel } from '../src/kernels/wal.ts'
 import { lsmKernel } from '../src/kernels/lsm.ts'
 import { minikvKernel } from '../src/kernels/minikv.ts'
@@ -1236,6 +1237,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: 'AES 一轮里哪一步是唯一的非线性变换（去掉它整个密码就会被线性代数破掉）?', kind: 'choice',
         compute: () => ({ answer: 'SubBytes——逐字节查 S-盒(GF(2⁸)求逆+仿射)，是唯一的非线性步骤；ShiftRows/MixColumns/AddRoundKey 都是线性的', step: 2, evidence: '没有 S-盒的非线性，密码退化成线性方程组，可被直接解出' }),
         distractors: () => ['MixColumns', 'ShiftRows', 'AddRoundKey'],
+      },
+    ],
+  },
+  {
+    id: 'hmac', title: 'HMAC 消息认证', kernel: hmacKernel as Kernel<unknown>, doc: trivialDoc('hmac'),
+    facts: [
+      {
+        id: 'why_nested', label: 'HMAC 为什么要两层嵌套而不是 H(K‖m)',
+        ask: '给消息盖认证标签，为什么不直接用 H(K‖m)，而要 HMAC 的两层嵌套 H((K⊕opad)‖H((K⊕ipad)‖m))?', kind: 'choice',
+        compute: () => ({ answer: '很多哈希(Merkle-Damgård 结构)有长度扩展攻击：知道 H(K‖m) 就能算出 H(K‖m‖…) 而不需要 K；HMAC 用外层再哈希一次把这条路堵死，密钥在内外各揉一次', step: 4, evidence: 'ipad/opad 让密钥参与内外两层，攻击者拿到最终标签也续不出新标签' }),
+        distractors: () => ['两层只是为了更慢、增加破解成本', '嵌套能把密钥藏得更深所以更安全', '没区别，只是习惯写法'],
+      },
+      {
+        id: 'tamper', label: 'HMAC 怎么同时防伪造和防篡改',
+        ask: 'HMAC 标签是怎么让收方既挡住伪造、又发现消息被改的?', kind: 'choice',
+        compute: () => ({ answer: '标签的计算需要密钥 K：没有 K 就算不出正确标签(防伪造)；消息改一个字节，收方用 K 重算的标签就和附带的对不上(防篡改)', step: 5, evidence: "m 从 'Hi' 改成 'Hj'，重算 HMAC=06≠原 05，收方拒收" }),
+        distractors: () => ['靠把消息加密隐藏起来', '靠标签里带一个时间戳', '靠消息本身够长'],
       },
     ],
   },

@@ -353,6 +353,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; op: string; result: string }; return st.phase === 'done' ? 'KV跑通' : (st.op === 'get' ? (st.result || 'get') : st.op) },
     try: [{ act: '看更新 a=9', watch: '不改旧值，追加新版本；SST1 里 a=1、SST2 里 a=9 同时存在。' }, { act: '看 get(a) 和压实', watch: 'get 从新到旧读到 a=9；压实把旧的 a=1 归并丢掉。' }], terms: [],
   },
+  hmac: {
+    question: '怎么给消息盖一个"只有持密钥者算得出、改一字节就露馅"的标签？',
+    read: [{ at: '两条泳道', is: '内层 K⊕ipad‖m→H，外层 K⊕opad‖inner→H。', anchor: '.hm-pipe' }, { at: '读数', is: '内层 inner、HMAC 标签、篡改后。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { op: string; ki: number[]; inner: number; mac: number; tamperMac: number; phase: string }; const hx = (n: number) => n < 0 ? '—' : n.toString(16).padStart(2, '0'); return [
+      { k: '本步输入', v: st.phase === 'done' ? '四步算完，做篡改验证' : st.op === 'intro' ? 'MAC 目标：带密钥的防篡改标签' : st.op === 'ipad' ? 'K ⊕ ipad(0x36)' : st.op === 'inner' ? '内层 H(K⊕ipad ‖ m)' : st.op === 'opad' ? 'K ⊕ opad(0x5c)' : '外层 H(K⊕opad ‖ inner)' },
+      { k: '判定规则', v: 'HMAC=H((K⊕opad)‖H((K⊕ipad)‖m))。密钥在内外两层各揉一次，堵住 H(K‖m) 的长度扩展攻击；标签的计算离不开 K，所以没密钥算不出、改消息必对不上。' },
+      { k: '本步结果', v: st.phase === 'done' ? `篡改后重算 ${hx(st.tamperMac)} ≠ 原 ${hx(st.mac)} → 拒收` : st.op === 'ipad' ? `K⊕ipad = ${st.ki.map(x => x.toString(16).padStart(2, '0')).join(' ')}` : st.op === 'inner' ? `inner = ${hx(st.inner)}` : st.op === 'outer' ? `HMAC = ${hx(st.mac)}` : st.op === 'opad' ? 'K⊕opad 算好，进外层' : '直接 H(m) 无密钥、H(K‖m) 有隐患' },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; op: string; mac: number }; return st.phase === 'done' ? '防篡改' : st.op === 'intro' ? '看目标' : st.op === 'ipad' || st.op === 'opad' ? '异或' : st.op === 'inner' ? '内层H' : '外层H' },
+    try: [{ act: '看密钥揉两次', watch: 'K⊕ipad 进内层、K⊕opad 进外层——密钥内外各一次，是它比 H(K‖m) 稳的关键。' }, { act: '看篡改验证', watch: "改 'Hi'→'Hj'，重算标签 06≠原 05，收方一比对就拒收。" }], terms: [],
+  },
   aesround: {
     question: 'AES 把明文摆成 4×4 矩阵，一轮里对它做了哪四件事？',
     read: [{ at: '矩阵', is: '4×4 状态，本步改动的格子高亮。', anchor: '.aes-stage' }, { at: '四步条', is: '当前走到 Sub/Shift/Mix/AddKey 哪步。', anchor: '.aes-flow' }],

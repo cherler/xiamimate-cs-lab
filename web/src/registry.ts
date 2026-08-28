@@ -256,6 +256,8 @@ import { birthdayKernel, type BirthdayState } from '@engine/kernels/birthday.ts'
 import { BirthdayStage } from './stages/BirthdayStage.tsx'
 import { aesroundKernel, type AesState } from '@engine/kernels/aesround.ts'
 import { AesRoundStage } from './stages/AesRoundStage.tsx'
+import { hmacKernel, type HmacState } from '@engine/kernels/hmac.ts'
+import { HmacStage } from './stages/HmacStage.tsx'
 import { walKernel, type WALState } from '@engine/kernels/wal.ts'
 import { WALStage } from './stages/WALStage.tsx'
 import { lsmKernel, type LSMState } from '@engine/kernels/lsm.ts'
@@ -5521,6 +5523,22 @@ const ecbcbc: Experiment<EcbCbcState> = {
     { label: '重复块', value: s.phase === 'done' ? 'ECB 泄露 / CBC 安全' : '对比中' },
   ],
 }
+const hmac: Experiment<HmacState> = {
+  id: 'hmac', group: '密码学', title: 'HMAC 消息认证', subtitle: '密钥+嵌套哈希：防伪造又防篡改',
+  kernel: hmacKernel, defaultDoc: { kind: 'hmac', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '无可调参数。HMAC(K,m)=H((K⊕opad)‖H((K⊕ipad)‖m))：密钥在内外两层各揉一次，堵住 H(K‖m) 的长度扩展攻击。用玩具哈希 h=(h*31+b) mod 256，结构真实、可跟。末步演示改一字节标签就对不上。详见讲解卡。',
+  bounds: ['直接H(m)无密钥谁都能算;H(K‖m)有长度扩展攻击', 'HMAC两层嵌套:K⊕ipad→内层H→K⊕opad→外层H', 'K⊕ipad/opad异或可手核;K=Key1、m=Hi→HMAC=05', '篡改m→标签05变06,收方一比对就拒收;真实用HMAC-SHA256'],
+  tabs: [{ id: 'mac', label: '嵌套两层' }], Stage: HmacStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: `标签 ${s.mac >= 0 ? s.mac.toString(16).padStart(2, '0') : ''}` } : s.op === 'intro' ? { key: 'idle', label: '看目标' } : { key: 'idle', label: s.op === 'ipad' ? 'K⊕ipad' : s.op === 'inner' ? '内层H' : s.op === 'opad' ? 'K⊕opad' : '外层H' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.op === 'inner' || s.op === 'outer' ? 'H' : s.op === 'ipad' || s.op === 'opad' ? '⊕' : '标'),
+  readouts: s => [
+    { label: '本步', value: s.op === 'intro' ? '看目标' : s.op === 'ipad' ? 'K⊕ipad' : s.op === 'inner' ? '内层哈希' : s.op === 'opad' ? 'K⊕opad' : s.op === 'outer' ? '外层哈希' : '篡改验证' },
+    { label: '内层 inner', value: s.inner >= 0 ? s.inner.toString(16).padStart(2, '0') : '—' },
+    { label: 'HMAC 标签', value: s.mac >= 0 ? s.mac.toString(16).padStart(2, '0') : '—', tone: s.phase === 'done' ? 'good' : undefined },
+    { label: '篡改后', value: s.tamperMac >= 0 ? `${s.tamperMac.toString(16).padStart(2, '0')}(对不上)` : '—', tone: s.tamperMac >= 0 ? 'bad' : undefined },
+  ],
+}
 const aesround: Experiment<AesState> = {
   id: 'aesround', group: '密码学', title: 'AES 一轮', subtitle: 'SubBytes→ShiftRows→MixColumns→AddRoundKey',
   kernel: aesroundKernel, defaultDoc: { kind: 'aesround', params: {}, entities: [], streams: [] }, params: [],
@@ -5670,7 +5688,7 @@ const mqdesign: Experiment<SysDesignState> = {
 export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
-  caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt, ecbcbc, birthday, aesround,
+  caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt, ecbcbc, birthday, aesround, hmac,
   tokenbucket, consistenthash, skiplist, twopc, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
