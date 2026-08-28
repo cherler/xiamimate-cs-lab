@@ -344,6 +344,7 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   blockingqueue: {},
   regex: {},
   objectstore: {},
+  queryplan: {},
   astar: {},
   perceptron: {},
   pooling: { kind: 'string' },

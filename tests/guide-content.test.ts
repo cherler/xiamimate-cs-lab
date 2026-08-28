@@ -233,6 +233,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { step: 8, kind: 'action', round: 3, text: '', tool: 'calc', arg: '30 - 25', obs: '', history: [{ kind: 'thought', text: '两地都有了：30 和 25。用计算器算差。' }], answer: '', phase: 'run', focus: '第 3 轮 · Action：calc(30 - 25)' },
       b: { step: 11, kind: 'answer', round: 4, text: '北京今天最高 30°C，上海 25°C，北京比上海热 5°C。', tool: '', arg: '', obs: '', history: [{ kind: 'thought', text: 'x' }], answer: '北京今天最高 30°C，上海 25°C，北京比上海热 5°C。', phase: 'done', focus: 'Final Answer：够了，作答' },
     },
+    queryplan: {
+      doc: { kind: 'queryplan', params: {}, entities: [], streams: [] },
+      a: { step: 1, op: 'path', query: 'q', revealed: 1, cur: 0, chosen: -1, paths: [{ name: '全表扫描', type: 'ALL', key: '—', rows: 10000, note: 'x' }, { name: '走 idx(city)', type: 'ref', key: 'idx_city', rows: 500, note: 'x' }, { name: '走 idx(age)', type: 'range', key: 'idx_age', rows: 6000, note: 'x' }], phase: 'run', focus: '候选路径：全表扫描（type=ALL，估扫 10000 行）' },
+      b: { step: 4, op: 'choose', query: 'q', revealed: 3, cur: 1, chosen: 1, paths: [{ name: '全表扫描', type: 'ALL', key: '—', rows: 10000, note: 'x' }, { name: '走 idx(city)', type: 'ref', key: 'idx_city', rows: 500, note: 'x' }, { name: '走 idx(age)', type: 'range', key: 'idx_age', rows: 6000, note: 'x' }], phase: 'done', focus: '选 走 idx(city)：估扫 500 行最少' },
+    },
     regex: {
       doc: { kind: 'regex', params: {}, entities: [], streams: [] },
       a: { step: 2, op: 'row', s: 'aab', p: 'c*a*b', table: [], revealed: 2, curRow: 1, key: { i: 1, j: 4, rule: 'more' }, matched: true, phase: 'run', focus: "填第 1 行" },

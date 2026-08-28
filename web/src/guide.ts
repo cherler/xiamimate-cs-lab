@@ -397,6 +397,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; kind: string; round: number }; return st.phase === 'done' ? '得到答案' : st.kind === 'action' ? '调工具' : st.kind === 'observation' ? '拿到结果' : st.kind === 'thought' ? `想·第${st.round}轮` : '开始' },
     try: [{ act: '看想→做→看循环', watch: 'Thought 决定查气温 → Action search → Observation 30°C → 下一轮再想。' }, { act: '看工具给真数据', watch: 'calc(30-25) 返回 5，不是模型口算——Agent 用真结果，少幻觉。' }], terms: [],
   },
+  queryplan: {
+    question: '同一个查询有好几条路可走，数据库优化器凭什么选其中一条？',
+    read: [{ at: '候选路径', is: '每条访问路径的 type + 估扫描行数代价条。', anchor: '.qp-paths' }, { at: 'EXPLAIN', is: '末步选中路径的 type/key/rows。', anchor: '.qp-explain' }],
+    step: (s: never) => { const st = s as { op: string; cur: number; paths: { name: string; type: string; rows: number }[]; chosen: number; phase: string }; return [
+      { k: '本步输入', v: st.phase === 'done' ? '比完三条路径的代价' : st.op === 'intro' ? '一个查询、多条访问路径' : `候选：${st.paths[st.cur].name}` },
+      { k: '判定规则', v: '基于代价(CBO)：估每条访问路径大概扫多少行(含回表等)，选代价最低的。type=ALL 全表扫、ref 等值索引、range 范围索引；rows 是估扫描行数。' },
+      { k: '本步结果', v: st.phase === 'done' ? `选 ${st.paths[st.chosen].name}（${st.paths[st.chosen].rows} 行最少）→ EXPLAIN type=${st.paths[st.chosen].type}` : st.op === 'path' ? `${st.paths[st.cur].name}：type=${st.paths[st.cur].type}，估扫 ${st.paths[st.cur].rows} 行` : `查询有 ${st.paths.length} 条候选路径` },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; op: string; cur: number; paths: { rows: number }[] }; return st.phase === 'done' ? '选最省路径' : st.op === 'path' ? `${st.paths[st.cur].rows}行` : '看查询' },
+    try: [{ act: '比三条路径', watch: '全表扫 10000 行、idx(city) 500 行、idx(age) 6000 行——优化器选行数最少的。' }, { act: '看 EXPLAIN', watch: '选中 idx(city)：type=ref、key=idx_city、rows≈500，这就是 EXPLAIN 输出。' }], terms: [],
+  },
   regex: {
     question: '正则的 * 是"零或多个前一字符"，怎么用 DP 表把它讲清楚？',
     read: [{ at: 'DP 表', is: 'dp[i][j]=s前i个配p前j个；绿✓能配、·不能。', anchor: '.rx-table' }, { at: '关键格', is: '本行高亮格用的转移规则。', anchor: '.rx-note' }],

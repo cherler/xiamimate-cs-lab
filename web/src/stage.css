@@ -4462,6 +4462,32 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .rx-note.char { border-color:var(--hit); background:color-mix(in srgb, var(--hit) 7%, var(--panel)); }
 .rx-note.char b { color:var(--hit); }
 
+/* ── 执行计划 / 优化器选路 ── */
+.qp-query { margin:8px 0 12px; padding:9px 13px; border:1px solid var(--line); border-radius:9px; background:var(--sunk-1); font-size:12.5px; }
+.qp-qlbl { font-size:11px; font-weight:700; color:var(--dim); margin-right:8px; }
+.qp-query code { font-family:var(--mono); color:var(--ink); }
+.qp-paths { display:flex; flex-direction:column; gap:8px; margin:0 0 12px; }
+.qp-path { display:grid; grid-template-columns:110px 84px 1fr 64px auto; align-items:center; gap:10px; padding:8px 12px; border:1.5px solid var(--line); border-radius:9px; background:var(--panel); }
+.qp-path.cur { border-color:var(--now); box-shadow:0 0 0 1px var(--now); }
+.qp-path.chosen { border-color:var(--hit); background:color-mix(in srgb, var(--hit) 7%, var(--panel)); }
+.qp-path.dim { opacity:.5; }
+.qp-pname { font-size:13px; font-weight:700; color:var(--ink); }
+.qp-type { font-family:var(--mono); font-size:11px; padding:2px 8px; border-radius:6px; border:1px solid var(--line); color:var(--dim); background:var(--sunk-1); text-align:center; }
+.qp-type.bad { color:var(--miss); border-color:var(--miss); }
+.qp-type.good { color:var(--hit); border-color:var(--hit); }
+.qp-bar { height:14px; border-radius:7px; background:var(--sunk-1); overflow:hidden; }
+.qp-bar i { display:block; height:100%; background:color-mix(in srgb, var(--miss) 55%, var(--panel)); }
+.qp-path.chosen .qp-bar i { background:var(--hit); }
+.qp-rows { font-family:var(--mono); font-size:12.5px; font-weight:700; color:var(--ink); text-align:right; }
+.qp-pick { font-size:11px; font-weight:700; color:var(--hit); }
+.qp-note { margin:0 0 10px; padding:7px 12px; font-size:12.5px; border-radius:8px; border:1px solid var(--line); color:var(--dim); background:var(--sunk-1); }
+.qp-explain { margin:0 0 12px; padding:10px 13px; border:1px solid var(--hit); border-radius:9px; background:color-mix(in srgb, var(--hit) 6%, var(--panel)); }
+.qp-elbl { font-size:11px; font-weight:700; color:var(--hit); }
+.qp-erow { display:flex; gap:12px; font-family:var(--mono); font-size:12.5px; margin-top:5px; }
+.qp-erow span { color:var(--faint); min-width:44px; }
+.qp-erow b { color:var(--ink); }
+.qp-erow b.ok { color:var(--hit); }
+
 /* ── mini 搜索引擎（倒排索引 + TF-IDF） ── */
 .ms-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:8px 0 12px; }
 .ms-col { display:flex; flex-direction:column; gap:6px; min-width:0; }

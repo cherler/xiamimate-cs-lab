@@ -298,6 +298,8 @@ import { blockingqueueKernel, type BQState } from '@engine/kernels/blockingqueue
 import { BlockingQueueStage } from './stages/BlockingQueueStage.tsx'
 import { regexKernel, type RegexState } from '@engine/kernels/regex.ts'
 import { RegexStage } from './stages/RegexStage.tsx'
+import { queryplanKernel, type QPlanState } from '@engine/kernels/queryplan.ts'
+import { QueryPlanStage } from './stages/QueryPlanStage.tsx'
 import { walKernel, type WALState } from '@engine/kernels/wal.ts'
 import { WALStage } from './stages/WALStage.tsx'
 import { lsmKernel, type LSMState } from '@engine/kernels/lsm.ts'
@@ -5566,6 +5568,22 @@ const ecbcbc: Experiment<EcbCbcState> = {
     { label: '重复块', value: s.phase === 'done' ? 'ECB 泄露 / CBC 安全' : '对比中' },
   ],
 }
+const queryplan: Experiment<QPlanState> = {
+  id: 'queryplan', group: '数据库系统', title: '执行计划 · 优化器选路', subtitle: '按估扫描行数选访问路径（读懂 EXPLAIN）',
+  kernel: queryplanKernel, defaultDoc: { kind: 'queryplan', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '无可调参数。表10000行,查询 WHERE city AND age>30。优化器估三条访问路径扫多少行:全表扫ALL(10000)/idx(city) ref(500)/idx(age) range(6000),选最少的idx(city)。EXPLAIN显示type/key/rows。可核。详见讲解卡。',
+  bounds: ['CBO基于代价:估每条访问路径扫多少行,选最省', 'type:ALL全表扫(危险)/ref等值索引/range范围索引;rows=估扫描行数', '本例选idx(city)(500行)而非全表(10000)或idx(age)(6000)', '"建了索引不走"=优化器算走索引更贵或统计信息过期估错'],
+  tabs: [{ id: 'plan', label: '比代价选路' }], Stage: QueryPlanStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: `选 ${s.paths[s.chosen]?.key}` } : s.op === 'path' ? { key: s.paths[s.cur]?.type === 'ALL' ? 'bad' : 'idle', label: `${s.paths[s.cur]?.rows}行` } : { key: 'idle', label: '看查询' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 5)),
+  tickLabel: s => (s.phase === 'done' ? '选' : s.op === 'path' ? String(s.cur + 1) : '始'),
+  readouts: s => [
+    { label: '本步', value: s.op === 'intro' ? '看查询' : s.phase === 'done' ? '优化器选定' : `候选：${s.paths[s.cur]?.name}` },
+    { label: 'type', value: s.cur >= 0 ? s.paths[s.cur].type : '—', tone: s.cur >= 0 && s.paths[s.cur].type === 'ALL' ? 'bad' : s.phase === 'done' ? 'good' : undefined },
+    { label: '估扫描', value: s.cur >= 0 ? `${s.paths[s.cur].rows} 行` : '—' },
+    { label: '选中', value: s.chosen >= 0 ? `${s.paths[s.chosen].name}(${s.paths[s.chosen].rows}行)` : '—', tone: s.chosen >= 0 ? 'good' : undefined },
+  ],
+}
 const regex: Experiment<RegexState> = {
   id: 'regex', group: '算法项目实战', title: 'mini 正则引擎', subtitle: '. 配任意、* 配零或多个前一字符（DP）',
   kernel: regexKernel, defaultDoc: { kind: 'regex', params: {}, entities: [], streams: [] }, params: [],
@@ -6100,7 +6118,7 @@ export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
   caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt, ecbcbc, birthday, aesround, hmac, totp,
-  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, bufferpool, wildcard, regex, blockingqueue, rwlock, aba, happensbefore, lockstrategy, lrucache, lfucache, trie, quickselect, reactagent, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign, topk, feed, objectstore,
+  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, bufferpool, queryplan, wildcard, regex, blockingqueue, rwlock, aba, happensbefore, lockstrategy, lrucache, lfucache, trie, quickselect, reactagent, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign, topk, feed, objectstore,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,

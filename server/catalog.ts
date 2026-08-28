@@ -93,6 +93,7 @@ import { lockstrategyKernel } from '../src/kernels/lockstrategy.ts'
 import { bufferpoolKernel } from '../src/kernels/bufferpool.ts'
 import { feedKernel } from '../src/kernels/feed.ts'
 import { objectstoreKernel } from '../src/kernels/objectstore.ts'
+import { queryplanKernel } from '../src/kernels/queryplan.ts'
 import { wildcardKernel } from '../src/kernels/wildcard.ts'
 import { blockingqueueKernel } from '../src/kernels/blockingqueue.ts'
 import { regexKernel } from '../src/kernels/regex.ts'
@@ -1668,6 +1669,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: '存海量图片视频，为什么用对象存储、而不是传统文件系统的目录树?', kind: 'choice',
         compute: () => ({ answer: '海量小文件会把文件系统的目录树/inode/元数据撑爆；对象存储用扁平的 key(bucket/hash)而非目录树，元数据单独存、可水平扩展，天然适合海量对象', step: 2, evidence: '目录树扛不住 PB 级海量文件，对象存储扁平 key 可扩展' }),
         distractors: () => ['对象存储读写更快', '文件系统不能存视频', '对象存储不用存元数据'],
+      },
+    ],
+  },
+  {
+    id: 'queryplan', title: '执行计划 · 优化器选路', kernel: queryplanKernel as Kernel<unknown>, doc: trivialDoc('queryplan'),
+    facts: [
+      {
+        id: 'cbo', label: '优化器凭什么选执行计划',
+        ask: '同一个查询有多条访问路径，数据库优化器凭什么选其中一条?', kind: 'choice',
+        compute: () => ({ answer: '基于代价(CBO)：估每条访问路径大概要扫多少行(以及回表、排序等成本)，选代价最低的。不是"哪个索引新"或"随便挑"', step: 4, evidence: '全表扫 10000、idx(city) 500、idx(age) 6000 → 选 500 行的 idx(city)' }),
+        distractors: () => ['选最新建的索引', '选主键索引', '随机选一条'],
+      },
+      {
+        id: 'why_not_index', label: '建了索引为什么有时不走',
+        ask: '明明建了索引，EXPLAIN 却显示 type=ALL（全表扫），可能是为什么?', kind: 'choice',
+        compute: () => ({ answer: '优化器算出走索引反而更贵——比如索引命中行太多、回表成本高，全表扫可能更省；或统计信息过期导致代价估错；也可能是查询写法让索引失效(函数、隐式转换、最左前缀不满足)', step: 0, evidence: '优化器按代价选，命中行多时全表扫可能比走索引+回表更省' }),
+        distractors: () => ['索引一建就一定会走', '数据库有 bug', '索引太新还没生效'],
       },
     ],
   },
