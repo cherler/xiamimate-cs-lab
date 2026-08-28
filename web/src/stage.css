@@ -4354,6 +4354,36 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .qs-note.found { color:var(--hit); border-color:var(--hit); background:color-mix(in srgb, var(--hit) 7%, var(--panel)); }
 .qs-note.found b { color:var(--hit); }
 
+/* ── 乐观锁 vs 悲观锁 ── */
+.lk-row { display:flex; align-items:center; gap:12px; margin:8px 0 12px; padding:12px 14px; border:1.5px solid var(--line); border-radius:10px; background:var(--sunk-1); }
+.lk-row.locked { border-color:var(--miss); background:color-mix(in srgb, var(--miss) 6%, var(--panel)); }
+.lk-rlbl { font-size:11px; font-weight:700; color:var(--dim); }
+.lk-field { font-family:var(--mono); font-size:14px; color:var(--dim); }
+.lk-field b { color:var(--ink); font-size:16px; }
+.lk-field.ver b { color:var(--now); }
+.lk-lock { font-size:12px; font-weight:600; color:var(--miss); margin-left:auto; }
+.lk-txns { display:flex; gap:10px; margin:0 0 10px; }
+.lk-txn { flex:1; display:flex; flex-direction:column; gap:4px; padding:11px 13px; border:1.5px solid var(--line); border-radius:10px; background:var(--panel); }
+.lk-txn.active { border-color:var(--now); }
+.lk-txn.fail { border-color:var(--miss); background:color-mix(in srgb, var(--miss) 6%, var(--panel)); }
+.lk-txn.block { border-color:var(--f-tag); background:color-mix(in srgb, var(--f-tag) 7%, var(--panel)); }
+.lk-tname { font-size:11px; font-weight:700; color:var(--dim); }
+.lk-taction { font-family:var(--mono); font-size:12.5px; color:var(--ink); }
+.lk-event { margin:0 0 10px; padding:7px 12px; font-size:12.5px; font-weight:600; border-radius:8px; border:1px solid var(--line); color:var(--dim); background:var(--sunk-1); }
+.lk-event.ok { color:var(--hit); border-color:var(--hit); background:color-mix(in srgb, var(--hit) 8%, var(--panel)); }
+.lk-event.bad { color:var(--miss); border-color:var(--miss); background:color-mix(in srgb, var(--miss) 8%, var(--panel)); }
+.lk-event.warn { color:var(--f-tag); border-color:var(--f-tag); background:color-mix(in srgb, var(--f-tag) 8%, var(--panel)); }
+.lk-compare { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:4px 0 12px; }
+.lk-col { border:1.5px solid var(--line); border-radius:11px; padding:12px 14px; }
+.lk-col.opt { border-color:color-mix(in srgb, var(--hit) 40%, var(--line)); }
+.lk-col.pes { border-color:color-mix(in srgb, var(--f-tag) 40%, var(--line)); }
+.lk-ch { font-size:14px; font-weight:700; color:var(--ink); margin-bottom:8px; }
+.lk-cp { font-size:12px; color:var(--dim); padding:3px 0; }
+.lk-cp b { color:var(--ink); }
+.lk-cp.good { color:var(--hit); }
+.lk-cp.bad { color:var(--miss); }
+.lk-cp.use { margin-top:6px; padding-top:7px; border-top:1px dashed var(--line); color:var(--t-body); font-weight:600; }
+
 /* ── mini 搜索引擎（倒排索引 + TF-IDF） ── */
 .ms-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:8px 0 12px; }
 .ms-col { display:flex; flex-direction:column; gap:6px; min-width:0; }

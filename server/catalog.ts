@@ -89,6 +89,7 @@ import { reactagentKernel } from '../src/kernels/reactagent.ts'
 import { lfucacheKernel } from '../src/kernels/lfucache.ts'
 import { trieKernel } from '../src/kernels/trie.ts'
 import { quickselectKernel } from '../src/kernels/quickselect.ts'
+import { lockstrategyKernel } from '../src/kernels/lockstrategy.ts'
 import { walKernel } from '../src/kernels/wal.ts'
 import { lsmKernel } from '../src/kernels/lsm.ts'
 import { minikvKernel } from '../src/kernels/minikv.ts'
@@ -1542,6 +1543,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: 'partition 让 pivot 落在下标 P，目标下标是 T，怎么决定下一步搜哪边?', kind: 'choice',
         compute: () => ({ answer: 'P==T 就是答案；P>T 说明目标在左半，只递归左；P<T 说明目标在右半，只递归右', step: 2, evidence: '第2轮 pivot 落 idx0 < 目标 4 → 只递归右半 [1,4]' }),
         distractors: () => ['总是递归左半', '两边都要递归一遍', '看 pivot 的值大小而不是下标'],
+      },
+    ],
+  },
+  {
+    id: 'lockstrategy', title: '乐观锁 vs 悲观锁', kernel: lockstrategyKernel as Kernel<unknown>, doc: trivialDoc('lockstrategy'),
+    facts: [
+      {
+        id: 'optimistic_how', label: '乐观锁怎么发现冲突',
+        ask: '乐观锁不加锁，两个事务同时改一行时，它靠什么发现"我读之后有人改过"?', kind: 'choice',
+        compute: () => ({ answer: '靠版本号：读时记下 version，更新时 UPDATE … WHERE version=旧值。如果期间被别人改过、版本变了，这条 UPDATE 就匹配不到、影响 0 行 → 更新失败，于是重读重试', step: 5, evidence: 'T2 的 UPDATE WHERE version=1 匹配不到(版本已是2)→失败→重试' }),
+        distractors: () => ['靠给行加锁', '靠数据库自动检测', '靠比较两个事务的时间戳'],
+      },
+      {
+        id: 'when_which', label: '乐观锁和悲观锁各适合什么场景',
+        ask: '乐观锁和悲观锁分别适合什么场景?', kind: 'choice',
+        compute: () => ({ answer: '乐观锁适合读多写少、冲突罕见（不加锁并发高，偶尔重试代价小，如点赞数、MVCC）；悲观锁适合写多、冲突频繁、必须一次成功（先加锁串行，稳但并发低，如扣钱、抢票核心）', step: 11, evidence: '冲突少→乐观(重试便宜)；冲突多→悲观(重试太多、不如直接锁)' }),
+        distractors: () => ['乐观锁任何场景都更好', '悲观锁任何场景都更好', '两者适用场景完全一样'],
       },
     ],
   },

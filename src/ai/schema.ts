@@ -337,6 +337,7 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   lfucache: {},
   trie: {},
   quickselect: {},
+  lockstrategy: {},
   astar: {},
   perceptron: {},
   pooling: { kind: 'string' },

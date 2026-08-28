@@ -288,6 +288,8 @@ import { trieKernel, type TrieState } from '@engine/kernels/trie.ts'
 import { TrieStage } from './stages/TrieStage.tsx'
 import { quickselectKernel, type QSelState } from '@engine/kernels/quickselect.ts'
 import { QuickselectStage } from './stages/QuickselectStage.tsx'
+import { lockstrategyKernel, type LockState } from '@engine/kernels/lockstrategy.ts'
+import { LockStrategyStage } from './stages/LockStrategyStage.tsx'
 import { walKernel, type WALState } from '@engine/kernels/wal.ts'
 import { WALStage } from './stages/WALStage.tsx'
 import { lsmKernel, type LSMState } from '@engine/kernels/lsm.ts'
@@ -5554,6 +5556,22 @@ const ecbcbc: Experiment<EcbCbcState> = {
     { label: '重复块', value: s.phase === 'done' ? 'ECB 泄露 / CBC 安全' : '对比中' },
   ],
 }
+const lockstrategy: Experiment<LockState> = {
+  id: 'lockstrategy', group: '并发编程', title: '乐观锁 vs 悲观锁', subtitle: '并发改一行：版本重试 还是 加锁阻塞',
+  kernel: lockstrategyKernel, defaultDoc: { kind: 'lockstrategy', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '无可调参数。两事务各扣1件库存(10→8)。先看无保护"更新丢失"(都读10都写9→9)；乐观锁(版本号:T2版本不符失败、重读重试成功)；悲观锁(FOR UPDATE:T2阻塞等T1放锁)。库存/版本/锁流转可手核。详见讲解卡。',
+  bounds: ['无保护:都读10都写9→更新丢失(少扣一次)', '乐观锁:不加锁,UPDATE…WHERE version=旧;版本被改→影响0行→重试', '悲观锁:SELECT…FOR UPDATE先加锁,别人阻塞等待→串行', '乐观适合读多写少/冲突罕见(MVCC);悲观适合写多/冲突频繁(扣钱)'],
+  tabs: [{ id: 'lock', label: '两策略对照' }], Stage: LockStrategyStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: '两策略对比' } : s.outcome === 'fail' ? { key: 'bad', label: s.act === 'lost' ? '更新丢失' : '版本不符' } : s.outcome === 'block' ? { key: 'bad', label: 'T2 阻塞' } : s.outcome === 'retry' ? { key: 'good', label: 'T2 重试成功' } : s.act === 'optimistic' ? { key: 'idle', label: '乐观锁' } : s.act === 'pessimistic' ? { key: 'idle', label: '悲观锁' } : { key: 'idle', label: '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 12)),
+  tickLabel: s => (s.phase === 'done' ? '比' : s.act === 'lost' ? '丢' : s.act === 'optimistic' ? '乐' : s.act === 'pessimistic' ? '悲' : '始'),
+  readouts: s => [
+    { label: '策略', value: s.act === 'intro' ? '引入' : s.act === 'lost' ? '无保护' : s.act === 'optimistic' ? '乐观锁' : s.act === 'pessimistic' ? '悲观锁' : '对比' },
+    { label: '库存', value: `${s.stock}${s.act === 'optimistic' ? ` (v${s.version})` : ''}` },
+    { label: '锁', value: s.lockedBy ? `🔒 ${s.lockedBy}` : '无锁' },
+    { label: '本步', value: s.event || (s.phase === 'done' ? '两策略对比' : '就绪'), tone: s.outcome === 'fail' || s.outcome === 'block' ? 'bad' : s.outcome === 'ok' || s.outcome === 'retry' ? 'good' : undefined },
+  ],
+}
 const quickselect: Experiment<QSelState> = {
   id: 'quickselect', group: '算法项目实战', title: '快速选择 Quickselect', subtitle: '找第 K 大不全排序，只递归一侧，平均 O(n)',
   kernel: quickselectKernel, defaultDoc: { kind: 'quickselect', params: {}, entities: [], streams: [] }, params: [],
@@ -5976,7 +5994,7 @@ export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
   caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt, ecbcbc, birthday, aesround, hmac, totp,
-  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, rwlock, aba, happensbefore, lrucache, lfucache, trie, quickselect, reactagent, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign, topk,
+  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, rwlock, aba, happensbefore, lockstrategy, lrucache, lfucache, trie, quickselect, reactagent, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign, topk,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,

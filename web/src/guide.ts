@@ -375,6 +375,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; kind: string; round: number }; return st.phase === 'done' ? '得到答案' : st.kind === 'action' ? '调工具' : st.kind === 'observation' ? '拿到结果' : st.kind === 'thought' ? `想·第${st.round}轮` : '开始' },
     try: [{ act: '看想→做→看循环', watch: 'Thought 决定查气温 → Action search → Observation 30°C → 下一轮再想。' }, { act: '看工具给真数据', watch: 'calc(30-25) 返回 5，不是模型口算——Agent 用真结果，少幻觉。' }], terms: [],
   },
+  lockstrategy: {
+    question: '两个事务同时改一行，怎么防"更新丢失"？乐观锁和悲观锁差在哪？',
+    read: [{ at: '数据库行', is: '库存/版本/锁状态。', anchor: '.lk-row' }, { at: '两事务', is: 'T1/T2 各自在做什么。', anchor: '.lk-txns' }],
+    step: (s: never) => { const st = s as { act: string; stock: number; version: number; lockedBy: string; event: string; outcome: string; phase: string }; return [
+      { k: '本步输入', v: st.phase === 'done' ? '对比两种锁' : st.act === 'intro' ? '两事务各扣 1 件库存' : st.act === 'lost' ? '无保护：两事务并发改' : st.act === 'optimistic' ? '乐观锁（版本号）' : '悲观锁（FOR UPDATE）' },
+      { k: '判定规则', v: '无保护→都读旧值都写、更新丢失。乐观锁→不加锁，更新时 WHERE version=旧，被改过就失败重试。悲观锁→先加锁 FOR UPDATE，别人阻塞等待、串行。' },
+      { k: '本步结果', v: st.phase === 'done' ? '乐观锁重试、悲观锁阻塞，结果都是 8' : `${st.event}（库存 ${st.stock}${st.act === 'optimistic' ? `, v${st.version}` : ''}${st.lockedBy ? `, 🔒${st.lockedBy}` : ''}）` },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; act: string; outcome: string }; return st.phase === 'done' ? '两策略对比' : st.outcome === 'fail' ? (st.act === 'lost' ? '更新丢失' : '版本不符') : st.outcome === 'block' ? 'T2阻塞' : st.outcome === 'retry' ? '重试成功' : st.act === 'optimistic' ? '乐观锁' : st.act === 'pessimistic' ? '悲观锁' : '就绪' },
+    try: [{ act: '看乐观锁失败重试', watch: 'T1 更新把版本 1→2；T2 的 WHERE version=1 匹配不到、失败，重读重试才成。' }, { act: '看悲观锁阻塞', watch: 'T1 FOR UPDATE 拿锁后，T2 只能阻塞等待，等 T1 放锁才继续。' }], terms: [],
+  },
   quickselect: {
     question: '求第 K 大，为什么不用全排序 O(n㏒n)，Quickselect 怎么做到平均 O(n)？',
     read: [{ at: '数组', is: '窗口高亮、pivot 标黄、目标下标标 ◎、丢掉的一半变灰。', anchor: '.qs-arr' }, { at: '读数', is: '窗口、pivot 落位、目标下标、决策。', anchor: '.scdim' }],
