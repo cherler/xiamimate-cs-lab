@@ -278,6 +278,8 @@ import { abaKernel, type ABAState } from '@engine/kernels/aba.ts'
 import { ABAStage } from './stages/ABAStage.tsx'
 import { happensbeforeKernel, type HBState } from '@engine/kernels/happensbefore.ts'
 import { HBStage } from './stages/HBStage.tsx'
+import { lrucacheKernel, type LRUState } from '@engine/kernels/lrucache.ts'
+import { LRUCacheStage } from './stages/LRUCacheStage.tsx'
 import { walKernel, type WALState } from '@engine/kernels/wal.ts'
 import { WALStage } from './stages/WALStage.tsx'
 import { lsmKernel, type LSMState } from '@engine/kernels/lsm.ts'
@@ -5543,6 +5545,22 @@ const ecbcbc: Experiment<EcbCbcState> = {
     { label: '重复块', value: s.phase === 'done' ? 'ECB 泄露 / CBC 安全' : '对比中' },
   ],
 }
+const lrucache: Experiment<LRUState> = {
+  id: 'lrucache', group: '算法项目实战', title: '手写 LRU 缓存', subtitle: 'HashMap+双向链表，get/put 都 O(1)',
+  kernel: lrucacheKernel, defaultDoc: { kind: 'lrucache', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '无可调参数。容量2跑 LeetCode 146 序列:HashMap(O(1)定位)+双向链表(头=最近/尾=最久)。get命中移到头、put满淘汰尾。链表顺序/淘汰/返回值可手核。详见讲解卡。',
+  bounds: ['HashMap key→节点(O(1)定位)+双向链表(O(1)摘除/头插)→get/put都O(1)', 'get命中:返回值+把节点移到头部(最近)', 'put满(容量2):淘汰尾部(最久没用),新节点插头', '=Redis近似LRU/本地缓存;面试高频手写题'],
+  tabs: [{ id: 'lru', label: 'put/get 全流程' }], Stage: LRUCacheStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: 'O(1) LRU' } : s.op === 'get' ? (s.hit ? { key: 'good', label: `命中 ${s.result}` } : { key: 'bad', label: '未命中' }) : s.evicted !== null ? { key: 'bad', label: `淘汰 ${s.evicted}` } : s.op === 'put' ? { key: 'idle', label: '插入' } : { key: 'idle', label: '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 10)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.op === 'get' ? (s.hit ? '中' : '空') : s.evicted !== null ? '汰' : s.op === 'put' ? '写' : '始'),
+  readouts: s => [
+    { label: '本步', value: s.opDesc || '就绪' },
+    { label: '链表(头→尾)', value: s.list.length ? s.list.map(n => `${n.k}:${n.v}`).join('→') : '空' },
+    { label: '结果', value: s.op === 'get' ? (s.result === -1 ? '-1(未命中)' : `${s.result}`) : s.evicted !== null ? `淘汰${s.evicted}` : '插入', tone: s.op === 'get' ? (s.hit ? 'good' : 'bad') : s.evicted !== null ? 'bad' : undefined },
+    { label: '占用', value: `${s.list.length}/${s.capacity}` },
+  ],
+}
 const happensbefore: Experiment<HBState> = {
   id: 'happensbefore', group: '并发编程', title: 'happens-before 可见性', subtitle: '无同步读到旧值，volatile 建立可见有序',
   kernel: happensbeforeKernel, defaultDoc: { kind: 'happensbefore', params: {}, entities: [], streams: [] }, params: [],
@@ -5869,7 +5887,7 @@ export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
   caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt, ecbcbc, birthday, aesround, hmac, totp,
-  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, rwlock, aba, happensbefore, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign,
+  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, rwlock, aba, happensbefore, lrucache, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,
@@ -6030,14 +6048,14 @@ export const DISCIPLINES: Discipline[] = [
   },
   {
     key: 'algo', title: '算法', icon: '🧮', status: 'active',
-    sub: '经典算法 → 会学习的模型',
-    groups: ['经典算法', '概率统计原理', '机器学习基础', '机器学习算法', '深度学习算法'],
+    sub: '经典算法 → 会学习的模型 · 求职',
+    groups: ['经典算法', '概率统计原理', '机器学习基础', '机器学习算法', '深度学习算法', '算法系统设计', '算法项目实战'],
     guide: { from: '一次排序', to: '会学习的模型', toIcon: '🧠' },
   },
   {
     key: 'llm', title: '大模型', icon: '🧩', status: 'active',
-    sub: 'Transformer → 推理引擎',
-    groups: ['Transformer 原理', '大模型算法', '大模型推理'],
+    sub: 'Transformer → 推理引擎 · 求职',
+    groups: ['Transformer 原理', '大模型算法', '大模型推理', '大模型系统设计', '大模型项目实战'],
     guide: { from: '一次注意力', to: '大模型推理引擎', toIcon: '🤖' },
   },
   {
@@ -6085,6 +6103,10 @@ export const GROUP_ANCHOR: Record<string, string> = {
   '机器学习基础': 'llm',
   'Transformer 原理': 'llm',
   '大模型推理': 'llm',
+  '算法系统设计': 'internet',
+  '算法项目实战': 'software',
+  '大模型系统设计': 'llm',
+  '大模型项目实战': 'llm',
 }
 
 export const ANCHOR_BY_KEY: Record<string, Anchor> = Object.fromEntries(ANCHORS.map(a => [a.key, a]))

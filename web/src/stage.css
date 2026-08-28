@@ -4261,6 +4261,30 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .hb-alert.bad { color:var(--miss); border:1px solid var(--miss); background:color-mix(in srgb, var(--miss) 6%, var(--panel)); }
 .hb-alert.ok { color:var(--hit); border:1px solid var(--hit); background:color-mix(in srgb, var(--hit) 7%, var(--panel)); }
 
+/* ── 手写 LRU 缓存 ── */
+.lru-map { display:flex; align-items:center; gap:10px; margin:8px 0 10px; }
+.lru-mlbl { font-size:11px; font-weight:700; color:var(--dim); min-width:96px; }
+.lru-keys { display:flex; flex-wrap:wrap; gap:5px; }
+.lru-key { font-family:var(--mono); font-size:13px; font-weight:700; padding:3px 9px; border:1px solid var(--line); border-radius:6px; background:var(--sunk-1); color:var(--dim); }
+.lru-key.moved { border-color:var(--now); color:var(--now); }
+.lru-key.ev { border-color:var(--miss); color:var(--miss); text-decoration:line-through; }
+.lru-list { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin:0 0 12px; padding:12px; border:1.5px solid var(--line); border-radius:10px; background:var(--panel); }
+.lru-end { font-size:10px; font-weight:700; padding:3px 8px; border-radius:6px; }
+.lru-end.head { color:var(--hit); background:color-mix(in srgb, var(--hit) 12%, var(--panel)); }
+.lru-end.tail { color:var(--faint); background:var(--sunk-1); }
+.lru-node-wrap { display:inline-flex; align-items:center; gap:6px; }
+.lru-node { display:inline-flex; align-items:baseline; gap:1px; font-family:var(--mono); padding:7px 12px; border:1.5px solid var(--line); border-radius:8px; background:var(--sunk-1); }
+.lru-node b { font-size:16px; font-weight:700; color:var(--ink); }
+.lru-node i { font-style:normal; font-size:12px; color:var(--faint); }
+.lru-node.athead { border-color:var(--hit); }
+.lru-node.moved { border-color:var(--now); box-shadow:0 0 0 1px var(--now); background:color-mix(in srgb, var(--now) 8%, var(--panel)); }
+.lru-node.attail { border-color:var(--f-tag); }
+.lru-link { color:var(--faint); font-size:13px; }
+.lru-evicted { font-size:11.5px; color:var(--miss); font-weight:600; }
+.lru-note { margin:0 0 10px; padding:7px 12px; font-size:12.5px; font-weight:600; border-radius:8px; }
+.lru-note.ev { color:var(--miss); border:1px solid var(--miss); background:color-mix(in srgb, var(--miss) 6%, var(--panel)); }
+.lru-note.mv { color:var(--now); border:1px solid var(--now); background:color-mix(in srgb, var(--now) 7%, var(--panel)); }
+
 /* ── mini 搜索引擎（倒排索引 + TF-IDF） ── */
 .ms-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:8px 0 12px; }
 .ms-col { display:flex; flex-direction:column; gap:6px; min-width:0; }

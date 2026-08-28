@@ -353,6 +353,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; op: string; result: string }; return st.phase === 'done' ? 'KV跑通' : (st.op === 'get' ? (st.result || 'get') : st.op) },
     try: [{ act: '看更新 a=9', watch: '不改旧值，追加新版本；SST1 里 a=1、SST2 里 a=9 同时存在。' }, { act: '看 get(a) 和压实', watch: 'get 从新到旧读到 a=9；压实把旧的 a=1 归并丢掉。' }], terms: [],
   },
+  lrucache: {
+    question: '怎么让缓存的 get 和 put 都是 O(1)，还能淘汰"最久没用"的？',
+    read: [{ at: '双向链表', is: '头=最近用、尾=最久没用；移头/淘汰尾看这里。', anchor: '.lru-list' }, { at: 'HashMap', is: '缓存里现有的 key。', anchor: '.lru-map' }],
+    step: (s: never) => { const st = s as { op: string; opDesc: string; list: { k: number; v: number }[]; result: number; hit: boolean; evicted: number | null; capacity: number; phase: string }; const show = st.list.map(n => `${n.k}:${n.v}`).join('→'); return [
+      { k: '本步输入', v: st.phase === 'done' && st.op === 'intro' ? '走完一串操作' : st.opDesc || '容量 ' + st.capacity + ' 的缓存' },
+      { k: '判定规则', v: 'HashMap 定位 O(1)、双向链表维序 O(1)。get 命中→移到头部；put 已存在→更新移头，不存在→插头、若超容量淘汰尾部（最久没用）。头=最近、尾=最久。' },
+      { k: '本步结果', v: st.op === 'get' ? (st.hit ? `命中返回 ${st.result}，${st.opDesc.match(/\d+/)?.[0]} 移到头 → [${show}]` : `未命中 → -1（链表不变 [${show}]）`) : st.evicted !== null ? `满 ${st.capacity} → 淘汰尾部 ${st.evicted}，新节点插头 → [${show}]` : `插到头部 → [${show}]` },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; op: string; hit: boolean; result: number; evicted: number | null }; return st.phase === 'done' ? 'O(1) LRU' : st.op === 'get' ? (st.hit ? `命中${st.result}` : '未命中') : st.evicted !== null ? `淘汰${st.evicted}` : '插入' },
+    try: [{ act: '看命中移头', watch: 'get(1) 命中 → 把 1 移到链表头部，它成了最近使用的。' }, { act: '看满了淘汰尾', watch: 'put(3,3) 时容量满 → 淘汰尾部的 2（最久没用），3 插到头。' }], terms: [],
+  },
   happensbefore: {
     question: '一个线程写了变量，另一个线程为什么不一定马上、按顺序看得见？',
     read: [{ at: '两线程', is: 'Writer 的两步写、Reader 的读，活动线程高亮。', anchor: '.hb-threads' }, { at: '结果', is: 'reader 第 4 步读到 0（旧值）还是 42。', anchor: '.scdim' }],

@@ -83,6 +83,7 @@ import { compositeindexKernel } from '../src/kernels/compositeindex.ts'
 import { rwlockKernel } from '../src/kernels/rwlock.ts'
 import { abaKernel } from '../src/kernels/aba.ts'
 import { happensbeforeKernel } from '../src/kernels/happensbefore.ts'
+import { lrucacheKernel } from '../src/kernels/lrucache.ts'
 import { walKernel } from '../src/kernels/wal.ts'
 import { lsmKernel } from '../src/kernels/lsm.ts'
 import { minikvKernel } from '../src/kernels/minikv.ts'
@@ -1434,6 +1435,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: '把 ready 声明为 volatile 后，为什么 reader 就一定能读到 data=42?', kind: 'choice',
         compute: () => ({ answer: 'volatile 建立 happens-before：volatile 写(ready=true)是释放屏障、把之前的写(data=42)刷出；volatile 读(读 ready)是获取屏障、拿到最新。于是 data=42 先于 reader 读 data 被保证', step: 6, evidence: 'happens-before 传递：data=42 → ready=true → reader 见 ready → reader 读 data，必看见 42' }),
         distractors: () => ['volatile 给变量加了锁', 'volatile 让 data 也不能被改', 'volatile 只是让读写更快'],
+      },
+    ],
+  },
+  {
+    id: 'lrucache', title: '手写 LRU 缓存', kernel: lrucacheKernel as Kernel<unknown>, doc: trivialDoc('lrucache'),
+    facts: [
+      {
+        id: 'two_structs', label: 'LRU 为什么要 HashMap + 双向链表两个结构',
+        ask: '实现 O(1) 的 LRU 缓存，为什么要同时用 HashMap 和双向链表?', kind: 'choice',
+        compute: () => ({ answer: 'HashMap 负责 O(1) 定位节点（否则查找是 O(n)）；双向链表负责 O(1) 维护使用顺序——头插、以及从中间摘除任意节点（单链表删节点找不到前驱，做不到 O(1)）。两者配合才能 get/put 都 O(1)', step: 0, evidence: 'get 命中要把节点移到头，删除中间节点需要前驱指针，所以必须双向链表' }),
+        distractors: () => ['为了省内存', '双向链表只是为了好看', 'HashMap 一个就够了，链表多余'],
+      },
+      {
+        id: 'evict_tail', label: 'LRU 淘汰谁、命中怎么处理',
+        ask: '容量满时 LRU 淘汰哪个？get 命中一个 key 后要做什么?', kind: 'choice',
+        compute: () => ({ answer: '淘汰链表尾部（最久没用的）；get 命中后把该节点移到链表头部（它刚被使用，成了最近的），保证头=最近、尾=最久', step: 4, evidence: 'put(3,3) 时容量满 → 淘汰尾部 2；get(1) 命中 → 把 1 移到头部' }),
+        distractors: () => ['淘汰头部；命中后移到尾部', '淘汰值最小的；命中不用动', '随机淘汰一个；命中后删除它'],
       },
     ],
   },
