@@ -233,6 +233,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { step: 8, kind: 'action', round: 3, text: '', tool: 'calc', arg: '30 - 25', obs: '', history: [{ kind: 'thought', text: '两地都有了：30 和 25。用计算器算差。' }], answer: '', phase: 'run', focus: '第 3 轮 · Action：calc(30 - 25)' },
       b: { step: 11, kind: 'answer', round: 4, text: '北京今天最高 30°C，上海 25°C，北京比上海热 5°C。', tool: '', arg: '', obs: '', history: [{ kind: 'thought', text: 'x' }], answer: '北京今天最高 30°C，上海 25°C，北京比上海热 5°C。', phase: 'done', focus: 'Final Answer：够了，作答' },
     },
+    quickselect: {
+      doc: { kind: 'quickselect', params: {}, entities: [], streams: [] },
+      a: { step: 1, op: 'round', round: 1, arr: [7, 2, 4, 5, 1, 8, 9], lo: 0, hi: 6, pivot: 8, pivotIdx: 5, target: 4, decision: 'left', answer: -1, phase: 'run', focus: '第 1 轮：pivot=8 落在下标 5，5 > 目标 4 → 只递归左半' },
+      b: { step: 3, op: 'found', round: 3, arr: [1, 2, 4, 5, 7, 8, 9], lo: 1, hi: 4, pivot: 7, pivotIdx: 4, target: 4, decision: 'found', answer: 7, phase: 'done', focus: '第 3 轮：pivot=7 落在下标 4，正好是目标 → 命中' },
+    },
     trie: {
       doc: { kind: 'trie', params: {}, entities: [], streams: [] },
       a: { step: 6, op: 'collect', prefix: 'car', walked: 'car', nodes: [], candidates: [['car', 3], ['card', 2], ['care', 4]], suggestions: [], phase: 'run', focus: '从前缀节点 DFS，收集子树里所有完整词' },

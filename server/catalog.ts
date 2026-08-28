@@ -88,6 +88,7 @@ import { topkKernel } from '../src/kernels/topk.ts'
 import { reactagentKernel } from '../src/kernels/reactagent.ts'
 import { lfucacheKernel } from '../src/kernels/lfucache.ts'
 import { trieKernel } from '../src/kernels/trie.ts'
+import { quickselectKernel } from '../src/kernels/quickselect.ts'
 import { walKernel } from '../src/kernels/wal.ts'
 import { lsmKernel } from '../src/kernels/lsm.ts'
 import { minikvKernel } from '../src/kernels/minikv.ts'
@@ -1524,6 +1525,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: '输入前缀「car」后，Trie 自动补全是怎么给出候选的?', kind: 'choice',
         compute: () => ({ answer: '① 沿 Trie 走到「car」前缀节点；② 从该节点 DFS 收集子树里所有完整词(car/card/care)；③ 按热度排序取 Top-K(care/car/card)', step: 7, evidence: '收集到 car(3)/card(2)/care(4)，按频率排 care(4)>car(3)>card(2)' }),
         distractors: () => ['直接返回前缀节点的那个词', '把整棵树的词都返回', '按字母序返回不排热度'],
+      },
+    ],
+  },
+  {
+    id: 'quickselect', title: '快速选择 Quickselect', kernel: quickselectKernel as Kernel<unknown>, doc: trivialDoc('quickselect'),
+    facts: [
+      {
+        id: 'one_side', label: 'Quickselect 比快排快在哪',
+        ask: '求第 K 大，Quickselect 和快速排序都用 partition，为什么 Quickselect 平均只要 O(n)?', kind: 'choice',
+        compute: () => ({ answer: 'partition 后 pivot 落到它的最终位置，Quickselect 拿这个位置和目标比，只往目标所在的一侧递归、另一半直接丢；快排两侧都要递归。每轮丢一半 → T(n)=T(n/2)+O(n)=O(n)', step: 1, evidence: '第1轮 pivot 落 idx5 > 目标 4，右半整个丢掉、只递归左半' }),
+        distractors: () => ['Quickselect 用了更好的 pivot', 'Quickselect 不用 partition', '两者复杂度其实一样'],
+      },
+      {
+        id: 'pivot_compare', label: 'partition 后怎么决定递归哪一侧',
+        ask: 'partition 让 pivot 落在下标 P，目标下标是 T，怎么决定下一步搜哪边?', kind: 'choice',
+        compute: () => ({ answer: 'P==T 就是答案；P>T 说明目标在左半，只递归左；P<T 说明目标在右半，只递归右', step: 2, evidence: '第2轮 pivot 落 idx0 < 目标 4 → 只递归右半 [1,4]' }),
+        distractors: () => ['总是递归左半', '两边都要递归一遍', '看 pivot 的值大小而不是下标'],
       },
     ],
   },

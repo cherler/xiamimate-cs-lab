@@ -375,6 +375,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; kind: string; round: number }; return st.phase === 'done' ? '得到答案' : st.kind === 'action' ? '调工具' : st.kind === 'observation' ? '拿到结果' : st.kind === 'thought' ? `想·第${st.round}轮` : '开始' },
     try: [{ act: '看想→做→看循环', watch: 'Thought 决定查气温 → Action search → Observation 30°C → 下一轮再想。' }, { act: '看工具给真数据', watch: 'calc(30-25) 返回 5，不是模型口算——Agent 用真结果，少幻觉。' }], terms: [],
   },
+  quickselect: {
+    question: '求第 K 大，为什么不用全排序 O(n㏒n)，Quickselect 怎么做到平均 O(n)？',
+    read: [{ at: '数组', is: '窗口高亮、pivot 标黄、目标下标标 ◎、丢掉的一半变灰。', anchor: '.qs-arr' }, { at: '读数', is: '窗口、pivot 落位、目标下标、决策。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { op: string; round: number; lo: number; hi: number; pivot: number; pivotIdx: number; target: number; decision: string; answer: number; phase: string }; return [
+      { k: '本步输入', v: st.phase === 'done' ? '命中，返回第 K 大' : st.op === 'intro' ? `数组，找目标下标 ${st.target}` : `第 ${st.round} 轮 · 窗口 [${st.lo},${st.hi}]，pivot=${st.pivot}` },
+      { k: '判定规则', v: 'partition 把 pivot 放到它排序后的最终位置 P。P==目标→就是它；P>目标→只递归左半；P<目标→只递归右半。每轮丢一半，平均 O(n)。' },
+      { k: '本步结果', v: st.phase === 'done' ? `pivot 落 idx${st.pivotIdx}=目标 ${st.target} → 第 3 大 = ${st.answer}` : st.op === 'round' ? `pivot ${st.pivot} 落 idx${st.pivotIdx} ${st.pivotIdx > st.target ? `> ${st.target}→递归左半 [${st.lo},${st.pivotIdx - 1}]` : `< ${st.target}→递归右半 [${st.pivotIdx + 1},${st.hi}]`}` : `目标下标 = ${st.target}` },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; op: string; decision: string; answer: number }; return st.phase === 'done' ? `第3大=${st.answer}` : st.decision === 'left' ? '递归左' : st.decision === 'right' ? '递归右' : '就绪' },
+    try: [{ act: '看只递归一侧', watch: 'pivot 落位和目标下标一比，就知道答案在哪半——另一半直接变灰丢掉。' }, { act: '看收敛', watch: '3 轮 partition：右丢→右搜→命中，pivot 落到目标下标 4，第 3 大 = 7。' }], terms: [],
+  },
   trie: {
     question: '搜索框输入几个字母就弹候选，这套自动补全是怎么做的？',
     read: [{ at: '前缀树', is: '缩进树=Trie，绿色是前缀路径、✓ 是完整词。', anchor: '.tr-tree' }, { at: '搜索框', is: '输入的前缀，末步弹出 Top-K 建议。', anchor: '.tr-search' }],

@@ -286,6 +286,8 @@ import { lfucacheKernel, type LFUState } from '@engine/kernels/lfucache.ts'
 import { LFUCacheStage } from './stages/LFUCacheStage.tsx'
 import { trieKernel, type TrieState } from '@engine/kernels/trie.ts'
 import { TrieStage } from './stages/TrieStage.tsx'
+import { quickselectKernel, type QSelState } from '@engine/kernels/quickselect.ts'
+import { QuickselectStage } from './stages/QuickselectStage.tsx'
 import { walKernel, type WALState } from '@engine/kernels/wal.ts'
 import { WALStage } from './stages/WALStage.tsx'
 import { lsmKernel, type LSMState } from '@engine/kernels/lsm.ts'
@@ -5552,6 +5554,22 @@ const ecbcbc: Experiment<EcbCbcState> = {
     { label: '重复块', value: s.phase === 'done' ? 'ECB 泄露 / CBC 安全' : '对比中' },
   ],
 }
+const quickselect: Experiment<QSelState> = {
+  id: 'quickselect', group: '算法项目实战', title: '快速选择 Quickselect', subtitle: '找第 K 大不全排序，只递归一侧，平均 O(n)',
+  kernel: quickselectKernel, defaultDoc: { kind: 'quickselect', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '无可调参数。[7,2,9,4,5,1,8]找第3大(升序第4位)。每轮partition定pivot最终位置,比目标下标→只递归一侧。3轮收敛到A[4]=7。pivot落位/递归侧可手核。详见讲解卡。',
+  bounds: ['借快排partition,但每轮只递归目标所在的一侧', 'pivot落位P:P==目标→命中;P>目标→递归左;P<目标→递归右', '平均O(n)(丢一半);快排两侧递归=O(n㏒n);最坏O(n²)随机pivot避免', '求第K大/TopK/中位数;比全排序取第K快一个量级'],
+  tabs: [{ id: 'qs', label: '逐轮 partition' }], Stage: QuickselectStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: `第3大=${s.answer}` } : s.decision === 'left' ? { key: 'idle', label: '递归左' } : s.decision === 'right' ? { key: 'idle', label: '递归右' } : { key: 'idle', label: '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 4)),
+  tickLabel: s => (s.phase === 'done' ? '中' : s.op === 'round' ? String(s.round) : '始'),
+  readouts: s => [
+    { label: '窗口', value: s.op === 'intro' ? '全部' : `[${s.lo},${s.hi}]` },
+    { label: 'pivot 落位', value: s.pivotIdx >= 0 ? `${s.pivot}→idx${s.pivotIdx}` : '—' },
+    { label: '目标下标', value: `${s.target}` },
+    { label: '决策', value: s.phase === 'done' ? `命中→第3大=${s.answer}` : s.decision === 'left' ? '只递归左半' : s.decision === 'right' ? '只递归右半' : '—', tone: s.phase === 'done' ? 'good' : undefined },
+  ],
+}
 const trie: Experiment<TrieState> = {
   id: 'trie', group: '算法项目实战', title: 'Trie 自动补全', subtitle: '前缀树走查 + 收集子树 + 按热度 Top-K',
   kernel: trieKernel, defaultDoc: { kind: 'trie', params: {}, entities: [], streams: [] }, params: [],
@@ -5958,7 +5976,7 @@ export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
   caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt, ecbcbc, birthday, aesround, hmac, totp,
-  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, rwlock, aba, happensbefore, lrucache, lfucache, trie, reactagent, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign, topk,
+  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, rwlock, aba, happensbefore, lrucache, lfucache, trie, quickselect, reactagent, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign, topk,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,

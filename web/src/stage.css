@@ -4337,6 +4337,23 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .tr-cand { font-family:var(--mono); font-weight:700; color:var(--now); padding:1px 8px; border:1px solid var(--now); border-radius:10px; display:inline-flex; gap:4px; }
 .tr-cand i { font-style:normal; font-size:10px; color:var(--faint); }
 
+/* ── 快速选择 Quickselect ── */
+.qs-arr { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0 12px; }
+.qs-cell { display:flex; flex-direction:column; align-items:center; gap:3px; padding:8px 4px; min-width:42px; border:1.5px solid var(--line); border-radius:9px; background:var(--sunk-1); }
+.qs-cell.win { background:var(--panel); border-color:color-mix(in srgb, var(--now) 35%, var(--line)); }
+.qs-cell.drop { opacity:.32; }
+.qs-cell.pivot { border-color:var(--f-tag); background:color-mix(in srgb, var(--f-tag) 12%, var(--panel)); }
+.qs-cell.ans { border-color:var(--hit); background:color-mix(in srgb, var(--hit) 14%, var(--panel)); }
+.qs-v { font-family:var(--mono); font-size:17px; font-weight:700; color:var(--ink); }
+.qs-idx { font-size:9.5px; color:var(--faint); font-family:var(--mono); display:flex; flex-direction:column; align-items:center; }
+.qs-idx i { font-style:normal; color:var(--now); font-weight:700; }
+.qs-cell.ans .qs-v { color:var(--hit); }
+.qs-cell.pivot .qs-v { color:var(--f-tag); }
+.qs-note { margin:0 0 10px; padding:7px 12px; font-size:12.5px; border-radius:8px; border:1px solid var(--line); color:var(--dim); background:var(--sunk-1); }
+.qs-note b { font-family:var(--mono); color:var(--ink); }
+.qs-note.found { color:var(--hit); border-color:var(--hit); background:color-mix(in srgb, var(--hit) 7%, var(--panel)); }
+.qs-note.found b { color:var(--hit); }
+
 /* ── mini 搜索引擎（倒排索引 + TF-IDF） ── */
 .ms-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:8px 0 12px; }
 .ms-col { display:flex; flex-direction:column; gap:6px; min-width:0; }
