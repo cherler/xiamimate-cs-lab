@@ -342,6 +342,7 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   feed: {},
   wildcard: {},
   blockingqueue: {},
+  regex: {},
   astar: {},
   perceptron: {},
   pooling: { kind: 'string' },

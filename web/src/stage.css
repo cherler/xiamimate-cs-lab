@@ -4443,6 +4443,25 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .bq-event.bad { color:var(--miss); border-color:var(--miss); background:color-mix(in srgb, var(--miss) 8%, var(--panel)); }
 .bq-event.ok { color:var(--hit); border-color:var(--hit); background:color-mix(in srgb, var(--hit) 8%, var(--panel)); }
 
+/* ── mini 正则引擎（DP 表） ── */
+.rx-table { display:grid; gap:4px; margin:8px 0 12px; justify-content:start; }
+.rx-corner { font-size:10px; color:var(--faint); display:flex; align-items:center; justify-content:center; font-family:var(--mono); }
+.rx-head { display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:15px; font-weight:700; color:var(--dim); height:28px; }
+.rx-head.sh { width:28px; }
+.rx-head.star { color:var(--f-tag); }
+.rx-head.any { color:var(--now); }
+.rx-cell { display:flex; align-items:center; justify-content:center; height:34px; border:1.5px solid var(--line); border-radius:7px; font-family:var(--mono); font-size:15px; font-weight:700; background:var(--panel); }
+.rx-cell.hide { background:var(--sunk-1); border-style:dashed; color:transparent; }
+.rx-cell.tt { color:var(--hit); background:color-mix(in srgb, var(--hit) 10%, var(--panel)); border-color:color-mix(in srgb, var(--hit) 40%, var(--line)); }
+.rx-cell.ff { color:var(--faint); }
+.rx-cell.currow { box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--now) 40%, transparent); }
+.rx-cell.key { border-color:var(--now); box-shadow:0 0 0 2px var(--now); }
+.rx-cell.ans { border-color:var(--hit); box-shadow:0 0 0 2px var(--hit); }
+.rx-note { margin:0 0 10px; padding:7px 12px; font-size:12.5px; border-radius:8px; border:1px solid var(--now); background:color-mix(in srgb, var(--now) 7%, var(--panel)); color:var(--t-body); }
+.rx-note b { color:var(--now); }
+.rx-note.char { border-color:var(--hit); background:color-mix(in srgb, var(--hit) 7%, var(--panel)); }
+.rx-note.char b { color:var(--hit); }
+
 /* ── mini 搜索引擎（倒排索引 + TF-IDF） ── */
 .ms-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:8px 0 12px; }
 .ms-col { display:flex; flex-direction:column; gap:6px; min-width:0; }

@@ -94,6 +94,7 @@ import { bufferpoolKernel } from '../src/kernels/bufferpool.ts'
 import { feedKernel } from '../src/kernels/feed.ts'
 import { wildcardKernel } from '../src/kernels/wildcard.ts'
 import { blockingqueueKernel } from '../src/kernels/blockingqueue.ts'
+import { regexKernel } from '../src/kernels/regex.ts'
 import { walKernel } from '../src/kernels/wal.ts'
 import { lsmKernel } from '../src/kernels/lsm.ts'
 import { minikvKernel } from '../src/kernels/minikv.ts'
@@ -1632,6 +1633,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: '实现阻塞队列为什么要两个条件变量（notFull / notEmpty），用 while 判断满/空?', kind: 'choice',
         compute: () => ({ answer: '生产者在 notFull 上等空位、消费者在 notEmpty 上等数据，分开才能精确唤醒对应的一方；用 while 而非 if 判满/空是为了防"虚假唤醒"——被唤醒后要重新检查条件', step: 10, evidence: '满/空是两个不同的等待条件，各自的等待者不同' }),
         distractors: () => ['一个条件变量就够了', 'while 只是为了写着好看', '两个条件变量是为了更快'],
+      },
+    ],
+  },
+  {
+    id: 'regex', title: 'mini 正则引擎', kernel: regexKernel as Kernel<unknown>, doc: trivialDoc('regex'),
+    facts: [
+      {
+        id: 'star_two', label: '正则 * 在 DP 里的两种转移',
+        ask: '正则的 * 表示"零或多个前一字符"，在动态规划里它对应哪两种转移?', kind: 'choice',
+        compute: () => ({ answer: '设 p 是 "x*"：① x* 匹配 0 个 → dp[i][j] = dp[i][j-2]（把 "x*" 整段跳过）；② x* 多匹配一个 → 若 s[i-1] 配 x，则 dp[i][j] = dp[i-1][j]（消掉 s 一个字符、"x*" 留着继续吃）', step: 1, evidence: 'c* 用①匹配 0 个 c；a* 用②吃掉 2 个 a' }),
+        distractors: () => ['* 只能匹配恰好一个字符', '* 直接看左上角一种转移', '* 匹配整个剩余字符串'],
+      },
+      {
+        id: 'vs_wildcard', label: '正则 * 和通配符 * 的区别',
+        ask: '正则的 * 和通配符（glob）的 * 有什么本质区别?', kind: 'choice',
+        compute: () => ({ answer: '正则的 * 表示"零或多个它前面那个字符"（如 a* 是零或多个 a）；通配符的 * 表示"任意一段字符"（和前一个字符无关）。语义完全不同', step: 5, evidence: 'p="c*a*b" 里 c*=零或多个c、a*=零或多个a；通配符里 * 是任意段' }),
+        distractors: () => ['两者完全一样', '正则 * 匹配一段、通配符 * 匹配一个', '只是写法不同、语义相同'],
       },
     ],
   },

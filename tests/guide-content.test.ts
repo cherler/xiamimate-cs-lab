@@ -233,6 +233,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { step: 8, kind: 'action', round: 3, text: '', tool: 'calc', arg: '30 - 25', obs: '', history: [{ kind: 'thought', text: '两地都有了：30 和 25。用计算器算差。' }], answer: '', phase: 'run', focus: '第 3 轮 · Action：calc(30 - 25)' },
       b: { step: 11, kind: 'answer', round: 4, text: '北京今天最高 30°C，上海 25°C，北京比上海热 5°C。', tool: '', arg: '', obs: '', history: [{ kind: 'thought', text: 'x' }], answer: '北京今天最高 30°C，上海 25°C，北京比上海热 5°C。', phase: 'done', focus: 'Final Answer：够了，作答' },
     },
+    regex: {
+      doc: { kind: 'regex', params: {}, entities: [], streams: [] },
+      a: { step: 2, op: 'row', s: 'aab', p: 'c*a*b', table: [], revealed: 2, curRow: 1, key: { i: 1, j: 4, rule: 'more' }, matched: true, phase: 'run', focus: "填第 1 行" },
+      b: { step: 5, op: 'done', s: 'aab', p: 'c*a*b', table: [], revealed: 4, curRow: 3, key: { i: 3, j: 5, rule: 'char' }, matched: true, phase: 'done', focus: '右下角 dp[3][5] = 真 → 匹配' },
+    },
     blockingqueue: {
       doc: { kind: 'blockingqueue', params: {}, entities: [], streams: [] },
       a: { step: 3, op: 'blockFull', queue: ['A', 'B'], cap: 2, actor: 'P', item: 'C', blockedP: true, blockedC: false, event: 'P put(C)：满 → 生产者阻塞', phase: 'run', focus: '生产者 put(C)：队列满 → 阻塞等待空位' },

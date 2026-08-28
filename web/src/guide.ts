@@ -386,6 +386,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; kind: string; round: number }; return st.phase === 'done' ? '得到答案' : st.kind === 'action' ? '调工具' : st.kind === 'observation' ? '拿到结果' : st.kind === 'thought' ? `想·第${st.round}轮` : '开始' },
     try: [{ act: '看想→做→看循环', watch: 'Thought 决定查气温 → Action search → Observation 30°C → 下一轮再想。' }, { act: '看工具给真数据', watch: 'calc(30-25) 返回 5，不是模型口算——Agent 用真结果，少幻觉。' }], terms: [],
   },
+  regex: {
+    question: '正则的 * 是"零或多个前一字符"，怎么用 DP 表把它讲清楚？',
+    read: [{ at: 'DP 表', is: 'dp[i][j]=s前i个配p前j个；绿✓能配、·不能。', anchor: '.rx-table' }, { at: '关键格', is: '本行高亮格用的转移规则。', anchor: '.rx-note' }],
+    step: (s: never) => { const st = s as { op: string; curRow: number; s: string; p: string; key: { i: number; j: number; rule: string } | null; matched: boolean; phase: string }; return [
+      { k: '本步输入', v: st.phase === 'done' ? `读右下角 dp[${st.s.length}][${st.p.length}]` : st.op === 'intro' ? `s="${st.s}" p="${st.p}"，dp 表` : `填第 ${st.curRow} 行（s 前 ${st.curRow} 个）` },
+      { k: '判定规则', v: 'dp[i][j]=s前i配p前j。p这位不是*→看左上dp[i-1][j-1]且字符相配；是*(前一个x)→跳两格dp[i][j-2](匹配0个) 或 s[i-1]配x且正上方dp[i-1][j](多吃一个)。' },
+      { k: '本步结果', v: st.phase === 'done' ? `dp[${st.s.length}][${st.p.length}] = ${st.matched ? '真 → 匹配 ✓' : '假 → 不匹配'}` : st.key ? `关键格 dp[${st.key.i}][${st.key.j}] 用「${st.key.rule === 'zero' ? '* 匹配0个' : st.key.rule === 'more' ? '* 多吃一个' : '字符相配·左上'}」` : `填完第 ${st.curRow} 行` },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; op: string; curRow: number; matched: boolean }; return st.phase === 'done' ? (st.matched ? '匹配✓' : '不匹配') : st.op === 'row' ? `第${st.curRow}行` : '看规则' },
+    try: [{ act: '看 c* 匹配 0 个', watch: 'dp[0][2]：空串配 "c*" → c* 匹配 0 个 c → 跳两格看 dp[0][0]=真。' }, { act: '看 a* 吃两个 a', watch: 'dp[1][4]、dp[2][4]：a* 一个个多吃 a，靠"正上方"转移，吃掉两个 a。' }], terms: [],
+  },
   blockingqueue: {
     question: '生产者比消费者快，队列满了怎么办？空了消费者又怎么办？',
     read: [{ at: '缓冲槽', is: '有界缓冲的占用/空位。', anchor: '.bq-buffer' }, { at: '两端', is: '生产者/消费者的状态（就绪/阻塞）。', anchor: '.bq-scene' }],
