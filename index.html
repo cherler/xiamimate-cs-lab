@@ -133,6 +133,42 @@ def('merge2','区间合并',2,'twop','相邻等高的柱子合并 —— 重复�
 def('monoq','单调队列',2,'twop','此后每回合末保留 1 张手牌,不进弃牌堆',
   S=>{S.monoq=true})
 
+/* ── 转化:把一条流派攒的计数器换成另一条的 ──
+   六条流派以前各攒各的、互不相通。转化卡第一次让「跨流派组合」成为可能:
+   打分治攒段数 → 编译优化换成有序层数 → 二分查找收割。 */
+def('trade_st','空间换时间',1,'conv','预处理值 −10,预算 +12',
+  S=>{const d=Math.min(10,S.memo);S.memo-=d;S.budget+=Math.round(d*1.2)})
+def('trade_ts','时间换空间',1,'conv','预算 −8,预处理值 +14',
+  S=>{if(S.budget<=8)return;S.budget-=8;addMemo(S,14)})
+def('inline','编译优化',2,'conv','段数 −2,有序层数 +2',
+  S=>{if(S.splits<3)return;S.splits-=2;addSort(S,S.E.antiSort?ASORT*2:2)})
+def('vector','向量化',2,'conv','有序层数 −2,段数 +2',
+  S=>{if(tier(S)<2)return
+   const a=alive(S);for(let k=0;k<Math.ceil(a.length/3);k++){
+    const i=Math.floor(S.R()*a.length),j=Math.floor(S.R()*a.length)
+    const t=a[i].v;a[i].v=a[j].v;a[j].v=t}
+   S.splits=Math.min(S.E.noSplit??4,S.splits+2)})
+def('amort','摊还分析',2,'conv','债务清零 · 每清 1 点债务换 7 点处理量',
+  S=>{if(!S.debt)return;const d=S.debt;S.debt=0;workTotal(S,d*7)})
+
+/* ── 协同:本回合的【出牌顺序】决定效果 ──
+   以前每张牌的效果只看全局计数器,和「这回合先出了什么」完全无关。 */
+def('pipeline','流水线',1,'combo','本回合已出 ≥2 张时移除 6 个,否则只移除 2 个',
+  S=>kill(S,S.turnPlays>=2?6:2))
+def('shortcut','短路求值',0,'combo','若这是本回合第一张牌:抽 2 且步数 +1',
+  S=>{if(S.turnPlays===0){drawN(S,2);S.steps++}})
+def('tailrec','尾递归',2,'combo','若这是本回合第 3 张或更后:移除 1/4 元素',
+  S=>{if(S.turnPlays>=2)kill(S,Math.ceil(N(S)/4))})
+
+/* ── 条件触发:装上之后自动响,不占后续步数 ──
+   以前所有卡都是「打出即结算」,没有任何东西会在别的事件发生时自己触发。 */
+def('refcount','引用计数',1,'trig','此后每移除 1 个元素,预算 +1(每回合最多 +4)',
+  S=>{S.trig.ref=true})
+def('listener','事件监听',2,'trig','此后敌人每涌入 1 个,立刻移除 1 个',
+  S=>{S.trig.listen=true})
+def('assertx','断言',1,'trig','此后有序层数每上升 1 级,移除 2 个',
+  S=>{S.trig.assert=true})
+
 def('prune','剪枝',1,'tool','增长倍率 −0.25;涌入 −1',S=>{S.mult=Math.max(1,S.mult-.25);S.inflow=Math.max(0,S.inflow-1)})
 def('backtrack','回溯',2,'tool','预算 +12(每场限一次)',S=>{S.budget+=12},1)
 def('guard','边界条件',1,'tool','解除死循环;本回合免疫失误',S=>{S.guarded=true;S.loopBroken=true})
@@ -183,9 +219,18 @@ function workTotal(S,tot){if(S.prefix)tot*=PREFIX
  if(S.flawId==='offByOne'&&!S.guarded){S.diag.flawLoss+=tot*.1;tot*=.9}
  const a=alive(S);if(!a.length)return;const per=tot/a.length
  a.forEach(b=>{b.v-=per;if(b.v<=0)b.dead=true})}
+function fireRef(S,killed){ if(!S.trig.ref||killed<=0)return
+ const g=Math.min(killed,4-S.refGain); if(g<=0)return
+ S.refGain+=g;S.budget+=g;S.trigHit=(S.trigHit||[]).concat([['◆ 引用计数 · 预算 +'+g,CO.green]])}
+function fireAssert(S){ if(!S.trig.assert)return
+ const t=tier(S); if(t>S.lastTier){const d=t-S.lastTier;S.lastTier=t
+  const a=alive(S);for(let i=0;i<Math.min(d*2,a.length);i++)a[i].dead=true
+  S.trigHit=(S.trigHit||[]).concat([['◆ 断言 · 有序层数升级,移除 '+(d*2)+' 个',CO.amber]])}
+ else S.lastTier=t}
 function kill(S,n){if(S.halfNext)n=Math.ceil(n*.7)
  if(S.flawId==='offByOne'&&!S.guarded&&n>=6){S.diag.flawLoss+=1;n-=1}
- const a=alive(S);for(let i=0;i<Math.min(n,a.length);i++)a[i].dead=true}
+ const a=alive(S),k=Math.min(n,a.length);for(let i=0;i<k;i++)a[i].dead=true
+ fireRef(S,k)}
 function killSeg(S,n){const a=alive(S),seg=Math.ceil(a.length/S.splits)
  for(let s=0;s<S.splits;s++)for(let i=0;i<n;i++){const b=a[s*seg+i];if(b)b.dead=true}}
 function addSort(S,n){const a=alive(S)
@@ -263,7 +308,8 @@ function newFight(seed,deck,foeId,budget,flawId,depth=0){
  const E=scaleFoe(FOE[foeId],depth),R=rng(seed),vmax=E.vmax??T.VMAX,FL=flawId?FLAW[flawId]:null
  const S={R,E,foeId,bars:(SHAPES[E.shape]||SHAPES.random).gen(E.n,vmax,R,T.VMIN).map((v,i)=>({id:i,v,dead:false})),
   splits:1,budget:budget+(FL?FLAWBONUS:0),steps:T.STEPS,turn:1,memo:0,debt:0,
-  inflow:E.inflow??0,mult:E.mult??1,vmax,flawId:flawId||null,FL,locked:null,guarded:false,loopBroken:false,firstPlay:true,lastPlayed:null,heapLv:0,prefix:false,monoq:false,actIn:ACTEVERY,
+  inflow:E.inflow??0,mult:E.mult??1,vmax,flawId:flawId||null,FL,locked:null,guarded:false,loopBroken:false,firstPlay:true,lastPlayed:null,heapLv:0,prefix:false,monoq:false,actIn:ACTEVERY,turnPlays:0,trig:{},refGain:0,lastTier:0,
+  film:[],turnCards:[],
   draw:[...deck],hand:[],discard:[],exhaust:[],over:null,
   totalWork:0,diag:{plays:{},lostKill:0,lostWork:0,evicted:0,lostMemo:0,lostSort:0,flawLoss:0,extraDebt:0,extraInflow:0,sortDecay:0,memoDecayed:0,spent:0,turns:0}}
  S.totalWork=S.bars.reduce((a,b)=>a+b.v,0)
@@ -280,6 +326,7 @@ function play(S,i){if(!canPlay(S,i))return false
  if(S.flawId==='race'&&!S.guarded&&S.R()<.25&&['scan','lookup','dp','parallel'].includes(c.id)){
   S.diag.flawLoss+=2;(c.exhaust?S.exhaust:S.discard).push(c.id);workTotal(S,8);check(S);return true}
  ;(c.exhaust?S.exhaust:S.discard).push(c.id);c.fn(S)
+ fireAssert(S);S.turnPlays++;S.turnCards.push(c.id)
  if(c.id!=='memoize')S.lastPlayed=c.id
  check(S);return true}
 function endTurn(S){if(S.over)return
@@ -312,6 +359,10 @@ function endTurn(S){if(S.over)return
  if(ACT){S.actIn--
   if(S.actIn<=0){ACT.fn(S);S.actIn=ACTEVERY;S.lastAct=ACT.name
    S.diag.actFired=(S.diag.actFired||0)+1}else S.lastAct=null}
+ // 存一帧:这一回合结束时的全部柱子 + 你出了什么 + 敌人发没发招
+ S.film.push({v:alive(S).map(b=>b.v),cards:S.turnCards.slice(),act:S.lastAct||null,
+   tier:tier(S),budget:S.budget})
+ S.turnPlays=0;S.refGain=0;S.turnCards=[]
  S.discard.push(...S.hand);S.hand=keep;S.steps=T.STEPS;S.turn++;S.guarded=false;S.firstPlay=true
  drawN(S,T.HAND)
  if(S.E.evict&&S.hand.length){const i=Math.floor(S.R()*S.hand.length)
@@ -322,7 +373,11 @@ function endTurn(S){if(S.over)return
   S.locked=bi;S.diag.flawLoss+=C[S.hand[bi]].cost}
  if(typeof foeTurnReport==='function')foeTurnReport(_b,S)
  check(S)}
-let _uid=1e6;const push1=S=>{const b={id:_uid++,v:T.VMIN+Math.floor(S.R()*(S.vmax-T.VMIN+1)),dead:false};S.totalWork+=b.v;S.bars.push(b)}
+let _uid=1e6
+const push1=S=>{const b={id:_uid++,v:T.VMIN+Math.floor(S.R()*(S.vmax-T.VMIN+1)),dead:false}
+ S.totalWork+=b.v;S.bars.push(b)
+ if(S.trig.listen){const a=alive(S);if(a.length){a[0].dead=true
+  S.trigHit=(S.trigHit||[]).concat([['◆ 事件监听 · 涌入即清',CO.cyan]])}}}
 function check(S){if(N(S)<=0)S.over='win';else if(S.budget<=0)S.over='lose'
  // 牌被吃光后无牌可出:直接判负,不要拖成 70 回合的空转
  else if(!S.hand.length&&!S.draw.length&&!S.discard.length){S.over='lose';S.diag.decked=1}}
@@ -334,8 +389,9 @@ const ELITES=['worst','collide','regret','explode2','atomic']
 const SHAPE=['MOB','MOB','ELITE','MOB','MOB','ELITE','MOB','BOSS']
 const PATH=SHAPE                                   // 关卡数 = SHAPE.length
 function newRun(seed,kit){const R=rng(seed)
+ // films:整局八关的胶片,用来拼长图
  return{R,seed,deck:[...starterOf(kit),...KITS[kit]],kit,budget:T.BUDGET,cap:T.BUDGET,node:0,over:null,offer:null,
-   used:[],opts:null,log:[]}}
+   used:[],opts:null,log:[],films:[]}}
 const FLAWIDS=Object.keys(FLAW)
 function nodeFlaw(RUN,i){ if(i<1)return null              // 第 1 关不挂失误
  return RUN.R()<Math.min(.8,.35+.07*i)?FLAWIDS[Math.floor(RUN.R()*FLAWIDS.length)]:null}
@@ -500,7 +556,7 @@ const cv=document.getElementById('c'),ctx=cv.getContext('2d')
 let W,H,DPR=Math.min(devicePixelRatio||1,2)
 const fit=()=>{W=innerWidth;H=innerHeight;cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0)}
 addEventListener('resize',fit);fit()
-let RUN=null,S=null,offer=null,intel=null,parts=[],KIT='sort',anim=null,hist=[]
+let RUN=null,S=null,offer=null,intel=null,parts=[],KIT='sort',anim=null,hist=[],poster=null
 const CO={bg0:'#050a12',bg1:'#0a141f',line:'rgba(90,150,190,.22)',panel:'rgba(12,24,38,.72)',
  ink:'#e6eef7',dim:'#8ba3bb',faint:'#4d6076',cyan:'#5fd0e8',amber:'#f0a94a',red:'#ff6b5e',green:'#7fd98f',
  tag:{base:'#a8c0d6',sort:'#f0a94a',dc:'#b39ddb',memo:'#7fd98f',greedy:'#ff8f6b',tool:'#5fd0e8',deck:'#9ecbff',heap:'#ffb3d9',twop:'#8ee6c8'}}
@@ -513,7 +569,12 @@ function enter(){RUN.opts=rollNode(RUN,RUN.node)
 function pickNode(k){const o=RUN.opts[k];RUN.used.push(o.foe)
  S=newFight((Date.now()&0xffff)+RUN.node,RUN.deck,o.foe,RUN.budget,o.flaw,RUN.node)
  intel=null;hist=[100]}
-function afterFight(){ if(S.over==='lose'){RUN.over='lose';return}
+function stashFilm(){ if(!S||!RUN)return
+ RUN.films.push({foe:S.foeId,name:S.E.name,shape:S.E.shape||'random',
+  film:S.film,won:S.over==='win',turns:S.turn,node:RUN.node,
+  diag:S.over==='lose'?diagnose(S).lines.map(l=>l.t):[]})}
+function afterFight(){ stashFilm()
+ if(S.over==='lose'){RUN.over='lose';return}
  RUN.cap+=BUDGET_GROW;RUN.budget=RUN.cap;RUN.node++
  if(RUN.node>=SHAPE.length){RUN.over='win';return} offer=offer3(RUN)}
 function takeCard(id){if(id)RUN.deck.push(id);offer=null;enter()}
@@ -630,9 +691,125 @@ let autoTimer=null
 window.__demo=(foe,flaw,kit)=>{ if(kit)KIT=kit
  RUN=RUN||newRun(1,KIT); RUN.over=null
  S=newFight(7,RUN.deck,foe,T.BUDGET,flaw); offer=null;hist=[100];intel=null}
-Object.assign(window,{__POL2:S=>POL[KIT](S),__anim:()=>!!anim,__auto:autoTurn,__S:()=>S,__RUN:()=>RUN,__offer:()=>offer,__intel2:()=>intel,
+Object.assign(window,{__POL2:S=>POL[KIT](S),__poster:posterCanvas,
+ __fightFilm:(kit,seed)=>{const RUN=newRun(seed,kit),out=[]
+  for(let i=0;i<8;i++){
+   const ch=chooseNode(RUN,rollNode(RUN,i));RUN.used.push(ch.foe)
+   const S2=newFight(seed*31+i,RUN.deck,ch.foe,RUN.budget,ch.flaw,i),P=POL[kit]
+   while(!S2.over&&S2.turn<=45){let g=0
+    while(!S2.over&&g++<14){const j=P(S2);if(j<0)break;if(!play(S2,j))break}
+    if(!S2.over)endTurn(S2)}
+   out.push({foe:ch.foe,name:S2.E.name,shape:S2.E.shape||'random',film:S2.film,
+     won:S2.over==='win',turns:S2.turn,node:i,
+     diag:S2.over==='lose'?diagnose(S2).lines.map(l=>l.t):[]})
+   if(S2.over!=='win')break
+   RUN.cap+=BUDGET_GROW;RUN.budget=RUN.cap
+   const o=offer3(RUN),own=RUN.deck.filter(c=>KITS[kit].includes(c)).length
+   const b2=o.includes('prune')?'prune':(own>=8?(o.find(c=>C[c].tag==='tool')??o[0]):(o.find(c=>KITS[kit].includes(c))??o[0]))
+   if(b2)RUN.deck.push(b2)}
+  return out},__anim:()=>!!anim,__auto:autoTurn,__S:()=>S,__RUN:()=>RUN,__offer:()=>offer,__intel2:()=>intel,
  __play:i=>uiPlay(i),__end:()=>{if(!anim){endTurn(S);hist.push(hpPct(S));if(S.over)afterFight()}},
  __draw:()=>draw(),__FB:v=>{FLAWBONUS=v},__HITBOX:()=>HITBOX,__CARD:id=>C[id],__take:takeCard,__startRun:startRun,__skipIntel:()=>{if(intel)pickNode(0)},__pickNode:k=>pickNode(k),__SHAPE:SHAPE})
+
+/* ═══ 「这堆数据的一生」——把一整局压成一张竖版海报 ═══
+   排序在视觉上就是「噪声收敛成梯度」。把每一回合的柱子压成一行、行行相接,
+   整局就是一块织物:上面是彩噪,下面收敛成平滑色带,中间被敌人的招牌动作打断。
+   越往后的关卡收敛得越快 —— 那是「我变强了」的可视化证明,不需要任何文案。 */
+function posterCanvas(films,kit){
+ const W=1080, PAD=56, RIGHT=232, BODY=W-PAD*2-RIGHT
+ const rows=films.reduce((a,f)=>a+f.film.length,0)
+ const rowH=Math.max(7,Math.min(19,Math.round(1180/Math.max(rows,1))))
+ const bandH=44                                   // 每关的小标题条
+ const H=250+films.length*bandH+rows*rowH+230
+ const c=document.createElement('canvas');c.width=W;c.height=H
+ const g=c.getContext('2d')
+ // 底
+ const bg=g.createLinearGradient(0,0,0,H);bg.addColorStop(0,'#0B121B');bg.addColorStop(1,'#060A10')
+ g.fillStyle=bg;g.fillRect(0,0,W,H)
+ g.strokeStyle='rgba(70,130,170,.05)';g.lineWidth=1
+ for(let x=0;x<W;x+=54){g.beginPath();g.moveTo(x+.5,0);g.lineTo(x+.5,H);g.stroke()}
+ // 在游戏自己的三个颜色之间插值(青→琥珀→橙红),不走色相环,避开绿色
+ const STOPS=[[67,195,224],[229,162,69],[214,86,52]]
+ const tint=(v,mx)=>{const raw=Math.min(1,Math.max(0,v/Math.max(mx,1)))
+  const t=Math.pow(raw,1.45)          // 伽马:把中间段推向青色一侧,别让整张图糊成橙的
+  const k=t<.5?0:1, u=t<.5?t*2:(t-.5)*2, a=STOPS[k], b2=STOPS[k+1]
+  const m=.5+.5*raw                    // 亮度按原值走,低值保持可见的青而不是黑
+  return 'rgb('+Math.round((a[0]+(b2[0]-a[0])*u)*m)+','+Math.round((a[1]+(b2[1]-a[1])*u)*m)+','
+    +Math.round((a[2]+(b2[2]-a[2])*u)*m)+')'}
+ let y=0
+ // ── 抬头 ──
+ g.textAlign='left'
+ g.font='600 13px "IBM Plex Mono",monospace';g.fillStyle='#43C3E0'
+ g.letterSpacing='5px';g.fillText('这 堆 数 据 的 一 生',PAD,86);g.letterSpacing='0px'
+ const won=films.length&&films[films.length-1].won&&films.length>=8
+ g.font='800 58px system-ui';g.fillStyle='#E8F1F8'
+ g.fillText(films.length>=8&&films.every(f=>f.won)?'通关':'第 '+films.length+' 关',PAD,152)
+ const totT=films.reduce((a,f)=>a+f.turns,0)
+ g.font='400 17px system-ui';g.fillStyle='#7E93A8'
+ g.fillText(({sort:'排序流',dc:'分治流',memo:'预处理流',greedy:'贪心流',heap:'堆流',twop:'区间流',base:'不构筑'}[kit]||kit)
+   +'  ·  '+films.length+' 关  ·  共 '+totT+' 回合',PAD,184)
+ // 右上角:总回合数(可比较的成绩)
+ g.textAlign='right'
+ g.font='800 64px system-ui';g.fillStyle='#E5A245';g.fillText(String(totT),W-PAD,152)
+ g.font='500 12px "IBM Plex Mono",monospace';g.fillStyle='#5A6E82'
+ g.letterSpacing='3px';g.fillText('TURNS',W-PAD,176);g.letterSpacing='0px'
+ g.textAlign='left'
+ y=250
+ // ── 每一关:小标题条 + 时间瀑布 ──
+ films.forEach((f,fi)=>{
+  const SH=SHAPES[f.shape]||SHAPES.random
+  g.fillStyle='rgba(255,255,255,.035)';g.fillRect(PAD,y-4,W-PAD*2,bandH-8)
+  g.font='700 15px system-ui';g.fillStyle=f.won?'#8FD4A8':'#FF8F6B'
+  g.fillText(String(fi+1).padStart(2,'0'),PAD+12,y+19)
+  g.fillStyle='#D6E3EF';g.fillText(f.name,PAD+44,y+19)
+  const nw=g.measureText(f.name).width          // 必须用画名字时的字号量
+  g.font='400 12.5px system-ui';g.fillStyle='#5FD0E8'
+  g.fillText(SH.name,PAD+44+nw+16,y+19)
+  g.textAlign='right';g.font='500 12.5px "IBM Plex Mono",monospace';g.fillStyle='#7E93A8'
+  g.fillText(f.turns+' 回合',W-PAD-12,y+19);g.textAlign='left'
+  y+=bandH
+  const mxN=Math.max(...f.film.map(r=>r.v.length),1)
+  const mxV=Math.max(...f.film.flatMap(r=>r.v),1)
+  const cw=BODY/mxN
+  f.film.forEach(r=>{
+   const w=r.v.length*cw, x0=PAD+(BODY-w)/2
+   r.v.forEach((v,i)=>{g.fillStyle=tint(v,mxV)
+    g.fillRect(x0+i*cw,y,Math.ceil(cw),rowH)})
+   // 敌人发招:一条红线横穿整张图
+   if(r.act){g.strokeStyle='rgba(255,90,74,.9)';g.lineWidth=1.5
+    g.beginPath();g.moveTo(PAD-14,y+rowH/2);g.lineTo(W-PAD-RIGHT+8,y+rowH/2);g.stroke()
+    g.font='700 10px system-ui';g.fillStyle='#FF5A4A'
+    g.fillText('◆ '+r.act,W-PAD-RIGHT+14,y+rowH/2+4)}
+   else if(r.cards.length){
+    g.font='400 10px system-ui';g.fillStyle='rgba(180,200,218,.62)'
+    let t=r.cards.map(id=>C[id]?C[id].name:id).join(' ')
+    while(g.measureText(t).width>RIGHT-18)t=t.slice(0,-1)
+    g.fillText(t,W-PAD-RIGHT+14,y+rowH/2+3.5)}
+   y+=rowH})
+  y+=22
+ })
+ // ── 页脚 ──
+ y+=18
+ g.strokeStyle='rgba(88,140,175,.22)';g.lineWidth=1
+ g.beginPath();g.moveTo(PAD,y);g.lineTo(W-PAD,y);g.stroke()
+ y+=40
+ const last=films[films.length-1]
+ const allWon=films.length>=8&&films.every(f=>f.won)
+ if(!allWon&&last&&last.diag.length){
+  g.font='600 19px system-ui';g.fillStyle='#FF8F6B';g.fillText('你输在这里',PAD,y);y+=32
+  g.font='400 15.5px system-ui';g.fillStyle='#B7C7D6'
+  last.diag.slice(0,2).forEach(t=>{let s2=t
+   while(g.measureText(s2).width>W-PAD*2)s2=s2.slice(0,-1)
+   g.fillText(s2,PAD,y);y+=26})
+ }else if(allWon){
+  g.font='600 19px system-ui';g.fillStyle='#8FD4A8';g.fillText('八关全过',PAD,y);y+=30
+ }else{
+  g.font='600 19px system-ui';g.fillStyle='#7E93A8'
+  g.fillText('倒在「'+(last?last.name:'')+'」',PAD,y);y+=30}
+ y+=12
+ g.font='400 12.5px "IBM Plex Mono",monospace';g.fillStyle='#4A5C6E'
+ g.fillText('算法卡牌 · 卡是算法,敌人是有性质的数据',PAD,y)
+ return c}
 
 /* ── 面板与基础件 ── */
 function panel(x,y,w,h,title){
@@ -736,6 +913,12 @@ function draw(){
  const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,CO.bg1);g.addColorStop(1,CO.bg0)
  ctx.fillStyle=g;ctx.fillRect(0,0,W,H)
  grid()
+ if(poster){const sc=Math.min((H-40)/poster.height,1)
+  ctx.fillStyle='rgba(4,8,13,.97)';ctx.fillRect(0,0,W,H)
+  ctx.drawImage(poster,(W-poster.width*sc)/2,20,poster.width*sc,poster.height*sc)
+  ctx.textAlign='center';ctx.font='600 12px system-ui';ctx.fillStyle=CO.dim
+  ctx.fillText('P 收起 · S 保存 PNG',W/2,H-8);ctx.textAlign='left'
+  return req()}
  if(RUN.over)  {overScreen();return req()}
  if(intel)     {intelScreen();return req()}
  if(offer)     {offerScreen();return req()}
@@ -1305,7 +1488,7 @@ function overScreen(){
    ctx.fillText(l.t,px+44,y)})
   ctx.textAlign='center'}
  ctx.font='400 13px system-ui';ctx.fillStyle=CO.faint
- ctx.fillText(`牌组 ${RUN.deck.length} 张 · 点任意处重开 · 1–7 换流派`,cx,H*.80);ctx.textAlign='left'}
+ ctx.fillText(`牌组 ${RUN.deck.length} 张 · 点任意处重开 · 1–7 换流派 · P 看战报图`,cx,H*.80);ctx.textAlign='left'}
 
 function wrap(t,x,y,w,lh){let l='',yy=y
  for(const ch of t){if(ctx.measureText(l+ch).width>w){ctx.fillText(l,x,yy);l=ch;yy+=lh}else l+=ch}
@@ -1336,6 +1519,14 @@ addEventListener('keydown',e=>{
  if(intel){const k={ArrowLeft:0,ArrowRight:1,Enter:0,' ':0}[e.key]
   if(k!==undefined&&NODEBOX[k]){e.preventDefault();pickNode(k);return}}
  const k=['base','sort','dc','memo','greedy','heap','twop'][+e.key-1]; if(k){startRun(k);return}
+ if(e.key==='p'||e.key==='P'){
+  const fs=(RUN&&RUN.films.length?RUN.films:[]).concat(S&&!S.over&&S.film.length
+    ?[{foe:S.foeId,name:S.E.name,shape:S.E.shape||'random',film:S.film,won:false,turns:S.turn,node:RUN?RUN.node:0,diag:[]}]:[])
+  if(!fs.length){poster=null;req();return}
+  poster=poster?null:posterCanvas(fs,KIT);req();return}
+ if((e.key==='s'||e.key==='S')&&poster){
+  const a=document.createElement('a');a.download='算法卡牌-'+Date.now()+'.png'
+  a.href=poster.toDataURL('image/png');a.click();return}
  if(e.key==='a'||e.key==='A'){ if(autoTimer){clearInterval(autoTimer);autoTimer=null}
   else autoTimer=setInterval(()=>{ if(RUN.over){clearInterval(autoTimer);autoTimer=null;return}
    if(intel){pickNode(intel.length>1&&intel[1].score>intel[0].score?1:0);return}
