@@ -88,12 +88,51 @@ def('prefetch','预读',0,'deck','看牌库顶 3 张,最贵的一张进手,其�
    let bi=0;for(let i=1;i<top.length;i++)if(C[top[i]].cost>C[top[bi]].cost)bi=i
    if(S.hand.length<T.HANDMAX)S.hand.push(top.splice(bi,1)[0])
    S.draw.push(...top)})
+let HEAPCUT=6   // 堆自动弹出的高度门槛
+let PREFIX=1.15 // 前缀和对摊平类的放大
 let SHUFMUL=1   // 同上:严格口径下每次打乱的破坏力变大,强度要下调
 let ASORT=.3,PARCUT=.4,AGREED=2.2   // 精英的专克强度,留成变量方便扫参
 def('memoize','复用上一步',1,'deck','立刻重放你这回合打出的上一张牌',
   S=>{const id=S.lastPlayed;if(id)C[id].fn(S)},1)
 def('compress','压缩',1,'deck','弃牌堆立刻洗回牌库,再抽 1',
   S=>{if(S.discard.length){S.draw.push(...S.discard);S.discard=[];shuffle(S)}drawN(S,1)})
+/* ── 流派五 · 堆(优先队列)。新动词:留在场上持续生效 ──
+   前面所有卡都是「打完就没了」。堆建起来之后每回合自动干活,不占你的步数。 */
+def('buildheap','建堆',2,'heap','建立最小堆:此后每回合末自动弹出 1 个高度 ≤6 的元素',
+  S=>{S.heapLv=Math.max(S.heapLv||0,1)})
+def('heapify','堆化',1,'heap','最小堆每回合多弹出 1 个(上限 3;要先建堆)',
+  S=>{if(S.heapLv)S.heapLv=Math.min(3,S.heapLv+1)})
+def('poptop','弹出堆顶',1,'heap','立刻移除最矮的 2 根',
+  S=>{const a=alive(S).slice().sort((x,y)=>x.v-y.v)
+   for(let i=0;i<Math.min(2,a.length);i++)a[i].dead=true})
+def('heapsort','堆排序',2,'heap','有序 +2,并且立刻移除最矮的 2 根',
+  S=>{addSort(S,S.E.antiSort?ASORT*2:2)
+   const a=alive(S).slice().sort((x,y)=>x.v-y.v)
+   for(let i=0;i<Math.min(2,a.length);i++)a[i].dead=true})
+def('medstream','中位数流',2,'heap','移除所有【严格低于中位数】的元素',
+  S=>{const a=alive(S);if(!a.length)return
+   const vs=a.map(b=>b.v).sort((x,y)=>x-y),med=vs[vs.length>>1]
+   a.forEach(b=>{if(b.v<med)b.dead=true})},1)
+
+/* ── 流派六 · 双指针(区间)。新动词:一次处理连续的一段 ──
+   前面所有卡要么打全体、要么打「前 N 个」。这条流派按【位置】操作。 */
+def('twoptr','两端逼近',1,'twop','从最左和最右各移除 2 根',
+  S=>{const a=alive(S)
+   for(let i=0;i<Math.min(2,a.length);i++)a[i].dead=true
+   for(let i=0;i<Math.min(2,a.length);i++)a[a.length-1-i].dead=true})
+def('window','滑动窗口',1,'twop','移除连续的 3 根(从最左开始)',
+  S=>{const a=alive(S);for(let i=0;i<Math.min(3,a.length);i++)a[i].dead=true})
+def('prefix','前缀和',2,'twop','建立前缀和:此后所有【摊平类】卡的处理量 +15%',
+  S=>{S.prefix=true})
+def('diff','差分数组',1,'twop','连续 6 根各降低 4 点',
+  S=>{const a=alive(S);for(let i=0;i<Math.min(6,a.length);i++){a[i].v-=4;if(a[i].v<=0)a[i].dead=true}})
+def('merge2','区间合并',2,'twop','相邻等高的柱子合并 —— 重复越多清得越多',
+  S=>{const a=alive(S);let c=0
+   for(let i=1;i<a.length;i++)if(a[i].v===a[i-1].v&&!a[i-1].dead){a[i].dead=true;c++}
+   return c})
+def('monoq','单调队列',2,'twop','此后每回合末保留 1 张手牌,不进弃牌堆',
+  S=>{S.monoq=true})
+
 def('prune','剪枝',1,'tool','增长倍率 −0.25;涌入 −1',S=>{S.mult=Math.max(1,S.mult-.25);S.inflow=Math.max(0,S.inflow-1)})
 def('backtrack','回溯',2,'tool','预算 +12(每场限一次)',S=>{S.budget+=12},1)
 def('guard','边界条件',1,'tool','解除死循环;本回合免疫失误',S=>{S.guarded=true;S.loopBroken=true})
@@ -109,14 +148,18 @@ const STARTERS={
  dc:    ['scan','scan','scan','batch','batch','batch','batch','prefetch','memoize','sortdeck'],
  memo:  ['scan','scan','scan','batch','batch','batch','batch','prefetch','memoize','sortdeck'],
  greedy:['scan','scan','scan','scan','batch','batch','batch','batch','prefetch','memoize'],
+ heap:  ['scan','scan','scan','batch','batch','batch','batch','prefetch','memoize','sortdeck'],
+ twop:  ['scan','scan','scan','batch','batch','batch','batch','prefetch','memoize','sortdeck'],
 }
 const starterOf=k=>STARTERS[k]||STARTERS.base
 const KITS={base:[],sort:['insertion','merge','quick','bsearch','counting','median'],
  dc:['divide','divide','mergeup','mergeup','parallel','recur'],
  memo:['pre','pre','table','lookup','lookup','dp'],
- greedy:['greedy','local','heur','heur','anneal','approx']}
+ greedy:['greedy','local','heur','heur','anneal','approx'],
+ heap:['buildheap','heapify','poptop','heapsort','medstream','poptop'],
+ twop:['twoptr','window','prefix','diff','merge2','monoq']}
 const DECKCARDS=['sortdeck','fetch','prefetch','memoize','compress']
-const REWARD_POOL=[...new Set([...KITS.sort,...KITS.dc,...KITS.memo,...KITS.greedy]),
+const REWARD_POOL=[...new Set([...KITS.sort,...KITS.dc,...KITS.memo,...KITS.greedy,...KITS.heap,...KITS.twop]),
  ...DECKCARDS,'prune','prune','prune','prune','backtrack','hash','guard','guard','topk','topk']
 
 /* ═══ 4. 战斗引擎 ═══ */
@@ -135,7 +178,8 @@ function drawN(S,n){for(let i=0;i<n;i++){if(S.hand.length>=T.HANDMAX)return
  if(!S.draw.length){if(!S.discard.length)return;S.draw=S.discard;S.discard=[];shuffle(S)}
  S.hand.push(S.draw.pop())}}
 function work(S,per){alive(S).forEach(b=>{b.v-=per;if(b.v<=0)b.dead=true})}
-function workTotal(S,tot){if(S.halfNext)tot*=.7
+function workTotal(S,tot){if(S.prefix)tot*=PREFIX
+ if(S.halfNext)tot*=.7
  if(S.flawId==='offByOne'&&!S.guarded){S.diag.flawLoss+=tot*.1;tot*=.9}
  const a=alive(S);if(!a.length)return;const per=tot/a.length
  a.forEach(b=>{b.v-=per;if(b.v<=0)b.dead=true})}
@@ -188,7 +232,7 @@ function newFight(seed,deck,foeId,budget,flawId,depth=0){
  const E=scaleFoe(FOE[foeId],depth),R=rng(seed),vmax=E.vmax??T.VMAX,FL=flawId?FLAW[flawId]:null
  const S={R,E,foeId,bars:(SHAPES[E.shape]||SHAPES.random).gen(E.n,vmax,R,T.VMIN).map((v,i)=>({id:i,v,dead:false})),
   splits:1,budget:budget+(FL?FLAWBONUS:0),steps:T.STEPS,turn:1,memo:0,debt:0,
-  inflow:E.inflow??0,mult:E.mult??1,vmax,flawId:flawId||null,FL,locked:null,guarded:false,loopBroken:false,firstPlay:true,lastPlayed:null,
+  inflow:E.inflow??0,mult:E.mult??1,vmax,flawId:flawId||null,FL,locked:null,guarded:false,loopBroken:false,firstPlay:true,lastPlayed:null,heapLv:0,prefix:false,monoq:false,
   draw:[...deck],hand:[],discard:[],exhaust:[],over:null,
   totalWork:0,diag:{plays:{},lostKill:0,lostWork:0,evicted:0,lostMemo:0,lostSort:0,flawLoss:0,extraDebt:0,extraInflow:0,sortDecay:0,memoDecayed:0,spent:0,turns:0}}
  S.totalWork=S.bars.reduce((a,b)=>a+b.v,0)
@@ -224,7 +268,15 @@ function endTurn(S){if(S.over)return
  for(let i=0;i<inf;i++)push1(S)
  if(S.flawId==='leak'&&!S.guarded){S.budget-=1;S.diag.flawLoss+=1}
  if(S.flawId==='stackOv'&&S.splits>=3){S.budget-=2;S.diag.flawLoss+=2}
- S.discard.push(...S.hand);S.hand=[];S.steps=T.STEPS;S.turn++;S.guarded=false;S.firstPlay=true
+ if(S.heapLv){const a=alive(S).slice().sort((x,y)=>x.v-y.v)
+  // 堆只弹得动「已经被削矮」的元素 —— 不设这条它能零成本白嫖整场
+  for(let i=0;i<Math.min(S.heapLv,a.length);i++)if(a[i].v<=HEAPCUT)a[i].dead=true
+  S.diag.heapKill=(S.diag.heapKill||0)+Math.min(S.heapLv,a.length)}
+ let keep=[]
+ if(S.monoq&&S.hand.length){let bi=0
+  for(let i=1;i<S.hand.length;i++)if(C[S.hand[i]].cost>C[S.hand[bi]].cost)bi=i
+  keep=[S.hand.splice(bi,1)[0]]}
+ S.discard.push(...S.hand);S.hand=keep;S.steps=T.STEPS;S.turn++;S.guarded=false;S.firstPlay=true
  drawN(S,T.HAND)
  if(S.E.evict&&S.hand.length){const i=Math.floor(S.R()*S.hand.length)
   S.diag.evicted=(S.diag.evicted||0)+1;S.exhaust.push(S.hand.splice(i,1)[0])}
@@ -274,7 +326,13 @@ const POL={
  memo:S=>S.memo>=17?pick(S,['dp','lookup','table','pre','scan','hash','batch'])
                    :pick(S,['table','pre','lookup','scan','hash','batch']),
  greedy:S=>S.debt>=4?pick(S,['anneal','heur','local','greedy','scan','hash','batch'])
-                    :pick(S,['approx','greedy','local','heur','scan','hash','batch'])}
+                    :pick(S,['approx','greedy','local','heur','scan','hash','batch']),
+ // 堆流:先把堆建起来,它每回合白干活;建好了再堆化叠层
+ heap:S=>!S.heapLv?pick(S,['buildheap','poptop','heapsort','scan','hash','batch'])
+       :pick(S,['heapify','medstream','poptop','heapsort','buildheap','scan','hash','batch']),
+ // 区间流:先铺前缀和(放大所有摊平类),再靠位置操作切
+ twop:S=>!S.prefix?pick(S,['prefix','window','twoptr','diff','scan','hash','batch'])
+       :pick(S,['window','merge2','twoptr','diff','scan','monoq','hash','batch'])}
 function pick(S,order){
  if(S.E.antiGreedy)order=order.filter(x=>!['greedy','local'].includes(x))   // 债务翻倍:别再借
  // 牌库卡各有各的时机 —— 不写清楚 AI 只会拿它们当兜底,量出来的平衡就是假的
@@ -406,8 +464,8 @@ addEventListener('resize',fit);fit()
 let RUN=null,S=null,offer=null,intel=null,parts=[],KIT='sort',anim=null,hist=[]
 const CO={bg0:'#050a12',bg1:'#0a141f',line:'rgba(90,150,190,.22)',panel:'rgba(12,24,38,.72)',
  ink:'#e6eef7',dim:'#8ba3bb',faint:'#4d6076',cyan:'#5fd0e8',amber:'#f0a94a',red:'#ff6b5e',green:'#7fd98f',
- tag:{base:'#a8c0d6',sort:'#f0a94a',dc:'#b39ddb',memo:'#7fd98f',greedy:'#ff8f6b',tool:'#5fd0e8',deck:'#9ecbff'}}
-const TAGNAME={base:'起始',sort:'排序流',dc:'拆解流',memo:'复利流',greedy:'激进流',tool:'工具',deck:'牌库'}
+ tag:{base:'#a8c0d6',sort:'#f0a94a',dc:'#b39ddb',memo:'#7fd98f',greedy:'#ff8f6b',tool:'#5fd0e8',deck:'#9ecbff',heap:'#ffb3d9',twop:'#8ee6c8'}}
+const TAGNAME={base:'起始',sort:'排序流',dc:'拆解流',memo:'复利流',greedy:'激进流',tool:'工具',deck:'牌库',heap:'堆流',twop:'区间流'}
 function startRun(k){KIT=k;RUN=newRun(Date.now()&0xffff,k);enter()}
 function enter(){RUN.opts=rollNode(RUN,RUN.node)
  intel=RUN.opts.map(o=>Object.assign(intelOf(RUN.deck,o.foe,o.flaw,RUN.node),o))
@@ -472,7 +530,8 @@ function uiPlay(i){
 const AK={scan:'sweep',lookup:'sweep',dp:'sweep',parallel:'sweep',
  bubble:'sort',merge:'sort',quick:'sort',insertion:'sort',
  bsearch:'split',median:'split',divide:'split',recur:'split',counting:'bucket',topk:'sortic',
- greedy:'burst',local:'burst',heur:'burst',anneal:'burst',approx:'burst',mergeup:'burst',hash:'burst',counting:'burst',topk:'burst'}
+ greedy:'burst',local:'burst',heur:'burst',anneal:'burst',approx:'burst',mergeup:'burst',hash:'burst',counting:'burst',topk:'burst',
+ poptop:'burst',heapsort:'sort',medstream:'split',twoptr:'split',window:'sweep',diff:'sweep',merge2:'burst'}
 function autoTurn(){ if(!S||S.over||offer||RUN.over||anim)return
  const i=POL[KIT](S); if(i<0){endTurn(S);hist.push(hpPct(S));if(S.over)afterFight();return}
  uiPlay(i)}
@@ -480,7 +539,7 @@ let autoTimer=null
 window.__demo=(foe,flaw,kit)=>{ if(kit)KIT=kit
  RUN=RUN||newRun(1,KIT); RUN.over=null
  S=newFight(7,RUN.deck,foe,T.BUDGET,flaw); offer=null;hist=[100];intel=null}
-Object.assign(window,{__anim:()=>!!anim,__auto:autoTurn,__S:()=>S,__RUN:()=>RUN,__offer:()=>offer,__intel2:()=>intel,
+Object.assign(window,{__POL2:S=>POL[KIT](S),__anim:()=>!!anim,__auto:autoTurn,__S:()=>S,__RUN:()=>RUN,__offer:()=>offer,__intel2:()=>intel,
  __play:i=>uiPlay(i),__end:()=>{if(!anim){endTurn(S);hist.push(hpPct(S));if(S.over)afterFight()}},
  __draw:()=>draw(),__FB:v=>{FLAWBONUS=v},__HITBOX:()=>HITBOX,__CARD:id=>C[id],__take:takeCard,__startRun:startRun,__skipIntel:()=>{if(intel)pickNode(0)},__pickNode:k=>pickNode(k),__SHAPE:SHAPE})
 
@@ -575,7 +634,9 @@ const ICON={
 const CARDIC={scan:'sweep',lookup:'table',dp:'table',parallel:'sweep',batch:'shield',watch:'eye',
  bubble:'sortic',merge:'sortic',quick:'sortic',insertion:'sortic',counting:'bucket',topk:'stack',bsearch:'split',median:'split',
  divide:'divideic',mergeup:'divideic',recur:'divideic',
- sortdeck:'sortic',fetch:'table',prefetch:'eye',memoize:'stack',compress:'bucket',pre:'stack',table:'stack',
+ sortdeck:'sortic',fetch:'table',prefetch:'eye',memoize:'stack',compress:'bucket',
+ buildheap:'stack',heapify:'stack',poptop:'strike',heapsort:'sortic',medstream:'split',
+ twoptr:'split',window:'sweep',prefix:'stack',diff:'sweep',merge2:'bucket',monoq:'shield',pre:'stack',table:'stack',
  greedy:'strike',local:'strike',heur:'strike',anneal:'strike',approx:'strike',
  prune:'prune',backtrack:'undo',hash:'bucket'}
 
@@ -668,6 +729,9 @@ function legendPanel(x,y,w,h){
  row('bar','预处理值 · 查表按它结算',S.memo,CO.green)
  row('bar','债务 · 回合末每点 −2 预算',S.debt,'#ff8f6b')
  row('bar','段数 · 逐层类按它放大',S.splits,'#b39ddb')
+ if(S.heapLv)row('bar','堆 · 每回合末自动清',S.heapLv,'#ffb3d9')
+ if(S.prefix)row('bar','前缀和 · 摊平类 ×1.15',1,'#8ee6c8')
+ if(S.monoq)row('bar','单调队列 · 每回合留 1 张',1,'#8ee6c8')
  if(S.mult>1)row('bar','增长倍率 · 剪枝可降',S.mult.toFixed(2),CO.red)
  yy+=6
  ctx.strokeStyle=CO.line;ctx.beginPath();ctx.moveTo(x+14,yy-10);ctx.lineTo(x+w-14,yy-10);ctx.stroke();yy+=6
@@ -932,6 +996,27 @@ function live(id){ if(!S)return null
   case 'backtrack':return ['预算 '+S.budget+' → '+(S.budget+12),G]
   case 'guard':    return S.FL?['本回合免疫「'+S.FL.name+'」',G]:['这一关没挂失误 —— 现在出会落空',R]
   case 'hash':     return ['抽 1 · 移除 2 个',Cy]
+  case 'buildheap':return S.heapLv?['堆已经建好了('+S.heapLv+'/回合)—— 现在出会落空',R]
+                                  :['建成后每回合末自动弹出 1 个【高度 ≤6】的,不占步数',G]
+  case 'heapify':  return S.heapLv?['堆 '+S.heapLv+' → '+(S.heapLv+1)+' 个/回合',G]
+                                  :['还没建堆 —— 现在出会落空',R]
+  case 'poptop':{const a=alive(S).slice().sort((x,y)=>x.v-y.v).slice(0,2)
+    return['砍掉最矮的两根:'+a.map(b=>b.v).join('/'),a.length?G:R]}
+  case 'heapsort': return['有序 +2 · 再砍掉最矮的两根',A]
+  case 'medstream':{const a=alive(S);if(!a.length)return null
+    const vs=a.map(b=>b.v).sort((x,y)=>x-y),med=vs[vs.length>>1]
+    return['中位数是 '+med+' · 一次清掉 '+a.filter(b=>b.v<med).length+' 个(严格低于)',G]}
+  case 'twoptr':   return['两头各切 2 根 · 现在剩 '+n+' 根',n>=4?G:A]
+  case 'window':   return['从最左切走连续 3 根 · 现在剩 '+n+' 根',n>=3?G:A]
+  case 'prefix':   return S.prefix?['前缀和已经建好了 —— 现在出会落空',R]
+                                  :['此后摊平类处理量 ×1.15(遍历 16 → 18)',G]
+  case 'diff':{const a=alive(S).slice(0,6),k=a.filter(b=>b.v<=4).length
+    return['连续 6 根各降 4 点 · 其中 '+k+' 根会直接清零',k>=3?G:A]}
+  case 'merge2':{const a=alive(S);let c=0
+    for(let i=1;i<a.length;i++)if(a[i].v===a[i-1].v)c++
+    return['现在有 '+c+' 对相邻等高 —— 能合并掉 '+c+' 根',c>=5?G:c?A:R]}
+  case 'monoq':    return S.monoq?['已经生效了 —— 现在出会落空',R]
+                                 :['此后每回合末保留最贵的一张手牌',G]
   case 'insertion':{const sd=Math.round(sortedness(S)*100)
     return sd>=50?['有序度 '+sd+'% ≥50% —— 这一张直接把它排完',G]
                  :['有序度 '+sd+'%,不到 50% —— 只 +1 层(逆序对太多)',R]}
@@ -1088,7 +1173,7 @@ function overScreen(){
    ctx.fillText(l.t,px+44,y)})
   ctx.textAlign='center'}
  ctx.font='400 13px system-ui';ctx.fillStyle=CO.faint
- ctx.fillText(`牌组 ${RUN.deck.length} 张 · 点任意处重开 · 1–5 换流派`,cx,H*.80);ctx.textAlign='left'}
+ ctx.fillText(`牌组 ${RUN.deck.length} 张 · 点任意处重开 · 1–7 换流派`,cx,H*.80);ctx.textAlign='left'}
 
 function wrap(t,x,y,w,lh){let l='',yy=y
  for(const ch of t){if(ctx.measureText(l+ch).width>w){ctx.fillText(l,x,yy);l=ch;yy+=lh}else l+=ch}
@@ -1103,7 +1188,7 @@ const req=()=>requestAnimationFrame(()=>{
   try{
    ctx.fillStyle='rgba(120,20,16,.92)';ctx.fillRect(0,H-46,W,46)
    ctx.fillStyle='#ffd9d4';ctx.font='600 13px system-ui';ctx.textAlign='left'
-   ctx.fillText('渲染出错(游戏还在跑,按 1–5 可重开):'+err.message,20,H-18)
+   ctx.fillText('渲染出错(游戏还在跑,按 1–7 可重开):'+err.message,20,H-18)
   }catch(_){}
   requestAnimationFrame(()=>{try{draw()}catch(_){requestAnimationFrame(()=>{try{draw()}catch(_){}})}})
  }})
@@ -1118,7 +1203,7 @@ cv.addEventListener('click',e=>{const mx=e.clientX,my=e.clientY
 addEventListener('keydown',e=>{
  if(intel){const k={ArrowLeft:0,ArrowRight:1,Enter:0,' ':0}[e.key]
   if(k!==undefined&&NODEBOX[k]){e.preventDefault();pickNode(k);return}}
- const k=['base','sort','dc','memo','greedy'][+e.key-1]; if(k){startRun(k);return}
+ const k=['base','sort','dc','memo','greedy','heap','twop'][+e.key-1]; if(k){startRun(k);return}
  if(e.key==='a'||e.key==='A'){ if(autoTimer){clearInterval(autoTimer);autoTimer=null}
   else autoTimer=setInterval(()=>{ if(RUN.over){clearInterval(autoTimer);autoTimer=null;return}
    if(intel){pickNode(intel.length>1&&intel[1].score>intel[0].score?1:0);return}
