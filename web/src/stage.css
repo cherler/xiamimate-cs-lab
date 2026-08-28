@@ -4547,3 +4547,24 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
   color:var(--miss);background:color-mix(in srgb,var(--miss) 10%,var(--panel));border:1px solid var(--miss)}
 .sk-focus{margin:12px 0 2px;padding:8px 13px;border-radius:8px;font-size:13px;color:var(--ink);
   background:var(--sunk-2);border-left:3px solid var(--now)}
+
+/* ── 短链发号器 urlshortener ── */
+.url-map{margin:14px 0 4px;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.url-head,.url-row{display:grid;grid-template-columns:1fr 130px 120px;align-items:center;gap:10px;padding:8px 13px}
+.url-head{background:var(--sunk-2);font-size:11px;color:var(--faint);letter-spacing:.04em;border-bottom:1px solid var(--line-soft)}
+.url-head span:not(:first-child),.url-row span:not(:first-child){text-align:right;font-family:var(--mono)}
+.url-row{border-bottom:1px solid var(--line-soft);font-size:13px;transition:background .15s}
+.url-row:last-child{border-bottom:0}
+.url-row.on{background:color-mix(in srgb,var(--now) 9%,var(--panel))}
+.url-row.hit{background:color-mix(in srgb,var(--hit) 9%,var(--panel))}
+.url-long{color:var(--dim);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.url-id{color:var(--faint);font-size:12px}
+.url-code{color:var(--now);font-weight:700;font-size:15px;letter-spacing:.03em}
+.url-redirect{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:13px 0 2px;padding:11px 14px;
+  border-radius:9px;background:var(--sunk-2);border-left:3px solid var(--hit)}
+.url-rk{font-size:12px;color:var(--faint)}
+.url-rc{font-family:var(--mono);font-size:14px;font-weight:700;color:var(--ink);background:var(--panel);padding:2px 8px;border-radius:5px;border:1px solid var(--line)}
+.url-arr{font-size:11px;color:var(--faint);font-family:var(--mono)}
+.url-rid{font-family:var(--mono);font-size:13px;color:var(--dim)}
+.url-302{font-family:var(--mono);font-weight:700;font-size:13px;color:var(--hit);background:color-mix(in srgb,var(--hit) 12%,var(--panel));padding:2px 9px;border-radius:5px}
+.url-target{flex-basis:100%;margin-top:5px;font-family:var(--mono);font-size:12px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

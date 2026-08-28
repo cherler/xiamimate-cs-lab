@@ -299,15 +299,23 @@ export const TERMS: Term[] = [
 /** 每个实验一段。**加实验必须加这一段** —— 冒烟会数够不够 30 个。 */
 export const GUIDES: Record<string, Guide> = {
   urlshortener: {
-    question: '给你「设计一个短链系统」，怎么从需求推到架构？',
-    read: [{ at: '架构', is: '一步步搭起来的组件。', anchor: '.sd-arch' }, { at: '读数', is: '当前阶段、关键数、组件。', anchor: '.scdim' }],
-    step: (s: never) => { const st = s as { stage: string; focus: string; metric: string; components: unknown[]; phase: string }; return [
-      { k: '本步输入', v: st.phase === 'done' ? '走完整套设计框架' : `${st.stage}` },
-      { k: '判定规则', v: '系统设计的框架：需求澄清(边界)→容量估算(定规模)→核心设计(发号+编码+存储)→缓存/扩展→权衡。每步都要说"为什么这么选"。' },
-      { k: '本步结果', v: st.phase === 'done' ? '一套短链系统搭好，可讲清权衡' : `${st.focus}；关键：${st.metric}（已定 ${st.components.length} 个组件）` },
+    question: '长 URL 怎么变成又短又唯一的短码？短码又怎么跳回长 URL？',
+    read: [{ at: '映射表', is: '长 URL → 发号 ID → Base62 短码，逐条长出来。', anchor: '.url-map' }, { at: '读数', is: '发号器下一号、已建短链、容量。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { phase: string; counter: number; entries: { id: number; code: string }[]; lookup: { code: string; id: number } | null; capacity: number; focus: string }; return [
+      { k: '本步输入', v: st.phase === 'done' ? '发号→编码→跳转→容量全走完' : st.phase === 'redirect' ? `访问短码 /${st.lookup?.code}` : st.phase === 'capacity' ? '算短码位数够不够' : st.entries.length ? `发号器发第 ${st.entries.length} 个号` : '准备发号' },
+      { k: '判定规则', v: '发号器发单调自增 ID（唯一不碰撞）；Base62 编码=不断取余 62 映射到 0-9a-zA-Z、商继续、倒序拼；解码=按 62 进制累加回 ID（可逆）。跳转靠解码回 ID 查库、302。' },
+      { k: '本步结果', v: st.phase === 'done'
+        ? `建了 ${st.entries.length} 条短链，最新码 ${st.entries[st.entries.length - 1]?.code}；6 位可容 62⁶≈${(st.capacity / 1e8).toFixed(0)}亿`
+        : st.lookup
+          ? `${st.lookup.code} 解码回 ID ${st.lookup.id.toLocaleString()} → 查库 302`
+          : st.phase === 'capacity'
+            ? `6 位 Base62 = 62⁶ = ${st.capacity.toLocaleString()} 个码`
+            : st.entries.length
+              ? `ID ${st.entries[st.entries.length - 1]?.id.toLocaleString()} → 短码 ${st.entries[st.entries.length - 1]?.code}`
+              : '发号器就绪' },
     ] },
-    verdict: (s: never) => { const st = s as { phase: string; stage: string }; return st.phase === 'done' ? '设计完成' : st.stage.replace(/^[①②③④⑤⑥⑦]\s*/, '') },
-    try: [{ act: '按「下一步」走框架', watch: '需求→估算→发号编码→存储→缓存→扩展，架构一块块搭。' }, { act: '记住权衡', watch: '发号器 vs 哈希 vs 自增；301 vs 302——这些取舍是面试加分项。' }], terms: [],
+    verdict: (s: never) => { const st = s as { phase: string; entries: { code: string }[] }; return st.phase === 'done' ? `最新码 ${st.entries[st.entries.length - 1]?.code ?? '—'}` : st.phase === 'redirect' ? '解码跳转' : st.phase === 'capacity' ? '容量估算' : st.entries.length ? `发号 ${st.entries.length}` : '就绪'; },
+    try: [{ act: '看 URL#1 的 Base62 逐位编码', watch: 'ID 100000000 不断取余 62、映射字符、商继续，倒序拼成 "6LAze"——9 位十进制压成 5 位。' }, { act: '看跳转那步解码', watch: '短码按 62 进制累加解回 ID，正好等于当初发的号——编码/解码可逆，这就是短→长的桥。' }], terms: [],
   },
   mqdesign: {
     question: '生产者和消费者速度不一样，怎么用一条队列把它们解耦、还不丢消息？',

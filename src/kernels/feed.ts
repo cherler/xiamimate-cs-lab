@@ -11,7 +11,7 @@
  */
 import { type SimDocument } from '../core/document.ts'
 import type { Kernel, CompiledModel } from '../core/kernel.ts'
-import type { SysDesignState } from './urlshortener.ts'
+import type { SysDesignState } from './_sysdesign.ts'
 
 type Comp = { id: string; label: string; role: string }
 type Frame = Omit<SysDesignState, 'i'>

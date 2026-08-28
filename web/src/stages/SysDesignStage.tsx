@@ -1,5 +1,5 @@
 /** 舞台：系统设计 · 短链 —— 逐步搭起架构，每步一个设计决策 */
-import type { SysDesignState } from '@engine/kernels/urlshortener.ts'
+import type { SysDesignState } from '@engine/kernels/_sysdesign.ts'
 import type { StageProps } from '../types.ts'
 
 export function SysDesignStage({ state }: StageProps<SysDesignState>) {

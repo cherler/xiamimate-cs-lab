@@ -1,94 +1,104 @@
 /**
- * 内核：系统设计 · 设计短链系统（后端 · 求职面试「系统设计」这一关）
- * 轴：step —— 从需求到架构，一步一个设计决策，把系统搭起来
+ * 内核：短链系统 · 发号器 + Base62 真仿真 —— 长 URL 怎么变成唯一短码，短码怎么跳回长 URL（后端 · 系统设计）
+ * 轴：step —— 发号器给自增 ID → Base62 编码成短码 → 存映射；访问时短码解码回 ID → 查库 → 302 跳转
  *
- * 系统设计是中高级岗面试的核心:给一个模糊需求(设计短链/秒杀/Feed),让你**从需求澄清 → 容量估算 →
- * 核心设计 → 扩展 → 权衡**一路推下来。考的不是背答案,是有没有「造系统」的思维框架。
- * 本实验以「短链系统」为例,把这套框架走一遍:每一步是一个真实的设计决策 + 为什么这么选。
- * 走完你手里就有一套能讲的设计,也是 AI 面试官能继续追问的靶子。
- *
- * 关键数:Base62 编码 6 位 → 62^6 ≈ 568 亿个短码,够用;读写比约 100:1 → 必须加缓存。
+ * 短链的核心机制不是"画几个框",而是一个具体算法:**怎么生成又短又唯一的码**。
+ * 做法:一个**全局发号器**发单调自增的 ID(天然唯一、不碰撞),再把 ID 用 **Base62**(0-9a-zA-Z 共 62 个字符)编码成短字符串。
+ * Base62 比十进制短得多:1 亿(十进制 9 位)编码成 "6LAze"(5 位);6 位 Base62 = 62^6 ≈ 568 亿个码,够用很久。
+ * 访问短码时反过来:Base62 解码回 ID → 查映射表拿长 URL → 返回 302 跳转。
+ * 本仿真真发号、真编码/解码(可逐位手核),三条长 URL 走一遍,再演示一次跳转和容量估算。
+ * 为什么不用哈希(会碰撞、要处理冲突)、不用 URL 自增明文(能被爬虫顺号遍历),讲解卡里说清。
  */
 import { type SimDocument } from '../core/document.ts'
 import type { Kernel, CompiledModel } from '../core/kernel.ts'
 
-type Comp = { id: string; label: string; role: string }
+const B62 = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
+const enc = (n: number): string => { if (n === 0) return '0'; let s = ''; let x = n; while (x > 0) { s = B62[x % 62]! + s; x = Math.floor(x / 62) } return s }
+const dec = (code: string): number => [...code].reduce((a, c) => a * 62 + B62.indexOf(c), 0)
 
-export type SysDesignState = {
+export type UrlEntry = { longUrl: string; id: number; code: string }
+export type UrlState = {
   i: number
   step: number
-  stage: string          // 阶段名
-  focus: string          // 本步的设计决策
-  detail: string         // 为什么这么选
-  metric: string         // 本步的关键数/结论
-  components: Comp[]      // 累积搭起来的架构
-  phase: 'run' | 'done'
+  phase: 'intro' | 'issue' | 'redirect' | 'capacity' | 'done'
+  op: 'intro' | 'issue' | 'redirect' | 'capacity' | 'summary'
+  counter: number                                              // 发号器：下一个要发的号
+  entries: UrlEntry[]                                          // 已建映射（累积）
+  cur: number                                                 // 本步在操作的映射下标（-1）
+  lookup: { code: string; id: number; longUrl: string } | null // 跳转步的解码结果
+  codeLen: number                                             // 容量演示：短码位数
+  capacity: number                                            // 62^codeLen
+  focus: string
   log: string
 }
+type Frame = Omit<UrlState, 'i'>
 
-export const SYSDESIGN_VISIBLE = ['step', 'stage', 'focus', 'detail', 'metric', 'components', 'phase', 'log'] as const
-
-type Frame = Omit<SysDesignState, 'i'>
-
-const STAGES: { stage: string; focus: string; detail: string; metric: string; add?: Comp[] }[] = [
-  {
-    stage: '① 需求澄清', focus: '先问清楚要什么，别急着画框',
-    detail: '功能：长链→短链、短链→长链跳转。非功能：读远多于写、低延迟、短码要短且唯一、高可用。先划定边界，面试官最看重这一步。',
-    metric: '读:写 ≈ 100:1（跳转多、生成少）',
-    add: [{ id: 'client', label: '客户端', role: '发起生成/跳转' }],
-  },
-  {
-    stage: '② 容量估算', focus: '算一算规模，决定后面怎么选型',
-    detail: '假设每月新增 1 亿短链 → 写 ≈ 40/s；读按 100:1 ≈ 4000/s。存 5 年 ≈ 60 亿条 × ~100B ≈ 600GB。这些数决定要不要分片、要不要缓存。',
-    metric: '写 40/s、读 4000/s、存 ~600GB',
-    add: [{ id: 'api', label: 'API 服务', role: '生成/跳转接口' }],
-  },
-  {
-    stage: '③ 发号 + 编码', focus: '短码怎么生成？唯一且尽量短',
-    detail: '核心是拿一个**唯一 ID**（发号器/雪花 ID），再 **Base62 编码**（0-9a-zA-Z）成短码。6 位 Base62 = 62^6 ≈ 568 亿，够用还短。对比：哈希长链会碰撞、要处理冲突；自增 ID 可预测有序、但暴露量。',
-    metric: '62^6 ≈ 568 亿个 6 位短码',
-    add: [{ id: 'idgen', label: '发号器', role: '生成唯一 ID' }, { id: 'base62', label: 'Base62 编码', role: 'ID→短码' }],
-  },
-  {
-    stage: '④ 存储', focus: '映射存哪，主键选谁',
-    detail: '存「短码 → 长链」的映射。短码做主键（点查为主，KV/关系库都行）。写少读多，存储不是瓶颈，重点是读得快。',
-    metric: '短码为主键，点查 O(1)',
-    add: [{ id: 'db', label: '数据库', role: '短码→长链 持久化' }],
-  },
-  {
-    stage: '⑤ 缓存读路径', focus: '读 4000/s，靠缓存扛',
-    detail: '读多写少 → 加 **Redis 缓存**热点短码：跳转先查缓存，命中直接 302；未命中查库、回填缓存。热点短链(病毒传播)几乎全走缓存，DB 压力骤降。',
-    metric: '热点命中率高 → DB 只扛未命中',
-    add: [{ id: 'cache', label: 'Redis 缓存', role: '热点短码，扛住读' }],
-  },
-  {
-    stage: '⑥ 扩展', focus: '量再大怎么办',
-    detail: '按短码**一致性哈希分片**（加机器只搬一小段）；跳转用 301(永久,浏览器缓存)还是 302(临时,能统计点击)按需选；超热链上 **CDN**。发号器也要能分布式发号（雪花 ID 天然可分片）。',
-    metric: '分片 + CDN + 301/302 权衡',
-    add: [{ id: 'shard', label: '分片(一致性哈希)', role: '水平扩展' }, { id: 'cdn', label: 'CDN', role: '超热链就近跳转' }],
-  },
+const START = 100000000                                        // 发号器起始号（1 亿，模拟已发过一些）
+const URLS = [
+  'https://xiamimate.com/reports/2026/q3-amazon-earbuds-market-insight',
+  'https://example.com/promo?utm_source=weibo&utm_campaign=summer&ref=banner',
+  'https://docs.google.com/spreadsheets/d/1AbC_dEfGhIjKlMnOpQr/edit#gid=0',
 ]
 
-export const urlshortenerKernel: Kernel<SysDesignState> = {
+export const urlshortenerKernel: Kernel<UrlState> = {
   kind: 'urlshortener',
-  compile(_doc: SimDocument): CompiledModel<SysDesignState> {
+  compile(_doc: SimDocument): CompiledModel<UrlState> {
     const frames: Frame[] = []
-    const components: Comp[] = []
-    for (const s of STAGES) {
-      if (s.add) components.push(...s.add)
-      frames.push({
-        step: frames.length, stage: s.stage, focus: s.focus, detail: s.detail, metric: s.metric,
-        components: components.map(c => ({ ...c })), phase: 'run',
-        log: `**${s.stage}：${s.focus}**\n${s.detail}\n关键：${s.metric}`,
-      })
-    }
-    frames.push({
-      step: frames.length, stage: '⑦ 权衡总结', focus: '一句话讲清取舍', detail: '',
-      metric: '发号器>哈希>自增；301 缓存永久 vs 302 可统计；缓存扛读、分片扛量',
-      components: components.map(c => ({ ...c })), phase: 'done',
-      log: `**设计完成**：需求→估算→发号编码→存储→缓存→扩展，一套短链系统搭好了。面试的加分项在**权衡**：短码为什么用发号器+Base62(不用哈希怕碰撞、不用自增怕被爬)；跳转 301(永久、省服务器但没法统计) vs 302(可统计点击);读靠缓存、量靠分片。这套「需求→估算→核心→扩展→权衡」的框架,换成设计秒杀/Feed/消息队列也照样用。`,
+    const snap = (e: UrlEntry[]): UrlEntry[] => e.map(x => ({ ...x }))
+    const push = (f: Omit<Frame, 'step'>) => frames.push({ step: frames.length, ...f })
+
+    // —— 开场 ——
+    push({
+      phase: 'intro', op: 'intro', counter: START, entries: [], cur: -1, lookup: null, codeLen: 6, capacity: 62 ** 6,
+      focus: '短链核心=怎么生成又短又唯一的码：发号器给自增 ID + Base62 编码',
+      log: `**短链系统：短码怎么来**\n核心机制不是画框，是一个具体算法：**怎么生成又短又唯一的码**。\n做法：一个**全局发号器**发单调自增 ID（天然唯一、不碰撞），再把 ID 用 **Base62**（\`0-9a-zA-Z\` 共 62 个字符）编码成短字符串。\n发号器从 **${START.toLocaleString()}** 开始。看三条长 URL 怎么各拿一个短码。`,
     })
-    const base0: Frame = { step: -1, stage: '', focus: '', detail: '', metric: '', components: [], phase: 'run', log: '' }
+
+    // —— 第一幕：发号 + Base62 编码，累积映射 ——
+    let counter = START
+    const entries: UrlEntry[] = []
+    URLS.forEach((longUrl, idx) => {
+      const id = counter; counter += 1                 // 发号器：真发一个自增号
+      const code = enc(id)                             // 真 Base62 编码
+      entries.push({ longUrl, id, code })
+      let log: string
+      if (idx === 0) {
+        // 第一条：展开 Base62 逐位编码，能手核
+        let x = id; const rows: string[] = []
+        while (x > 0) { rows.push(`${x} % 62 = ${x % 62} → '${B62[x % 62]}'，${x} ÷ 62 = ${Math.floor(x / 62)}`); x = Math.floor(x / 62) }
+        log = `**URL #1 → 发号 ${id.toLocaleString()} → Base62 编码**\n发号器发出自增 ID **${id.toLocaleString()}**，再 Base62 编码（不断取余 62、映射到字符、商继续，最后倒序）：\n${rows.map(r => '· ' + r).join('\n')}\n倒序拼起来 → 短码 **${code}**。\n注意：十进制 ${String(id).length} 位数，Base62 只要 **${code.length}** 位 —— 这就是用 62 进制的意义（越多字符、每位信息量越大、码越短）。`
+      } else {
+        log = `**URL #${idx + 1} → 发号 ${id.toLocaleString()} → 短码 ${code}**\n下一个自增 ID **${id.toLocaleString()}** → Base62 → **${code}**。\n发号器保证唯一，所以短码一定不重复；ID 连续，短码也接近连续（${entries[idx - 1]!.code} → ${code}）。存进映射表 \`${code} → 长URL\`。`
+      }
+      push({ phase: 'issue', op: 'issue', counter, entries: snap(entries), cur: idx, lookup: null, codeLen: 6, capacity: 62 ** 6, focus: `发号 ${id.toLocaleString()} → Base62 → 短码 ${code}`, log })
+    })
+
+    // —— 第二幕：访问短码 → 解码 → 查库 → 302 ——
+    const target = entries[0]!
+    const decodedId = dec(target.code)
+    push({
+      phase: 'redirect', op: 'redirect', counter, entries: snap(entries), cur: 0,
+      lookup: { code: target.code, id: decodedId, longUrl: target.longUrl }, codeLen: 6, capacity: 62 ** 6,
+      focus: `访问 /${target.code} → 解码回 ${decodedId.toLocaleString()} → 查库 → 302 跳转`,
+      log: `**访问 \`短链域名/${target.code}\` → 跳转**\n反过来走：把短码 **${target.code}** Base62 **解码**回 ID = **${decodedId.toLocaleString()}**（${[...target.code].map(c => `'${c}'=${B62.indexOf(c)}`).join(', ')}，按 62 进制累加）—— 正好等于当初发的号，编码/解码是可逆的一对。\n拿 ID 查映射表 → 长 URL：\n\`${target.longUrl}\`\n返回 **302** 让浏览器跳过去。（用 302 而非 301：301 永久、浏览器会缓存、省服务器但**统计不到点击**；302 每次都回服务器、能统计，短链要看数据一般用 302。）`,
+    })
+
+    // —— 第三幕：容量估算 ——
+    const cap6 = 62 ** 6
+    push({
+      phase: 'capacity', op: 'capacity', counter, entries: snap(entries), cur: -1, lookup: null, codeLen: 6, capacity: cap6,
+      focus: `6 位 Base62 = 62^6 ≈ ${(cap6 / 1e8).toFixed(0)} 亿个短码`,
+      log: `**容量：短码要几位够用？**\n每位 62 种取值，L 位就是 **62^L** 个码：\n· 6 位 = 62^6 = **${cap6.toLocaleString()}** ≈ **${(cap6 / 1e8).toFixed(0)} 亿**\n· 7 位 = 62^7 ≈ ${((62 ** 7) / 1e12).toFixed(1)} 万亿\n发号器从小号开始，码会随号增长而变长（6 位能撑到发到 568 亿号）。对比：同样表示 568 亿，十进制要 11 位、Base62 只要 6 位。`,
+    })
+
+    // —— 收尾 ——
+    push({
+      phase: 'done', op: 'summary', counter, entries: snap(entries), cur: -1, lookup: null, codeLen: 6, capacity: cap6,
+      focus: '发号器保唯一 + Base62 保短 + 缓存扛读 + 302 可统计',
+      log: `**小结：短链的机制**\n① **短码怎么来**：全局发号器发自增 ID（唯一、不碰撞）+ Base62 编码（短）。为什么不用**哈希**（如 MD5 取前几位）？会**碰撞**，得检测冲突再加盐重算，复杂；为什么不直接用**十进制自增明文**？能被爬虫**顺号遍历**你全站短链，且比 Base62 长。\n② **怎么跳转**：短码 Base62 解码回 ID → 查映射表 → 302（可统计点击）/301（永久省服务器但统计不到）。\n③ **怎么扛量**：短链是**读多写少**（约 100:1），热点码放缓存（Redis）扛读；映射表量大就按 code 分片。\n④ **发号器怎么做**：单点自增是瓶颈，实际用号段(一次取一批号发)/雪花算法/Redis INCR 做分布式发号。\n面试讲清这四点，就答到了短链设计的核心。`,
+    })
+
+    const base0: Frame = { phase: 'intro', op: 'intro', step: -1, counter: START, entries: [], cur: -1, lookup: null, codeLen: 6, capacity: 62 ** 6, focus: '', log: '' }
     return {
       axis: { kind: 'step', label: '设计步' },
       initial: () => ({ i: -1, ...base0 }),

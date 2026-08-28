@@ -308,7 +308,8 @@ import { minikvKernel, type MiniKVState } from '@engine/kernels/minikv.ts'
 import { MiniKVStage } from './stages/MiniKVStage.tsx'
 import { minisearchKernel, type SearchState } from '@engine/kernels/minisearch.ts'
 import { SearchStage } from './stages/SearchStage.tsx'
-import { urlshortenerKernel, type SysDesignState } from '@engine/kernels/urlshortener.ts'
+import { urlshortenerKernel, type UrlState } from '@engine/kernels/urlshortener.ts'
+import type { SysDesignState } from '@engine/kernels/_sysdesign.ts'
 import { seckillKernel, type SeckillState } from '@engine/kernels/seckill.ts'
 import { mqdesignKernel } from '@engine/kernels/mqdesign.ts'
 import { topkKernel } from '@engine/kernels/topk.ts'
@@ -316,6 +317,7 @@ import { feedKernel } from '@engine/kernels/feed.ts'
 import { objectstoreKernel } from '@engine/kernels/objectstore.ts'
 import { SysDesignStage } from './stages/SysDesignStage.tsx'
 import { SeckillStage } from './stages/SeckillStage.tsx'
+import { UrlStage } from './stages/UrlStage.tsx'
 import { CollisionStage } from './stages/CollisionStage.tsx'
 import { gcnKernel, type GcnState } from '@engine/kernels/gcn.ts'
 import { GcnStage } from './stages/GcnStage.tsx'
@@ -5997,20 +5999,20 @@ const minikv: Experiment<MiniKVState> = {
   ],
 }
 
-const urlshortener: Experiment<SysDesignState> = {
-  id: 'urlshortener', group: '系统设计', title: '设计短链系统', subtitle: '需求→估算→核心→扩展→权衡',
+const urlshortener: Experiment<UrlState> = {
+  id: 'urlshortener', group: '系统设计', title: '设计短链系统', subtitle: '真仿真：发号器 + Base62 编码/解码跳转',
   kernel: urlshortenerKernel, defaultDoc: { kind: 'urlshortener', params: {}, entities: [], streams: [] }, params: [],
-  paramsNote: '系统设计题：以短链系统为例走一遍框架——需求澄清→容量估算→发号+Base62编码→存储→缓存→分片扩展→权衡。详见讲解卡。',
-  bounds: ['读:写≈100:1;发号器+Base62(62^6≈568亿短码)', '读多写少→Redis缓存扛读;量大→一致性哈希分片', '权衡:发号器>哈希>自增;301永久vs302可统计', '框架换成秒杀/Feed/消息队列照样用'],
-  tabs: [{ id: 'design', label: '架构逐步搭' }], Stage: SysDesignStage, whyInRail: true,
-  tone: s => (s.phase === 'done' ? { key: 'good', label: '设计完成' } : { key: 'idle', label: s.stage.replace(/^[①②③④⑤⑥⑦]\s*/, '') || '就绪' }),
-  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 7)),
-  tickLabel: s => (s.phase === 'done' ? '毕' : s.stage.slice(0, 1) || '设'),
+  paramsNote: '短链的核心机制——短码怎么生成。真发号+真 Base62 编码：全局发号器发自增 ID（唯一不碰撞）→ Base62 编码成短码（1 亿→"6LAze"只 5 位）；访问时短码解码回 ID 查库 302 跳转。编码/解码逐位可手核。',
+  bounds: ['短码=发号器自增ID(唯一不碰撞) + Base62编码(0-9a-zA-Z共62字符,比十进制短)', '编码:不断取余62映射字符、商继续、倒序;解码按62进制累加回ID(可逆)', '为什么不用哈希:会碰撞要处理冲突;为什么不用十进制明文:能被顺号爬遍', '6位Base62=62^6≈568亿码;读多写少100:1→热点码进缓存;302可统计vs301永久'],
+  tabs: [{ id: 'design', label: '发号+编码' }], Stage: UrlStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: '机制走完' } : { key: 'idle', label: s.phase === 'issue' ? '发号+编码' : s.phase === 'redirect' ? '解码跳转' : s.phase === 'capacity' ? '容量估算' : '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.phase === 'issue' ? '号' : s.phase === 'redirect' ? '跳' : s.phase === 'capacity' ? '容' : '短'),
   readouts: s => [
-    { label: '阶段', value: s.stage || '就绪' },
-    { label: '关键', value: s.metric || '—' },
-    { label: '已定组件', value: `${s.components.length} 个` },
-    { label: '架构', value: s.components.map(c => c.label).join('→') || '—' },
+    { label: '发号器下一号', value: s.counter.toLocaleString() },
+    { label: '已建短链', value: `${s.entries.length} 条` },
+    { label: '最新短码', value: s.entries.length ? s.entries[s.entries.length - 1]!.code : '—' },
+    { label: '6位码容量', value: `62⁶≈${(s.capacity / 1e8).toFixed(0)}亿` },
   ],
 }
 
