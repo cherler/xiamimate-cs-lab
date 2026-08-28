@@ -195,7 +195,7 @@ function addSort(S,n){const a=alive(S)
 function addMemo(S,n){S.memo=Math.min(S.E.memoCap??999,S.memo+n)}
 let FLAWBONUS=4    // 挂失误的关卡补多少预算。实测:+10 时失误反而是净收益 +7.9 点(方向反了),
                    // +5 中性,+3 净惩罚 5 点。取 4 —— 既不判死,也确实更难
-let DEPTHMUL=.085  // 每深一关:规模 +8.5%(唯一的连续难度轴)
+let DEPTHMUL=.075  // 每深一关:规模 +8.5%(唯一的连续难度轴。加入敌人招牌动作后从 .085 下调)
 /* 十一个敌人以前共用一行 `v = 3 + random(vmax-2)` —— 名字讲了十一种数据,形状只有一种。
    形状不只是好看:它决定哪一类卡划算。几乎有序的数组不该再排序,
    稀疏的数据一次摊平就能清一大片,长尾的工作量集中在少数几根上。 */
@@ -228,11 +228,42 @@ const SHAPES={
 function scaleFoe(E,d){ if(!d)return E
  return{...E,n:Math.round(E.n*(1+DEPTHMUL*d)),inflow:E.inflow??0,
    mult:E.mult,depth:d}}
+/* 敌人以前只是「一堆被动标志位」—— 它从不【行动】,所以你无从反应,所以它们都一样。
+   杀戮尖塔的答案是意图:提前亮出下回合要干什么,你据此调整出牌。
+   这里给每个敌人一个三回合一次的招牌动作,并提前一回合预告。 */
+const ACTS={
+ shuffled:{name:'重新洗牌',desc:'有序度砍掉一半',
+  fn(S){const a=alive(S);for(let k=0;k<Math.ceil(a.length/3);k++){
+   const i=Math.floor(S.R()*a.length),j=Math.floor(S.R()*a.length)
+   const t=a[i].v;a[i].v=a[j].v;a[j].v=t}}},
+ tape:{name:'倒带',desc:'最左边 3 根恢复到满高',
+  fn(S){alive(S).slice(0,3).forEach(b=>{S.totalWork+=Math.max(0,S.vmax-b.v);b.v=S.vmax})}},
+ dupes:{name:'再抓一批',desc:'一次涌入 4 个同值元素',
+  fn(S){const v=T.VMIN+Math.floor(S.R()*3)
+   for(let i=0;i<4;i++){const b={id:_uid++,v,dead:false};S.totalWork+=v;S.bars.push(b)}}},
+ stream:{name:'行情跳水',desc:'所有柱子高度 +2',
+  fn(S){alive(S).forEach(b=>{b.v+=2;S.totalWork+=2})}},
+ graph:{name:'六度扩散',desc:'一次涌入 3 个',fn(S){for(let i=0;i<3;i++)push1(S)}},
+ worst:{name:'构造反例',desc:'把最左边一半重排成倒序',
+  fn(S){const a=alive(S).slice(0,Math.ceil(alive(S).length/2))
+   const vs=a.map(b=>b.v).sort((x,y)=>y-x);a.forEach((b,i)=>b.v=vs[i])}},
+ collide:{name:'雪崩',desc:'丢掉 1 张手牌',
+  fn(S){for(let k=0;k<1&&S.hand.length;k++){const i=Math.floor(S.R()*S.hand.length)
+   S.exhaust.push(S.hand.splice(i,1)[0]);S.diag.evicted=(S.diag.evicted||0)+1}}},
+ regret:{name:'反悔',desc:'你上一张打出的牌被退回牌库',
+  fn(S){if(S.discard.length){S.draw.push(S.discard.pop());shuffle(S)}}},
+ explode2:{name:'状态翻倍',desc:'预处理值砍半',
+  fn(S){const d=Math.floor(S.memo/2);S.diag.lostMemo+=d;S.memo-=d}},
+ atomic:{name:'凝固',desc:'段数 −1',fn(S){S.splits=Math.max(1,S.splits-1)}},
+ expo:{name:'链式爆炸',desc:'这一次额外 +25% 规模',
+  fn(S){const add=Math.ceil(N(S)*.25);for(let i=0;i<add;i++)push1(S)}},
+}
+let ACTEVERY=5   // 一场 9~17 回合,五回合一次 = 打出 2~3 次
 function newFight(seed,deck,foeId,budget,flawId,depth=0){
  const E=scaleFoe(FOE[foeId],depth),R=rng(seed),vmax=E.vmax??T.VMAX,FL=flawId?FLAW[flawId]:null
  const S={R,E,foeId,bars:(SHAPES[E.shape]||SHAPES.random).gen(E.n,vmax,R,T.VMIN).map((v,i)=>({id:i,v,dead:false})),
   splits:1,budget:budget+(FL?FLAWBONUS:0),steps:T.STEPS,turn:1,memo:0,debt:0,
-  inflow:E.inflow??0,mult:E.mult??1,vmax,flawId:flawId||null,FL,locked:null,guarded:false,loopBroken:false,firstPlay:true,lastPlayed:null,heapLv:0,prefix:false,monoq:false,
+  inflow:E.inflow??0,mult:E.mult??1,vmax,flawId:flawId||null,FL,locked:null,guarded:false,loopBroken:false,firstPlay:true,lastPlayed:null,heapLv:0,prefix:false,monoq:false,actIn:ACTEVERY,
   draw:[...deck],hand:[],discard:[],exhaust:[],over:null,
   totalWork:0,diag:{plays:{},lostKill:0,lostWork:0,evicted:0,lostMemo:0,lostSort:0,flawLoss:0,extraDebt:0,extraInflow:0,sortDecay:0,memoDecayed:0,spent:0,turns:0}}
  S.totalWork=S.bars.reduce((a,b)=>a+b.v,0)
@@ -276,6 +307,11 @@ function endTurn(S){if(S.over)return
  if(S.monoq&&S.hand.length){let bi=0
   for(let i=1;i<S.hand.length;i++)if(C[S.hand[i]].cost>C[S.hand[bi]].cost)bi=i
   keep=[S.hand.splice(bi,1)[0]]}
+ // 招牌动作:倒计时到了就发动,并重新起算
+ const ACT=ACTS[S.foeId]
+ if(ACT){S.actIn--
+  if(S.actIn<=0){ACT.fn(S);S.actIn=ACTEVERY;S.lastAct=ACT.name
+   S.diag.actFired=(S.diag.actFired||0)+1}else S.lastAct=null}
  S.discard.push(...S.hand);S.hand=keep;S.steps=T.STEPS;S.turn++;S.guarded=false;S.firstPlay=true
  drawN(S,T.HAND)
  if(S.E.evict&&S.hand.length){const i=Math.floor(S.R()*S.hand.length)
@@ -418,6 +454,9 @@ function intelOf(deck,foeId,flawId,depth=0){
  for(const P of PROPS){ if(!E[P.k])continue
   const n=P.hit(deck)
   rows.push({txt:typeof P.txt==='function'?P.txt(E):P.txt,n,dir:P.dir,lbl:P.lbl}) }
+ const A2=ACTS[foeId]
+ if(A2)rows.push({txt:'每 '+ACTEVERY+' 回合发动「'+A2.name+'」:'+A2.desc,n:0,dir:-1,
+   lbl:()=>['招牌动作','amber']})
  const SH=SHAPES[E.shape||'random']
  if(E.shape&&E.shape!=='random')rows.push({txt:'形状「'+SH.name+'」:'+SH.hint,n:0,dir:1,
    lbl:()=>[SH.name,'cyan']})
@@ -479,6 +518,56 @@ function afterFight(){ if(S.over==='lose'){RUN.over='lose';return}
  if(RUN.node>=SHAPE.length){RUN.over='win';return} offer=offer3(RUN)}
 function takeCard(id){if(id)RUN.deck.push(id);offer=null;enter()}
 function snap(){return alive(S).map(b=>({id:b.id,v:b.v}))}
+/* 组合一直都在(排序→有序层数→二分查找),但它在画面上从来只是「一个数变了」。
+   小丑牌的做法:每一环依次点亮,300ms 的动画代替整页说明书。
+   CHAIN 在出牌【之前】把因果链算出来,然后一环一环演。 */
+const CHAIN={
+ bsearch:S=>{const t=tier(S),full=1+t*2,seq=S.E.seqOnly
+  const o=[['基础 1',CO.faint],['有序层数 '+t+' × 2',CO.amber]]
+  if(seq)o.push(['顺序访问 ×'+seq,CO.red])
+  return o.concat([['移除 '+(seq?Math.max(1,Math.round(full*seq)):full)+' 个',CO.green]])},
+ mergeup:S=>[['每段 2 个',CO.faint],['段数 '+S.splits,'#b39ddb'],['移除 '+(2*S.splits)+' 个',CO.green]],
+ parallel:S=>{const h=S.E.noSplit?PARCUT:1,tot=Math.round(S.splits*14*h)
+  const o=[['段数 '+S.splits+' × 14','#b39ddb']]
+  if(h<1)o.push(['不可分 ×'+h,CO.red])
+  if(S.prefix)o.push(['前缀和 ×'+PREFIX,'#8ee6c8'])
+  return o.concat([['处理量 '+Math.round(tot*(S.prefix?PREFIX:1))+' ÷ '+N(S)+' 个',CO.green]])},
+ lookup:S=>{const o=[['预处理值 '+S.memo,CO.green]]
+  if(S.prefix)o.push(['前缀和 ×'+PREFIX,'#8ee6c8'])
+  return o.concat([['处理量 '+Math.round(S.memo*(S.prefix?PREFIX:1))+' ÷ '+N(S)+' 个',CO.green]])},
+ dp:S=>[['预处理值 '+S.memo,CO.green],['动态规划 ×2',CO.amber],
+        ['处理量 '+(S.memo*2)+' ÷ '+N(S)+' 个',CO.green]],
+ heur:S=>[['基础 2',CO.faint],['债务 '+Math.min(S.debt,6)+'(封顶 6)',CO.red],
+          ['移除 '+(2+Math.min(S.debt,6))+' 个',CO.green]],
+ anneal:S=>[['债务 '+S.debt,CO.red],['× 2',CO.amber],
+            ['移除 '+(S.debt*2)+' 个 · 债务清零',CO.green]],
+ median:S=>[['需有序 ≥3 · 现在 '+tier(S),CO.amber],['规模 '+N(S)+' ÷ 3',CO.faint],
+            [tier(S)>=3?'移除 '+Math.ceil(N(S)/3)+' 个':'条件不满足 · 落空',tier(S)>=3?CO.green:CO.red]],
+ recur:S=>[['需段数 ≥3 · 现在 '+S.splits,'#b39ddb'],['规模 '+N(S)+' ÷ 3',CO.faint],
+           [S.splits>=3?'移除 '+Math.ceil(N(S)/3)+' 个':'条件不满足 · 落空',S.splits>=3?CO.green:CO.red]],
+ approx:S=>[['规模 '+N(S)+' ÷ 4',CO.faint],['债务 '+S.debt+' → '+(S.debt+3),CO.red],
+            ['移除 '+Math.ceil(N(S)/4)+' 个',CO.green]],
+ counting:S=>{const a=alive(S);if(!a.length)return null
+  const mn=Math.min(...a.map(b=>b.v))
+  return [['最矮的是 '+mn,CO.faint],['清掉 值 ≤ '+(mn+2)+' 的',CO.amber],
+          ['移除 '+a.filter(b=>b.v<=mn+2).length+' 个',CO.green]]},
+ insertion:S=>{const sd=Math.round(sortedness(S)*100)
+  return [['有序度 '+sd+'%',CO.amber],[sd>=50?'≥50% · 逆序对够少':'<50% · 逆序对太多',sd>=50?CO.green:CO.red],
+          [sd>=50?'一趟排完 → 有序层数 4':'只 +1 层',sd>=50?CO.green:CO.red]]},
+ scan:S=>{const w=wprev(16);if(!w)return null
+  const o=[['处理量 16',CO.faint]]
+  if(S.prefix)o.push(['前缀和 ×'+PREFIX,'#8ee6c8'])
+  return o.concat([['÷ '+w.n+' 个元素',CO.faint],['每根矮 '+w.per+' · 血条 −'+w.hp+'%',CO.cyan]])},
+ medstream:S=>{const a=alive(S);if(!a.length)return null
+  const vs=a.map(b=>b.v).sort((x,y)=>x-y),med=vs[vs.length>>1]
+  return [['中位数 '+med,CO.faint],['清掉严格低于它的','#ffb3d9'],
+          ['移除 '+a.filter(b=>b.v<med).length+' 个',CO.green]]},
+ memoize:S=>S.lastPlayed?[['上一张是「'+C[S.lastPlayed].name+'」','#9ecbff'],['重放它',CO.amber],
+   ['效果再来一次',CO.green]]:null,
+ merge2:S=>{const a=alive(S);let c=0
+  for(let i=1;i<a.length;i++)if(a[i].v===a[i-1].v)c++
+  return [['相邻等高 '+c+' 对','#8ee6c8'],['合并',CO.amber],['移除 '+c+' 个',c?CO.green:CO.red]]},
+}
 const stat=()=>({n:N(S),work:remainWork(S),budget:S.budget,memo:S.memo,debt:S.debt,
   splits:S.splits,tier:tier(S),hand:S.hand.length,mult:S.mult,inflow:S.inflow,ex:S.exhaust.length,
   draw:S.draw.length,disc:S.discard.length,top:S.draw.slice(-3).map(x=>C[x].name).join('')})
@@ -512,6 +601,7 @@ function foeTurnReport(b,S2){ if(S2!==S)return
  if(N(S)>b.n)   o.push(['涌入 +'+(N(S)-b.n)+' 个'+(S.mult>1?'(指数增长)':''),R])
  if(tier(S)<b.tier) o.push(['自我打乱 · 有序层数 '+b.tier+' → '+tier(S),A])
  if(S.memo<b.memo)  o.push(['数据在变 · 预处理值 '+b.memo+' → '+S.memo,A])
+ if(S.lastAct)o.unshift(['◆ '+S.lastAct+' 发动了!',R])
  if(S.exhaust.length>b.ex) o.push(['哈希碰撞 · 丢了 '+(S.exhaust.length-b.ex)+' 张手牌',R])
  if(S.locked!=null) o.push(['空指针 · 锁住了「'+C[S.hand[S.locked]].name+'」',R])
  if(o.length>1||N(S)>b.n) flo={lines:o.slice(0,4),name:'敌人回合',t0:performance.now(),dur:1700}}
@@ -520,11 +610,12 @@ function uiPlay(i){
  if(anim)anim=null
  if(!canPlay(S,i))return
  const id=S.hand[i],before=snap(),s0=stat()
+ const ch=CHAIN[id]?CHAIN[id](S):null      // 必须在 play 之前算 —— 之后状态就变了
  play(S,i); hist.push(hpPct(S))
  const kind=AK[id]||'gen', dur=kind==='sort'?1150:kind==='gen'?700:860
  anim={id,kind,t0:performance.now(),dur,before,
   after:new Map(S.bars.map(b=>[b.id,b.dead?null:b.v]))}
- flo={lines:readout(s0,stat()),name:C[id].name,t0:performance.now(),dur:1500}
+ flo={lines:readout(s0,stat()),name:C[id].name,t0:performance.now(),dur:ch?2100:1500,chain:ch}
  if(S.over)setTimeout(afterFight,700)
  else if(S.steps<=0)setTimeout(()=>{if(!S.over){endTurn(S);hist.push(hpPct(S));if(S.over)afterFight()}},dur+300)}
 const AK={scan:'sweep',lookup:'sweep',dp:'sweep',parallel:'sweep',
@@ -691,6 +782,21 @@ function enemyHeader(A){
  ctx.font='700 13px system-ui';ctx.fillStyle=CO.ink
  ctx.fillText(`${hp} / 100`,cx,by+30)
  ctx.font='400 11.5px system-ui';ctx.fillStyle=CO.faint;ctx.fillText(S.E.note,cx,by+48)
+ // 意图:提前亮出招牌动作 —— 敌人第一次真正「要做什么」而不只是「有什么属性」
+ const ACT=ACTS[S.foeId]
+ if(ACT){const soon=S.actIn<=1
+  const t=(S.actIn<=1?'下回合 ▶ ':'再 '+S.actIn+' 回合 ▶ ')+ACT.name+' · '+ACT.desc
+  ctx.font='700 12px system-ui';const tw2=ctx.measureText(t).width
+  const bx2=cx-tw2/2-30,by2=by+58,bw2=tw2+60,bh2=24
+  ctx.fillStyle=soon?'rgba(255,107,94,.18)':'rgba(240,169,74,.10)'
+  ctx.fillRect(bx2,by2,bw2,bh2)
+  ctx.strokeStyle=soon?CO.red:'rgba(240,169,74,.5)';ctx.lineWidth=soon?1.6:1
+  ctx.strokeRect(bx2+.5,by2+.5,bw2-1,bh2-1)
+  ctx.fillStyle=soon?CO.red:CO.amber;ctx.fillText(t,cx,by2+16)
+  // 倒计时格子
+  for(let i=0;i<ACTEVERY;i++){const px=bx2+10+i*8
+   ctx.fillStyle=i<(ACTEVERY-S.actIn)?(soon?CO.red:CO.amber):'rgba(255,255,255,.18)'
+   ctx.fillRect(px,by2+9,5,6)}}
  ctx.textAlign='left'}
 function flawBanner(){ if(!S.FL)return
  const cx=W/2,t=`⚠ ${S.FL.name} · ${S.FL.note}`
@@ -924,22 +1030,48 @@ function arena(A){
  parts.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=.1;p.life-=.02
   ctx.globalAlpha=Math.max(p.life,0);ctx.fillStyle=p.c;ctx.fillRect(p.x,p.y,2.6,2.6);ctx.globalAlpha=1})
  floatRead(A)}
-/* 飘字读数:每出一张牌都说清「这一下到底改了什么」,
-   不碰柱子的那 7 张(批处理/观察/预处理/建表/剪枝/回溯/边界条件)全靠它 */
+/* 结算演出:先把因果链一环一环点亮(小丑牌手法 —— 让「为什么是这个数」自己演出来),
+   再给最终读数。不碰柱子的那些卡全靠这一段。 */
+const STEP=240
 function floatRead(A){ if(!flo)return
- const ft=(performance.now()-flo.t0)/flo.dur
+ const el=performance.now()-flo.t0, ft=el/flo.dur
  if(ft>=1){flo=null;return}
- const al=ft<.12?ft/.12:ft>.72?(1-ft)/.28:1
- // 起点要避开敌人说明和失误横幅(它们在 A.y 上方到 A.y+45)
- const cx=A.x+A.w/2, y0=A.y+96-ft*30
- ctx.textAlign='center';ctx.globalAlpha=Math.max(0,al)
- ctx.font='600 11px system-ui';ctx.fillStyle=CO.faint;ctx.fillText(flo.name,cx,y0-16)
- flo.lines.forEach((l,i)=>{const y=y0+i*23
-  ctx.font='700 17px system-ui';const w=ctx.measureText(l[0]).width
-  ctx.fillStyle='rgba(5,10,17,.9)';ctx.fillRect(cx-w/2-15,y-18,w+30,26)
-  ctx.strokeStyle=l[1];ctx.globalAlpha=Math.max(0,al)*.45;ctx.lineWidth=1
-  ctx.strokeRect(cx-w/2-14.5,y-17.5,w+29,25);ctx.globalAlpha=Math.max(0,al)
-  ctx.fillStyle=l[1];ctx.fillText(l[0],cx,y)})
+ const cx=A.x+A.w/2
+ ctx.textAlign='center'
+ const ch=flo.chain||[]
+ const shown=Math.min(ch.length,Math.floor(el/STEP)+1)
+ const chainDone=el>=ch.length*STEP
+ // 卡名
+ const al0=ft<.08?ft/.08:ft>.82?(1-ft)/.18:1
+ ctx.globalAlpha=Math.max(0,al0)
+ ctx.font='600 11px system-ui';ctx.fillStyle=CO.faint
+ ctx.fillText(flo.name,cx,A.y+56)
+ // 因果链:一环一环点亮,最后一环放大
+ let y=A.y+78
+ for(let i=0;i<shown;i++){
+  const [txt,col]=ch[i], last=i===ch.length-1
+  const age=el-i*STEP, pop=Math.min(1,age/160)
+  ctx.globalAlpha=Math.max(0,al0)*(.35+.65*pop)
+  const fs=last?19:13.5
+  ctx.font=(last?'700 ':'500 ')+(fs*(last?.9+.1*pop:1))+'px system-ui'
+  const w=ctx.measureText(txt).width
+  ctx.fillStyle='rgba(5,10,17,.9)';ctx.fillRect(cx-w/2-13,y-fs+2,w+26,fs+11)
+  ctx.strokeStyle=col;ctx.globalAlpha=Math.max(0,al0)*(last?.75:.35)*pop;ctx.lineWidth=1
+  ctx.strokeRect(cx-w/2-12.5,y-fs+2.5,w+25,fs+10)
+  ctx.globalAlpha=Math.max(0,al0)*(.35+.65*pop)
+  ctx.fillStyle=col;ctx.fillText(txt,cx,y)
+  if(i<shown-1){ctx.strokeStyle=CO.faint;ctx.globalAlpha=Math.max(0,al0)*.3
+   ctx.beginPath();ctx.moveTo(cx,y+5);ctx.lineTo(cx,y+13);ctx.stroke()}
+  y+=fs+21
+ }
+ // 链演完了再给最终读数
+ if(chainDone)flo.lines.forEach((l,i)=>{const yy=y+i*23
+  ctx.globalAlpha=Math.max(0,al0)
+  ctx.font='700 15px system-ui';const w=ctx.measureText(l[0]).width
+  ctx.fillStyle='rgba(5,10,17,.9)';ctx.fillRect(cx-w/2-13,yy-16,w+26,24)
+  ctx.strokeStyle=l[1];ctx.globalAlpha=Math.max(0,al0)*.45;ctx.lineWidth=1
+  ctx.strokeRect(cx-w/2-12.5,yy-15.5,w+25,23)
+  ctx.globalAlpha=Math.max(0,al0);ctx.fillStyle=l[1];ctx.fillText(l[0],cx,yy)})
  ctx.globalAlpha=1;ctx.textAlign='left'}
 const ease=t=>1-Math.pow(1-t,3)
 
