@@ -6090,7 +6090,7 @@ export const DISCIPLINES: Discipline[] = [
   {
     key: 'llm', title: '大模型', icon: '🧩', status: 'active',
     sub: 'Transformer → 推理引擎 · 求职',
-    groups: ['Transformer 原理', '大模型算法', '大模型推理', '大模型系统设计', '大模型项目实战'],
+    groups: ['Transformer 原理', '大模型算法', '大模型推理', '大模型项目实战'],
     guide: { from: '一次注意力', to: '大模型推理引擎', toIcon: '🤖' },
   },
   {
@@ -6140,7 +6140,6 @@ export const GROUP_ANCHOR: Record<string, string> = {
   '大模型推理': 'llm',
   '算法系统设计': 'internet',
   '算法项目实战': 'software',
-  '大模型系统设计': 'llm',
   '大模型项目实战': 'llm',
 }
 
