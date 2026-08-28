@@ -13,12 +13,17 @@ import type { Kernel, CompiledModel } from '../core/kernel.ts'
 
 type Path = { name: string; type: string; key: string; rows: number; note: string }
 const TOTAL = 10000
+//  选择率(命中比例)——由这个和总行数现算每条路径的估扫描行数(优化器代价的核心)
+const CITY_SEL = 0.05   // city='北京' 等值命中 5%
+const AGE_SEL = 0.60    // age>30 范围命中 60%
+const est = (sel: number) => Math.round(TOTAL * sel)
 const PATHS: Path[] = [
-  { name: '全表扫描', type: 'ALL', key: '—', rows: TOTAL, note: '不走索引，扫全表 10000 行、逐行判 city 和 age' },
-  { name: '走 idx(city)', type: 'ref', key: 'idx_city', rows: 500, note: "city='北京' 等值命中约 500 行，再回表过滤 age" },
-  { name: '走 idx(age)', type: 'range', key: 'idx_age', rows: 6000, note: 'age>30 范围命中约 6000 行，再回表过滤 city' },
+  { name: '全表扫描', type: 'ALL', key: '—', rows: TOTAL, note: `不走索引，扫全表 ${TOTAL} 行、逐行判 city 和 age` },
+  { name: '走 idx(city)', type: 'ref', key: 'idx_city', rows: est(CITY_SEL), note: `city='北京' 等值命中≈${est(CITY_SEL)} 行(选择率${CITY_SEL * 100}%)，再回表过滤 age` },
+  { name: '走 idx(age)', type: 'range', key: 'idx_age', rows: est(AGE_SEL), note: `age>30 范围命中≈${est(AGE_SEL)} 行(选择率${AGE_SEL * 100}%)，再回表过滤 city` },
 ]
-const CHOSEN = 1  // idx(city) 估扫描行数最少
+//  优化器选代价(估扫描行数)最低的那条 —— argmin，现算
+const CHOSEN = PATHS.reduce((best, p, idx, arr) => (p.rows < arr[best]!.rows ? idx : best), 0)
 
 export type QPlanState = {
   i: number

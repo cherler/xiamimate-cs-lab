@@ -33,19 +33,29 @@ export type ReactState = {
 type Frame = Omit<ReactState, 'i'>
 
 const QUESTION = '北京今天比上海热多少度？'
-// 剧本：Thought→Action→Observation… 直到 Answer（工具结果预置，模拟真实返回）
+//  search 返回的是工具的外部数据(模拟真实检索);calc 是算术,由引擎**真算**——这才配得上"Agent 用真结果、少幻觉"
+const BEIJING = 30, SHANGHAI = 25   // 两次 search 返回的气温(外部数据)
+//  一个真的计算器工具：解析 "a - b / a + b / a * b" 并求值
+const calcTool = (expr: string): string => {
+  const m = expr.match(/^\s*(-?\d+)\s*([-+*])\s*(-?\d+)\s*$/)
+  if (!m) return '?'
+  const a = +m[1]!, b = +m[3]!
+  return String(m[2] === '-' ? a - b : m[2] === '+' ? a + b : a * b)
+}
+const CALC_ARG = `${BEIJING} - ${SHANGHAI}`
+const DIFF = calcTool(CALC_ARG)   // 由 calc 工具现算 = "5"
 const SCRIPT: ({ k: 'thought'; text: string } | { k: 'action'; tool: string; arg: string } | { k: 'observation'; obs: string } | { k: 'answer'; text: string })[] = [
   { k: 'thought', text: '要回答温差，先得知道两地的气温。先查北京。' },
   { k: 'action', tool: 'search', arg: '北京 今天 气温' },
-  { k: 'observation', obs: '北京今天最高气温 30°C' },
-  { k: 'thought', text: '北京 30°C。再查上海。' },
+  { k: 'observation', obs: `北京今天最高气温 ${BEIJING}°C` },
+  { k: 'thought', text: `北京 ${BEIJING}°C。再查上海。` },
   { k: 'action', tool: 'search', arg: '上海 今天 气温' },
-  { k: 'observation', obs: '上海今天最高气温 25°C' },
-  { k: 'thought', text: '两地都有了：30 和 25。用计算器算差，别口算出错。' },
-  { k: 'action', tool: 'calc', arg: '30 - 25' },
-  { k: 'observation', obs: '5' },
-  { k: 'thought', text: '差是 5°C，可以回答了。' },
-  { k: 'answer', text: '北京今天最高 30°C，上海 25°C，北京比上海热 5°C。' },
+  { k: 'observation', obs: `上海今天最高气温 ${SHANGHAI}°C` },
+  { k: 'thought', text: `两地都有了：${BEIJING} 和 ${SHANGHAI}。用计算器算差，别口算出错。` },
+  { k: 'action', tool: 'calc', arg: CALC_ARG },
+  { k: 'observation', obs: DIFF },   // calc 工具真算出来的，不是写死
+  { k: 'thought', text: `差是 ${DIFF}°C，可以回答了。` },
+  { k: 'answer', text: `北京今天最高 ${BEIJING}°C，上海 ${SHANGHAI}°C，北京比上海热 ${DIFF}°C。` },
 ]
 
 export const reactagentKernel: Kernel<ReactState> = {
