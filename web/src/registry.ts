@@ -290,6 +290,8 @@ import { quickselectKernel, type QSelState } from '@engine/kernels/quickselect.t
 import { QuickselectStage } from './stages/QuickselectStage.tsx'
 import { lockstrategyKernel, type LockState } from '@engine/kernels/lockstrategy.ts'
 import { LockStrategyStage } from './stages/LockStrategyStage.tsx'
+import { bufferpoolKernel, type BufPoolState } from '@engine/kernels/bufferpool.ts'
+import { BufferPoolStage } from './stages/BufferPoolStage.tsx'
 import { walKernel, type WALState } from '@engine/kernels/wal.ts'
 import { WALStage } from './stages/WALStage.tsx'
 import { lsmKernel, type LSMState } from '@engine/kernels/lsm.ts'
@@ -5556,6 +5558,22 @@ const ecbcbc: Experiment<EcbCbcState> = {
     { label: '重复块', value: s.phase === 'done' ? 'ECB 泄露 / CBC 安全' : '对比中' },
   ],
 }
+const bufferpool: Experiment<BufPoolState> = {
+  id: 'bufferpool', group: '数据库系统', title: '缓冲池 midpoint-LRU', subtitle: '全表扫描冲不掉热点页（MySQL InnoDB）',
+  kernel: bufferpoolKernel, defaultDoc: { kind: 'bufferpool', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '无可调参数。普通LRU被全表扫描污染(冷页挤走热点)。InnoDB把LRU分young(热)+old(冷)两段:新页插中点(old头)、二次访问才升young。扫描页S1/S2/S3只在old进出,young[A,B,C]毫发无损。链表流转可手核。详见讲解卡。',
+  bounds: ['普通LRU坑:全表扫描把冷页塞LRU头、挤走热点(缓存污染)', 'InnoDB:LRU分young(前5/8)+old(后3/8),新页插中点(old头)', '二次访问且过时间窗才升young;扫描页只用一次→不升→old尾淘汰', 'young热点毫发无损;=innodb_old_blocks_pct/time参数机制;近LRU-K/2Q'],
+  tabs: [{ id: 'bfp', label: '扫描不污染' }], Stage: BufferPoolStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: '热点无损' } : s.op === 'scan' ? { key: 'idle', label: `装${s.loaded}汰${s.evicted}` } : s.op === 'init' ? { key: 'idle', label: '初始' } : { key: 'idle', label: '看问题' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => (s.phase === 'done' ? '护' : s.op === 'scan' ? s.loaded.slice(-1) : s.op === 'init' ? '始' : 'Q'),
+  readouts: s => [
+    { label: '本步', value: s.op === 'scan' ? `装载 ${s.loaded}` : s.op === 'init' ? '初始' : s.phase === 'done' ? '扫描完' : '看问题' },
+    { label: 'young 热区', value: `[${s.young.join(',')}]`, tone: s.phase === 'done' ? 'good' : undefined },
+    { label: 'old 冷区', value: `[${s.old.join(',')}]` },
+    { label: '淘汰', value: s.op === 'scan' ? s.evicted : '—', tone: s.op === 'scan' ? 'bad' : undefined },
+  ],
+}
 const lockstrategy: Experiment<LockState> = {
   id: 'lockstrategy', group: '并发编程', title: '乐观锁 vs 悲观锁', subtitle: '并发改一行：版本重试 还是 加锁阻塞',
   kernel: lockstrategyKernel, defaultDoc: { kind: 'lockstrategy', params: {}, entities: [], streams: [] }, params: [],
@@ -5994,7 +6012,7 @@ export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
   caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt, ecbcbc, birthday, aesround, hmac, totp,
-  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, rwlock, aba, happensbefore, lockstrategy, lrucache, lfucache, trie, quickselect, reactagent, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign, topk,
+  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, bufferpool, rwlock, aba, happensbefore, lockstrategy, lrucache, lfucache, trie, quickselect, reactagent, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign, topk,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,

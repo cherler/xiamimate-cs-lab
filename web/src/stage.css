@@ -4384,6 +4384,27 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .lk-cp.bad { color:var(--miss); }
 .lk-cp.use { margin-top:6px; padding-top:7px; border-top:1px dashed var(--line); color:var(--t-body); font-weight:600; }
 
+/* ── 缓冲池 midpoint-LRU ── */
+.bfp-lru { display:flex; align-items:stretch; gap:8px; margin:8px 0 12px; }
+.bfp-seg { flex:1; display:flex; flex-direction:column; gap:6px; padding:10px 12px; border:1.5px solid var(--line); border-radius:10px; }
+.bfp-seg.young { border-color:var(--hit); background:color-mix(in srgb, var(--hit) 6%, var(--panel)); }
+.bfp-seg.old { background:var(--sunk-1); }
+.bfp-slbl { font-size:11px; font-weight:700; color:var(--dim); }
+.bfp-seg.young .bfp-slbl { color:var(--hit); }
+.bfp-chips { display:flex; flex-wrap:wrap; gap:6px; align-items:center; min-height:34px; }
+.bfp-chip { font-family:var(--mono); font-size:15px; font-weight:700; padding:6px 12px; border-radius:8px; border:1.5px solid var(--line); background:var(--panel); }
+.bfp-chip.hot { border-color:var(--hit); color:var(--hit); }
+.bfp-chip.cold { color:var(--dim); }
+.bfp-chip.new { border-color:var(--now); color:var(--now); box-shadow:0 0 0 1px var(--now); }
+.bfp-mid { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; padding:0 4px; }
+.bfp-mid span { font-size:10px; font-weight:700; color:var(--f-tag); writing-mode:vertical-rl; letter-spacing:2px; }
+.bfp-mid i { font-style:normal; font-size:8px; color:var(--faint); }
+.bfp-evicted { font-size:11px; color:var(--miss); font-weight:600; }
+.bfp-note { margin:0 0 10px; padding:7px 12px; font-size:12.5px; border-radius:8px; border:1px solid var(--line); color:var(--dim); background:var(--sunk-1); }
+.bfp-note b { color:var(--ink); }
+.bfp-note.ok { color:var(--hit); border-color:var(--hit); background:color-mix(in srgb, var(--hit) 7%, var(--panel)); }
+.bfp-note.ok b { color:var(--hit); }
+
 /* ── mini 搜索引擎（倒排索引 + TF-IDF） ── */
 .ms-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:8px 0 12px; }
 .ms-col { display:flex; flex-direction:column; gap:6px; min-width:0; }

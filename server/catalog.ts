@@ -90,6 +90,7 @@ import { lfucacheKernel } from '../src/kernels/lfucache.ts'
 import { trieKernel } from '../src/kernels/trie.ts'
 import { quickselectKernel } from '../src/kernels/quickselect.ts'
 import { lockstrategyKernel } from '../src/kernels/lockstrategy.ts'
+import { bufferpoolKernel } from '../src/kernels/bufferpool.ts'
 import { walKernel } from '../src/kernels/wal.ts'
 import { lsmKernel } from '../src/kernels/lsm.ts'
 import { minikvKernel } from '../src/kernels/minikv.ts'
@@ -1560,6 +1561,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: '乐观锁和悲观锁分别适合什么场景?', kind: 'choice',
         compute: () => ({ answer: '乐观锁适合读多写少、冲突罕见（不加锁并发高，偶尔重试代价小，如点赞数、MVCC）；悲观锁适合写多、冲突频繁、必须一次成功（先加锁串行，稳但并发低，如扣钱、抢票核心）', step: 11, evidence: '冲突少→乐观(重试便宜)；冲突多→悲观(重试太多、不如直接锁)' }),
         distractors: () => ['乐观锁任何场景都更好', '悲观锁任何场景都更好', '两者适用场景完全一样'],
+      },
+    ],
+  },
+  {
+    id: 'bufferpool', title: '缓冲池 midpoint-LRU', kernel: bufferpoolKernel as Kernel<unknown>, doc: trivialDoc('bufferpool'),
+    facts: [
+      {
+        id: 'scan_pollution', label: '普通 LRU 遇到全表扫描的问题',
+        ask: '如果缓冲池用普通 LRU，一次全表扫描会造成什么问题?', kind: 'choice',
+        compute: () => ({ answer: '全表扫描把海量只用一次的冷页塞到 LRU 头，把真正被反复访问的热点页挤到尾部淘汰——扫描完缓存全是没用的冷页、热点全没了（缓存污染）', step: 0, evidence: '普通 LRU 新页都进链表头，扫描页会顶掉热点' }),
+        distractors: () => ['扫描会让缓存变大', '扫描其实对普通 LRU 没影响', '扫描会触发死锁'],
+      },
+      {
+        id: 'midpoint_how', label: 'midpoint-LRU 怎么保护热点',
+        ask: 'MySQL InnoDB 的 midpoint-LRU 靠什么让全表扫描冲不掉热点页?', kind: 'choice',
+        compute: () => ({ answer: 'LRU 链分 young(热)+old(冷) 两段，新页插到中点(old 头)而非链表头，只有在 old 段再次被访问才升 young。扫描页只用一次、进不了 young，很快从 old 尾淘汰，young 里的热点不受影响', step: 5, evidence: '扫描 S1/S2/S3 全在 old 段进出，young[A,B,C] 毫发无损' }),
+        distractors: () => ['把缓冲池扩大一倍', '扫描时暂时关掉 LRU', '给热点页加锁不让淘汰'],
       },
     ],
   },

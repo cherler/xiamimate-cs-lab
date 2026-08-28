@@ -338,6 +338,7 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   trie: {},
   quickselect: {},
   lockstrategy: {},
+  bufferpool: {},
   astar: {},
   perceptron: {},
   pooling: { kind: 'string' },

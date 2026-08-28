@@ -233,6 +233,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { step: 8, kind: 'action', round: 3, text: '', tool: 'calc', arg: '30 - 25', obs: '', history: [{ kind: 'thought', text: '两地都有了：30 和 25。用计算器算差。' }], answer: '', phase: 'run', focus: '第 3 轮 · Action：calc(30 - 25)' },
       b: { step: 11, kind: 'answer', round: 4, text: '北京今天最高 30°C，上海 25°C，北京比上海热 5°C。', tool: '', arg: '', obs: '', history: [{ kind: 'thought', text: 'x' }], answer: '北京今天最高 30°C，上海 25°C，北京比上海热 5°C。', phase: 'done', focus: 'Final Answer：够了，作答' },
     },
+    bufferpool: {
+      doc: { kind: 'bufferpool', params: {}, entities: [], streams: [] },
+      a: { step: 2, op: 'scan', young: ['A', 'B', 'C'], old: ['S1', 'D'], loaded: 'S1', evicted: 'E', scanned: ['S1'], phase: 'run', focus: '扫描装载 S1 → 插中点(old 头)，淘汰 old 尾 E' },
+      b: { step: 5, op: 'done', young: ['A', 'B', 'C'], old: ['S3', 'S2'], loaded: '', evicted: '', scanned: ['S1', 'S2', 'S3'], phase: 'done', focus: 'young 热点毫发无损，扫描只搅动了 old' },
+    },
     lockstrategy: {
       doc: { kind: 'lockstrategy', params: {}, entities: [], streams: [] },
       a: { step: 5, act: 'optimistic', stock: 9, version: 2, lockedBy: '', t1: '已提交', t2: 'UPDATE …WHERE version=1 ✗', event: 'T2 更新：版本已是 2≠1 → 影响 0 行、失败', outcome: 'fail', phase: 'run', focus: '乐观锁：T2 版本不符 → 更新失败（检测到冲突）' },

@@ -375,6 +375,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; kind: string; round: number }; return st.phase === 'done' ? '得到答案' : st.kind === 'action' ? '调工具' : st.kind === 'observation' ? '拿到结果' : st.kind === 'thought' ? `想·第${st.round}轮` : '开始' },
     try: [{ act: '看想→做→看循环', watch: 'Thought 决定查气温 → Action search → Observation 30°C → 下一轮再想。' }, { act: '看工具给真数据', watch: 'calc(30-25) 返回 5，不是模型口算——Agent 用真结果，少幻觉。' }], terms: [],
   },
+  bufferpool: {
+    question: '一次全表扫描会不会把缓存里的热点页都冲掉？MySQL 怎么防？',
+    read: [{ at: 'LRU 两段', is: 'young 热区 / 中点 / old 冷区，新页从中点进。', anchor: '.bfp-lru' }, { at: '读数', is: '本步、young 热区、old 冷区、淘汰。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { op: string; young: string[]; old: string[]; loaded: string; evicted: string; scanned: string[]; phase: string }; return [
+      { k: '本步输入', v: st.phase === 'done' ? '扫描结束，看热点' : st.op === 'intro' ? '普通 LRU 会被扫描污染' : st.op === 'init' ? 'young=热区、old=冷区' : `全表扫描装载 ${st.loaded}` },
+      { k: '判定规则', v: 'LRU 分 young(热)+old(冷)。新页插中点(old 头)、不进链表头；只有在 old 段再次被访问且过时间窗才升 young。扫描页只用一次→不升→从 old 尾淘汰。' },
+      { k: '本步结果', v: st.phase === 'done' ? `young[${st.young.join(',')}] 毫发无损，扫描只搅动 old` : st.op === 'scan' ? `${st.loaded} 插中点、淘汰 old 尾 ${st.evicted}；young[${st.young.join(',')}] 没动` : `young[${st.young.join(',')}] old[${st.old.join(',')}]` },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; op: string; loaded: string }; return st.phase === 'done' ? '热点无损' : st.op === 'scan' ? `装${st.loaded}` : st.op === 'init' ? '初始' : '看问题' },
+    try: [{ act: '看新页进中点', watch: '扫描页 S1/S2/S3 都插到 old 头(中点)，不碰 young。' }, { act: '看热点没动', watch: '扫描三个页、淘汰的全是 old 里的，young[A,B,C] 从头到尾没变。' }], terms: [],
+  },
   lockstrategy: {
     question: '两个事务同时改一行，怎么防"更新丢失"？乐观锁和悲观锁差在哪？',
     read: [{ at: '数据库行', is: '库存/版本/锁状态。', anchor: '.lk-row' }, { at: '两事务', is: 'T1/T2 各自在做什么。', anchor: '.lk-txns' }],
