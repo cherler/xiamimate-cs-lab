@@ -272,6 +272,8 @@ import { joinsKernel, type JoinState } from '@engine/kernels/joins.ts'
 import { JoinsStage } from './stages/JoinsStage.tsx'
 import { compositeindexKernel, type CIndexState } from '@engine/kernels/compositeindex.ts'
 import { CIndexStage } from './stages/CIndexStage.tsx'
+import { rwlockKernel, type RWLockState } from '@engine/kernels/rwlock.ts'
+import { RWLockStage } from './stages/RWLockStage.tsx'
 import { walKernel, type WALState } from '@engine/kernels/wal.ts'
 import { WALStage } from './stages/WALStage.tsx'
 import { lsmKernel, type LSMState } from '@engine/kernels/lsm.ts'
@@ -5537,6 +5539,22 @@ const ecbcbc: Experiment<EcbCbcState> = {
     { label: '重复块', value: s.phase === 'done' ? 'ECB 泄露 / CBC 安全' : '对比中' },
   ],
 }
+const rwlock: Experiment<RWLockState> = {
+  id: 'rwlock', group: '并发编程', title: '读写锁 RWLock', subtitle: '读读共享、读写/写写互斥',
+  kernel: rwlockKernel, defaultDoc: { kind: 'rwlock', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '无可调参数。多读者共享读锁、写者独占。请求序列 R1读/R2读/W1写(阻塞)/R1解/R2解/W1获准/R3读(阻塞)/W1解,看持有者与等待队列。可手核。详见讲解卡。',
+  bounds: ['读读共享:多读者同时持读锁,读并发不阻塞', '读写/写写互斥:写者独占,有读者/写者就阻塞排队', 'W1请求写→有读者R1R2→排队;读者全释放才轮到W1独占', '读多写少吞吐高;防写饥饿(公平锁);=ReentrantReadWriteLock/RWMutex/S锁X锁'],
+  tabs: [{ id: 'rw', label: '加解锁流转' }], Stage: RWLockStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: '读共享写独占' } : s.op === 'grantR' ? { key: 'good', label: '读获准' } : s.op === 'grantW' ? { key: 'bad', label: '写独占' } : s.op === 'block' ? { key: 'bad', label: '阻塞排队' } : s.op === 'release' ? { key: 'idle', label: '释放' } : { key: 'idle', label: '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 9)),
+  tickLabel: s => (s.phase === 'done' ? '结' : s.op === 'grantR' ? '读' : s.op === 'grantW' ? '写' : s.op === 'block' ? '等' : s.op === 'release' ? '放' : '始'),
+  readouts: s => [
+    { label: '读锁', value: s.readers.length ? `{${s.readers.join(',')}}` : '无', tone: s.readers.length ? 'good' : undefined },
+    { label: '写锁', value: s.writer || '无', tone: s.writer ? 'bad' : undefined },
+    { label: '等待队列', value: s.waitQ.length ? s.waitQ.map(w => `${w.who}(${w.type})`).join(',') : '空' },
+    { label: '本步', value: s.event || '就绪' },
+  ],
+}
 const compositeindex: Experiment<CIndexState> = {
   id: 'compositeindex', group: '数据库系统', title: '复合索引·最左前缀', subtitle: 'idx(a,b,c) 走不走索引、要不要回表',
   kernel: compositeindexKernel, defaultDoc: { kind: 'compositeindex', params: {}, entities: [], streams: [] }, params: [],
@@ -5815,7 +5833,7 @@ export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
   caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt, ecbcbc, birthday, aesround, hmac, totp,
-  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign,
+  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, rwlock, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,

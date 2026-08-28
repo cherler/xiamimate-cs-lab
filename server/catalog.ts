@@ -80,6 +80,7 @@ import { quorumKernel } from '../src/kernels/quorum.ts'
 import { circuitbreakerKernel } from '../src/kernels/circuitbreaker.ts'
 import { joinsKernel } from '../src/kernels/joins.ts'
 import { compositeindexKernel } from '../src/kernels/compositeindex.ts'
+import { rwlockKernel } from '../src/kernels/rwlock.ts'
 import { walKernel } from '../src/kernels/wal.ts'
 import { lsmKernel } from '../src/kernels/lsm.ts'
 import { minikvKernel } from '../src/kernels/minikv.ts'
@@ -1380,6 +1381,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: 'SELECT a,b WHERE a=? 用到 idx(a,b,c) 时"不回表"，而 SELECT a,b,d 就要回表，为什么?', kind: 'choice',
         compute: () => ({ answer: '覆盖索引：SELECT 需要的列(a,b)都在索引里，直接从索引叶子拿到数据就够了；而 d 不在索引里，必须拿主键再去主键树捞整行（回表），多一次查找', step: 6, evidence: 'SELECT a,b,c 覆盖不回表；SELECT a,b,d 含索引外列 d → 回表' }),
         distractors: () => ['回表是因为 WHERE 条件不够', '回表是因为索引失效了', '两者其实都要回表'],
+      },
+    ],
+  },
+  {
+    id: 'rwlock', title: '读写锁 RWLock', kernel: rwlockKernel as Kernel<unknown>, doc: trivialDoc('rwlock'),
+    facts: [
+      {
+        id: 'share_exclusive', label: '读写锁比互斥锁强在哪',
+        ask: '读写锁相比普通互斥锁（一次只放一个），并发上强在哪里?', kind: 'choice',
+        compute: () => ({ answer: '多个读者可以同时持有读锁（读读共享），因为读不改数据、并发读安全；只有写者需要独占。读多写少时吞吐远高于互斥锁', step: 2, evidence: 'R1、R2 同时持读锁 {R1,R2}，读并发不互相阻塞' }),
+        distractors: () => ['写操作也能并发执行', '它永远不会阻塞任何请求', '它不需要任何锁就能保证安全'],
+      },
+      {
+        id: 'writer_wait', label: '有读者时写者为什么要等',
+        ask: 'R1、R2 正持有读锁，这时 W1 请求写锁，为什么 W1 必须等待?', kind: 'choice',
+        compute: () => ({ answer: '写要独占：写期间如果有人在读，读者会读到写了一半的中间状态。所以 W1 必须等所有读者都释放读锁后，才能独占进入', step: 3, evidence: 'W1 请求写时 readers={R1,R2}，进等待队列；R1、R2 都释放后 W1 才获准' }),
+        distractors: () => ['因为 W1 优先级低', '因为写锁比读锁慢', '其实不用等，可以和读者并发'],
       },
     ],
   },

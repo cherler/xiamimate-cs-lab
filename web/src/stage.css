@@ -4203,6 +4203,24 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .ci-hc.ok { color:var(--hit); }
 .ci-hc.warn { color:var(--f-tag); }
 
+/* ── 读写锁 RWLock ── */
+.rw-lock, .rw-queue { display:flex; align-items:center; gap:12px; margin:8px 0; padding:12px 14px; border:1.5px solid var(--line); border-radius:10px; background:var(--panel); }
+.rw-lock.readers { border-color:var(--hit); background:color-mix(in srgb, var(--hit) 6%, var(--panel)); }
+.rw-lock.writer { border-color:var(--miss); background:color-mix(in srgb, var(--miss) 6%, var(--panel)); }
+.rw-lbl { font-size:11px; font-weight:700; color:var(--dim); min-width:64px; }
+.rw-holders, .rw-qitems { display:flex; flex-wrap:wrap; gap:7px; align-items:center; }
+.rw-holder { display:inline-flex; align-items:center; gap:5px; font-size:13px; font-weight:700; padding:6px 12px; border-radius:8px; }
+.rw-holder em { font-size:10px; font-weight:400; font-style:normal; opacity:.75; }
+.rw-holder.r { color:var(--hit); background:color-mix(in srgb, var(--hit) 12%, var(--panel)); border:1px solid var(--hit); }
+.rw-holder.w { color:var(--miss); background:color-mix(in srgb, var(--miss) 12%, var(--panel)); border:1px solid var(--miss); }
+.rw-empty { font-size:12px; color:var(--faint); }
+.rw-qitem { display:inline-flex; align-items:center; gap:4px; font-size:12.5px; font-weight:600; padding:5px 10px; border-radius:8px; border:1px dashed var(--line); background:var(--sunk-1); color:var(--dim); }
+.rw-qitem em { font-size:9.5px; font-weight:400; font-style:normal; color:var(--faint); }
+.rw-qitem.head { border-style:solid; border-color:var(--f-tag); }
+.rw-event { margin:8px 0 10px; padding:7px 12px; font-size:12.5px; font-weight:600; border-radius:8px; border:1px solid var(--line); color:var(--dim); background:var(--sunk-1); }
+.rw-event.ok { color:var(--hit); border-color:var(--hit); background:color-mix(in srgb, var(--hit) 8%, var(--panel)); }
+.rw-event.bad { color:var(--miss); border-color:var(--miss); background:color-mix(in srgb, var(--miss) 8%, var(--panel)); }
+
 /* ── mini 搜索引擎（倒排索引 + TF-IDF） ── */
 .ms-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:8px 0 12px; }
 .ms-col { display:flex; flex-direction:column; gap:6px; min-width:0; }

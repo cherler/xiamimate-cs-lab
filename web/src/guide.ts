@@ -353,6 +353,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; op: string; result: string }; return st.phase === 'done' ? 'KV跑通' : (st.op === 'get' ? (st.result || 'get') : st.op) },
     try: [{ act: '看更新 a=9', watch: '不改旧值，追加新版本；SST1 里 a=1、SST2 里 a=9 同时存在。' }, { act: '看 get(a) 和压实', watch: 'get 从新到旧读到 a=9；压实把旧的 a=1 归并丢掉。' }], terms: [],
   },
+  rwlock: {
+    question: '读操作互不干扰，为什么还要用一把锁串起来？读写锁怎么放宽？',
+    read: [{ at: '锁持有区', is: '当前持读锁的读者们，或独占的写者。', anchor: '.rw-lock' }, { at: '等待队列', is: '进不来、在排队的请求。', anchor: '.rw-queue' }],
+    step: (s: never) => { const st = s as { op: string; who: string; readers: string[]; writer: string | null; waitQ: { who: string; type: string }[]; event: string; phase: string }; return [
+      { k: '本步输入', v: st.phase === 'done' ? '看完流转，收结论' : st.op === 'intro' ? '一串加/解锁请求' : st.event },
+      { k: '判定规则', v: '读读共享：无写者时读者随便进、可多个同时持有。写者独占：有任何读者或写者在，写请求就阻塞排队；写者持锁时所有人都进不来。锁一释放按队首条件唤醒。' },
+      { k: '本步结果', v: st.phase === 'done' ? '读多写少吞吐高，但要防写饥饿' : `持有者=${st.writer ? `写者 ${st.writer}(独占)` : st.readers.length ? `读者 {${st.readers.join(',')}}(共享)` : '空闲'}；等待队列 [${st.waitQ.map(w => w.who).join(',') || '空'}]` },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; op: string }; return st.phase === 'done' ? '读共享写独占' : st.op === 'grantR' ? '读获准' : st.op === 'grantW' ? '写独占' : st.op === 'block' ? '阻塞排队' : st.op === 'release' ? '释放' : '就绪' },
+    try: [{ act: '看读读共享', watch: 'R1、R2 都拿到读锁、同时持有——读并发不互相阻塞。' }, { act: '看写者等读者', watch: 'W1 请求写时有读者在 → 排队；等 R1、R2 都释放，W1 才独占进入。' }], terms: [],
+  },
   compositeindex: {
     question: '有复合索引 idx(a,b,c)，哪些查询能用上它、哪些还要回表？',
     read: [{ at: '索引三列', is: 'a/b/c，绿色是本查询能用的最左前缀。', anchor: '.ci-index' }, { at: '结果表', is: '每条查询用到的前缀 + 是否回表。', anchor: '.ci-hist' }],
