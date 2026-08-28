@@ -117,9 +117,7 @@ for (const [k, t] of Object.entries(turns))
 process.stdout.write(`${D}G5 渲染…${X}`)
 const render = await page.evaluate(() => {
   const bad = []
-  const cards = Object.keys(window.__KITS).flatMap(k => window.__KITS[k])
-    .concat(['scan','batch','watch','prune','backtrack','guard','hash'])
-  const uniq = [...new Set(cards)]
+  const uniq = window.__ALLCARDS()   // 全部卡,不写死 —— 加了新卡也自动进检查
   // 极端局面:元素清零(刚打赢)/ 预处理值 0 / 段数 1 / 债务 0 / 手牌爆满
   const cases = [
     ['元素清零', S => S.bars.forEach(b => b.dead = true)],
