@@ -71,6 +71,7 @@ import { twopcKernel } from '../src/kernels/twopc.ts'
 import { otpreuseKernel } from '../src/kernels/otpreuse.ts'
 import { ecbcbcKernel } from '../src/kernels/ecbcbc.ts'
 import { birthdayKernel } from '../src/kernels/birthday.ts'
+import { aesroundKernel } from '../src/kernels/aesround.ts'
 import { walKernel } from '../src/kernels/wal.ts'
 import { lsmKernel } from '../src/kernels/lsm.ts'
 import { minikvKernel } from '../src/kernels/minikv.ts'
@@ -1218,6 +1219,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: 'N=365 天，为什么只要 23 人就有过半概率两人同天生日（不用 183 人）?', kind: 'choice',
         compute: () => ({ answer: '比的是"任意一对"是否相同，对数是 C(k,2)≈k²/2，随人数平方增长，所以概率在约 √N 处就过半', step: 6, evidence: 'k=23 时可相撞的对有 253 对，碰撞概率 50.7%' }),
         distractors: () => ['因为每个人都和固定某一天比', '因为 365 天其实不够多', '巧合，换个数就不成立'],
+      },
+    ],
+  },
+  {
+    id: 'aesround', title: 'AES 一轮', kernel: aesroundKernel as Kernel<unknown>, doc: trivialDoc('aesround'),
+    facts: [
+      {
+        id: 'confuse_diffuse', label: 'AES 一轮四步分别负责什么',
+        ask: 'AES 一轮的四步 SubBytes / ShiftRows / MixColumns / AddRoundKey，哪个负责"混淆"、哪些负责"扩散"?', kind: 'choice',
+        compute: () => ({ answer: 'SubBytes(查S盒,非线性)负责混淆；ShiftRows(行移位)和 MixColumns(列GF混合)负责扩散；AddRoundKey 把密钥异或进来', step: 5, evidence: '混淆让密文↔密钥关系乱、扩散让一个明文位影响多个密文位；10 轮叠加后每位密文依赖所有明文和密钥位' }),
+        distractors: () => ['AddRoundKey 负责混淆', 'SubBytes 负责扩散、MixColumns 负责混淆', '四步都只是异或'],
+      },
+      {
+        id: 'sbox_nonlinear', label: 'AES 唯一的非线性步骤',
+        ask: 'AES 一轮里哪一步是唯一的非线性变换（去掉它整个密码就会被线性代数破掉）?', kind: 'choice',
+        compute: () => ({ answer: 'SubBytes——逐字节查 S-盒(GF(2⁸)求逆+仿射)，是唯一的非线性步骤；ShiftRows/MixColumns/AddRoundKey 都是线性的', step: 2, evidence: '没有 S-盒的非线性，密码退化成线性方程组，可被直接解出' }),
+        distractors: () => ['MixColumns', 'ShiftRows', 'AddRoundKey'],
       },
     ],
   },

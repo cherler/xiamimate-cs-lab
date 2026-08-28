@@ -254,6 +254,8 @@ import { ecbcbcKernel, type EcbCbcState } from '@engine/kernels/ecbcbc.ts'
 import { ECBCBCStage } from './stages/ECBCBCStage.tsx'
 import { birthdayKernel, type BirthdayState } from '@engine/kernels/birthday.ts'
 import { BirthdayStage } from './stages/BirthdayStage.tsx'
+import { aesroundKernel, type AesState } from '@engine/kernels/aesround.ts'
+import { AesRoundStage } from './stages/AesRoundStage.tsx'
 import { walKernel, type WALState } from '@engine/kernels/wal.ts'
 import { WALStage } from './stages/WALStage.tsx'
 import { lsmKernel, type LSMState } from '@engine/kernels/lsm.ts'
@@ -5519,6 +5521,22 @@ const ecbcbc: Experiment<EcbCbcState> = {
     { label: '重复块', value: s.phase === 'done' ? 'ECB 泄露 / CBC 安全' : '对比中' },
   ],
 }
+const aesround: Experiment<AesState> = {
+  id: 'aesround', group: '密码学', title: 'AES 一轮', subtitle: 'SubBytes→ShiftRows→MixColumns→AddRoundKey',
+  kernel: aesroundKernel, defaultDoc: { kind: 'aesround', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '无可调参数。16 字节明文摆成 4×4 状态矩阵，走一轮 AES 四步变换。用 FIPS-197 官方向量，每个字节对标标准：SubBytes(混淆)/ShiftRows/MixColumns(扩散)/AddRoundKey(密钥)。详见讲解卡。',
+  bounds: ['明文3243f6a8…、密钥2b7e1516…(FIPS-197向量,可对标)', 'SubBytes查S盒(非线性混淆)、ShiftRows行移位、MixColumns列GF混合(扩散)', 'AddRoundKey逐字节异或密钥;一轮末=a49c7ff2…(FIPS对标)', 'AES-128共10轮(末轮省MixColumns)'],
+  tabs: [{ id: 'round', label: '四步变换' }], Stage: AesRoundStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: '一轮完成' } : s.op === 'intro' ? { key: 'idle', label: '摆矩阵' } : { key: 'idle', label: s.op === 'sub' ? 'SubBytes' : s.op === 'shift' ? 'ShiftRows' : s.op === 'mix' ? 'MixColumns' : 'AddRoundKey' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.op === 'sub' ? 'S' : s.op === 'shift' ? '移' : s.op === 'mix' ? '混' : s.op.startsWith('addkey') ? '⊕' : '摆'),
+  readouts: s => [
+    { label: '本步', value: s.op === 'intro' ? '摆状态矩阵' : s.op === 'sub' ? 'SubBytes' : s.op === 'shift' ? 'ShiftRows' : s.op === 'mix' ? 'MixColumns' : 'AddRoundKey' },
+    { label: '作用', value: s.op === 'sub' ? '非线性混淆(S盒)' : s.op === 'shift' || s.op === 'mix' ? '扩散' : s.op.startsWith('addkey') ? '混入密钥(异或)' : '就绪' },
+    { label: '状态首字节', value: s.mat.length ? s.mat[0]!.toString(16).padStart(2, '0') : '—' },
+    { label: '轮数', value: s.phase === 'done' ? '1/10 轮(共10轮)' : '轮 1 进行中' },
+  ],
+}
 const birthday: Experiment<BirthdayState> = {
   id: 'birthday', group: '密码学', title: '生日攻击', subtitle: '找哈希碰撞只要约 √N 次，不是 N 次',
   kernel: birthdayKernel, defaultDoc: { kind: 'birthday', params: {}, entities: [], streams: [] }, params: [],
@@ -5652,7 +5670,7 @@ const mqdesign: Experiment<SysDesignState> = {
 export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
-  caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt, ecbcbc, birthday,
+  caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt, ecbcbc, birthday, aesround,
   tokenbucket, consistenthash, skiplist, twopc, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,

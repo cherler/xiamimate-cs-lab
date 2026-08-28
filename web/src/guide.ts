@@ -353,6 +353,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; op: string; result: string }; return st.phase === 'done' ? 'KV跑通' : (st.op === 'get' ? (st.result || 'get') : st.op) },
     try: [{ act: '看更新 a=9', watch: '不改旧值，追加新版本；SST1 里 a=1、SST2 里 a=9 同时存在。' }, { act: '看 get(a) 和压实', watch: 'get 从新到旧读到 a=9；压实把旧的 a=1 归并丢掉。' }], terms: [],
   },
+  aesround: {
+    question: 'AES 把明文摆成 4×4 矩阵，一轮里对它做了哪四件事？',
+    read: [{ at: '矩阵', is: '4×4 状态，本步改动的格子高亮。', anchor: '.aes-stage' }, { at: '四步条', is: '当前走到 Sub/Shift/Mix/AddKey 哪步。', anchor: '.aes-flow' }],
+    step: (s: never) => { const st = s as { op: string; mat: number[]; phase: string }; const first = st.mat.length ? st.mat[0]!.toString(16).padStart(2, '0') : '—'; return [
+      { k: '本步输入', v: st.phase === 'done' ? '四步走完' : st.op === 'intro' ? '16 字节明文摆成 4×4 矩阵' : st.op === 'addkey0' ? '轮开始：状态 ⊕ 初始密钥' : st.op === 'sub' ? 'SubBytes：逐字节查 S-盒' : st.op === 'shift' ? 'ShiftRows：每行循环左移' : st.op === 'mix' ? 'MixColumns：每列 GF 混合' : 'AddRoundKey：⊕ 本轮密钥' },
+      { k: '判定规则', v: 'SubBytes=非线性混淆(查S盒)；ShiftRows(行移位)+MixColumns(列GF混合)=扩散；AddRoundKey=把密钥异或进来。混淆+扩散反复叠加，几轮后每个密文位都依赖所有明文位和密钥位。' },
+      { k: '本步结果', v: st.phase === 'done' ? '一轮完成，状态首字节 a4（对标 FIPS-197）' : `状态首字节 ${first}${st.op === 'sub' ? '（每格都因查表而变）' : st.op === 'shift' ? '（只搬位置）' : st.op === 'mix' ? '（整列重算）' : ''}` },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; op: string }; return st.phase === 'done' ? '一轮完成' : st.op === 'intro' ? '摆矩阵' : st.op === 'sub' ? 'SubBytes' : st.op === 'shift' ? 'ShiftRows' : st.op === 'mix' ? 'MixColumns' : 'AddRoundKey' },
+    try: [{ act: '盯高亮格子', watch: 'SubBytes 每格都变(查表)、ShiftRows 只搬位置、MixColumns 整列重算、AddRoundKey 逐字节异或密钥。' }, { act: '分清混淆/扩散', watch: 'SubBytes 混淆(唯一非线性)，ShiftRows/MixColumns 扩散，AddRoundKey 混入密钥。' }], terms: [],
+  },
   birthday: {
     question: '一屋子多少人就有过半概率两人同天生日？为什么这关系到哈希安全？',
     read: [{ at: '量表', is: '碰撞概率随人数涨，50% 是那条虚线。', anchor: '.bd-gauge' }, { at: '读数', is: '人数、可撞对数 C(k,2)、碰撞概率。', anchor: '.scdim' }],

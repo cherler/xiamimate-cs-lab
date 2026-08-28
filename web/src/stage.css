@@ -3985,6 +3985,23 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .bd-hrow.bad .bd-hcost, .bd-hrow.bad .bd-htag { color:var(--miss); }
 .bd-hrow.good .bd-hcost, .bd-hrow.good .bd-htag { color:var(--hit); }
 
+/* ── AES 一轮 ── */
+.aes-flow { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 14px; align-items:stretch; }
+.aes-chip { display:flex; flex-direction:column; gap:1px; padding:6px 11px; border:1.5px solid var(--line); border-radius:8px; background:var(--panel); }
+.aes-chip b { font-size:12.5px; color:var(--dim); font-weight:600; }
+.aes-chip i { font-size:10px; color:var(--faint); font-style:normal; }
+.aes-chip.on { border-color:var(--now); background:color-mix(in srgb, var(--now) 9%, var(--panel)); }
+.aes-chip.on b { color:var(--ink); }
+.aes-chip.ok { border-color:var(--hit); }
+.aes-stage { display:flex; align-items:center; gap:14px; margin:4px 0 14px; flex-wrap:wrap; }
+.aes-mat { display:flex; flex-direction:column; gap:4px; }
+.aes-mlabel { font-size:10.5px; color:var(--faint); font-family:var(--mono); }
+.aes-grid { display:grid; grid-template-columns:repeat(4, 34px); grid-auto-rows:34px; gap:4px; }
+.aes-cell { display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:14px; font-weight:600;
+  border:1px solid var(--line); border-radius:6px; background:var(--sunk-1); color:var(--ink); }
+.aes-cell.chg { border-color:var(--now); background:color-mix(in srgb, var(--now) 16%, var(--panel)); color:var(--now); font-weight:700; }
+.aes-op { font-size:22px; color:var(--faint); font-weight:700; }
+
 /* ── mini 搜索引擎（倒排索引 + TF-IDF） ── */
 .ms-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:8px 0 12px; }
 .ms-col { display:flex; flex-direction:column; gap:6px; min-width:0; }
