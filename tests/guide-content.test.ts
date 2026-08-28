@@ -375,8 +375,8 @@ console.log('\n【「这一步为什么」真的在跟着走】')
     },
     seckill: {
       doc: { kind: 'seckill', params: {}, entities: [], streams: [] },
-      a: { step: 3, stage: '④ Redis 预扣库存', focus: '库存放内存，原子扣减挡住绝大多数', detail: 'x', metric: 'Redis 原子预扣，挡住绝大多数', components: [{ id: 'client', label: '抢购客户端', role: 'r' }, { id: 'redis', label: 'Redis 库存', role: 'r' }], phase: 'run' },
-      b: { step: 6, stage: '⑦ 权衡总结', focus: '一句话讲清取舍', detail: '', metric: '削峰(限流+MQ) + 防超卖(Redis原子+DB乐观锁)', components: [{ id: 'client', label: '抢购客户端', role: 'r' }, { id: 'db', label: '数据库', role: 'r' }], phase: 'done' },
+      a: { step: 5, phase: 'naive', op: 'commit', mode: 'naive', stock: -1, sold: 3, initStock: 2, reqs: [{ id: 'R1', local: 2, status: 'sold' }, { id: 'R2', local: 1, status: 'sold' }, { id: 'R3', local: 1, status: 'sold' }], cur: 2, oversold: true, focus: 'R3 判 1>0 成立 → 扣，库存=-1、卖出=3', log: 'x' },
+      b: { step: 9, phase: 'done', op: 'summary', mode: 'atomic', stock: 0, sold: 2, initStock: 2, reqs: [{ id: 'R1', local: null, status: 'sold' }, { id: 'R2', local: null, status: 'sold' }, { id: 'R3', local: null, status: 'rejected' }], cur: 2, oversold: false, focus: '原子 DECR 跑完', log: 'x' },
     },
     minisearch: {
       doc: { kind: 'minisearch', params: {}, entities: [], streams: [] },

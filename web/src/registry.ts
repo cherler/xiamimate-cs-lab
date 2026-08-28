@@ -309,12 +309,13 @@ import { MiniKVStage } from './stages/MiniKVStage.tsx'
 import { minisearchKernel, type SearchState } from '@engine/kernels/minisearch.ts'
 import { SearchStage } from './stages/SearchStage.tsx'
 import { urlshortenerKernel, type SysDesignState } from '@engine/kernels/urlshortener.ts'
-import { seckillKernel } from '@engine/kernels/seckill.ts'
+import { seckillKernel, type SeckillState } from '@engine/kernels/seckill.ts'
 import { mqdesignKernel } from '@engine/kernels/mqdesign.ts'
 import { topkKernel } from '@engine/kernels/topk.ts'
 import { feedKernel } from '@engine/kernels/feed.ts'
 import { objectstoreKernel } from '@engine/kernels/objectstore.ts'
 import { SysDesignStage } from './stages/SysDesignStage.tsx'
+import { SeckillStage } from './stages/SeckillStage.tsx'
 import { CollisionStage } from './stages/CollisionStage.tsx'
 import { gcnKernel, type GcnState } from '@engine/kernels/gcn.ts'
 import { GcnStage } from './stages/GcnStage.tsx'
@@ -6032,20 +6033,20 @@ const minisearch: Experiment<SearchState> = {
   ],
 }
 
-const seckill: Experiment<SysDesignState> = {
-  id: 'seckill', group: '系统设计', title: '设计秒杀系统', subtitle: '削峰→防超卖→异步化',
+const seckill: Experiment<SeckillState> = {
+  id: 'seckill', group: '系统设计', title: '设计秒杀系统', subtitle: '防超卖真仿真：读改写竞态 vs 原子 DECR',
   kernel: seckillKernel, defaultDoc: { kind: 'seckill', params: {}, entities: [], streams: [] }, params: [],
-  paramsNote: '系统设计高频题：一瞬间几万人抢 1000 件，红线是绝不超卖。走一遍——需求澄清→容量估算→削峰限流→Redis 原子预扣→MQ 异步下单→乐观锁防超卖→权衡。详见讲解卡。',
-  bounds: ['成功请求=库存数;大多数请求注定失败,目标是"快速拒绝多数、精确成交少数"', '削峰:前端置灰+网关令牌桶+MQ异步,别让洪峰冲到DB', '防超卖:Redis原子DECR预扣 + DB乐观锁(where stock>0)双保险', '为什么不直接扣DB:DB抗不住高并发;为什么异步下单:把尖峰摊平'],
-  tabs: [{ id: 'design', label: '架构逐步搭' }], Stage: SysDesignStage, whyInRail: true,
-  tone: s => (s.phase === 'done' ? { key: 'good', label: '设计完成' } : { key: 'idle', label: s.stage.replace(/^[①②③④⑤⑥⑦]\s*/, '') || '就绪' }),
-  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 7)),
-  tickLabel: s => (s.phase === 'done' ? '毕' : s.stage.slice(0, 1) || '设'),
+  paramsNote: '系统设计高频题的核心机制——防超卖。真跑并发扣库存：naive「读→判>0→写」不原子会超卖（库存 2 却卖出 3、库存变 -1），Redis 原子 DECR 挡住（卖出恰好 2）。库存/卖出/是否超卖全由交错真跑出来，不是背结论。',
+  bounds: ['红线=绝不超卖;难点是"读→判>0→写"三步非原子,并发下读到同一旧值→各扣一次→卖超', 'naive 交错真跑:库存2、3请求 → 卖出3、库存-1(超卖)', '修法=让扣库存原子化:Redis DECR/Lua 读判写合成一步;结果<0 回滚拒绝 → 卖出恰好2', '削峰(前端置灰+网关限流+MQ异步)是把量削小,防超卖靠原子性,两件事别混;落库再用DB乐观锁 where stock>0 兜底'],
+  tabs: [{ id: 'design', label: '并发扣库存' }], Stage: SeckillStage, whyInRail: true,
+  tone: s => (s.oversold ? { key: 'bad', label: '超卖！' } : s.phase === 'done' ? { key: 'good', label: '不超卖' } : { key: 'idle', label: s.mode === 'naive' ? 'naive 扣减' : s.mode === 'atomic' ? '原子 DECR' : '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 10)),
+  tickLabel: s => (s.oversold ? '超' : s.phase === 'done' ? '毕' : s.mode === 'atomic' ? '原' : s.mode === 'naive' ? 'n' : '秒'),
   readouts: s => [
-    { label: '阶段', value: s.stage || '就绪' },
-    { label: '关键', value: s.metric || '—' },
-    { label: '已定组件', value: `${s.components.length} 个` },
-    { label: '架构', value: s.components.map(c => c.label).join('→') || '—' },
+    { label: '扣减方式', value: s.mode === 'naive' ? 'naive(非原子)' : s.mode === 'atomic' ? '原子 DECR' : '—' },
+    { label: '当前库存', value: `${s.stock}`, tone: s.stock < 0 ? 'bad' : undefined },
+    { label: '卖出/库存', value: `${s.sold}/${s.initStock}`, tone: s.oversold ? 'bad' : undefined },
+    { label: '是否超卖', value: s.oversold ? '超卖!' : '正常', tone: s.oversold ? 'bad' : 'good' },
   ],
 }
 

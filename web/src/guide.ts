@@ -354,15 +354,19 @@ export const GUIDES: Record<string, Guide> = {
     try: [{ act: '按「下一步」走框架', watch: '需求→估算→哈希分片→分片内堆→归并，组件一块块搭。' }, { act: '记住两个要点', watch: '哈希分片(同key同片才能独立统计)、小顶堆(O(n㏒K)求TopK)——面试要点。' }], terms: [],
   },
   seckill: {
-    question: '一瞬间几万人抢 1000 件，怎么做到绝不超卖、又不被冲垮？',
-    read: [{ at: '架构', is: '一步步搭起来的组件（客户端→限流→Redis→MQ→DB）。', anchor: '.sd-arch' }, { at: '读数', is: '当前阶段、关键数、组件。', anchor: '.scdim' }],
-    step: (s: never) => { const st = s as { stage: string; focus: string; metric: string; components: unknown[]; phase: string }; return [
-      { k: '本步输入', v: st.phase === 'done' ? '走完整套秒杀设计' : `${st.stage}` },
-      { k: '判定规则', v: '秒杀三板斧：削峰(前端置灰+网关令牌桶+MQ异步)→防超卖(Redis原子预扣 + DB乐观锁双保险)→快速失败(大多数请求早早拒绝)。每步都问"为什么这么选"。' },
-      { k: '本步结果', v: st.phase === 'done' ? '一套秒杀系统搭好，可讲清削峰/防超卖/异步的取舍' : `${st.focus}；关键：${st.metric}（已定 ${st.components.length} 个组件）` },
+    question: '库存 2 件、3 个请求同时抢，为什么 naive 扣库存会卖出 3 件？原子 DECR 怎么修？',
+    read: [{ at: '并发请求', is: '三个请求各自读到的库存值 + 抢到/拒绝状态。', anchor: '.sk-reqs' }, { at: '读数', is: '当前库存(可为负)、卖出/库存、扣减方式。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { mode: string; stock: number; sold: number; initStock: number; oversold: boolean; focus: string; reqs: { id: string; local: number | null }[]; phase: string }; return [
+      { k: '本步输入', v: st.mode === '' ? '开场：库存 2、3 个请求同抢' : `${st.mode === 'naive' ? 'naive 读改写' : '原子 DECR'} · ${st.focus}` },
+      { k: '判定规则', v: 'naive：读库存→判>0→写回，三步非原子，并发读到同一旧值→各扣一次→超卖。原子 DECR：读判写合成一步，DECR 结果<0 就回滚拒绝。红线=卖出不得超过库存。' },
+      { k: '本步结果', v: st.phase === 'done'
+        ? `原子 DECR 跑完：卖出 ${st.sold}/${st.initStock}、库存 ${st.stock}，未超卖`
+        : st.oversold
+          ? `超卖！库存=${st.stock}、卖出=${st.sold}（只有 ${st.initStock} 件）`
+          : `库存=${st.stock}、卖出=${st.sold}；各请求读到值 [${st.reqs.map(r => r.local === null ? '—' : r.local).join(', ')}]` },
     ] },
-    verdict: (s: never) => { const st = s as { phase: string; stage: string }; return st.phase === 'done' ? '设计完成' : st.stage.replace(/^[①②③④⑤⑥⑦]\s*/, '') },
-    try: [{ act: '按「下一步」走框架', watch: '需求→估算→削峰→Redis预扣→MQ异步→乐观锁，组件一块块搭。' }, { act: '记住两条红线', watch: '绝不超卖(Redis原子+DB乐观锁)、别冲垮DB(削峰+异步)——这两条是面试要点。' }], terms: [],
+    verdict: (s: never) => { const st = s as { phase: string; oversold: boolean; mode: string; sold: number }; return st.oversold ? `超卖(卖出${st.sold})` : st.phase === 'done' ? '不超卖' : st.mode === 'naive' ? 'naive 扣减' : st.mode === 'atomic' ? '原子 DECR' : '就绪'; },
+    try: [{ act: '盯 naive 幕的 R3', watch: 'R3 在 R2 写回前就读了库存、读到同一个旧值 → 两个请求都判"有货"都扣 → 库存变 -1、卖出 3。' }, { act: '对比原子 DECR 幕', watch: '同一批请求，第 3 个 DECR 结果 <0 → 回滚拒绝，卖出停在 2。防超卖=让扣库存原子化，不是靠限流/MQ。' }], terms: [],
   },
   minisearch: {
     question: '给一堆文档和一个查询，搜索引擎怎么排出"最相关"的几篇？',

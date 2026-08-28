@@ -4527,3 +4527,23 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .ms-score.win .ms-sbar i { background:var(--hit); }
 .ms-sval { grid-area:val; font-family:var(--mono); font-weight:700; font-size:12px; color:var(--ink); text-align:right; }
 .ms-sparts { grid-area:parts; font-size:10px; color:var(--faint); font-family:var(--mono); }
+
+/* ── 秒杀防超卖 seckill ── */
+.scdn.sk-neg{color:var(--miss)}
+.sk-negtx{color:var(--miss)}
+.sk-reqs{display:flex;gap:12px;margin:14px 0 4px}
+.sk-req{flex:1;display:flex;flex-direction:column;gap:3px;align-items:center;padding:11px 8px 9px;
+  border:1.5px solid var(--line);border-radius:9px;background:var(--panel-2);transition:all .15s}
+.sk-req.on{border-color:var(--now);box-shadow:0 0 0 3px var(--sunk-2)}
+.sk-req .sk-rid{font-family:var(--mono);font-size:15px;font-weight:700;color:var(--ink)}
+.sk-req .sk-rlocal{font-family:var(--mono);font-size:11px;color:var(--faint)}
+.sk-req .sk-rstat{font-size:12px;font-weight:600;color:var(--dim)}
+.sk-req.sk-sold{border-color:var(--hit);background:color-mix(in srgb,var(--hit) 8%,var(--panel))}
+.sk-req.sk-sold .sk-rstat{color:var(--hit)}
+.sk-req.sk-rej{border-color:var(--miss);background:color-mix(in srgb,var(--miss) 7%,var(--panel))}
+.sk-req.sk-rej .sk-rstat{color:var(--miss)}
+.sk-req.sk-read .sk-rlocal{color:var(--now)}
+.sk-alert{margin:12px 0 2px;padding:9px 13px;border-radius:8px;font-size:13px;font-weight:600;
+  color:var(--miss);background:color-mix(in srgb,var(--miss) 10%,var(--panel));border:1px solid var(--miss)}
+.sk-focus{margin:12px 0 2px;padding:8px 13px;border-radius:8px;font-size:13px;color:var(--ink);
+  background:var(--sunk-2);border-left:3px solid var(--now)}
