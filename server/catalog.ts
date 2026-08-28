@@ -77,6 +77,7 @@ import { totpKernel } from '../src/kernels/totp.ts'
 import { snowflakeKernel } from '../src/kernels/snowflake.ts'
 import { vectorclockKernel } from '../src/kernels/vectorclock.ts'
 import { quorumKernel } from '../src/kernels/quorum.ts'
+import { circuitbreakerKernel } from '../src/kernels/circuitbreaker.ts'
 import { walKernel } from '../src/kernels/wal.ts'
 import { lsmKernel } from '../src/kernels/lsm.ts'
 import { minikvKernel } from '../src/kernels/minikv.ts'
@@ -1326,6 +1327,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: 'Quorum 的 N/W/R 三个值是可调的，调它们在权衡什么?', kind: 'choice',
         compute: () => ({ answer: '在一致性和读写延迟之间权衡：W 大写慢读快、R 大读慢写快、W=R=N 最强一致但最慢、W+R≤N 最快但可能读到旧值', step: 5, evidence: 'R 调到 2 时 W+R=5≤5，读集{R3,R4}可能零重叠、读到旧 v1' }),
         distractors: () => ['只调容错能力，和一致性无关', '调副本存在哪个机房', 'W/R 越大一定越好'],
+      },
+    ],
+  },
+  {
+    id: 'circuitbreaker', title: '熔断器状态机', kernel: circuitbreakerKernel as Kernel<unknown>, doc: trivialDoc('circuitbreaker'),
+    facts: [
+      {
+        id: 'why_break', label: '熔断器 Open 态为什么"快速失败"',
+        ask: '下游服务挂了，熔断器进入 Open 态后直接让请求快速失败、不打下游，这是为了什么?', kind: 'choice',
+        compute: () => ({ answer: '避免级联雪崩：如果还一直打故障的下游，每个请求都卡到超时会耗光上游线程/连接池；快速失败既保护上游不被拖垮，也给下游喘息恢复的机会', step: 5, evidence: 'Open 态请求 fail-fast，根本不调用下游' }),
+        distractors: () => ['为了让请求更快返回成功', '为了给下游发更多重试请求', '为了记录更多失败日志'],
+      },
+      {
+        id: 'halfopen', label: 'Half-Open 态是干什么的',
+        ask: '熔断器 Open 一段时间后进入 Half-Open 态，这个中间态的作用是?', kind: 'choice',
+        compute: () => ({ answer: '放少量探测请求去试探下游恢复没有：探测成功就回 Closed 恢复正常，探测失败就退回 Open 再等——避免下游还没好就被全量流量再次打垮', step: 7, evidence: '探测请求成功 → 回 Closed 且失败计数清零' }),
+        distractors: () => ['直接放全部流量进去试', '永久停在这个状态', '把所有历史失败请求重放一遍'],
       },
     ],
   },

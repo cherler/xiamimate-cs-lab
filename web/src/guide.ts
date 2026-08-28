@@ -353,6 +353,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; op: string; result: string }; return st.phase === 'done' ? 'KV跑通' : (st.op === 'get' ? (st.result || 'get') : st.op) },
     try: [{ act: '看更新 a=9', watch: '不改旧值，追加新版本；SST1 里 a=1、SST2 里 a=9 同时存在。' }, { act: '看 get(a) 和压实', watch: 'get 从新到旧读到 a=9；压实把旧的 a=1 归并丢掉。' }], terms: [],
   },
+  circuitbreaker: {
+    question: '下游服务挂了，怎么不让它把上游一起拖垮、还能自动探测恢复？',
+    read: [{ at: '三态', is: 'Closed / Open / Half-Open，当前态高亮。', anchor: '.cb-states' }, { at: '读数', is: '状态、失败计数/阈值、本步结果。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { op: string; cstate: string; fails: number; threshold: number; outcome: string; phase: string }; const nm = st.cstate === 'closed' ? 'Closed' : st.cstate === 'open' ? 'Open' : 'Half-Open'; return [
+      { k: '本步输入', v: st.phase === 'done' ? '探测成功，收结论' : st.op === 'intro' ? '三态机：Closed/Open/Half-Open' : st.op === 'timeout' ? 'Open 冷却超时到' : st.op === 'probe' ? 'Half-Open 放探测请求' : `[${nm}] 一个请求` },
+      { k: '判定规则', v: 'Closed：放行+累计失败，失败≥阈值→跳 Open；Open：请求快速失败(不打下游)，超时→Half-Open；Half-Open：探测成功→Closed(清零)、失败→退回 Open。' },
+      { k: '本步结果', v: st.phase === 'done' ? '→ Closed，失败计数清零，恢复正常' : st.op === 'trip' ? `失败 ${st.fails}≥阈值${st.threshold} → 跳闸到 Open` : st.op === 'reject' ? 'Open：快速失败，未调用下游' : st.op === 'timeout' ? '→ Half-Open，放探测' : st.op === 'probe' ? '探测成功，下游像是恢复了' : `[${nm}] ${st.outcome}（失败计数 ${st.fails}/${st.threshold}）` },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; op: string; cstate: string; fails: number; threshold: number }; return st.phase === 'done' ? '恢复 Closed' : st.op === 'trip' ? '跳闸熔断' : st.op === 'reject' ? '快速失败' : st.op === 'timeout' || st.op === 'probe' ? '试探' : st.cstate === 'closed' ? `失败${st.fails}/${st.threshold}` : '就绪' },
+    try: [{ act: '看攒够失败跳闸', watch: 'Closed 里连续失败到 3（阈值）→ 立刻跳 Open，从此不打下游。' }, { act: '看试探恢复', watch: 'Open 超时→Half-Open 放探测，成功就回 Closed、计数清零；失败会退回 Open。' }], terms: [],
+  },
   quorum: {
     question: '数据存多份副本，写几份、读几份，才能保证读到的一定是最新写的？',
     read: [{ at: '副本行', is: '5 份副本的版本；写份/读份/重叠各有标记。', anchor: '.qm-reps' }, { at: '不等式', is: 'W+R vs N，>N 才保证重叠。', anchor: '.qm-ineq' }],

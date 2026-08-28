@@ -266,6 +266,8 @@ import { vectorclockKernel, type VClockState } from '@engine/kernels/vectorclock
 import { VClockStage } from './stages/VClockStage.tsx'
 import { quorumKernel, type QuorumState } from '@engine/kernels/quorum.ts'
 import { QuorumStage } from './stages/QuorumStage.tsx'
+import { circuitbreakerKernel, type BreakerState } from '@engine/kernels/circuitbreaker.ts'
+import { BreakerStage } from './stages/BreakerStage.tsx'
 import { walKernel, type WALState } from '@engine/kernels/wal.ts'
 import { WALStage } from './stages/WALStage.tsx'
 import { lsmKernel, type LSMState } from '@engine/kernels/lsm.ts'
@@ -5531,6 +5533,22 @@ const ecbcbc: Experiment<EcbCbcState> = {
     { label: '重复块', value: s.phase === 'done' ? 'ECB 泄露 / CBC 安全' : '对比中' },
   ],
 }
+const circuitbreaker: Experiment<BreakerState> = {
+  id: 'circuitbreaker', group: '分布式系统', title: '熔断器状态机', subtitle: 'Closed/Open/Half-Open 防级联雪崩',
+  kernel: circuitbreakerKernel, defaultDoc: { kind: 'circuitbreaker', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '无可调参数。三态机:Closed(累计失败,≥阈值3跳Open)→Open(快速失败不打下游,超时进Half-Open)→Half-Open(探测,成功回Closed/失败退Open)。一串请求成败驱动流转,可手核。详见讲解卡。',
+  bounds: ['Closed:正常放行+累计失败;失败≥阈值3→跳Open', 'Open:请求快速失败(不打下游),超时→Half-Open', 'Half-Open:放探测,成功→Closed(计数清零)/失败→Open', '防级联雪崩;配超时+降级=微服务容错标配(Hystrix/Sentinel)'],
+  tabs: [{ id: 'fsm', label: '状态流转' }], Stage: BreakerStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: '恢复 Closed' } : s.op === 'trip' ? { key: 'bad', label: '跳闸熔断' } : s.op === 'reject' ? { key: 'bad', label: '快速失败' } : s.op === 'timeout' || s.op === 'probe' ? { key: 'idle', label: '试探' } : s.cstate === 'closed' ? { key: s.outcome === '失败' ? 'bad' : 'good', label: `失败${s.fails}/${s.threshold}` } : { key: 'idle', label: '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 9)),
+  tickLabel: s => (s.phase === 'done' ? '复' : s.op === 'trip' ? '闸' : s.op === 'reject' ? '拒' : s.op === 'timeout' ? '时' : s.op === 'probe' ? '探' : s.cstate === 'open' ? 'O' : s.outcome === '失败' ? '✗' : '✓'),
+  readouts: s => [
+    { label: '状态', value: s.cstate === 'closed' ? 'Closed(正常)' : s.cstate === 'open' ? 'Open(熔断)' : 'Half-Open(试探)', tone: s.cstate === 'closed' ? 'good' : s.cstate === 'open' ? 'bad' : undefined },
+    { label: '失败计数', value: `${s.fails}/${s.threshold}` },
+    { label: '本步', value: s.outcome || '就绪' },
+    { label: '下游', value: s.cstate === 'open' ? '受保护(不被打)' : s.cstate === 'halfopen' ? '被试探' : '正常调用' },
+  ],
+}
 const quorum: Experiment<QuorumState> = {
   id: 'quorum', group: '分布式系统', title: 'Quorum NWR', subtitle: 'W+R>N 保证读到最新写（可调一致性）',
   kernel: quorumKernel, defaultDoc: { kind: 'quorum', params: {}, entities: [], streams: [] }, params: [],
@@ -5761,7 +5779,7 @@ export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
   caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt, ecbcbc, birthday, aesround, hmac, totp,
-  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign,
+  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,

@@ -4125,6 +4125,33 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .qm-hit b { font-weight:700; }
 .qm-miss { margin:0 0 10px; padding:7px 12px; font-size:12.5px; border-radius:8px; color:var(--miss); border:1px solid var(--miss); background:color-mix(in srgb, var(--miss) 6%, var(--panel)); }
 
+/* ── 熔断器状态机 ── */
+.cb-states { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:8px 0 12px; }
+.cb-wrap { display:flex; align-items:center; gap:8px; }
+.cb-state { display:flex; flex-direction:column; gap:2px; padding:10px 14px; border:1.5px solid var(--line); border-radius:10px; background:var(--panel); min-width:120px; }
+.cb-state.on { box-shadow:0 0 0 2px currentColor; }
+.cb-state.good { color:var(--hit); }
+.cb-state.bad { color:var(--miss); }
+.cb-state.warn { color:var(--f-tag); }
+.cb-state.good.on { background:color-mix(in srgb, var(--hit) 10%, var(--panel)); }
+.cb-state.bad.on { background:color-mix(in srgb, var(--miss) 10%, var(--panel)); }
+.cb-state.warn.on { background:color-mix(in srgb, var(--f-tag) 12%, var(--panel)); }
+.cb-sname { font-size:14px; font-weight:700; }
+.cb-ssub { font-size:10px; color:var(--faint); }
+.cb-arrow { font-size:11px; color:var(--faint); font-family:var(--mono); }
+.cb-back { font-size:11px; color:var(--faint); width:100%; }
+.cb-meter { display:flex; align-items:center; gap:10px; margin:0 0 12px; }
+.cb-mlabel { font-size:12px; color:var(--dim); }
+.cb-track { flex:1; height:14px; border-radius:7px; background:var(--sunk-1); border:1px solid var(--line); overflow:hidden; }
+.cb-fill { height:100%; background:color-mix(in srgb, var(--miss) 55%, var(--panel)); transition:width .25s ease; }
+.cb-fill.trip { background:var(--miss); }
+.cb-mval { font-family:var(--mono); font-size:12px; color:var(--dim); }
+.cb-event { margin:0 0 10px; }
+.cb-alert { display:inline-block; font-size:12.5px; font-weight:600; padding:6px 12px; border-radius:8px; border:1px solid var(--line); color:var(--dim); background:var(--sunk-1); }
+.cb-alert.warn { color:var(--f-tag); border-color:currentColor; background:color-mix(in srgb, var(--f-tag) 8%, var(--panel)); }
+.cb-alert.ok { color:var(--hit); border-color:var(--hit); background:color-mix(in srgb, var(--hit) 8%, var(--panel)); }
+.cb-event.trip .cb-alert { color:var(--miss); border-color:var(--miss); background:color-mix(in srgb, var(--miss) 8%, var(--panel)); }
+
 /* ── mini 搜索引擎（倒排索引 + TF-IDF） ── */
 .ms-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:8px 0 12px; }
 .ms-col { display:flex; flex-direction:column; gap:6px; min-width:0; }
