@@ -228,6 +228,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { stage: '③ 发号 + 编码', focus: '短码怎么生成', detail: 'x', metric: '62^6 ≈ 568 亿个 6 位短码', components: [{ id: 'client', label: '客户端', role: 'r' }, { id: 'idgen', label: '发号器', role: 'r' }], phase: 'run' },
       b: { stage: '⑦ 权衡总结', focus: '一句话讲清取舍', detail: '', metric: '发号器>哈希>自增；301 vs 302', components: [{ id: 'client', label: '客户端', role: 'r' }, { id: 'cdn', label: 'CDN', role: 'r' }], phase: 'done' },
     },
+    quorum: {
+      doc: { kind: 'quorum', params: {}, entities: [], streams: [] },
+      a: { step: 4, op: 'verdict', N: 5, W: 3, R: 3, reps: [{ ver: 2, val: 'B' }, { ver: 2, val: 'B' }, { ver: 2, val: 'B' }, { ver: 1, val: 'A' }, { ver: 1, val: 'A' }], writeSet: [0, 1, 2], readSet: [2, 3, 4], overlap: [2], readVer: 2, readVal: 'B', phase: 'run', focus: 'W+R>N → 读写集必重叠 → 读到最新' },
+      b: { step: 5, op: 'counter', N: 5, W: 3, R: 3, reps: [{ ver: 2, val: 'B' }, { ver: 2, val: 'B' }, { ver: 2, val: 'B' }, { ver: 1, val: 'A' }, { ver: 1, val: 'A' }], writeSet: [0, 1, 2], readSet: [3, 4], overlap: [], readVer: 1, readVal: 'A', phase: 'done', focus: '反例：W+R≤N 时可能读到旧值' },
+    },
     vectorclock: {
       doc: { kind: 'vectorclock', params: {}, entities: [], streams: [] },
       a: { step: 5, op: 'recv', proc: 2, label: 'e', clocks: [[2, 0, 0], [2, 2, 0], [2, 2, 1]], msg: [2, 2, 0], cmp: [], phase: 'run', focus: 'e：P2 收消息 → 逐位 max 后自己 +1' },

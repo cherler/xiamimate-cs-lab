@@ -353,6 +353,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; op: string; result: string }; return st.phase === 'done' ? 'KV跑通' : (st.op === 'get' ? (st.result || 'get') : st.op) },
     try: [{ act: '看更新 a=9', watch: '不改旧值，追加新版本；SST1 里 a=1、SST2 里 a=9 同时存在。' }, { act: '看 get(a) 和压实', watch: 'get 从新到旧读到 a=9；压实把旧的 a=1 归并丢掉。' }], terms: [],
   },
+  quorum: {
+    question: '数据存多份副本，写几份、读几份，才能保证读到的一定是最新写的？',
+    read: [{ at: '副本行', is: '5 份副本的版本；写份/读份/重叠各有标记。', anchor: '.qm-reps' }, { at: '不等式', is: 'W+R vs N，>N 才保证重叠。', anchor: '.qm-ineq' }],
+    step: (s: never) => { const st = s as { op: string; N: number; W: number; R: number; overlap: number[]; readVer: number; readVal: string; phase: string }; return [
+      { k: '本步输入', v: st.phase === 'done' ? '反例：R 调小到 2' : st.op === 'intro' ? `N=${st.N} 份副本，写 W=${st.W}、读 R=${st.R}` : st.op === 'init' ? '5 份都是 v1(A)' : st.op === 'write' ? `写 W=${st.W} 份 → {R0,R1,R2} 升 v2(B)` : st.op === 'read' ? `读 R=${st.R} 份 → {R2,R3,R4}` : '判定重叠' },
+      { k: '判定规则', v: '写只等 W 份确认、读只取 R 份里版本最新的。W+R>N 时，读集与写集在 N 份里必有重叠(鸽巢)，重叠那份带最新写→读一定不漏；W+R≤N 则可能零重叠、读到旧值。' },
+      { k: '本步结果', v: st.phase === 'done' ? '读集{R3,R4}零重叠 → 读到旧 v1(A)，漏掉新写' : st.op === 'verdict' ? `W+R=${st.W + st.R}>${st.N}→重叠 R${st.overlap.join(',')}→读到 v${st.readVer}(${st.readVal})` : st.op === 'write' ? '{R0,R1,R2}=v2、R3/R4 还是 v1' : st.op === 'read' ? '读集含 R2(v2) 和 R3/R4(v1)' : `N/W/R = ${st.N}/${st.W}/${st.R}` },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; op: string; overlap: number[] }; return st.phase === 'done' ? '反例:读旧值' : st.op === 'verdict' ? '读到最新' : st.op === 'write' ? '写W份' : st.op === 'read' ? '读R份' : '就绪' },
+    try: [{ act: '看重叠副本', watch: '写集{R0,R1,R2}、读集{R2,R3,R4}——W+R=6>5，必然在 R2 重叠，那份带最新 v2。' }, { act: '看反例', watch: 'R 调到 2、读集{R3,R4}时，和写集零重叠→读到旧 v1，这就是 W+R≤N 的坑。' }], terms: [],
+  },
   vectorclock: {
     question: '没有全局时钟，怎么判断两个分布式事件谁先谁后、还是根本没关系（并发）？',
     read: [{ at: '三进程', is: '每个进程当前的向量 [P0,P1,P2]，活动进程高亮。', anchor: '.vc-procs' }, { at: '判定', is: '末步两对事件的因果/并发结论。', anchor: '.vc-cmp' }],

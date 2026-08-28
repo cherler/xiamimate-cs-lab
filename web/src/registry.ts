@@ -264,6 +264,8 @@ import { snowflakeKernel, type SnowflakeState } from '@engine/kernels/snowflake.
 import { SnowflakeStage } from './stages/SnowflakeStage.tsx'
 import { vectorclockKernel, type VClockState } from '@engine/kernels/vectorclock.ts'
 import { VClockStage } from './stages/VClockStage.tsx'
+import { quorumKernel, type QuorumState } from '@engine/kernels/quorum.ts'
+import { QuorumStage } from './stages/QuorumStage.tsx'
 import { walKernel, type WALState } from '@engine/kernels/wal.ts'
 import { WALStage } from './stages/WALStage.tsx'
 import { lsmKernel, type LSMState } from '@engine/kernels/lsm.ts'
@@ -5529,6 +5531,22 @@ const ecbcbc: Experiment<EcbCbcState> = {
     { label: '重复块', value: s.phase === 'done' ? 'ECB 泄露 / CBC 安全' : '对比中' },
   ],
 }
+const quorum: Experiment<QuorumState> = {
+  id: 'quorum', group: '分布式系统', title: 'Quorum NWR', subtitle: 'W+R>N 保证读到最新写（可调一致性）',
+  kernel: quorumKernel, defaultDoc: { kind: 'quorum', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '无可调参数。N=5副本,写W=3份、读R=3份,取读到的最新版本。W+R>N(6>5)时读写集必重叠(鸽巢)→读到最新;反例R=2(W+R=5≤5)可能无重叠读到旧值。详见讲解卡。',
+  bounds: ['N=5,写W=3份确认即成功,读R=3份取最新版本', 'W+R=6>5→读写集必重叠(鸽巢原理)→读到最新v2', '反例R=2→读集{R3,R4}零重叠→读到旧v1', '旋钮:W大读快写慢/R大反之/W=R=N强一致最慢=Dynamo可调一致性'],
+  tabs: [{ id: 'nwr', label: '写读重叠' }], Stage: QuorumStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'bad', label: '反例:读旧值' } : s.op === 'verdict' ? { key: 'good', label: '读到最新' } : s.op === 'read' ? { key: 'idle', label: '读R份' } : s.op === 'write' ? { key: 'idle', label: '写W份' } : { key: 'idle', label: '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => (s.op === 'counter' ? '反' : s.op === 'verdict' ? '✓' : s.op === 'write' ? '写' : s.op === 'read' ? '读' : s.op === 'init' ? '始' : 'N'),
+  readouts: s => [
+    { label: 'N/W/R', value: `${s.N}/${s.W}/${s.op === 'counter' ? 2 : s.R}` },
+    { label: 'W+R vs N', value: `${s.op === 'counter' ? s.W + 2 : s.W + s.R} vs ${s.N}`, tone: s.op === 'counter' ? 'bad' : (s.W + s.R > s.N ? 'good' : 'bad') },
+    { label: '读写重叠', value: s.overlap.length ? `R${s.overlap.join(',R')}` : (s.op === 'counter' ? '无' : '—'), tone: s.overlap.length ? 'good' : (s.op === 'counter' ? 'bad' : undefined) },
+    { label: '读到', value: s.readVer > 0 ? `v${s.readVer}(${s.readVal})` : '—', tone: s.readVer === 2 ? 'good' : s.readVer === 1 ? 'bad' : undefined },
+  ],
+}
 const vectorclock: Experiment<VClockState> = {
   id: 'vectorclock', group: '分布式系统', title: '向量时钟', subtitle: '判分布式事件：因果先行 vs 并发',
   kernel: vectorclockKernel, defaultDoc: { kind: 'vectorclock', params: {}, entities: [], streams: [] }, params: [],
@@ -5743,7 +5761,7 @@ export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
   caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt, ecbcbc, birthday, aesround, hmac, totp,
-  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign,
+  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,

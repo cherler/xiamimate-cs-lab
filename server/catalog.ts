@@ -76,6 +76,7 @@ import { hmacKernel } from '../src/kernels/hmac.ts'
 import { totpKernel } from '../src/kernels/totp.ts'
 import { snowflakeKernel } from '../src/kernels/snowflake.ts'
 import { vectorclockKernel } from '../src/kernels/vectorclock.ts'
+import { quorumKernel } from '../src/kernels/quorum.ts'
 import { walKernel } from '../src/kernels/wal.ts'
 import { lsmKernel } from '../src/kernels/lsm.ts'
 import { minikvKernel } from '../src/kernels/minikv.ts'
@@ -1308,6 +1309,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: '一个进程收到别人发来的消息（带着对方的向量）时，自己的向量时钟怎么更新?', kind: 'choice',
         compute: () => ({ answer: '逐位取 max(本地向量, 收到的向量)，把对方"见过的进度"并进来，然后再把自己那一位 +1', step: 5, evidence: 'P2 收到 [2,2,0]：max([0,0,0],[2,2,0])=[2,2,0]，再自己+1 → [2,2,1]' }),
         distractors: () => ['直接用收到的向量覆盖自己的', '只把自己那位 +1，忽略收到的', '逐位相加两个向量'],
+      },
+    ],
+  },
+  {
+    id: 'quorum', title: 'Quorum NWR', kernel: quorumKernel as Kernel<unknown>, doc: trivialDoc('quorum'),
+    facts: [
+      {
+        id: 'wr_gt_n', label: 'W+R>N 为什么能保证读到最新',
+        ask: 'N=5 份副本，写 W=3 份、读 R=3 份。为什么这样一定能读到最新写?', kind: 'choice',
+        compute: () => ({ answer: 'W+R=6>N=5，由鸽巢原理，读的 3 份和写的 3 份在 5 份里必有至少 1 份重叠；那份带着最新写，读取最新版本就一定读到它', step: 4, evidence: '写集{R0,R1,R2}、读集{R2,R3,R4}重叠 R2，R2 是最新 v2' }),
+        distractors: () => ['因为写了多数派副本就够了', '因为读的时候会自动同步所有副本', '因为版本号会广播给所有副本'],
+      },
+      {
+        id: 'tunable', label: 'NWR 三个旋钮怎么权衡',
+        ask: 'Quorum 的 N/W/R 三个值是可调的，调它们在权衡什么?', kind: 'choice',
+        compute: () => ({ answer: '在一致性和读写延迟之间权衡：W 大写慢读快、R 大读慢写快、W=R=N 最强一致但最慢、W+R≤N 最快但可能读到旧值', step: 5, evidence: 'R 调到 2 时 W+R=5≤5，读集{R3,R4}可能零重叠、读到旧 v1' }),
+        distractors: () => ['只调容错能力，和一致性无关', '调副本存在哪个机房', 'W/R 越大一定越好'],
       },
     ],
   },

@@ -4098,6 +4098,33 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .vc-crow.causal .vc-cverdict { color:var(--hit); }
 .vc-crow.conc .vc-cverdict { color:var(--t-body); }
 
+/* ── Quorum NWR ── */
+.qm-knobs { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:8px 0 12px; }
+.qm-knob { display:inline-flex; flex-direction:column; gap:1px; font-size:14px; font-weight:700; color:var(--ink); padding:6px 12px; border:1.5px solid var(--line); border-radius:8px; background:var(--panel); }
+.qm-knob em { font-size:9.5px; font-weight:400; font-style:normal; color:var(--faint); }
+.qm-knob.w { border-color:color-mix(in srgb, var(--f-tag) 50%, var(--line)); }
+.qm-knob.r { border-color:color-mix(in srgb, var(--now) 50%, var(--line)); }
+.qm-ineq { font-family:var(--mono); font-size:12.5px; font-weight:700; padding:6px 12px; border-radius:8px; margin-left:auto; }
+.qm-ineq.ok { color:var(--hit); background:color-mix(in srgb, var(--hit) 10%, var(--panel)); border:1px solid var(--hit); }
+.qm-ineq.bad { color:var(--miss); background:color-mix(in srgb, var(--miss) 8%, var(--panel)); border:1px solid var(--miss); }
+.qm-reps { display:flex; gap:8px; margin:0 0 12px; }
+.qm-rep { flex:1; display:flex; flex-direction:column; align-items:center; gap:2px; padding:10px 6px; border:1.5px solid var(--line); border-radius:10px; background:var(--sunk-1); position:relative; }
+.qm-rep.v2 { background:color-mix(in srgb, var(--hit) 10%, var(--panel)); }
+.qm-rep.w { border-color:var(--f-tag); }
+.qm-rep.r { box-shadow:inset 0 -3px 0 var(--now); }
+.qm-rep.ov { border-color:var(--hit); box-shadow:0 0 0 2px var(--hit); }
+.qm-rname { font-size:11px; font-weight:700; color:var(--dim); }
+.qm-rval { font-family:var(--mono); font-size:20px; font-weight:700; color:var(--ink); }
+.qm-rver { font-size:11px; font-family:var(--mono); color:var(--faint); }
+.qm-rep.v2 .qm-rver { color:var(--hit); }
+.qm-rtags { display:flex; gap:3px; min-height:14px; }
+.qm-rtags i { font-style:normal; font-size:9.5px; font-weight:700; padding:1px 5px; border-radius:5px; }
+.qm-rtags i.w { color:var(--t-body); background:color-mix(in srgb, var(--f-tag) 18%, transparent); }
+.qm-rtags i.r { color:var(--now); background:color-mix(in srgb, var(--now) 15%, transparent); }
+.qm-hit { margin:0 0 10px; padding:7px 12px; font-size:12.5px; border-radius:8px; color:var(--hit); border:1px solid var(--hit); background:color-mix(in srgb, var(--hit) 7%, var(--panel)); }
+.qm-hit b { font-weight:700; }
+.qm-miss { margin:0 0 10px; padding:7px 12px; font-size:12.5px; border-radius:8px; color:var(--miss); border:1px solid var(--miss); background:color-mix(in srgb, var(--miss) 6%, var(--panel)); }
+
 /* ── mini 搜索引擎（倒排索引 + TF-IDF） ── */
 .ms-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:8px 0 12px; }
 .ms-col { display:flex; flex-direction:column; gap:6px; min-width:0; }
