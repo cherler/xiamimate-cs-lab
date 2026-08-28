@@ -3956,6 +3956,35 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .ec-badge.good { color:var(--hit); background:color-mix(in srgb, var(--hit) 12%, transparent); }
 .ec-expr { margin:0 0 10px; padding:7px 11px; font-size:12.5px; border-radius:6px; border:1px solid var(--line); background:var(--sunk-1); color:var(--dim); overflow-x:auto; }
 
+/* ── 生日攻击 ── */
+.bd-gauge { display:flex; align-items:center; gap:16px; margin:10px 0 12px; }
+.bd-track { position:relative; flex:1; height:22px; border-radius:11px; background:var(--sunk-1); border:1px solid var(--line); overflow:hidden; }
+.bd-fill { height:100%; border-radius:11px 0 0 11px; background:color-mix(in srgb, var(--now) 45%, var(--panel)); transition:width .25s ease; }
+.bd-fill.hot { background:var(--miss); }
+.bd-mark { position:absolute; top:-3px; bottom:-3px; width:0; border-left:2px dashed var(--ink); }
+.bd-mark span { position:absolute; top:-16px; left:-14px; font-size:10px; color:var(--dim); font-family:var(--mono); }
+.bd-pnum { display:flex; flex-direction:column; align-items:flex-end; min-width:96px; }
+.bd-pnum b { font-family:var(--mono); font-size:26px; font-weight:700; line-height:1; color:var(--ink); }
+.bd-pnum i { font-style:normal; font-size:11px; color:var(--faint); }
+.bd-pnum small { font-size:10px; color:var(--faint); font-family:var(--mono); margin-top:2px; }
+.bd-miles { display:flex; gap:8px; margin-bottom:10px; }
+.bd-mile { flex:1; display:flex; align-items:baseline; gap:6px; justify-content:center; padding:6px 8px; border:1px solid var(--line); border-radius:8px; background:var(--panel); }
+.bd-mile.hit { border-color:var(--now); background:color-mix(in srgb, var(--now) 8%, var(--panel)); }
+.bd-mk { font-family:var(--mono); font-weight:700; font-size:13px; color:var(--ink); }
+.bd-mp { font-size:12px; color:var(--dim); }
+.bd-note { margin:0 0 10px; padding:6px 11px; font-size:12.5px; border-radius:6px; font-weight:600;
+  border:1px solid var(--now); background:color-mix(in srgb, var(--now) 8%, var(--panel)); color:var(--now); }
+.bd-hash { margin:2px 0 12px; padding:11px 13px; border:1px solid var(--line); border-radius:10px; background:var(--sunk-1); }
+.bd-hcap { font-size:12px; color:var(--dim); margin-bottom:9px; }
+.bd-hrows { display:flex; flex-direction:column; gap:6px; }
+.bd-hrow { display:grid; grid-template-columns:56px 48px 64px 1fr; align-items:center; gap:8px; font-size:12.5px; }
+.bd-hn { font-family:var(--mono); font-weight:700; color:var(--ink); }
+.bd-harrow { font-size:11px; color:var(--faint); }
+.bd-hcost { font-family:var(--mono); font-weight:700; color:var(--ink); }
+.bd-htag { font-size:11.5px; color:var(--faint); }
+.bd-hrow.bad .bd-hcost, .bd-hrow.bad .bd-htag { color:var(--miss); }
+.bd-hrow.good .bd-hcost, .bd-hrow.good .bd-htag { color:var(--hit); }
+
 /* ── mini 搜索引擎（倒排索引 + TF-IDF） ── */
 .ms-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:8px 0 12px; }
 .ms-col { display:flex; flex-direction:column; gap:6px; min-width:0; }

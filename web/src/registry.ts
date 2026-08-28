@@ -252,6 +252,8 @@ import { otpreuseKernel, type OTPReuseState } from '@engine/kernels/otpreuse.ts'
 import { OTPReuseStage } from './stages/OTPReuseStage.tsx'
 import { ecbcbcKernel, type EcbCbcState } from '@engine/kernels/ecbcbc.ts'
 import { ECBCBCStage } from './stages/ECBCBCStage.tsx'
+import { birthdayKernel, type BirthdayState } from '@engine/kernels/birthday.ts'
+import { BirthdayStage } from './stages/BirthdayStage.tsx'
 import { walKernel, type WALState } from '@engine/kernels/wal.ts'
 import { WALStage } from './stages/WALStage.tsx'
 import { lsmKernel, type LSMState } from '@engine/kernels/lsm.ts'
@@ -5517,6 +5519,22 @@ const ecbcbc: Experiment<EcbCbcState> = {
     { label: '重复块', value: s.phase === 'done' ? 'ECB 泄露 / CBC 安全' : '对比中' },
   ],
 }
+const birthday: Experiment<BirthdayState> = {
+  id: 'birthday', group: '密码学', title: '生日攻击', subtitle: '找哈希碰撞只要约 √N 次，不是 N 次',
+  kernel: birthdayKernel, defaultDoc: { kind: 'birthday', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '无可调参数。往 N=365 天里逐个加人，看"至少两人同天"的概率：23 人就过半(生日悖论)。映射到哈希：n 位输出找碰撞只要约 2^(n/2) 次，所以抗碰撞位数要翻倍。详见讲解卡。',
+  bounds: ['能相撞的对数 C(k,2)≈k²/2,概率按 k² 涨得快', '23人→50.7%、41→90%、57→99%(可核)', 'n位哈希碰撞约 √(2ⁿ)=2^(n/2) 次,非 2ⁿ', 'MD5/SHA-1被攻破;抗碰撞要SHA-256(碰撞2¹²⁸)'],
+  tabs: [{ id: 'prob', label: '概率飙升' }], Stage: BirthdayStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: '√N 规律' } : s.crossed50 ? { key: 'bad', label: `${Math.round(s.pColl * 100)}%` } : { key: 'idle', label: `${s.k}人` }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, s.pColl)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.crossed50 ? '半' : String(s.k)),
+  readouts: s => [
+    { label: '人数', value: `${s.k}` },
+    { label: '可撞对数', value: `C(${s.k},2)=${s.pairs}` },
+    { label: '碰撞概率', value: `${(s.pColl * 100).toFixed(1)}%`, tone: s.crossed50 ? (s.phase === 'done' ? 'good' : 'bad') : undefined },
+    { label: '哈希含义', value: s.phase === 'done' ? 'n位→碰撞2^(n/2)' : '√N 次即可' },
+  ],
+}
 const wal: Experiment<WALState> = {
   id: 'wal', group: '数据库系统', title: '预写日志 WAL', subtitle: '先写日志后改数据，崩溃能恢复',
   kernel: walKernel, defaultDoc: { kind: 'wal', params: {}, entities: [], streams: [] }, params: [],
@@ -5634,7 +5652,7 @@ const mqdesign: Experiment<SysDesignState> = {
 export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
-  caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt, ecbcbc,
+  caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt, ecbcbc, birthday,
   tokenbucket, consistenthash, skiplist, twopc, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,

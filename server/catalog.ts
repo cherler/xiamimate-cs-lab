@@ -70,6 +70,7 @@ import { skiplistKernel } from '../src/kernels/skiplist.ts'
 import { twopcKernel } from '../src/kernels/twopc.ts'
 import { otpreuseKernel } from '../src/kernels/otpreuse.ts'
 import { ecbcbcKernel } from '../src/kernels/ecbcbc.ts'
+import { birthdayKernel } from '../src/kernels/birthday.ts'
 import { walKernel } from '../src/kernels/wal.ts'
 import { lsmKernel } from '../src/kernels/lsm.ts'
 import { minikvKernel } from '../src/kernels/minikv.ts'
@@ -1200,6 +1201,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: '同样是重复明文块(P1=P3)，为什么 CBC 加密后 C1≠C3、不泄露重复?', kind: 'choice',
         compute: () => ({ answer: 'CBC 有链接：每块先和上一块密文异或再加密(C=E(P⊕C₋₁))，同样的明文块每次异或的密文都不同，所以 C1≠C3', step: 10, evidence: 'CBC 密文=[0011,1001,0101,0000]，C1=0011≠C3=0101；再配随机 IV 连第一块都随机化' }),
         distractors: () => ['CBC 用了更长的密钥', 'CBC 把块顺序打乱了', 'CBC 每块换一个密钥'],
+      },
+    ],
+  },
+  {
+    id: 'birthday', title: '生日攻击', kernel: birthdayKernel as Kernel<unknown>, doc: trivialDoc('birthday'),
+    facts: [
+      {
+        id: 'sqrt_n', label: '找哈希碰撞大约要多少次',
+        ask: '一个 n 位哈希输出空间是 2ⁿ。找到"任意一对"输入产生相同哈希，大约要试多少次?', kind: 'choice',
+        compute: () => ({ answer: '约 √(2ⁿ) = 2^(n/2) 次（生日攻击），远小于 2ⁿ，所以抗碰撞需要的位数是抗原像的两倍', step: 10, evidence: '23 人就让生日碰撞过半；256 位哈希碰撞难度只有 2¹²⁸' }),
+        distractors: () => ['要 2ⁿ 次（穷举整个空间）', '要 2ⁿ⁻¹ 次（一半空间）', '要 n 次'],
+      },
+      {
+        id: 'why_fast', label: '为什么碰撞概率涨得比直觉快',
+        ask: 'N=365 天，为什么只要 23 人就有过半概率两人同天生日（不用 183 人）?', kind: 'choice',
+        compute: () => ({ answer: '比的是"任意一对"是否相同，对数是 C(k,2)≈k²/2，随人数平方增长，所以概率在约 √N 处就过半', step: 6, evidence: 'k=23 时可相撞的对有 253 对，碰撞概率 50.7%' }),
+        distractors: () => ['因为每个人都和固定某一天比', '因为 365 天其实不够多', '巧合，换个数就不成立'],
       },
     ],
   },

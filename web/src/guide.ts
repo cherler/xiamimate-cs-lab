@@ -353,6 +353,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; op: string; result: string }; return st.phase === 'done' ? 'KV跑通' : (st.op === 'get' ? (st.result || 'get') : st.op) },
     try: [{ act: '看更新 a=9', watch: '不改旧值，追加新版本；SST1 里 a=1、SST2 里 a=9 同时存在。' }, { act: '看 get(a) 和压实', watch: 'get 从新到旧读到 a=9；压实把旧的 a=1 归并丢掉。' }], terms: [],
   },
+  birthday: {
+    question: '一屋子多少人就有过半概率两人同天生日？为什么这关系到哈希安全？',
+    read: [{ at: '量表', is: '碰撞概率随人数涨，50% 是那条虚线。', anchor: '.bd-gauge' }, { at: '读数', is: '人数、可撞对数 C(k,2)、碰撞概率。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { k: number; pairs: number; pColl: number; crossed50: boolean; phase: string }; return [
+      { k: '本步输入', v: st.phase === 'done' ? '看完概率飙升，收结论' : st.k === 0 ? '空屋，问要多少人' : `屋里 ${st.k} 个人` },
+      { k: '判定规则', v: '比的是"任意一对"是否相同，对数 C(k,2)≈k²/2 随人数平方涨。概率 P = 1 − ∏(N−i)/N，在约 √N(≈23) 处就过半。哈希同理：n 位输出找碰撞只要约 2^(n/2) 次。' },
+      { k: '本步结果', v: st.phase === 'done' ? 'n 位哈希碰撞约 2^(n/2) 次 → 抗碰撞位数要翻倍(用 SHA-256)' : st.k === 0 ? '直觉说 183，其实远不用' : `可撞 ${st.pairs} 对，碰撞概率 ${(st.pColl * 100).toFixed(1)}%${st.crossed50 ? '（已过半）' : ''}` },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; crossed50: boolean; pColl: number }; return st.phase === 'done' ? '√N 规律' : st.crossed50 ? `${Math.round(st.pColl * 100)}% 过半` : '概率涨' },
+    try: [{ act: '盯 50% 那条线', watch: '概率在第 23 人处越过 50%——远不用 183 人。' }, { act: '想哈希', watch: 'N=2ⁿ 时碰撞约 2^(n/2) 次：256 位才有 2¹²⁸ 的碰撞难度。' }], terms: [],
+  },
   ecbcbc: {
     question: '同样一批明文，为什么用 ECB 加密会「泄露」而 CBC 不会？',
     read: [{ at: '三行', is: '明文 / ECB 密文 / CBC 密文，颜色相同=值相同。', anchor: '.ec-rows' }, { at: '读数', is: '当前模式、ECB/CBC 的重复块结论。', anchor: '.scdim' }],
