@@ -314,6 +314,7 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   lsm: {},
   minikv: {},
   urlshortener: {},
+  seckill: {},
   astar: {},
   perceptron: {},
   pooling: { kind: 'string' },

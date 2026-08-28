@@ -257,6 +257,7 @@ import { LSMStage } from './stages/LSMStage.tsx'
 import { minikvKernel, type MiniKVState } from '@engine/kernels/minikv.ts'
 import { MiniKVStage } from './stages/MiniKVStage.tsx'
 import { urlshortenerKernel, type SysDesignState } from '@engine/kernels/urlshortener.ts'
+import { seckillKernel } from '@engine/kernels/seckill.ts'
 import { SysDesignStage } from './stages/SysDesignStage.tsx'
 import { CollisionStage } from './stages/CollisionStage.tsx'
 import { gcnKernel, type GcnState } from '@engine/kernels/gcn.ts'
@@ -5556,11 +5557,28 @@ const urlshortener: Experiment<SysDesignState> = {
   ],
 }
 
+const seckill: Experiment<SysDesignState> = {
+  id: 'seckill', group: '系统设计', title: '设计秒杀系统', subtitle: '削峰→防超卖→异步化',
+  kernel: seckillKernel, defaultDoc: { kind: 'seckill', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '系统设计高频题：一瞬间几万人抢 1000 件，红线是绝不超卖。走一遍——需求澄清→容量估算→削峰限流→Redis 原子预扣→MQ 异步下单→乐观锁防超卖→权衡。详见讲解卡。',
+  bounds: ['成功请求=库存数;大多数请求注定失败,目标是"快速拒绝多数、精确成交少数"', '削峰:前端置灰+网关令牌桶+MQ异步,别让洪峰冲到DB', '防超卖:Redis原子DECR预扣 + DB乐观锁(where stock>0)双保险', '为什么不直接扣DB:DB抗不住高并发;为什么异步下单:把尖峰摊平'],
+  tabs: [{ id: 'design', label: '架构逐步搭' }], Stage: SysDesignStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: '设计完成' } : { key: 'idle', label: s.stage.replace(/^[①②③④⑤⑥⑦]\s*/, '') || '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 7)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.stage.slice(0, 1) || '设'),
+  readouts: s => [
+    { label: '阶段', value: s.stage || '就绪' },
+    { label: '关键', value: s.metric || '—' },
+    { label: '已定组件', value: `${s.components.length} 个` },
+    { label: '架构', value: s.components.map(c => c.label).join('→') || '—' },
+  ],
+}
+
 export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
   caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt,
-  tokenbucket, consistenthash, skiplist, twopc, otpreuse, wal, lsm, minikv, urlshortener,
+  tokenbucket, consistenthash, skiplist, twopc, otpreuse, wal, lsm, minikv, urlshortener, seckill,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,

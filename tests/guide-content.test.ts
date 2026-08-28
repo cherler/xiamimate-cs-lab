@@ -228,6 +228,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { stage: '③ 发号 + 编码', focus: '短码怎么生成', detail: 'x', metric: '62^6 ≈ 568 亿个 6 位短码', components: [{ id: 'client', label: '客户端', role: 'r' }, { id: 'idgen', label: '发号器', role: 'r' }], phase: 'run' },
       b: { stage: '⑦ 权衡总结', focus: '一句话讲清取舍', detail: '', metric: '发号器>哈希>自增；301 vs 302', components: [{ id: 'client', label: '客户端', role: 'r' }, { id: 'cdn', label: 'CDN', role: 'r' }], phase: 'done' },
     },
+    seckill: {
+      doc: { kind: 'seckill', params: {}, entities: [], streams: [] },
+      a: { step: 3, stage: '④ Redis 预扣库存', focus: '库存放内存，原子扣减挡住绝大多数', detail: 'x', metric: 'Redis 原子预扣，挡住绝大多数', components: [{ id: 'client', label: '抢购客户端', role: 'r' }, { id: 'redis', label: 'Redis 库存', role: 'r' }], phase: 'run' },
+      b: { step: 6, stage: '⑦ 权衡总结', focus: '一句话讲清取舍', detail: '', metric: '削峰(限流+MQ) + 防超卖(Redis原子+DB乐观锁)', components: [{ id: 'client', label: '抢购客户端', role: 'r' }, { id: 'db', label: '数据库', role: 'r' }], phase: 'done' },
+    },
     minikv: {
       doc: { kind: 'minikv', params: {}, entities: [], streams: [] },
       a: { op: 'get', key: 'a', val: -1, memtable: [], sstables: [[['a', 1], ['b', 2], ['c', 3]], [['a', 9], ['d', 4], ['e', 5]]], bloom: ['a', 'b', 'c', 'd', 'e'], result: '9', bloomHit: true, foundIn: 'SSTable2', note: '从新到旧查', phase: 'run' },

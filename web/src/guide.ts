@@ -309,6 +309,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; stage: string }; return st.phase === 'done' ? '设计完成' : st.stage.replace(/^[①②③④⑤⑥⑦]\s*/, '') },
     try: [{ act: '按「下一步」走框架', watch: '需求→估算→发号编码→存储→缓存→扩展，架构一块块搭。' }, { act: '记住权衡', watch: '发号器 vs 哈希 vs 自增；301 vs 302——这些取舍是面试加分项。' }], terms: [],
   },
+  seckill: {
+    question: '一瞬间几万人抢 1000 件，怎么做到绝不超卖、又不被冲垮？',
+    read: [{ at: '架构', is: '一步步搭起来的组件（客户端→限流→Redis→MQ→DB）。', anchor: '.sd-arch' }, { at: '读数', is: '当前阶段、关键数、组件。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { stage: string; focus: string; metric: string; components: unknown[]; phase: string }; return [
+      { k: '本步输入', v: st.phase === 'done' ? '走完整套秒杀设计' : `${st.stage}` },
+      { k: '判定规则', v: '秒杀三板斧：削峰(前端置灰+网关令牌桶+MQ异步)→防超卖(Redis原子预扣 + DB乐观锁双保险)→快速失败(大多数请求早早拒绝)。每步都问"为什么这么选"。' },
+      { k: '本步结果', v: st.phase === 'done' ? '一套秒杀系统搭好，可讲清削峰/防超卖/异步的取舍' : `${st.focus}；关键：${st.metric}（已定 ${st.components.length} 个组件）` },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; stage: string }; return st.phase === 'done' ? '设计完成' : st.stage.replace(/^[①②③④⑤⑥⑦]\s*/, '') },
+    try: [{ act: '按「下一步」走框架', watch: '需求→估算→削峰→Redis预扣→MQ异步→乐观锁，组件一块块搭。' }, { act: '记住两条红线', watch: '绝不超卖(Redis原子+DB乐观锁)、别冲垮DB(削峰+异步)——这两条是面试要点。' }], terms: [],
+  },
   minikv: {
     question: '把学过的零件拼起来，能造一个真能跑的数据库吗？',
     read: [{ at: '五个零件', is: 'WAL/memtable/SSTable/布隆四块 + 当前操作路径。', anchor: '.kv-grid' }, { at: '读数', is: '本步、memtable、SSTable、get 结果。', anchor: '.scdim' }],

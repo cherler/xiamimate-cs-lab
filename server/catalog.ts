@@ -73,6 +73,7 @@ import { walKernel } from '../src/kernels/wal.ts'
 import { lsmKernel } from '../src/kernels/lsm.ts'
 import { minikvKernel } from '../src/kernels/minikv.ts'
 import { urlshortenerKernel } from '../src/kernels/urlshortener.ts'
+import { seckillKernel } from '../src/kernels/seckill.ts'
 // 与 registry 同源的预设常量：直接 import 保证 doc 逐字一致（引擎侧，无 React）。
 import { CRC_PRESETS, HAMMING_PRESETS, SUBNET_PRESETS, HUFF_PRESETS, BPLUS_PRESETS } from '../src/presets/sequences.ts'
 import { ROUTE_PRESETS } from '../src/presets/entities.ts'
@@ -1128,6 +1129,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: '短链的短码生成，为什么推荐「唯一发号器 + Base62 编码」，而不是「哈希长链」?', kind: 'choice',
         compute: () => ({ answer: '哈希会碰撞、要处理冲突；发号器保证唯一，Base62 让短码又短又不易被爬', step: 0, evidence: '62^6≈568亿够用；自增 ID 又会暴露业务量' }),
         distractors: () => ['哈希更快所以更好', '发号器不需要唯一性', '两者完全一样'],
+      },
+    ],
+  },
+  {
+    id: 'seckill', title: '设计秒杀系统', kernel: seckillKernel as Kernel<unknown>, doc: trivialDoc('seckill'),
+    facts: [
+      {
+        id: 'no_oversell', label: '秒杀怎么防超卖',
+        ask: '秒杀的红线是绝不超卖。抗住高并发扣库存、又不超卖，核心手段是?', kind: 'choice',
+        compute: () => ({ answer: 'Redis 原子预扣（DECR/Lua）挡住绝大多数，DB 乐观锁(where stock>0)兜底', step: 3, evidence: '内存原子扣减扛并发，DB 乐观锁保证绝不扣成负数' }),
+        distractors: () => ['直接 UPDATE 数据库库存', '加分布式锁串行下单', '前端限制点击就够了'],
+      },
+      {
+        id: 'peak_shaving', label: '秒杀怎么削峰',
+        ask: '秒杀瞬时几万 QPS，但真正成功的只有库存数。把洪峰摊平、别冲垮后端，靠什么?', kind: 'choice',
+        compute: () => ({ answer: '层层限流(前端置灰+网关令牌桶) + 消息队列异步下单，削峰填谷', step: 4, evidence: '预扣成功才进 MQ，订单服务平稳消费落库' }),
+        distractors: () => ['给数据库加更多连接', '同步下单只是加机器', '关掉缓存直连库'],
       },
     ],
   },
