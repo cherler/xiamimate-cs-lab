@@ -85,6 +85,7 @@ import { abaKernel } from '../src/kernels/aba.ts'
 import { happensbeforeKernel } from '../src/kernels/happensbefore.ts'
 import { lrucacheKernel } from '../src/kernels/lrucache.ts'
 import { topkKernel } from '../src/kernels/topk.ts'
+import { reactagentKernel } from '../src/kernels/reactagent.ts'
 import { walKernel } from '../src/kernels/wal.ts'
 import { lsmKernel } from '../src/kernels/lsm.ts'
 import { minikvKernel } from '../src/kernels/minikv.ts'
@@ -1470,6 +1471,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: '每片内求出现最多的 K 个，为什么用大小为 K 的小顶堆，而不是全部排序?', kind: 'choice',
         compute: () => ({ answer: '维护一个大小为 K 的小顶堆：堆顶是当前第 K 大，新元素只要比堆顶大就替换堆顶下沉。整体 O(n㏒K)，比全排序 O(n㏒n) 省（K 远小于 n），且只需 O(K) 内存', step: 3, evidence: '小顶堆堆顶=第K大，比它小的直接丢，比它大的替换' }),
         distractors: () => ['大顶堆才对', '必须全排序才能求 Top-K', '用哈希表就能直接排序'],
+      },
+    ],
+  },
+  {
+    id: 'reactagent', title: 'ReAct Agent 循环', kernel: reactagentKernel as Kernel<unknown>, doc: trivialDoc('reactagent'),
+    facts: [
+      {
+        id: 'react_loop', label: 'ReAct 的三步循环是什么',
+        ask: 'ReAct Agent 处理一个多步问题时，反复走哪三步?', kind: 'choice',
+        compute: () => ({ answer: 'Thought(推理下一步该干嘛)→Action(调用某个工具并给参数)→Observation(把工具真实返回喂回模型)，循环直到能给 Final Answer', step: 11, evidence: '本例：想查气温→search 北京→观察30°C→想查上海→search→25°C→想算差→calc→5→作答' }),
+        distractors: () => ['输入→隐藏层→输出', '编码→解码→采样', '训练→验证→测试'],
+      },
+      {
+        id: 'why_tools', label: 'Agent 为什么要调工具而不是直接答',
+        ask: '大模型直接回答"北京今天比上海热多少度"有什么问题，为什么 Agent 要调 search/calc?', kind: 'choice',
+        compute: () => ({ answer: '实时气温不在模型训练知识里、直接答会幻觉；调 search 拿真实气温、调 calc 精确算差，Observation 把真结果喂回，答案就基于真数据而非编造', step: 11, evidence: 'search 得到 30/25、calc 得到 5，都是工具的真实返回' }),
+        distractors: () => ['调工具只是为了更慢', '模型其实知道，调工具是多余的', '为了减少模型参数'],
       },
     ],
   },

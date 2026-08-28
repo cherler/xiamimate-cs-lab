@@ -364,6 +364,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; op: string; result: string }; return st.phase === 'done' ? 'KV跑通' : (st.op === 'get' ? (st.result || 'get') : st.op) },
     try: [{ act: '看更新 a=9', watch: '不改旧值，追加新版本；SST1 里 a=1、SST2 里 a=9 同时存在。' }, { act: '看 get(a) 和压实', watch: 'get 从新到旧读到 a=9；压实把旧的 a=1 归并丢掉。' }], terms: [],
   },
+  reactagent: {
+    question: '大模型答不了"要查实时信息/算数"的题，Agent 怎么靠调工具解出来？',
+    read: [{ at: '轨迹', is: 'Thought/Action/Observation 一行行累积。', anchor: '.ra-trace' }, { at: '读数', is: '轮次、本步类型、工具调用。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { kind: string; round: number; text: string; tool: string; arg: string; obs: string; answer: string; phase: string }; return [
+      { k: '本步输入', v: st.phase === 'done' ? '轨迹够了，作答' : st.kind === 'intro' ? 'Agent=LLM+工具+循环' : st.kind === 'thought' ? `第 ${st.round} 轮 · 想：${st.text}` : st.kind === 'action' ? `第 ${st.round} 轮 · 调工具 ${st.tool}(${st.arg})` : `第 ${st.round} 轮 · 工具返回` },
+      { k: '判定规则', v: 'ReAct 循环：Thought(推理下一步)→Action(调工具给参数)→Observation(把真实返回喂回)，每步的想都基于前面全部轨迹；循环到能给 Final Answer 为止。' },
+      { k: '本步结果', v: st.phase === 'done' ? `Final Answer：${st.answer}` : st.kind === 'action' ? `执行 ${st.tool}(${st.arg})` : st.kind === 'observation' ? `观察到「${st.obs}」→ 进入下一轮想` : st.kind === 'thought' ? '决定下一步动作' : '开始解题' },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; kind: string; round: number }; return st.phase === 'done' ? '得到答案' : st.kind === 'action' ? '调工具' : st.kind === 'observation' ? '拿到结果' : st.kind === 'thought' ? `想·第${st.round}轮` : '开始' },
+    try: [{ act: '看想→做→看循环', watch: 'Thought 决定查气温 → Action search → Observation 30°C → 下一轮再想。' }, { act: '看工具给真数据', watch: 'calc(30-25) 返回 5，不是模型口算——Agent 用真结果，少幻觉。' }], terms: [],
+  },
   lrucache: {
     question: '怎么让缓存的 get 和 put 都是 O(1)，还能淘汰"最久没用"的？',
     read: [{ at: '双向链表', is: '头=最近用、尾=最久没用；移头/淘汰尾看这里。', anchor: '.lru-list' }, { at: 'HashMap', is: '缓存里现有的 key。', anchor: '.lru-map' }],

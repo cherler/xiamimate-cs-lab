@@ -280,6 +280,8 @@ import { happensbeforeKernel, type HBState } from '@engine/kernels/happensbefore
 import { HBStage } from './stages/HBStage.tsx'
 import { lrucacheKernel, type LRUState } from '@engine/kernels/lrucache.ts'
 import { LRUCacheStage } from './stages/LRUCacheStage.tsx'
+import { reactagentKernel, type ReactState } from '@engine/kernels/reactagent.ts'
+import { ReactAgentStage } from './stages/ReactAgentStage.tsx'
 import { walKernel, type WALState } from '@engine/kernels/wal.ts'
 import { WALStage } from './stages/WALStage.tsx'
 import { lsmKernel, type LSMState } from '@engine/kernels/lsm.ts'
@@ -5546,6 +5548,22 @@ const ecbcbc: Experiment<EcbCbcState> = {
     { label: '重复块', value: s.phase === 'done' ? 'ECB 泄露 / CBC 安全' : '对比中' },
   ],
 }
+const reactagent: Experiment<ReactState> = {
+  id: 'reactagent', group: '大模型项目实战', title: 'ReAct Agent 循环', subtitle: '想→做(调工具)→看(结果)→再想…→答',
+  kernel: reactagentKernel, defaultDoc: { kind: 'reactagent', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '无可调参数。Agent=LLM+工具+循环。ReAct 把循环显式化:Thought(想)→Action(调工具)→Observation(看结果)→…→Final Answer。本例问北京比上海热多少度,依次 search 两地气温、calc 求差、作答。逐步可核。详见讲解卡。',
+  bounds: ['Agent=LLM+工具+循环;ReAct=Thought→Action→Observation→…→Answer', '每步的"想"基于前面全部轨迹(拼进prompt)→能一步步逼近', 'Action调工具(search/calc)=function calling;Observation喂回真实结果', '=LangChain/Copilot骨架;要点:工具schema/何时停/防跑飞'],
+  tabs: [{ id: 'react', label: '循环逐步跑' }], Stage: ReactAgentStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: '得到答案' } : s.kind === 'action' ? { key: 'idle', label: `调 ${s.tool}` } : s.kind === 'observation' ? { key: 'good', label: '拿到结果' } : s.kind === 'thought' ? { key: 'idle', label: `想·第${s.round}轮` } : { key: 'idle', label: '开始' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 12)),
+  tickLabel: s => (s.phase === 'done' ? '答' : s.kind === 'thought' ? '想' : s.kind === 'action' ? '做' : s.kind === 'observation' ? '看' : '始'),
+  readouts: s => [
+    { label: '轮次', value: s.kind === 'intro' ? '—' : `第 ${s.round} 轮` },
+    { label: '本步', value: s.kind === 'intro' ? '开始' : s.kind === 'thought' ? '💭 Thought' : s.kind === 'action' ? '🔧 Action' : s.kind === 'observation' ? '👀 Observation' : '✅ Answer' },
+    { label: '工具调用', value: s.kind === 'action' ? `${s.tool}(${s.arg})` : s.kind === 'observation' ? `→ ${s.obs}` : '—' },
+    { label: '已走步数', value: `${s.history.length}`, tone: s.phase === 'done' ? 'good' : undefined },
+  ],
+}
 const lrucache: Experiment<LRUState> = {
   id: 'lrucache', group: '算法项目实战', title: '手写 LRU 缓存', subtitle: 'HashMap+双向链表，get/put 都 O(1)',
   kernel: lrucacheKernel, defaultDoc: { kind: 'lrucache', params: {}, entities: [], streams: [] }, params: [],
@@ -5904,7 +5922,7 @@ export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
   caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt, ecbcbc, birthday, aesround, hmac, totp,
-  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, rwlock, aba, happensbefore, lrucache, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign, topk,
+  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, rwlock, aba, happensbefore, lrucache, reactagent, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign, topk,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,

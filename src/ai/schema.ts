@@ -333,6 +333,7 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   happensbefore: {},
   lrucache: {},
   topk: {},
+  reactagent: {},
   astar: {},
   perceptron: {},
   pooling: { kind: 'string' },
