@@ -332,6 +332,7 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   aba: {},
   happensbefore: {},
   lrucache: {},
+  topk: {},
   astar: {},
   perceptron: {},
   pooling: { kind: 'string' },

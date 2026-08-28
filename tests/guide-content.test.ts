@@ -308,6 +308,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { step: 2, stage: '③ 核心模型：分区顺序日志', focus: 'Topic → Partition → append-only 日志', detail: 'x', metric: 'Topic/Partition/append-only log + offset', components: [{ id: 'producer', label: '生产者', role: 'r' }, { id: 'partition', label: 'Partition 日志', role: 'r' }], phase: 'run' },
       b: { step: 6, stage: '⑦ 权衡总结', focus: '一句话讲清取舍', detail: '', metric: '分区顺序日志 + 消费组offset + 多副本ack + key路由', components: [{ id: 'producer', label: '生产者', role: 'r' }, { id: 'router', label: 'key 路由', role: 'r' }], phase: 'done' },
     },
+    topk: {
+      doc: { kind: 'topk', params: {}, entities: [], streams: [] },
+      a: { step: 2, stage: '③ 哈希分片', focus: '相同 key 一定进同一片，各片独立统计', detail: 'x', metric: 'hash(key)%N 分 N 片，同 key 同片', components: [{ id: 'src', label: '海量数据源', role: 'r' }, { id: 'shard', label: '哈希分片', role: 'r' }], phase: 'run' },
+      b: { step: 5, stage: '⑥ 权衡总结', focus: '一句话讲清取舍', detail: '', metric: '分片(同key同片) + 分片内堆(O(n㏒K)) + 归并', components: [{ id: 'src', label: '海量数据源', role: 'r' }, { id: 'merge', label: '归并', role: 'r' }], phase: 'done' },
+    },
     seckill: {
       doc: { kind: 'seckill', params: {}, entities: [], streams: [] },
       a: { step: 3, stage: '④ Redis 预扣库存', focus: '库存放内存，原子扣减挡住绝大多数', detail: 'x', metric: 'Redis 原子预扣，挡住绝大多数', components: [{ id: 'client', label: '抢购客户端', role: 'r' }, { id: 'redis', label: 'Redis 库存', role: 'r' }], phase: 'run' },

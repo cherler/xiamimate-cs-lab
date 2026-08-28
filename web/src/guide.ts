@@ -320,6 +320,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; stage: string }; return st.phase === 'done' ? '设计完成' : st.stage.replace(/^[①②③④⑤⑥⑦]\s*/, '') },
     try: [{ act: '按「下一步」走框架', watch: '需求→估算→分区日志→消费组→副本→保序，组件一块块搭。' }, { act: '记住三条要点', watch: '顺序写=高吞吐、offset=可重放、多副本+ack=不丢——面试常问。' }], terms: [],
   },
+  topk: {
+    question: '10 亿条记录求出现最多的 K 个，但内存装不下全部计数，怎么办？',
+    read: [{ at: '架构', is: '一步步搭起来的组件（数据源→分片→计数+堆→归并）。', anchor: '.sd-arch' }, { at: '读数', is: '当前阶段、关键数、组件。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { stage: string; focus: string; metric: string; components: unknown[]; phase: string }; return [
+      { k: '本步输入', v: st.phase === 'done' ? '走完整套 Top-K 设计' : `${st.stage}` },
+      { k: '判定规则', v: '分而治之：哈希分片(hash%N，同 key 必同片→各片独立统计) → 分片内哈希计数 + 大小 K 小顶堆(O(n㏒K)求本片 Top-K) → 归并各片 Top-K 成全局 Top-K。每步问"为什么这么选"。' },
+      { k: '本步结果', v: st.phase === 'done' ? '一套海量 Top-K 方案，可讲清分片/堆/归并的取舍' : `${st.focus}；关键：${st.metric}（已定 ${st.components.length} 个组件）` },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; stage: string }; return st.phase === 'done' ? '设计完成' : st.stage.replace(/^[①②③④⑤⑥⑦]\s*/, '') },
+    try: [{ act: '按「下一步」走框架', watch: '需求→估算→哈希分片→分片内堆→归并，组件一块块搭。' }, { act: '记住两个要点', watch: '哈希分片(同key同片才能独立统计)、小顶堆(O(n㏒K)求TopK)——面试要点。' }], terms: [],
+  },
   seckill: {
     question: '一瞬间几万人抢 1000 件，怎么做到绝不超卖、又不被冲垮？',
     read: [{ at: '架构', is: '一步步搭起来的组件（客户端→限流→Redis→MQ→DB）。', anchor: '.sd-arch' }, { at: '读数', is: '当前阶段、关键数、组件。', anchor: '.scdim' }],

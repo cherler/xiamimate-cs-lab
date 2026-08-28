@@ -84,6 +84,7 @@ import { rwlockKernel } from '../src/kernels/rwlock.ts'
 import { abaKernel } from '../src/kernels/aba.ts'
 import { happensbeforeKernel } from '../src/kernels/happensbefore.ts'
 import { lrucacheKernel } from '../src/kernels/lrucache.ts'
+import { topkKernel } from '../src/kernels/topk.ts'
 import { walKernel } from '../src/kernels/wal.ts'
 import { lsmKernel } from '../src/kernels/lsm.ts'
 import { minikvKernel } from '../src/kernels/minikv.ts'
@@ -1452,6 +1453,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: '容量满时 LRU 淘汰哪个？get 命中一个 key 后要做什么?', kind: 'choice',
         compute: () => ({ answer: '淘汰链表尾部（最久没用的）；get 命中后把该节点移到链表头部（它刚被使用，成了最近的），保证头=最近、尾=最久', step: 4, evidence: 'put(3,3) 时容量满 → 淘汰尾部 2；get(1) 命中 → 把 1 移到头部' }),
         distractors: () => ['淘汰头部；命中后移到尾部', '淘汰值最小的；命中不用动', '随机淘汰一个；命中后删除它'],
+      },
+    ],
+  },
+  {
+    id: 'topk', title: '设计海量数据 Top-K', kernel: topkKernel as Kernel<unknown>, doc: trivialDoc('topk'),
+    facts: [
+      {
+        id: 'hash_shard', label: 'Top-K 为什么用哈希分片而不是随机切',
+        ask: '海量数据求 Top-K 要分片处理，为什么用 hash(key)%N 分片，而不是随机切成 N 块?', kind: 'choice',
+        compute: () => ({ answer: '哈希分片保证"相同的 key 一定落到同一片"，所以每片能独立统计词频、各片互不影响；随机切会把同一个 key 散到多片，每片只数到部分、没法得到该 key 的真实总频', step: 2, evidence: '同 key 哈希值相同→同片→该 key 的所有出现都在这片里' }),
+        distractors: () => ['哈希分片切得更均匀', '随机切会丢数据', '两种没区别'],
+      },
+      {
+        id: 'min_heap', label: '求 Top-K 为什么用小顶堆',
+        ask: '每片内求出现最多的 K 个，为什么用大小为 K 的小顶堆，而不是全部排序?', kind: 'choice',
+        compute: () => ({ answer: '维护一个大小为 K 的小顶堆：堆顶是当前第 K 大，新元素只要比堆顶大就替换堆顶下沉。整体 O(n㏒K)，比全排序 O(n㏒n) 省（K 远小于 n），且只需 O(K) 内存', step: 3, evidence: '小顶堆堆顶=第K大，比它小的直接丢，比它大的替换' }),
+        distractors: () => ['大顶堆才对', '必须全排序才能求 Top-K', '用哈希表就能直接排序'],
       },
     ],
   },

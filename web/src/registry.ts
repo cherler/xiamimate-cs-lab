@@ -291,6 +291,7 @@ import { SearchStage } from './stages/SearchStage.tsx'
 import { urlshortenerKernel, type SysDesignState } from '@engine/kernels/urlshortener.ts'
 import { seckillKernel } from '@engine/kernels/seckill.ts'
 import { mqdesignKernel } from '@engine/kernels/mqdesign.ts'
+import { topkKernel } from '@engine/kernels/topk.ts'
 import { SysDesignStage } from './stages/SysDesignStage.tsx'
 import { CollisionStage } from './stages/CollisionStage.tsx'
 import { gcnKernel, type GcnState } from '@engine/kernels/gcn.ts'
@@ -5866,6 +5867,22 @@ const seckill: Experiment<SysDesignState> = {
   ],
 }
 
+const topk: Experiment<SysDesignState> = {
+  id: 'topk', group: '算法系统设计', title: '设计海量数据 Top-K', subtitle: '哈希分片→分片内堆→归并',
+  kernel: topkKernel, defaultDoc: { kind: 'topk', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '算法向系统设计题：10亿条求出现最多的K个,内存装不下全部计数。走一遍——需求→估算→哈希分片(同key同片)→分片内哈希计数+小顶堆(O(n㏒K))→归并成全局Top-K→权衡(精确vs近似/单机vs MapReduce)。详见讲解卡。',
+  bounds: ['难点:key上亿,全量计数超内存→分而治之', '哈希分片hash(key)%N:同key必同片→各片独立统计', '分片内大小K小顶堆求本片TopK:O(n㏒K)<全排序O(n㏒n)', '归并各片TopK→全局TopK;近似可用Count-Min Sketch;=MapReduce思路'],
+  tabs: [{ id: 'design', label: '架构逐步搭' }], Stage: SysDesignStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: '设计完成' } : { key: 'idle', label: s.stage.replace(/^[①②③④⑤⑥⑦]\s*/, '') || '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.stage.slice(0, 1) || '设'),
+  readouts: s => [
+    { label: '阶段', value: s.stage || '就绪' },
+    { label: '关键', value: s.metric || '—' },
+    { label: '已定组件', value: `${s.components.length} 个` },
+    { label: '架构', value: s.components.map(c => c.label).join('→') || '—' },
+  ],
+}
 const mqdesign: Experiment<SysDesignState> = {
   id: 'mqdesign', group: '系统设计', title: '设计消息队列', subtitle: '分区日志→消费组→副本→保序',
   kernel: mqdesignKernel, defaultDoc: { kind: 'mqdesign', params: {}, entities: [], streams: [] }, params: [],
@@ -5887,7 +5904,7 @@ export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
   caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt, ecbcbc, birthday, aesround, hmac, totp,
-  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, rwlock, aba, happensbefore, lrucache, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign,
+  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, rwlock, aba, happensbefore, lrucache, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign, topk,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,
