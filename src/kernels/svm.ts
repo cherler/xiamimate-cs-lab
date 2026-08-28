@@ -17,10 +17,23 @@ import type { Kernel, CompiledModel } from '../core/kernel.ts'
 const CLASS_A = [[-1, 0.6], [-1, -0.6], [-1.8, 1.2], [-2, -0.4], [-1.5, 0.1]]
 const CLASS_B = [[1, 0.6], [1, -0.6], [1.8, 1.2], [2, -0.4], [1.5, 0.1]]
 const POINTS = [
-  ...CLASS_A.map((p, i) => ({ x: p[0], y: p[1], c: 0, idx: i })),
-  ...CLASS_B.map((p, i) => ({ x: p[0], y: p[1], c: 1, idx: i + 5 })),
+  ...CLASS_A.map((p, i) => ({ x: p[0]!, y: p[1]!, c: 0, idx: i })),
+  ...CLASS_B.map((p, i) => ({ x: p[0]!, y: p[1]!, c: 1, idx: i + 5 })),
 ]
-const SV_IDX = [0, 1, 5, 6]   // 四个最内侧点 x=±1
+const r2 = (v: number) => Math.round(v * 100) / 100
+//  —— 全部从点集现算（竖直可分：A 在左、B 在右）——
+//  两类各自"最内侧"的点（最靠近对方的），决定了最大间隔的那条街
+const INNER_A = Math.max(...CLASS_A.map(p => p[0]!))   // A 里最靠右 = -1
+const INNER_B = Math.min(...CLASS_B.map(p => p[0]!))   // B 里最靠左 = 1
+const SVM_BOUNDARY = r2((INNER_A + INNER_B) / 2)       // 两内侧点正中 = 0
+const SVM_MARGIN = r2((INNER_B - INNER_A) / 2)         // 单侧间隔 = 内侧点到边界 = 1
+//  支持向量 = 恰好贴在街边（x 等于本类内侧值）的那些点
+const SV_IDX = POINTS.filter(p => (p.c === 0 && p.x === INNER_A) || (p.c === 1 && p.x === INNER_B)).map(p => p.idx)
+//  一条随便选的、也能分开两类的竖线（示意"能分开但不居中"）
+const NAIVE_BOUNDARY = -0.5
+//  任一条竖线的间隔 = 它到最近点的距离（现算）
+const marginOf = (b: number) => r2(Math.min(...POINTS.map(p => Math.abs(p.x - b))))
+const NAIVE_MARGIN = marginOf(NAIVE_BOUNDARY)          // = 0.5
 
 export type SVMState = {
   i: number
@@ -45,23 +58,23 @@ export const svmKernel: Kernel<SVMState> = {
 
   compile(_doc: SimDocument): CompiledModel<SVMState> {
     const frames: Frame[] = [
-      { step: 0, phase: 'setup', points: POINTS, boundaryX: -0.5, margin: 0, supportVectors: [], isMax: false,
+      { step: 0, phase: 'setup', points: POINTS, boundaryX: NAIVE_BOUNDARY, margin: 0, supportVectors: [], isMax: false,
         log: `两类各 5 个点、线性可分。能把它们分开的直线有**无数条**——问题是,哪一条最好?` },
-      { step: 1, phase: 'naive', points: POINTS, boundaryX: -0.5, margin: 0.5, supportVectors: [], isMax: false,
-        log: `随便找一条能分开的线(比如 x=−0.5):它确实分开了,但**贴着左边这类**、间隔只有 **0.5**。` +
+      { step: 1, phase: 'naive', points: POINTS, boundaryX: NAIVE_BOUNDARY, margin: NAIVE_MARGIN, supportVectors: [], isMax: false,
+        log: `随便找一条能分开的线(比如 x=${NAIVE_BOUNDARY}):它确实分开了,但**贴着左边这类**、间隔只有 **${NAIVE_MARGIN}**(=到最近点 x=${INNER_A} 的距离)。` +
           `离一类太近,新来一个稍微偏左的点就可能判错——泛化差。` },
-      { step: 2, phase: 'svm', points: POINTS, boundaryX: 0, margin: 1, supportVectors: SV_IDX, isMax: true,
-        log: `SVM 找**最大间隔**:边界居中 x=0,两侧各留 **1**(街道最宽 2)。这条街只由**紧贴街边的 4 个点**定住——` +
+      { step: 2, phase: 'svm', points: POINTS, boundaryX: SVM_BOUNDARY, margin: SVM_MARGIN, supportVectors: SV_IDX, isMax: true,
+        log: `SVM 找**最大间隔**:两类最内侧点是 x=${INNER_A} 和 x=${INNER_B},边界取正中 x=${SVM_BOUNDARY},两侧各留 **${SVM_MARGIN}**(街道最宽 ${r2(SVM_MARGIN * 2)})。这条街只由**紧贴街边的 ${SV_IDX.length} 个点**定住——` +
           `它们就是**支持向量**(高亮);其余点再远都不影响边界。` },
-      { step: 3, phase: 'done', points: POINTS, boundaryX: 0, margin: 1, supportVectors: SV_IDX, isMax: true,
-        log: `SVM 选的是**离两边都最远**的那条线(最大间隔 1 > 随便那条的 0.5),对新数据容错最大、泛化最好。` +
+      { step: 3, phase: 'done', points: POINTS, boundaryX: SVM_BOUNDARY, margin: SVM_MARGIN, supportVectors: SV_IDX, isMax: true,
+        log: `SVM 选的是**离两边都最远**的那条线(最大间隔 ${SVM_MARGIN} > 随便那条的 ${NAIVE_MARGIN}),对新数据容错最大、泛化最好。` +
           `而且它**只记得支持向量**那少数几个关键点——其余全可丢。线性不可分时,用**核函数**把点映到高维再找最大间隔。` +
           `这就是 SVM:不满足于"能分开",而要"分得最稳"。`,
       },
     ]
 
     const base0: Frame = {
-      step: -1, phase: 'setup', points: POINTS, boundaryX: -0.5, margin: 0, supportVectors: [], isMax: false, log: '',
+      step: -1, phase: 'setup', points: POINTS, boundaryX: NAIVE_BOUNDARY, margin: 0, supportVectors: [], isMax: false, log: '',
     }
 
     return {

@@ -38,6 +38,9 @@ export const abaKernel: Kernel<ABAState> = {
   compile(_doc: SimDocument): CompiledModel<ABAState> {
     const frames: Frame[] = []
     const push = (f: Omit<Frame, 'step'>) => frames.push({ step: frames.length, ...f })
+    //  CAS 成败由"当前值/版本"和"T1 读到的值/版本"现算：无版本只比值(会被 ABA 骗)、有版本比(值,版本)
+    const casCheck = (versioned: boolean, curVal: number, curVer: number, readVal: number, readVer: number) =>
+      versioned ? (curVal === readVal && curVer === readVer) : (curVal === readVal)
 
     push({ act: 'intro', op: 'note', value: A, version: 1, t1Read: -1, t1Ver: -1, casOk: null, event: '', phase: 'run', focus: 'CAS 靠"值没变"判断没人动过——但这有漏洞',
       log: `**ABA 问题**\nCAS(比较并交换)判断"期间没人动过"的依据是：**当前值 == 我读到的旧值**。\n漏洞：值从 A→B→又变回 A，CAS 一看还是 A，就以为没人动过——其实中间换了两次。\n本例共享值 = **${A}(记作 A)**。先看无版本号时怎么被坑。` })
@@ -49,7 +52,7 @@ export const abaKernel: Kernel<ABAState> = {
       log: `**① 无版本 · T2 改 A→B**\nT2 抢到 CPU，CAS 把值从 ${A} 改成 **${B}**。（现实里可能是弹出一个节点）` })
     push({ act: 'buggy', op: 'change', value: A, version: 1, t1Read: A, t1Ver: -1, casOk: null, event: `T2: ${B}→${A}`, phase: 'run', focus: 'T2 又把 B→A，值绕回 100',
       log: `**① 无版本 · T2 改回 B→A**\nT2 又把值从 ${B} 改回 **${A}**。现在值看起来和 T1 读到的一模一样，但**世界已经变过两次**了。（现实里：那个节点被释放、又重新分配到同地址）` })
-    push({ act: 'buggy', op: 'cas', value: A, version: 1, t1Read: A, t1Ver: -1, casOk: true, event: 'T1 CAS 误判成功 ✗', phase: 'run', focus: 'T1 恢复 CAS：期望 100、当前 100 → 误判成功',
+    push({ act: 'buggy', op: 'cas', value: A, version: 1, t1Read: A, t1Ver: -1, casOk: casCheck(false, A, 1, A, -1), event: 'T1 CAS 误判成功 ✗', phase: 'run', focus: 'T1 恢复 CAS：期望 100、当前 100 → 误判成功',
       log: `**① 无版本 · T1 恢复做 CAS**\nT1 醒来，CAS 期望 = ${A}、当前值 = ${A} → **相等 → CAS 成功**！\n但这是**错的**：期间值被换过两次，T1 却毫不知情。在无锁栈里，这会把一个已经失效的节点当成有效的用 → 崩溃或数据错乱。**这就是 ABA。**` })
 
     // —— Act 2: fixed ——
@@ -59,7 +62,7 @@ export const abaKernel: Kernel<ABAState> = {
       log: `**② 加版本号 · T2 改 A→B**\nT2 改值，**版本号 +1 → v2**。当前 = (${B}, v2)。` })
     push({ act: 'fixed', op: 'change', value: A, version: 3, t1Read: A, t1Ver: 1, casOk: null, event: `T2: B→A，版本→v3`, phase: 'run', focus: 'T2 改回 B→A，版本再 +1 → v3',
       log: `**② 加版本号 · T2 改回 B→A**\nT2 又改，**版本再 +1 → v3**。当前 = (${A}, v3)。\n值虽然绕回了 ${A}，但**版本回不去了**——这是关键。` })
-    push({ act: 'fixed', op: 'cas', value: A, version: 3, t1Read: A, t1Ver: 1, casOk: false, event: 'T1 CAS 正确失败 ✓', phase: 'done', focus: '修复成功：期望 (100,v1)、当前 (100,v3) → 版本不符 → 失败',
+    push({ act: 'fixed', op: 'cas', value: A, version: 3, t1Read: A, t1Ver: 1, casOk: casCheck(true, A, 3, A, 1), event: 'T1 CAS 正确失败 ✓', phase: 'done', focus: '修复成功：期望 (100,v1)、当前 (100,v3) → 版本不符 → 失败',
       log: `**② 加版本号 · T1 恢复做 CAS**\nT1 CAS 期望 = (${A}, **v1**)、当前 = (${A}, **v3**) → 值相等但**版本不符 → CAS 失败**！\nT1 于是知道"期间有人动过"，重新读取重试。ABA 被挡住了。\n\n**小结**：CAS 只比值会被 ABA 骗；配一个单调递增的版本号(stamp)、比 (值,版本) 一对，就能识破"绕一圈回来"。这就是 Java 的 **AtomicStampedReference**、无锁数据结构里的 tagged pointer。代价：多存一个版本号、CAS 变成双字比较。` })
 
     const base0: Frame = { act: 'intro', op: 'note', step: -1, value: A, version: 1, t1Read: -1, t1Ver: -1, casOk: null, event: '', phase: 'run', focus: '', log: '' }
