@@ -370,8 +370,8 @@ console.log('\n【「这一步为什么」真的在跟着走】')
     },
     topk: {
       doc: { kind: 'topk', params: {}, entities: [], streams: [] },
-      a: { step: 2, stage: '③ 哈希分片', focus: '相同 key 一定进同一片，各片独立统计', detail: 'x', metric: 'hash(key)%N 分 N 片，同 key 同片', components: [{ id: 'src', label: '海量数据源', role: 'r' }, { id: 'shard', label: '哈希分片', role: 'r' }], phase: 'run' },
-      b: { step: 5, stage: '⑥ 权衡总结', focus: '一句话讲清取舍', detail: '', metric: '分片(同key同片) + 分片内堆(O(n㏒K)) + 归并', components: [{ id: 'src', label: '海量数据源', role: 'r' }, { id: 'merge', label: '归并', role: 'r' }], phase: 'done' },
+      a: { step: 10, phase: 'heap', op: 'replace', K: 3, N: 2, shards: [{ id: 0, items: [{ word: '香蕉', count: 4 }, { word: '梨', count: 1 }] }, { id: 1, items: [{ word: '苹果', count: 5 }, { word: '橙子', count: 3 }, { word: '葡萄', count: 2 }, { word: '桃', count: 1 }] }], route: null, heap: [{ word: '橙子', count: 3 }, { word: '香蕉', count: 4 }, { word: '苹果', count: 5 }], consider: { word: '橙子', count: 3 }, evicted: { word: '梨', count: 1 }, threshold: 3, topk: [], focus: '3 > 门槛 1 → 淘汰「梨」换上「橙子」', log: 'x' },
+      b: { step: 13, phase: 'done', op: 'summary', K: 3, N: 2, shards: [{ id: 0, items: [{ word: '香蕉', count: 4 }, { word: '梨', count: 1 }] }, { id: 1, items: [{ word: '苹果', count: 5 }, { word: '橙子', count: 3 }, { word: '葡萄', count: 2 }, { word: '桃', count: 1 }] }], route: null, heap: [{ word: '橙子', count: 3 }, { word: '香蕉', count: 4 }, { word: '苹果', count: 5 }], consider: null, evicted: null, threshold: 3, topk: [{ word: '苹果', count: 5 }, { word: '香蕉', count: 4 }, { word: '橙子', count: 3 }], focus: 'Top-3 求出', log: 'x' },
     },
     seckill: {
       doc: { kind: 'seckill', params: {}, entities: [], streams: [] },

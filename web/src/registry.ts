@@ -312,12 +312,13 @@ import { urlshortenerKernel, type UrlState } from '@engine/kernels/urlshortener.
 import type { SysDesignState } from '@engine/kernels/_sysdesign.ts'
 import { seckillKernel, type SeckillState } from '@engine/kernels/seckill.ts'
 import { mqdesignKernel } from '@engine/kernels/mqdesign.ts'
-import { topkKernel } from '@engine/kernels/topk.ts'
+import { topkKernel, type TopkState } from '@engine/kernels/topk.ts'
 import { feedKernel } from '@engine/kernels/feed.ts'
 import { objectstoreKernel } from '@engine/kernels/objectstore.ts'
 import { SysDesignStage } from './stages/SysDesignStage.tsx'
 import { SeckillStage } from './stages/SeckillStage.tsx'
 import { UrlStage } from './stages/UrlStage.tsx'
+import { TopkStage } from './stages/TopkStage.tsx'
 import { CollisionStage } from './stages/CollisionStage.tsx'
 import { gcnKernel, type GcnState } from '@engine/kernels/gcn.ts'
 import { GcnStage } from './stages/GcnStage.tsx'
@@ -6084,20 +6085,20 @@ const feed: Experiment<SysDesignState> = {
     { label: '架构', value: s.components.map(c => c.label).join('→') || '—' },
   ],
 }
-const topk: Experiment<SysDesignState> = {
-  id: 'topk', group: '算法系统设计', title: '设计海量数据 Top-K', subtitle: '哈希分片→分片内堆→归并',
+const topk: Experiment<TopkState> = {
+  id: 'topk', group: '算法系统设计', title: '设计海量数据 Top-K', subtitle: '真仿真：哈希分片(同词同片) + 小顶堆',
   kernel: topkKernel, defaultDoc: { kind: 'topk', params: {}, entities: [], streams: [] }, params: [],
-  paramsNote: '算法向系统设计题：10亿条求出现最多的K个,内存装不下全部计数。走一遍——需求→估算→哈希分片(同key同片)→分片内哈希计数+小顶堆(O(n㏒K))→归并成全局Top-K→权衡(精确vs近似/单机vs MapReduce)。详见讲解卡。',
-  bounds: ['难点:key上亿,全量计数超内存→分而治之', '哈希分片hash(key)%N:同key必同片→各片独立统计', '分片内大小K小顶堆求本片TopK:O(n㏒K)<全排序O(n㏒n)', '归并各片TopK→全局TopK;近似可用Count-Min Sketch;=MapReduce思路'],
-  tabs: [{ id: 'design', label: '架构逐步搭' }], Stage: SysDesignStage, whyInRail: true,
-  tone: s => (s.phase === 'done' ? { key: 'good', label: '设计完成' } : { key: 'idle', label: s.stage.replace(/^[①②③④⑤⑥⑦]\s*/, '') || '就绪' }),
-  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
-  tickLabel: s => (s.phase === 'done' ? '毕' : s.stage.slice(0, 1) || '设'),
+  paramsNote: '内存装不下全量计数时怎么求 Top-K。真跑两个机制：哈希分片 hash(词)%N（同词必同片→计数不被拆、各片独立数），再用大小 K 的小顶堆（堆顶=第 K 大=门槛，新词 > 门槛才淘汰堆顶挤进来，O(n㏒K)）。分片/计数/堆的淘汰全真算。',
+  bounds: ['难点:key上亿→全量计数超内存→分而治之', '哈希分片hash(词)%N:哈希确定→同词必同片→计数不被拆(轮询/随机分片会数错)', '大小K小顶堆:堆顶=第K大=门槛;新词≤门槛直接扔,>门槛淘汰堆顶换上;O(n㏒K)≪全排序O(n㏒n)', '各片局部TopK→归并全局TopK=MapReduce;再大用Count-Min Sketch近似;热点倾斜二次分片'],
+  tabs: [{ id: 'design', label: '分片+堆' }], Stage: TopkStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: `Top-${s.K} 求出` } : { key: 'idle', label: s.phase === 'shard' ? '哈希分片' : s.phase === 'heap' ? '小顶堆' : '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 12)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.op === 'replace' ? '换' : s.op === 'skip' ? '扔' : s.phase === 'heap' ? '堆' : s.phase === 'shard' ? '片' : 'K'),
   readouts: s => [
-    { label: '阶段', value: s.stage || '就绪' },
-    { label: '关键', value: s.metric || '—' },
-    { label: '已定组件', value: `${s.components.length} 个` },
-    { label: '架构', value: s.components.map(c => c.label).join('→') || '—' },
+    { label: '当前机制', value: s.phase === 'heap' || s.phase === 'done' ? '小顶堆' : s.phase === 'shard' ? '哈希分片' : '就绪' },
+    { label: '堆顶门槛', value: s.threshold < 0 ? '—(未满)' : `${s.threshold}（第${s.K}大）` },
+    { label: '堆内容', value: s.heap.length ? s.heap.map(x => `${x.word}${x.count}`).join(' ') : '空' },
+    { label: `Top-${s.K}`, value: s.topk.length ? s.topk.map(x => `${x.word}=${x.count}`).join(', ') : '求解中' },
   ],
 }
 const mqdesign: Experiment<SysDesignState> = {

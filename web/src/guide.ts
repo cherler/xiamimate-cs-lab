@@ -351,15 +351,21 @@ export const GUIDES: Record<string, Guide> = {
     try: [{ act: '按「下一步」走框架', watch: '需求→估算→推→拉→推拉结合，组件一块块搭。' }, { act: '记住两条要点', watch: '推快读写放大、拉快写慢读；大 V 走拉避免写放大——面试要点。' }], terms: [],
   },
   topk: {
-    question: '10 亿条记录求出现最多的 K 个，但内存装不下全部计数，怎么办？',
-    read: [{ at: '架构', is: '一步步搭起来的组件（数据源→分片→计数+堆→归并）。', anchor: '.sd-arch' }, { at: '读数', is: '当前阶段、关键数、组件。', anchor: '.scdim' }],
-    step: (s: never) => { const st = s as { stage: string; focus: string; metric: string; components: unknown[]; phase: string }; return [
-      { k: '本步输入', v: st.phase === 'done' ? '走完整套 Top-K 设计' : `${st.stage}` },
-      { k: '判定规则', v: '分而治之：哈希分片(hash%N，同 key 必同片→各片独立统计) → 分片内哈希计数 + 大小 K 小顶堆(O(n㏒K)求本片 Top-K) → 归并各片 Top-K 成全局 Top-K。每步问"为什么这么选"。' },
-      { k: '本步结果', v: st.phase === 'done' ? '一套海量 Top-K 方案，可讲清分片/堆/归并的取舍' : `${st.focus}；关键：${st.metric}（已定 ${st.components.length} 个组件）` },
+    question: '内存装不下全部计数，怎么求出现最多的 K 个？哈希分片和小顶堆各解决什么？',
+    read: [{ at: '分片表', is: '各片的词→计数；同一个词只会在一片里。', anchor: '.tk-shards' }, { at: '小顶堆', is: 'K 个槽，堆顶(门槛)高亮；新词比门槛大才挤进来。', anchor: '.tk-heap' }],
+    step: (s: never) => { const st = s as { phase: string; op: string; K: number; N: number; route: { word: string; shard: number; count: number } | null; heap: { word: string; count: number }[]; consider: { word: string; count: number } | null; evicted: { word: string; count: number } | null; threshold: number; topk: { word: string; count: number }[]; focus: string }; return [
+      { k: '本步输入', v: st.phase === 'done' ? '分片+堆全走完' : st.route ? `路由词「${st.route.word}」(计数 ${st.route.count})` : st.consider ? `考察词「${st.consider.word}」(计数 ${st.consider.count})` : '准备' },
+      { k: '判定规则', v: `哈希分片：hash(词)%${st.N} 确定→同词必同片、计数不被拆。小顶堆(大小 ${st.K})：堆顶=第 ${st.K} 大=门槛；新词 ≤ 门槛直接扔，> 门槛淘汰堆顶换上，O(㏒K)。` },
+      { k: '本步结果', v: st.phase === 'done'
+        ? `Top-${st.K} = ${st.topk.map(x => `${x.word}${x.count}`).join('、')}，门槛 ${st.threshold}`
+        : st.route
+          ? `「${st.route.word}」→ shard${st.route.shard}，计数 ${st.route.count}`
+          : st.op === 'insert' ? `堆未满→放入，堆顶门槛=${st.threshold < 0 ? '未满' : st.threshold}`
+          : st.op === 'replace' ? `${st.consider?.count} > 门槛 ${st.evicted?.count} → 淘汰「${st.evicted?.word}」，新门槛 ${st.threshold}`
+          : st.op === 'skip' ? `${st.consider?.count} ≤ 门槛 ${st.threshold} → 扔` : '就绪' },
     ] },
-    verdict: (s: never) => { const st = s as { phase: string; stage: string }; return st.phase === 'done' ? '设计完成' : st.stage.replace(/^[①②③④⑤⑥⑦]\s*/, '') },
-    try: [{ act: '按「下一步」走框架', watch: '需求→估算→哈希分片→分片内堆→归并，组件一块块搭。' }, { act: '记住两个要点', watch: '哈希分片(同key同片才能独立统计)、小顶堆(O(n㏒K)求TopK)——面试要点。' }], terms: [],
+    verdict: (s: never) => { const st = s as { phase: string; op: string; K: number; topk: { word: string }[]; threshold: number }; return st.phase === 'done' ? `Top-${st.K}: ${st.topk.map(x => x.word).join('>')}` : st.op === 'replace' ? '淘汰堆顶' : st.op === 'skip' ? '低于门槛扔' : st.phase === 'shard' ? '哈希分片' : st.phase === 'heap' ? `门槛 ${st.threshold < 0 ? '未满' : st.threshold}` : '就绪'; },
+    try: [{ act: '看分片：同词同片', watch: 'hash(词) 确定，所以「苹果」每次都落同一片——计数不被拆到两片，独立统计才不出错。' }, { act: '看堆的淘汰与门槛', watch: '堆满后堆顶就是门槛(第 K 大)；橙子3>门槛1 淘汰梨，葡萄2/桃1≤门槛3 直接扔——大多数词一比就走。' }], terms: [],
   },
   seckill: {
     question: '库存 2 件、3 个请求同时抢，为什么 naive 扣库存会卖出 3 件？原子 DECR 怎么修？',
