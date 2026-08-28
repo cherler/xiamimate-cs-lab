@@ -314,6 +314,7 @@ import { seckillKernel, type SeckillState } from '@engine/kernels/seckill.ts'
 import { mqdesignKernel, type MqState } from '@engine/kernels/mqdesign.ts'
 import { topkKernel, type TopkState } from '@engine/kernels/topk.ts'
 import { feedKernel, type FeedState } from '@engine/kernels/feed.ts'
+import { fkKernel, type FKState } from '@engine/kernels/fk.ts'
 import { objectstoreKernel } from '@engine/kernels/objectstore.ts'
 import { SysDesignStage } from './stages/SysDesignStage.tsx'
 import { SeckillStage } from './stages/SeckillStage.tsx'
@@ -321,6 +322,7 @@ import { UrlStage } from './stages/UrlStage.tsx'
 import { TopkStage } from './stages/TopkStage.tsx'
 import { MqStage } from './stages/MqStage.tsx'
 import { FeedStage } from './stages/FeedStage.tsx'
+import { FKStage } from './stages/FKStage.tsx'
 import { CollisionStage } from './stages/CollisionStage.tsx'
 import { gcnKernel, type GcnState } from '@engine/kernels/gcn.ts'
 import { GcnStage } from './stages/GcnStage.tsx'
@@ -6120,6 +6122,24 @@ const mqdesign: Experiment<MqState> = {
   ],
 }
 
+// ── 具身智能 · 机器人学基础 ──
+const fk: Experiment<FKState> = {
+  id: 'fk', group: '机器人学基础', title: '正向运动学 FK', subtitle: '关节角 → 末端位姿：连杆链逐关节累加',
+  kernel: fkKernel, defaultDoc: { kind: 'fk', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '机器人学第一课：已知每个关节转多少度、每根连杆多长，求末端(手爪/脚尖)在哪、朝哪。三连杆 L=[2,2,1]、θ=[30°,60°,-30°]，逐关节把角叠进累计朝向 cumθ、再沿它走一根连杆，末端坐标全用 cos/sin 真算、可手核。连杆链是通用的——机械臂一条链、机器狗一条腿也是。',
+  bounds: ['FK:关节角→末端位姿,沿链累加 (xᵢ,yᵢ)=(xᵢ₋₁,yᵢ₋₁)+Lᵢ·(cos cumθᵢ,sin cumθᵢ)', '累计朝向 cumθᵢ=θ₁+…+θᵢ 决定这一节朝哪,连杆长决定走多远', '本例末端=(2.232,3.866)、朝向60°;是齐次变换连乘T₁T₂T₃的平面直觉版', 'FK唯一解(角定末端定);反过来求关节角=逆运动学IK,可能多解/无解更难'],
+  tabs: [{ id: 'design', label: '连杆链' }], Stage: FKStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: '末端求出' } : { key: 'idle', label: s.revealed > 0 ? `关节 ${s.revealed}` : '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, s.revealed / s.links.length)),
+  tickLabel: s => (s.phase === 'done' ? '末' : s.revealed > 0 ? `J${s.revealed}` : '基'),
+  readouts: s => [
+    { label: '已应用关节', value: `${s.revealed}/${s.links.length}` },
+    { label: '累计朝向 cumθ', value: `${s.cumAngle}°` },
+    { label: '当前末端', value: `(${s.points[s.points.length - 1]!.x}, ${s.points[s.points.length - 1]!.y})` },
+    { label: '末端朝向', value: s.phase === 'done' ? `${s.endAngle}°` : '求解中' },
+  ],
+}
+
 export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
@@ -6131,6 +6151,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
+  fk,
 ] as unknown as AnyExperiment[]
 
 /**
@@ -6296,6 +6317,14 @@ export const DISCIPLINES: Discipline[] = [
     guide: { from: '一次注意力', to: '大模型推理引擎', toIcon: '🤖' },
   },
   {
+    key: 'embodied', title: '具身智能', icon: '🦾', status: 'active',
+    sub: '机器人学 → 感知 · 控制 · 规划 → 具身智能',
+    // 从零到具身智能工程师：机器人学基础(运动学/雅可比)→感知(卡尔曼/SLAM)→控制(PID/力控)
+    // →规划(RRT)→具身学习(模仿/RL/VLA)→开源实战(LeRobot/MuJoCo)。分组随实验增量补齐。
+    groups: ['机器人学基础'],
+    guide: { from: '一次关节转动', to: '具身智能工程师', toIcon: '🦾' },
+  },
+  {
     key: 'security', title: '安全', icon: '🔐', status: 'active',
     sub: '密码学 → 可信系统',
     groups: ['密码学'],
@@ -6317,6 +6346,7 @@ export const ANCHORS: Anchor[] = [
   { key: 'software', label: '软件', icon: '🧩', kind: '造物' },
   { key: 'internet', label: '互联网', icon: '🌐', kind: '造物' },
   { key: 'llm', label: '大模型', icon: '🤖', kind: '造物' },
+  { key: 'robot', label: '机器人', icon: '🦾', kind: '造物' },
   { key: 'battery', label: '电池', icon: '🔋', kind: '造物', status: 'planned' },
   { key: 'phone', label: '手机', icon: '📱', kind: '造物', status: 'planned' },
   { key: 'car', label: '汽车', icon: '🚗', kind: '造物', status: 'planned' },
@@ -6343,6 +6373,7 @@ export const GROUP_ANCHOR: Record<string, string> = {
   '算法系统设计': 'internet',
   '算法项目实战': 'software',
   '大模型项目实战': 'llm',
+  '机器人学基础': 'robot',
 }
 
 export const ANCHOR_BY_KEY: Record<string, Anchor> = Object.fromEntries(ANCHORS.map(a => [a.key, a]))

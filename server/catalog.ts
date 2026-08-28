@@ -92,6 +92,7 @@ import { quickselectKernel } from '../src/kernels/quickselect.ts'
 import { lockstrategyKernel } from '../src/kernels/lockstrategy.ts'
 import { bufferpoolKernel } from '../src/kernels/bufferpool.ts'
 import { feedKernel } from '../src/kernels/feed.ts'
+import { fkKernel } from '../src/kernels/fk.ts'
 import { objectstoreKernel } from '../src/kernels/objectstore.ts'
 import { queryplanKernel } from '../src/kernels/queryplan.ts'
 import { wildcardKernel } from '../src/kernels/wildcard.ts'
@@ -1601,6 +1602,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: '大 V 有百万粉丝，推拉结合怎么避免他发帖时的写放大?', kind: 'choice',
         compute: () => ({ answer: '普通用户走推（读快）；大 V 走拉——发帖不推给百万粉丝、只存自己 outbox，粉丝刷时才现拉大 V 的帖、和收件箱归并。既避免写放大、普通场景又读快', step: 5, evidence: '本例大 V 100 万粉，2 帖走拉省下 2,000,000 次写' }),
         distractors: () => ['给大 V 更多服务器推', '禁止大 V 发帖太频繁', '大 V 也全量推、只是异步'],
+      },
+    ],
+  },
+  {
+    id: 'fk', title: '正向运动学 FK', kernel: fkKernel as Kernel<unknown>, doc: trivialDoc('fk'),
+    facts: [
+      {
+        id: 'cum_angle', label: '累计朝向 cumθ 怎么算',
+        ask: '三连杆机械臂 θ=[30°,60°,-30°]，正向运动学里"累计朝向 cumθ"是怎么来的、关节2 之后是多少?', kind: 'choice',
+        compute: () => ({ answer: 'cumθᵢ = θ₁+θ₂+…+θᵢ，是从基座到当前关节的转角累加；关节2 之后 cumθ = 30+60 = 90°，所以那一节竖直向上走', step: 2, evidence: '关节2 后 cumθ=90°，从 (1.732,1) 沿 90° 走 L=2 → (1.732, 3)' }),
+        distractors: () => ['只看当前关节角，关节2 后是 60°', 'cumθ 是各连杆长度之和', '累计朝向不影响末端位置'],
+      },
+      {
+        id: 'fk_vs_ik', label: 'FK 和 IK 的区别',
+        ask: '正向运动学 FK（关节角→末端）和逆运动学 IK（末端→关节角），难度和解的性质有什么本质区别?', kind: 'choice',
+        compute: () => ({ answer: 'FK 是唯一解：关节角定了，沿连杆链 cos/sin 累加，末端位姿唯一确定（本例算出 (2.232,3.866)、朝向60°）。IK 反过来求关节角，可能多解、无解(够不到)或奇异，难得多', step: 3, evidence: 'FK 末端 (2.232,3.866) 由关节角唯一算出；IK 是反问题、不唯一' }),
+        distractors: () => ['FK 和 IK 都是唯一解', 'IK 更简单因为直接读末端', '两者完全等价、可互相替代'],
       },
     ],
   },

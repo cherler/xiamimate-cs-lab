@@ -364,6 +364,21 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; event: { mode: string } | null; op: string; pushWrites: number; savedWrites: number }; return st.phase === 'done' ? `推写${st.pushWrites}/省${st.savedWrites.toLocaleString()}` : st.event?.mode === 'push' ? '推·写扩散' : st.event?.mode === 'pull' ? '拉·存outbox' : st.op === 'merge' ? '刷feed归并' : '就绪'; },
     try: [{ act: '看普通用户走推', watch: 'A/B 发帖时写进每个粉丝(3人)收件箱——「我」的收件箱直接攒好，刷 feed 读它 O(1)。' }, { act: '看大V走拉省了多少', watch: '大V 百万粉，推要写百万次；走拉只存 outbox、省 2,000,000 次写，刷时才拉这一个作者。最后两路按时间归并成 feed。' }], terms: [],
   },
+  fk: {
+    question: '已知每个关节转了多少度、每根连杆多长，机械臂末端到底在哪、朝哪？',
+    read: [{ at: '连杆臂', is: '平面手臂逐关节画出来，末端(橙点)是求解目标。', anchor: '.fk-svg' }, { at: '读数', is: '已应用关节、累计朝向 cumθ、当前末端坐标。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { phase: string; links: { theta: number; L: number }[]; revealed: number; cur: number; points: { x: number; y: number }[]; cumAngle: number; endAngle: number; focus: string }; return [
+      { k: '本步输入', v: st.phase === 'done' ? '三关节全部应用完' : st.revealed > 0 ? `应用关节 ${st.cur + 1}（θ=${st.links[st.cur]?.theta}°、L=${st.links[st.cur]?.L}）` : '准备：末端在基座 (0,0)' },
+      { k: '判定规则', v: '把这个关节的角叠进累计朝向 cumθ=θ₁+…+θᵢ，再从上一节末端沿 cumθ 走一根连杆：xᵢ=xᵢ₋₁+Lᵢ·cos cumθᵢ，yᵢ=yᵢ₋₁+Lᵢ·sin cumθᵢ。一节一节累到末端。' },
+      { k: '本步结果', v: st.phase === 'done'
+        ? `末端位姿 (${st.points[st.points.length - 1]?.x}, ${st.points[st.points.length - 1]?.y})、朝向 ${st.endAngle}°`
+        : st.revealed > 0
+          ? `累计朝向 ${st.cumAngle}°，第 ${st.revealed} 节末端 (${st.points[st.points.length - 1]?.x}, ${st.points[st.points.length - 1]?.y})`
+          : '末端 (0, 0)' },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; revealed: number; points: { x: number; y: number }[] }; return st.phase === 'done' ? `末端 (${st.points[st.points.length - 1]?.x}, ${st.points[st.points.length - 1]?.y})` : st.revealed > 0 ? `第 ${st.revealed} 节` : '基座'; },
+    try: [{ act: '逐关节看累计朝向', watch: 'cumθ 是从基座到当前的角度和；关节2 后 cumθ=90°，那一节就竖直向上走 L=2 到 (1.732, 3)。' }, { act: '想反问题：IK', watch: 'FK 是关节角→末端(唯一解)；反过来「要末端到某点，各关节转几度」是逆运动学 IK——可能多解或够不到，难得多。' }], terms: [],
+  },
   topk: {
     question: '内存装不下全部计数，怎么求出现最多的 K 个？哈希分片和小顶堆各解决什么？',
     read: [{ at: '分片表', is: '各片的词→计数；同一个词只会在一片里。', anchor: '.tk-shards' }, { at: '小顶堆', is: 'K 个槽，堆顶(门槛)高亮；新词比门槛大才挤进来。', anchor: '.tk-heap' }],
