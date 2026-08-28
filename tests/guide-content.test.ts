@@ -233,6 +233,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { step: 8, kind: 'action', round: 3, text: '', tool: 'calc', arg: '30 - 25', obs: '', history: [{ kind: 'thought', text: '两地都有了：30 和 25。用计算器算差。' }], answer: '', phase: 'run', focus: '第 3 轮 · Action：calc(30 - 25)' },
       b: { step: 11, kind: 'answer', round: 4, text: '北京今天最高 30°C，上海 25°C，北京比上海热 5°C。', tool: '', arg: '', obs: '', history: [{ kind: 'thought', text: 'x' }], answer: '北京今天最高 30°C，上海 25°C，北京比上海热 5°C。', phase: 'done', focus: 'Final Answer：够了，作答' },
     },
+    wildcard: {
+      doc: { kind: 'wildcard', params: {}, entities: [], streams: [] },
+      a: { step: 4, op: 'backtrack', s: 'abcd', p: 'a*d', si: 3, pj: 2, star: 1, coverFrom: 1, coverTo: 3, matched: false, phase: 'run', focus: "走不通 → 回溯到锚点，让 '*' 多吃一个字符" },
+      b: { step: 6, op: 'done', s: 'abcd', p: 'a*d', si: 4, pj: 3, star: 1, coverFrom: 1, coverTo: 3, matched: true, phase: 'done', focus: 's 扫完、p 剩下的都是 * → 匹配 ✓' },
+    },
     bufferpool: {
       doc: { kind: 'bufferpool', params: {}, entities: [], streams: [] },
       a: { step: 2, op: 'scan', young: ['A', 'B', 'C'], old: ['S1', 'D'], loaded: 'S1', evicted: 'E', scanned: ['S1'], phase: 'run', focus: '扫描装载 S1 → 插中点(old 头)，淘汰 old 尾 E' },

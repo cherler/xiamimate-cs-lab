@@ -4405,6 +4405,24 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .bfp-note.ok { color:var(--hit); border-color:var(--hit); background:color-mix(in srgb, var(--hit) 7%, var(--panel)); }
 .bfp-note.ok b { color:var(--hit); }
 
+/* ── 通配符匹配 ── */
+.wc-row { display:flex; align-items:center; gap:12px; margin:6px 0; }
+.wc-lbl { font-family:var(--mono); font-size:13px; font-weight:700; color:var(--dim); min-width:16px; }
+.wc-cells { display:flex; gap:5px; align-items:center; }
+.wc-cell { display:flex; flex-direction:column; align-items:center; gap:1px; width:34px; padding:6px 0; border:1.5px solid var(--line); border-radius:8px; background:var(--sunk-1); font-family:var(--mono); font-size:16px; font-weight:700; color:var(--ink); }
+.wc-cell i { font-style:normal; font-size:9px; color:var(--faint); }
+.wc-cell.ptr { border-color:var(--now); box-shadow:0 0 0 1px var(--now); }
+.wc-cell.cover { background:color-mix(in srgb, var(--hit) 14%, var(--panel)); border-color:var(--hit); color:var(--hit); }
+.wc-cell.star { color:var(--f-tag); }
+.wc-cell.any { color:var(--now); }
+.wc-cell.anchor { border-color:var(--f-tag); box-shadow:0 0 0 1px var(--f-tag); }
+.wc-cell.ok { border-color:var(--hit); }
+.wc-end { font-size:14px; color:var(--faint); margin-left:2px; }
+.wc-end.at { color:var(--hit); font-weight:700; }
+.wc-note { margin:8px 0 10px; padding:7px 12px; font-size:12.5px; border-radius:8px; border:1px solid var(--f-tag); background:color-mix(in srgb, var(--f-tag) 7%, var(--panel)); color:var(--t-body); }
+.wc-note b { color:var(--ink); font-family:var(--mono); }
+.wc-note.mv { border-color:var(--now); background:color-mix(in srgb, var(--now) 7%, var(--panel)); }
+
 /* ── mini 搜索引擎（倒排索引 + TF-IDF） ── */
 .ms-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:8px 0 12px; }
 .ms-col { display:flex; flex-direction:column; gap:6px; min-width:0; }

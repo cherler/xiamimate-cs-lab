@@ -92,6 +92,7 @@ import { quickselectKernel } from '../src/kernels/quickselect.ts'
 import { lockstrategyKernel } from '../src/kernels/lockstrategy.ts'
 import { bufferpoolKernel } from '../src/kernels/bufferpool.ts'
 import { feedKernel } from '../src/kernels/feed.ts'
+import { wildcardKernel } from '../src/kernels/wildcard.ts'
 import { walKernel } from '../src/kernels/wal.ts'
 import { lsmKernel } from '../src/kernels/lsm.ts'
 import { minikvKernel } from '../src/kernels/minikv.ts'
@@ -1596,6 +1597,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: '大 V 有千万粉丝，推拉结合怎么避免他发帖时的写放大?', kind: 'choice',
         compute: () => ({ answer: '普通用户走推（写扩散、读快）；大 V 走拉——发帖不推给千万粉丝，粉丝刷时才现拉大 V 的最新帖、和自己收件箱归并。既避免大 V 写放大，普通场景又保持读快', step: 4, evidence: '按粉丝数阈值判定大 V，大 V 的帖读时才拉' }),
         distractors: () => ['给大 V 更多服务器推', '禁止大 V 发帖太频繁', '大 V 也全量推、只是异步'],
+      },
+    ],
+  },
+  {
+    id: 'wildcard', title: '通配符匹配', kernel: wildcardKernel as Kernel<unknown>, doc: trivialDoc('wildcard'),
+    facts: [
+      {
+        id: 'star_backtrack', label: '通配符 * 该吃几个字符怎么定',
+        ask: '通配符匹配里 * 能配任意一段，它到底该吃几个字符？双指针法怎么处理?', kind: 'choice',
+        compute: () => ({ answer: '遇到 * 时先记下"锚点"(它的位置和此刻的 s 位置)、当作匹配 0 个往后走；一旦后面走不通，就回溯到锚点、让 * 多吃一个字符再试。贪心+回溯，不用枚举', step: 2, evidence: 'p="a*d"，* 先当匹配 0 个，后面 d≠b 走不通→回溯让 * 吃 b、再吃 c' }),
+        distractors: () => ['* 总是吃掉剩下所有字符', '* 总是只吃一个字符', '枚举 * 吃 0 到 n 个全试一遍'],
+      },
+      {
+        id: 'why_anchor', label: '双指针法的空间复杂度',
+        ask: '通配符匹配用"双指针+回溯锚点"而不是动态规划，好处是?', kind: 'choice',
+        compute: () => ({ answer: '只用几个指针变量记锚点，O(n) 时间、O(1) 额外空间；而 DP 要 O(n×m) 的二维表。锚点法本质是把"* 该吃几个"的搜索用回溯代替了枚举', step: 6, evidence: '全程只维护 si/pj/star/sTmp 几个变量，无二维表' }),
+        distractors: () => ['双指针一定比 DP 慢', '双指针要 O(n×m) 空间', '两种方法空间一样'],
       },
     ],
   },

@@ -386,6 +386,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; kind: string; round: number }; return st.phase === 'done' ? '得到答案' : st.kind === 'action' ? '调工具' : st.kind === 'observation' ? '拿到结果' : st.kind === 'thought' ? `想·第${st.round}轮` : '开始' },
     try: [{ act: '看想→做→看循环', watch: 'Thought 决定查气温 → Action search → Observation 30°C → 下一轮再想。' }, { act: '看工具给真数据', watch: 'calc(30-25) 返回 5，不是模型口算——Agent 用真结果，少幻觉。' }], terms: [],
   },
+  wildcard: {
+    question: '通配符 * 能配任意一段，它到底该吃几个字符？怎么不用递归就搞定？',
+    read: [{ at: 's / p 两行', is: '双指针位置、* 覆盖的字符(绿)、锚点(黄)。', anchor: '.wc-row' }, { at: '读数', is: '本步、双指针、* 吃了什么。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { op: string; s: string; p: string; si: number; pj: number; star: number; coverFrom: number; coverTo: number; matched: boolean; phase: string }; const eaten = st.coverFrom >= 0 && st.coverTo > st.coverFrom ? st.s.slice(st.coverFrom, st.coverTo) : ''; return [
+      { k: '本步输入', v: st.phase === 'done' ? `s 扫到头(si=${st.si})` : st.op === 'intro' ? `s="${st.s}" p="${st.p}"` : st.op === 'match' ? `字符匹配，si→${st.si}、pj→${st.pj}` : st.op === 'star' ? `遇 *(p=${st.star})` : `回溯，* 多吃一个` },
+      { k: '判定规则', v: '字符相同或 ? → 两指针都前进。遇 * → 记锚点(位置+此刻 si)、先当匹配 0 个越过。走不通 → 回锚点让 * 多吃一个。贪心+回溯，O(1) 额外空间。' },
+      { k: '本步结果', v: st.phase === 'done' ? `${st.matched ? '匹配 ✓' : '不匹配 ✗'}（* 吃了 "${eaten}"）` : st.op === 'match' ? `si=${st.si}, pj=${st.pj}${eaten ? `；* 已吃 "${eaten}"` : ''}` : st.op === 'backtrack' ? `* 吃到 "${eaten}"，si=${st.si} 继续` : st.op === 'star' ? `锚点记在 p=${st.star}，pj=${st.pj}` : '开始匹配' },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; op: string; matched: boolean }; return st.phase === 'done' ? (st.matched ? '匹配✓' : '不匹配') : st.op === 'match' ? '匹配' : st.op === 'star' ? '记锚点' : st.op === 'backtrack' ? '回溯' : '就绪' },
+    try: [{ act: '看遇 * 记锚点', watch: '遇到 * 先记下位置、当匹配 0 个往后走，不急着决定吃几个。' }, { act: '看回溯多吃', watch: 'd≠b 走不通 → 回锚点让 * 多吃一个(b、再 c)，最后 d↔d 匹配 ✓。' }], terms: [],
+  },
   bufferpool: {
     question: '一次全表扫描会不会把缓存里的热点页都冲掉？MySQL 怎么防？',
     read: [{ at: 'LRU 两段', is: 'young 热区 / 中点 / old 冷区，新页从中点进。', anchor: '.bfp-lru' }, { at: '读数', is: '本步、young 热区、old 冷区、淘汰。', anchor: '.scdim' }],

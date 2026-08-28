@@ -340,6 +340,7 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   lockstrategy: {},
   bufferpool: {},
   feed: {},
+  wildcard: {},
   astar: {},
   perceptron: {},
   pooling: { kind: 'string' },

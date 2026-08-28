@@ -292,6 +292,8 @@ import { lockstrategyKernel, type LockState } from '@engine/kernels/lockstrategy
 import { LockStrategyStage } from './stages/LockStrategyStage.tsx'
 import { bufferpoolKernel, type BufPoolState } from '@engine/kernels/bufferpool.ts'
 import { BufferPoolStage } from './stages/BufferPoolStage.tsx'
+import { wildcardKernel, type WildState } from '@engine/kernels/wildcard.ts'
+import { WildcardStage } from './stages/WildcardStage.tsx'
 import { walKernel, type WALState } from '@engine/kernels/wal.ts'
 import { WALStage } from './stages/WALStage.tsx'
 import { lsmKernel, type LSMState } from '@engine/kernels/lsm.ts'
@@ -5559,6 +5561,22 @@ const ecbcbc: Experiment<EcbCbcState> = {
     { label: '重复块', value: s.phase === 'done' ? 'ECB 泄露 / CBC 安全' : '对比中' },
   ],
 }
+const wildcard: Experiment<WildState> = {
+  id: 'wildcard', group: '算法项目实战', title: '通配符匹配', subtitle: '? 配一个、* 配一段：双指针 + 回溯锚点',
+  kernel: wildcardKernel, defaultDoc: { kind: 'wildcard', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '无可调参数。s="abcd" p="a*d"。?配任意单字符、*配任意一段(可空)。双指针:遇*记锚点、先当匹配0个;走不通回溯让*多吃一个。a↔a→遇*→回溯吃b→吃c→d↔d→匹配✓。指针/*覆盖可手核。详见讲解卡。',
+  bounds: ['?配任意单字符;*配任意一段(含空);难在*该吃几个', '双指针:遇*记锚点(位置+此刻si)、先当匹配0个越过', '走不通→回溯到锚点、*多吃一个字符再试', 'O(n)空间不用递归/DP;*吃"bc"最后d↔d→匹配;=文件通配/路由/SQL LIKE'],
+  tabs: [{ id: 'wc', label: '双指针回溯' }], Stage: WildcardStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? (s.matched ? { key: 'good', label: '匹配 ✓' } : { key: 'bad', label: '不匹配' }) : s.op === 'backtrack' ? { key: 'idle', label: '回溯' } : s.op === 'star' ? { key: 'idle', label: '记锚点' } : s.op === 'match' ? { key: 'good', label: '匹配' } : { key: 'idle', label: '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 7)),
+  tickLabel: s => (s.phase === 'done' ? (s.matched ? '✓' : '✗') : s.op === 'match' ? '配' : s.op === 'star' ? '锚' : s.op === 'backtrack' ? '溯' : '始'),
+  readouts: s => [
+    { label: '本步', value: s.op === 'intro' ? '就绪' : s.op === 'match' ? '匹配字符' : s.op === 'star' ? '遇 * 记锚点' : s.op === 'backtrack' ? '回溯 * 多吃一个' : '结束' },
+    { label: '双指针', value: `si=${s.si} · pj=${s.pj}` },
+    { label: '* 吃了', value: s.coverFrom >= 0 && s.coverTo > s.coverFrom ? `"${s.s.slice(s.coverFrom, s.coverTo)}"` : (s.star >= 0 ? '空' : '—') },
+    { label: '结果', value: s.phase === 'done' ? (s.matched ? '匹配 ✓' : '不匹配 ✗') : '匹配中', tone: s.phase === 'done' ? (s.matched ? 'good' : 'bad') : undefined },
+  ],
+}
 const bufferpool: Experiment<BufPoolState> = {
   id: 'bufferpool', group: '数据库系统', title: '缓冲池 midpoint-LRU', subtitle: '全表扫描冲不掉热点页（MySQL InnoDB）',
   kernel: bufferpoolKernel, defaultDoc: { kind: 'bufferpool', params: {}, entities: [], streams: [] }, params: [],
@@ -6029,7 +6047,7 @@ export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
   caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt, ecbcbc, birthday, aesround, hmac, totp,
-  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, bufferpool, rwlock, aba, happensbefore, lockstrategy, lrucache, lfucache, trie, quickselect, reactagent, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign, topk, feed,
+  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, bufferpool, wildcard, rwlock, aba, happensbefore, lockstrategy, lrucache, lfucache, trie, quickselect, reactagent, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign, topk, feed,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,
