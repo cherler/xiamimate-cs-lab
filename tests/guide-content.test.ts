@@ -228,6 +228,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { stage: '③ 发号 + 编码', focus: '短码怎么生成', detail: 'x', metric: '62^6 ≈ 568 亿个 6 位短码', components: [{ id: 'client', label: '客户端', role: 'r' }, { id: 'idgen', label: '发号器', role: 'r' }], phase: 'run' },
       b: { stage: '⑦ 权衡总结', focus: '一句话讲清取舍', detail: '', metric: '发号器>哈希>自增；301 vs 302', components: [{ id: 'client', label: '客户端', role: 'r' }, { id: 'cdn', label: 'CDN', role: 'r' }], phase: 'done' },
     },
+    mqdesign: {
+      doc: { kind: 'mqdesign', params: {}, entities: [], streams: [] },
+      a: { step: 2, stage: '③ 核心模型：分区顺序日志', focus: 'Topic → Partition → append-only 日志', detail: 'x', metric: 'Topic/Partition/append-only log + offset', components: [{ id: 'producer', label: '生产者', role: 'r' }, { id: 'partition', label: 'Partition 日志', role: 'r' }], phase: 'run' },
+      b: { step: 6, stage: '⑦ 权衡总结', focus: '一句话讲清取舍', detail: '', metric: '分区顺序日志 + 消费组offset + 多副本ack + key路由', components: [{ id: 'producer', label: '生产者', role: 'r' }, { id: 'router', label: 'key 路由', role: 'r' }], phase: 'done' },
+    },
     seckill: {
       doc: { kind: 'seckill', params: {}, entities: [], streams: [] },
       a: { step: 3, stage: '④ Redis 预扣库存', focus: '库存放内存，原子扣减挡住绝大多数', detail: 'x', metric: 'Redis 原子预扣，挡住绝大多数', components: [{ id: 'client', label: '抢购客户端', role: 'r' }, { id: 'redis', label: 'Redis 库存', role: 'r' }], phase: 'run' },

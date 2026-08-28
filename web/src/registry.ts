@@ -260,6 +260,7 @@ import { minisearchKernel, type SearchState } from '@engine/kernels/minisearch.t
 import { SearchStage } from './stages/SearchStage.tsx'
 import { urlshortenerKernel, type SysDesignState } from '@engine/kernels/urlshortener.ts'
 import { seckillKernel } from '@engine/kernels/seckill.ts'
+import { mqdesignKernel } from '@engine/kernels/mqdesign.ts'
 import { SysDesignStage } from './stages/SysDesignStage.tsx'
 import { CollisionStage } from './stages/CollisionStage.tsx'
 import { gcnKernel, type GcnState } from '@engine/kernels/gcn.ts'
@@ -5595,11 +5596,28 @@ const seckill: Experiment<SysDesignState> = {
   ],
 }
 
+const mqdesign: Experiment<SysDesignState> = {
+  id: 'mqdesign', group: '系统设计', title: '设计消息队列', subtitle: '分区日志→消费组→副本→保序',
+  kernel: mqdesignKernel, defaultDoc: { kind: 'mqdesign', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '系统设计高频题(对标 Kafka)：怎么用一条 append-only 日志把生产者/消费者解耦，做到高吞吐、可回放、不丢消息。走一遍——需求→估算→分区顺序日志→消费组+offset→副本+ack→保序扩展→权衡。详见讲解卡。',
+  bounds: ['核心=Topic→Partition→append-only日志,顺序写扛高吞吐,offset定位', '消费组:同组一分区一消费者;不同组独立;offset回退即重放', '不丢:多副本(ISR)+ack=all;Leader挂了从ISR选主', '保序:只保证分区内有序,按key哈希路由到固定分区'],
+  tabs: [{ id: 'design', label: '架构逐步搭' }], Stage: SysDesignStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: '设计完成' } : { key: 'idle', label: s.stage.replace(/^[①②③④⑤⑥⑦]\s*/, '') || '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 7)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.stage.slice(0, 1) || '设'),
+  readouts: s => [
+    { label: '阶段', value: s.stage || '就绪' },
+    { label: '关键', value: s.metric || '—' },
+    { label: '已定组件', value: `${s.components.length} 个` },
+    { label: '架构', value: s.components.map(c => c.label).join('→') || '—' },
+  ],
+}
+
 export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
   caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt,
-  tokenbucket, consistenthash, skiplist, twopc, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill,
+  tokenbucket, consistenthash, skiplist, twopc, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,

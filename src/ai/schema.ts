@@ -316,6 +316,7 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   urlshortener: {},
   seckill: {},
   minisearch: {},
+  mqdesign: {},
   astar: {},
   perceptron: {},
   pooling: { kind: 'string' },

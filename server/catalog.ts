@@ -75,6 +75,7 @@ import { minikvKernel } from '../src/kernels/minikv.ts'
 import { urlshortenerKernel } from '../src/kernels/urlshortener.ts'
 import { seckillKernel } from '../src/kernels/seckill.ts'
 import { minisearchKernel } from '../src/kernels/minisearch.ts'
+import { mqdesignKernel } from '../src/kernels/mqdesign.ts'
 // 与 registry 同源的预设常量：直接 import 保证 doc 逐字一致（引擎侧，无 React）。
 import { CRC_PRESETS, HAMMING_PRESETS, SUBNET_PRESETS, HUFF_PRESETS, BPLUS_PRESETS } from '../src/presets/sequences.ts'
 import { ROUTE_PRESETS } from '../src/presets/entities.ts'
@@ -1164,6 +1165,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: 'D1 和 D3 都含查询词"猫"，为什么 D3 排在 D1 前面?', kind: 'choice',
         compute: () => ({ answer: '"猫"在 D3 出现 2 次(tf=2)、在 D1 出现 1 次(tf=1)，score=tf×idf，词频高→更相关', step: 8, evidence: 'score(D3,猫项)=2×0.41=0.81 > score(D1,猫项)=1×0.41=0.41' }),
         distractors: () => ['D3 的 idf 更高', 'D3 含更多查询词', '两者其实一样，随机排的'],
+      },
+    ],
+  },
+  {
+    id: 'mqdesign', title: '设计消息队列', kernel: mqdesignKernel as Kernel<unknown>, doc: trivialDoc('mqdesign'),
+    facts: [
+      {
+        id: 'no_loss', label: '消息队列怎么保证不丢消息',
+        ask: '消息队列的红线是消息不丢。Broker 挂了也不丢，靠什么?', kind: 'choice',
+        compute: () => ({ answer: '每个分区多副本(ISR)，生产者 ack=all（ISR 都确认才算成功），Leader 挂了从 ISR 选新 Leader', step: 4, evidence: '单副本落盘也可能随机器一起丢，多副本 + ack=all 才扛得住宕机' }),
+        distractors: () => ['消息只存内存更快', '生产者 ack=0 发完即成功', '消费完就删除消息'],
+      },
+      {
+        id: 'ordering', label: '消息队列怎么保证顺序',
+        ask: '要让同一个订单的消息被顺序消费，消息队列怎么做?', kind: 'choice',
+        compute: () => ({ answer: '只保证单个分区内有序；按订单 key 哈希路由到固定分区，同 key 消息就都进同一分区、天然有序', step: 5, evidence: '跨分区不保证顺序，key 路由把需要保序的消息收敛到一个分区' }),
+        distractors: () => ['全局所有分区都有序', '加副本就能保序', '消费者随机拉取即可'],
       },
     ],
   },

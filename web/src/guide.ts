@@ -309,6 +309,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; stage: string }; return st.phase === 'done' ? '设计完成' : st.stage.replace(/^[①②③④⑤⑥⑦]\s*/, '') },
     try: [{ act: '按「下一步」走框架', watch: '需求→估算→发号编码→存储→缓存→扩展，架构一块块搭。' }, { act: '记住权衡', watch: '发号器 vs 哈希 vs 自增；301 vs 302——这些取舍是面试加分项。' }], terms: [],
   },
+  mqdesign: {
+    question: '生产者和消费者速度不一样，怎么用一条队列把它们解耦、还不丢消息？',
+    read: [{ at: '架构', is: '一步步搭起来的组件（生产者→Broker→分区日志→消费组→副本）。', anchor: '.sd-arch' }, { at: '读数', is: '当前阶段、关键数、组件。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { stage: string; focus: string; metric: string; components: unknown[]; phase: string }; return [
+      { k: '本步输入', v: st.phase === 'done' ? '走完整套消息队列设计' : `${st.stage}` },
+      { k: '判定规则', v: '核心=Topic→Partition→append-only 日志(顺序写=高吞吐,offset 定位)；消费组+offset(独立消费、可重放)；多副本+ack=all(不丢)；分区内有序 + key 路由(保序)。每步都问"为什么这么选"。' },
+      { k: '本步结果', v: st.phase === 'done' ? '一套消息队列搭好，可讲清解耦/不丢/保序的取舍' : `${st.focus}；关键：${st.metric}（已定 ${st.components.length} 个组件）` },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; stage: string }; return st.phase === 'done' ? '设计完成' : st.stage.replace(/^[①②③④⑤⑥⑦]\s*/, '') },
+    try: [{ act: '按「下一步」走框架', watch: '需求→估算→分区日志→消费组→副本→保序，组件一块块搭。' }, { act: '记住三条要点', watch: '顺序写=高吞吐、offset=可重放、多副本+ack=不丢——面试常问。' }], terms: [],
+  },
   seckill: {
     question: '一瞬间几万人抢 1000 件，怎么做到绝不超卖、又不被冲垮？',
     read: [{ at: '架构', is: '一步步搭起来的组件（客户端→限流→Redis→MQ→DB）。', anchor: '.sd-arch' }, { at: '读数', is: '当前阶段、关键数、组件。', anchor: '.scdim' }],
