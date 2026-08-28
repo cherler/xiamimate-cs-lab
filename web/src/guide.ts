@@ -318,15 +318,21 @@ export const GUIDES: Record<string, Guide> = {
     try: [{ act: '看 URL#1 的 Base62 逐位编码', watch: 'ID 100000000 不断取余 62、映射字符、商继续，倒序拼成 "6LAze"——9 位十进制压成 5 位。' }, { act: '看跳转那步解码', watch: '短码按 62 进制累加解回 ID，正好等于当初发的号——编码/解码可逆，这就是短→长的桥。' }], terms: [],
   },
   mqdesign: {
-    question: '生产者和消费者速度不一样，怎么用一条队列把它们解耦、还不丢消息？',
-    read: [{ at: '架构', is: '一步步搭起来的组件（生产者→Broker→分区日志→消费组→副本）。', anchor: '.sd-arch' }, { at: '读数', is: '当前阶段、关键数、组件。', anchor: '.scdim' }],
-    step: (s: never) => { const st = s as { stage: string; focus: string; metric: string; components: unknown[]; phase: string }; return [
-      { k: '本步输入', v: st.phase === 'done' ? '走完整套消息队列设计' : `${st.stage}` },
-      { k: '判定规则', v: '核心=Topic→Partition→append-only 日志(顺序写=高吞吐,offset 定位)；消费组+offset(独立消费、可重放)；多副本+ack=all(不丢)；分区内有序 + key 路由(保序)。每步都问"为什么这么选"。' },
-      { k: '本步结果', v: st.phase === 'done' ? '一套消息队列搭好，可讲清解耦/不丢/保序的取舍' : `${st.focus}；关键：${st.metric}（已定 ${st.components.length} 个组件）` },
+    question: '消息读走后为什么不删除？两个消费组怎么各读一遍同一条消息？offset 是谁的？',
+    read: [{ at: '分区日志', is: '两条 append-only 日志，每格带 offset；追加的高亮、被读的标记。', anchor: '.mq-parts' }, { at: '各组 offset', is: '每个分区头部显示 G1/G2 各自读到哪。', anchor: '.mq-poff' }],
+    step: (s: never) => { const st = s as { phase: string; op: string; P: number; parts: { log: unknown[] }[]; produce: { key: string; part: number; offset: number; val: string } | null; poll: { group: string; part: number; offset: number; val: string } | null; groups: { name: string; offsets: number[] }[]; focus: string }; return [
+      { k: '本步输入', v: st.phase === 'done' ? '生产追加+两组消费全走完' : st.produce ? `生产「${st.produce.val}」key=${st.produce.key}` : st.poll ? `${st.poll.group} poll 分区${st.poll.part}` : '准备' },
+      { k: '判定规则', v: `生产：key 哈希%${st.P} 选分区、追加到日志尾得单调 offset（同 key 同分区→分区内有序）。消费：读不删除，消费者自己的 offset 记读到哪、poll 一条 +1；不同组 offset 独立。` },
+      { k: '本步结果', v: st.phase === 'done'
+        ? `日志共 ${st.parts.reduce((a, p) => a + p.log.length, 0)} 条；G1 offset ${st.groups[0]!.offsets.join('/')}、G2 ${st.groups[1]!.offsets.join('/')}`
+        : st.produce
+          ? `「${st.produce.val}」→ 分区 ${st.produce.part}、offset ${st.produce.offset}`
+          : st.poll
+            ? `${st.poll.group} 读 分区${st.poll.part}@${st.poll.offset} →「${st.poll.val}」，offset→${st.poll.offset + 1}（消息不删）`
+            : '就绪' },
     ] },
-    verdict: (s: never) => { const st = s as { phase: string; stage: string }; return st.phase === 'done' ? '设计完成' : st.stage.replace(/^[①②③④⑤⑥⑦]\s*/, '') },
-    try: [{ act: '按「下一步」走框架', watch: '需求→估算→分区日志→消费组→副本→保序，组件一块块搭。' }, { act: '记住三条要点', watch: '顺序写=高吞吐、offset=可重放、多副本+ack=不丢——面试常问。' }], terms: [],
+    verdict: (s: never) => { const st = s as { phase: string; produce: unknown; poll: { group: string } | null; parts: { log: unknown[] }[] }; return st.phase === 'done' ? `日志 ${st.parts.reduce((a, p) => a + p.log.length, 0)} 条` : st.poll ? `${st.poll.group} 消费` : st.produce ? '生产追加' : '就绪'; },
+    try: [{ act: '看同 key 落同分区', watch: 'key=A 的两条(下单#1、付款#1)都追加到分区1、offset 0 和 1——分区内严格有序，这就是 MQ 的顺序保证。' }, { act: '看 G2 从 0 重读', watch: 'G1 早读过分区1的 offset 0 了，但消息没删；G2 offset 从 0 起照样读到「下单#1」——两组独立，各消费一遍(发布订阅)。' }], terms: [],
   },
   objectstore: {
     question: '存海量图片、短视频，怎么做到便宜、不丢、还播放不卡？',

@@ -355,8 +355,8 @@ console.log('\n【「这一步为什么」真的在跟着走】')
     },
     mqdesign: {
       doc: { kind: 'mqdesign', params: {}, entities: [], streams: [] },
-      a: { step: 2, stage: '③ 核心模型：分区顺序日志', focus: 'Topic → Partition → append-only 日志', detail: 'x', metric: 'Topic/Partition/append-only log + offset', components: [{ id: 'producer', label: '生产者', role: 'r' }, { id: 'partition', label: 'Partition 日志', role: 'r' }], phase: 'run' },
-      b: { step: 6, stage: '⑦ 权衡总结', focus: '一句话讲清取舍', detail: '', metric: '分区顺序日志 + 消费组offset + 多副本ack + key路由', components: [{ id: 'producer', label: '生产者', role: 'r' }, { id: 'router', label: 'key 路由', role: 'r' }], phase: 'done' },
+      a: { step: 11, phase: 'group2', op: 'poll', P: 2, parts: [{ id: 0, log: [{ offset: 0, key: 'B', val: '下单#2' }, { offset: 1, key: 'B', val: '退款#2' }] }, { id: 1, log: [{ offset: 0, key: 'A', val: '下单#1' }, { offset: 1, key: 'A', val: '付款#1' }, { offset: 2, key: 'C', val: '下单#3' }] }], produce: null, groups: [{ name: 'G1', offsets: [2, 3] }, { name: 'G2', offsets: [0, 1] }], active: 'G2', poll: { group: 'G2', part: 1, offset: 0, key: 'A', val: '下单#1' }, focus: 'G2 从分区 1@offset 0 也能读到「下单#1」', log: 'x' },
+      b: { step: 12, phase: 'done', op: 'summary', P: 2, parts: [{ id: 0, log: [{ offset: 0, key: 'B', val: '下单#2' }, { offset: 1, key: 'B', val: '退款#2' }] }, { id: 1, log: [{ offset: 0, key: 'A', val: '下单#1' }, { offset: 1, key: 'A', val: '付款#1' }, { offset: 2, key: 'C', val: '下单#3' }] }], produce: null, groups: [{ name: 'G1', offsets: [2, 3] }, { name: 'G2', offsets: [0, 1] }], active: '', poll: null, focus: '机制走完', log: 'x' },
     },
     objectstore: {
       doc: { kind: 'objectstore', params: {}, entities: [], streams: [] },

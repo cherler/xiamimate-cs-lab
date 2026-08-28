@@ -311,7 +311,7 @@ import { SearchStage } from './stages/SearchStage.tsx'
 import { urlshortenerKernel, type UrlState } from '@engine/kernels/urlshortener.ts'
 import type { SysDesignState } from '@engine/kernels/_sysdesign.ts'
 import { seckillKernel, type SeckillState } from '@engine/kernels/seckill.ts'
-import { mqdesignKernel } from '@engine/kernels/mqdesign.ts'
+import { mqdesignKernel, type MqState } from '@engine/kernels/mqdesign.ts'
 import { topkKernel, type TopkState } from '@engine/kernels/topk.ts'
 import { feedKernel } from '@engine/kernels/feed.ts'
 import { objectstoreKernel } from '@engine/kernels/objectstore.ts'
@@ -319,6 +319,7 @@ import { SysDesignStage } from './stages/SysDesignStage.tsx'
 import { SeckillStage } from './stages/SeckillStage.tsx'
 import { UrlStage } from './stages/UrlStage.tsx'
 import { TopkStage } from './stages/TopkStage.tsx'
+import { MqStage } from './stages/MqStage.tsx'
 import { CollisionStage } from './stages/CollisionStage.tsx'
 import { gcnKernel, type GcnState } from '@engine/kernels/gcn.ts'
 import { GcnStage } from './stages/GcnStage.tsx'
@@ -6101,20 +6102,20 @@ const topk: Experiment<TopkState> = {
     { label: `Top-${s.K}`, value: s.topk.length ? s.topk.map(x => `${x.word}=${x.count}`).join(', ') : '求解中' },
   ],
 }
-const mqdesign: Experiment<SysDesignState> = {
-  id: 'mqdesign', group: '系统设计', title: '设计消息队列', subtitle: '分区日志→消费组→副本→保序',
+const mqdesign: Experiment<MqState> = {
+  id: 'mqdesign', group: '系统设计', title: '设计消息队列', subtitle: '真仿真：分区日志(offset) + 消费位移',
   kernel: mqdesignKernel, defaultDoc: { kind: 'mqdesign', params: {}, entities: [], streams: [] }, params: [],
-  paramsNote: '系统设计高频题(对标 Kafka)：怎么用一条 append-only 日志把生产者/消费者解耦，做到高吞吐、可回放、不丢消息。走一遍——需求→估算→分区顺序日志→消费组+offset→副本+ack→保序扩展→权衡。详见讲解卡。',
-  bounds: ['核心=Topic→Partition→append-only日志,顺序写扛高吞吐,offset定位', '消费组:同组一分区一消费者;不同组独立;offset回退即重放', '不丢:多副本(ISR)+ack=all;Leader挂了从ISR选主', '保序:只保证分区内有序,按key哈希路由到固定分区'],
-  tabs: [{ id: 'design', label: '架构逐步搭' }], Stage: SysDesignStage, whyInRail: true,
-  tone: s => (s.phase === 'done' ? { key: 'good', label: '设计完成' } : { key: 'idle', label: s.stage.replace(/^[①②③④⑤⑥⑦]\s*/, '') || '就绪' }),
-  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 7)),
-  tickLabel: s => (s.phase === 'done' ? '毕' : s.stage.slice(0, 1) || '设'),
+  paramsNote: 'MQ 的核心机制——append-only 分区日志 + 消费位移。真跑：5 条带 key 的消息哈希分区追加（看 offset 怎么长、同 key 同分区保序），消费组 G1 逐条 poll（offset 前进），再让 G2 从 0 读同一批（消息还在→组间独立消费/可回放）。offset/分区全真算。',
+  bounds: ['核心=append-only分区日志:追加得单调offset;同key哈希到同分区→分区内严格有序(全局有序做不到)', 'offset归消费者:读不删除,消费者自己记读到哪;poll一条+1', '不同组独立offset→同一条消息每组各消费一遍(发布订阅);offset回拨即重放', '不丢:生产acks+多副本ISR;消费提交offset时机(先处理后提交=至少一次)'],
+  tabs: [{ id: 'design', label: '日志+offset' }], Stage: MqStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: '机制走完' } : { key: 'idle', label: s.phase === 'produce' ? '生产追加' : s.phase === 'consume' ? 'G1 消费' : s.phase === 'group2' ? 'G2 独立消费' : '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 12)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.op === 'append' ? '追' : s.op === 'poll' ? (s.active === 'G2' ? '2' : '读') : 'MQ'),
   readouts: s => [
-    { label: '阶段', value: s.stage || '就绪' },
-    { label: '关键', value: s.metric || '—' },
-    { label: '已定组件', value: `${s.components.length} 个` },
-    { label: '架构', value: s.components.map(c => c.label).join('→') || '—' },
+    { label: '日志消息数', value: `${s.parts.reduce((a, p) => a + p.log.length, 0)} 条` },
+    { label: '分区0 / 分区1', value: `${s.parts[0]!.log.length} / ${s.parts[1]!.log.length}` },
+    { label: 'G1 offset(p0/p1)', value: s.groups[0]!.offsets.join(' / ') },
+    { label: 'G2 offset(p0/p1)', value: s.groups[1]!.offsets.join(' / ') },
   ],
 }
 

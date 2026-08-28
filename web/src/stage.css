@@ -4594,3 +4594,27 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .tk-consider{margin-top:11px;padding:8px 13px;border-radius:8px;font-size:13px;color:var(--dim);background:var(--sunk-2)}
 .tk-consider .ok{color:var(--hit);font-weight:600}
 .tk-consider .miss{color:var(--miss)}
+
+/* ── 消息队列：分区日志 + offset ── */
+.mq-parts{display:flex;flex-direction:column;gap:12px;margin:14px 0 4px}
+.mq-part{border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.mq-phead{display:flex;align-items:center;gap:10px;padding:6px 12px;background:var(--sunk-2);font-size:12px;font-weight:600;color:var(--ink);border-bottom:1px solid var(--line-soft)}
+.mq-phead em{font-style:normal;font-family:var(--mono);font-size:10px;color:var(--faint)}
+.mq-poff{margin-left:auto;display:flex;gap:8px}
+.mq-ptag{font-family:var(--mono);font-size:10.5px;padding:1px 7px;border-radius:5px}
+.mq-ptag.g1{color:var(--now);background:color-mix(in srgb,var(--now) 12%,transparent)}
+.mq-ptag.g2{color:var(--hit);background:color-mix(in srgb,var(--hit) 12%,transparent)}
+.mq-log{display:flex;flex-wrap:wrap;gap:8px;padding:11px 12px;min-height:40px}
+.mq-cell{display:flex;flex-direction:column;align-items:center;gap:1px;min-width:76px;padding:6px 9px;border:1.5px solid var(--line);border-radius:8px;background:var(--panel);transition:all .15s}
+.mq-cell .mq-off{font-family:var(--mono);font-size:9.5px;color:var(--faint);font-style:normal}
+.mq-cell b{font-size:13px;color:var(--ink)}
+.mq-cell .mq-key{font-style:normal;font-family:var(--mono);font-size:9.5px;color:var(--faint)}
+.mq-cell.append{border-color:var(--now);background:color-mix(in srgb,var(--now) 12%,var(--panel));box-shadow:0 0 0 3px var(--sunk-2)}
+.mq-cell.read{opacity:.55}
+.mq-cell.poll.g1{border-color:var(--now);background:color-mix(in srgb,var(--now) 16%,var(--panel))}
+.mq-cell.poll.g2{border-color:var(--hit);background:color-mix(in srgb,var(--hit) 14%,var(--panel))}
+.mq-note{margin:11px 0 2px;padding:8px 13px;border-radius:8px;font-size:12.5px;color:var(--ink);background:var(--sunk-2)}
+.mq-note code{font-family:var(--mono);font-size:12px;color:var(--dim);margin:0 4px}
+.mq-note.prod{border-left:3px solid var(--now)}
+.mq-note.poll.g1{border-left:3px solid var(--now)}
+.mq-note.poll.g2{border-left:3px solid var(--hit)}
