@@ -228,6 +228,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { stage: '③ 发号 + 编码', focus: '短码怎么生成', detail: 'x', metric: '62^6 ≈ 568 亿个 6 位短码', components: [{ id: 'client', label: '客户端', role: 'r' }, { id: 'idgen', label: '发号器', role: 'r' }], phase: 'run' },
       b: { stage: '⑦ 权衡总结', focus: '一句话讲清取舍', detail: '', metric: '发号器>哈希>自增；301 vs 302', components: [{ id: 'client', label: '客户端', role: 'r' }, { id: 'cdn', label: 'CDN', role: 'r' }], phase: 'done' },
     },
+    aba: {
+      doc: { kind: 'aba', params: {}, entities: [], streams: [] },
+      a: { step: 4, act: 'buggy', op: 'cas', value: 100, version: 1, t1Read: 100, t1Ver: -1, casOk: true, event: 'T1 CAS 误判成功 ✗', phase: 'run', focus: 'T1 恢复 CAS：期望 100、当前 100 → 误判成功' },
+      b: { step: 8, act: 'fixed', op: 'cas', value: 100, version: 3, t1Read: 100, t1Ver: 1, casOk: false, event: 'T1 CAS 正确失败 ✓', phase: 'done', focus: '修复成功：期望 (100,v1)、当前 (100,v3) → 版本不符 → 失败' },
+    },
     rwlock: {
       doc: { kind: 'rwlock', params: {}, entities: [], streams: [] },
       a: { step: 3, op: 'block', who: 'W1', readers: ['R1', 'R2'], writer: null, waitQ: [{ who: 'W1', type: 'W' }], event: 'W1 写→阻塞', phase: 'run', focus: 'W1 请求写锁 → 有读者/写者，必须等' },

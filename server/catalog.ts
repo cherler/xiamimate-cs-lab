@@ -81,6 +81,7 @@ import { circuitbreakerKernel } from '../src/kernels/circuitbreaker.ts'
 import { joinsKernel } from '../src/kernels/joins.ts'
 import { compositeindexKernel } from '../src/kernels/compositeindex.ts'
 import { rwlockKernel } from '../src/kernels/rwlock.ts'
+import { abaKernel } from '../src/kernels/aba.ts'
 import { walKernel } from '../src/kernels/wal.ts'
 import { lsmKernel } from '../src/kernels/lsm.ts'
 import { minikvKernel } from '../src/kernels/minikv.ts'
@@ -1398,6 +1399,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: 'R1、R2 正持有读锁，这时 W1 请求写锁，为什么 W1 必须等待?', kind: 'choice',
         compute: () => ({ answer: '写要独占：写期间如果有人在读，读者会读到写了一半的中间状态。所以 W1 必须等所有读者都释放读锁后，才能独占进入', step: 3, evidence: 'W1 请求写时 readers={R1,R2}，进等待队列；R1、R2 都释放后 W1 才获准' }),
         distractors: () => ['因为 W1 优先级低', '因为写锁比读锁慢', '其实不用等，可以和读者并发'],
+      },
+    ],
+  },
+  {
+    id: 'aba', title: 'ABA 问题', kernel: abaKernel as Kernel<unknown>, doc: trivialDoc('aba'),
+    facts: [
+      {
+        id: 'why_aba', label: 'CAS 的 ABA 问题是怎么发生的',
+        ask: 'CAS 明明检查了"当前值 == 我读到的旧值"，为什么还会被 ABA 骗?', kind: 'choice',
+        compute: () => ({ answer: 'CAS 只比较值本身。如果值从 A 被改成 B、又改回 A，CAS 看到当前还是 A、以为期间没人动过，其实中间变过两次——在无锁栈里可能把已释放又重分配的节点当成原来的', step: 4, evidence: 'T1 读到 100，T2 把 100→200→100，T1 的 CAS 期望 100、当前 100 → 误判成功' }),
+        distractors: () => ['因为 CAS 本身有并发 bug', '因为读和写没加锁', '因为值溢出了'],
+      },
+      {
+        id: 'stamp_fix', label: '版本号怎么修复 ABA',
+        ask: '给 CAS 加一个版本号(stamp)，为什么就能识破 ABA?', kind: 'choice',
+        compute: () => ({ answer: '版本号只增不减，每改一次就 +1。CAS 比较 (值, 版本) 一对：即使值绕回 A，版本也从 v1 变成了 v3、回不去，CAS 发现版本不符就正确失败。这就是 AtomicStampedReference', step: 8, evidence: 'T1 期望 (100,v1)、当前 (100,v3)，值同但版本不符 → CAS 失败' }),
+        distractors: () => ['版本号让 CAS 变快了', '版本号把值锁住不让改', '版本号让 A 和 A 变得不相等'],
       },
     ],
   },

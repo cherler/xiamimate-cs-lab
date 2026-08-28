@@ -274,6 +274,8 @@ import { compositeindexKernel, type CIndexState } from '@engine/kernels/composit
 import { CIndexStage } from './stages/CIndexStage.tsx'
 import { rwlockKernel, type RWLockState } from '@engine/kernels/rwlock.ts'
 import { RWLockStage } from './stages/RWLockStage.tsx'
+import { abaKernel, type ABAState } from '@engine/kernels/aba.ts'
+import { ABAStage } from './stages/ABAStage.tsx'
 import { walKernel, type WALState } from '@engine/kernels/wal.ts'
 import { WALStage } from './stages/WALStage.tsx'
 import { lsmKernel, type LSMState } from '@engine/kernels/lsm.ts'
@@ -5539,6 +5541,22 @@ const ecbcbc: Experiment<EcbCbcState> = {
     { label: '重复块', value: s.phase === 'done' ? 'ECB 泄露 / CBC 安全' : '对比中' },
   ],
 }
+const aba: Experiment<ABAState> = {
+  id: 'aba', group: '并发编程', title: 'ABA 问题', subtitle: 'CAS 被 A→B→A 骗，版本号识破',
+  kernel: abaKernel, defaultDoc: { kind: 'aba', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '无可调参数。演示 CAS 的 ABA 陷阱:T1读A挂起→T2把A→B→A→T1恢复CAS。无版本:期望100当前100→误判成功;加版本号:期望(100,v1)当前(100,v3)→版本不符正确失败。可手核。详见讲解卡。',
+  bounds: ['CAS靠"当前值==读到的旧值"判没人动过', '值A→B→A绕回:无版本CAS只比值→误判成功(bug)', '加单调递增版本号:值同但版本v1≠v3→CAS正确失败', '=AtomicStampedReference/tagged pointer;无锁栈队列必备'],
+  tabs: [{ id: 'aba', label: '误判→修复' }], Stage: ABAStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: '版本号识破' } : s.casOk === true ? { key: 'bad', label: 'ABA 误判' } : s.act === 'buggy' ? { key: 'idle', label: '无版本' } : s.act === 'fixed' ? { key: 'idle', label: '有版本' } : { key: 'idle', label: 'CAS' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 9)),
+  tickLabel: s => (s.phase === 'done' ? '修' : s.op === 'cas' ? (s.casOk ? '✗' : '✓') : s.op === 'change' ? '改' : s.op === 'read' ? '读' : '始'),
+  readouts: s => [
+    { label: '演示', value: s.act === 'intro' ? '引入' : s.act === 'buggy' ? '① 无版本' : '② 加版本号' },
+    { label: '共享值', value: s.act === 'fixed' ? `${s.value}/v${s.version}` : `${s.value}` },
+    { label: 'T1 记忆', value: s.t1Read < 0 ? '—' : (s.act === 'fixed' ? `${s.t1Read}/v${s.t1Ver}` : `${s.t1Read}`) },
+    { label: 'CAS', value: s.casOk === null ? '—' : s.casOk ? '误判成功✗' : '正确失败✓', tone: s.casOk === true ? 'bad' : s.casOk === false ? 'good' : undefined },
+  ],
+}
 const rwlock: Experiment<RWLockState> = {
   id: 'rwlock', group: '并发编程', title: '读写锁 RWLock', subtitle: '读读共享、读写/写写互斥',
   kernel: rwlockKernel, defaultDoc: { kind: 'rwlock', params: {}, entities: [], streams: [] }, params: [],
@@ -5833,7 +5851,7 @@ export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
   caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt, ecbcbc, birthday, aesround, hmac, totp,
-  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, rwlock, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign,
+  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, rwlock, aba, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,

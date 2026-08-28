@@ -353,6 +353,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; op: string; result: string }; return st.phase === 'done' ? 'KV跑通' : (st.op === 'get' ? (st.result || 'get') : st.op) },
     try: [{ act: '看更新 a=9', watch: '不改旧值，追加新版本；SST1 里 a=1、SST2 里 a=9 同时存在。' }, { act: '看 get(a) 和压实', watch: 'get 从新到旧读到 a=9；压实把旧的 a=1 归并丢掉。' }], terms: [],
   },
+  aba: {
+    question: 'CAS 检查了"值没变"，为什么还会被"变一圈又变回来"骗？',
+    read: [{ at: '共享值 / T1 记忆', is: '当前值与 T1 读到的旧值（fixed 阶段还带版本）。', anchor: '.ab-lane' }, { at: '判定', is: 'CAS 步的期望 vs 当前，成功还是失败。', anchor: '.ab-verdict' }],
+    step: (s: never) => { const st = s as { act: string; op: string; value: number; version: number; t1Read: number; t1Ver: number; casOk: boolean | null; phase: string }; return [
+      { k: '本步输入', v: st.phase === 'done' ? '版本号修复完成' : st.act === 'intro' ? 'CAS 靠"值没变"判断' : st.op === 'read' ? `T1 读到 ${st.t1Read}${st.act === 'fixed' ? `/v${st.t1Ver}` : ''}` : st.op === 'change' ? `T2 改值 → ${st.value}${st.act === 'fixed' ? `/v${st.version}` : ''}` : `T1 恢复做 CAS` },
+      { k: '判定规则', v: 'CAS 只比"当前值==读到的旧值"。值 A→B→A 绕回来，只比值就以为没人动过（ABA）。修复：配单调递增版本号，比 (值,版本)，版本回不去就能识破。' },
+      { k: '本步结果', v: st.phase === 'done' ? `期望(100,v1)≠当前(100,v3) → CAS 正确失败` : st.op === 'cas' ? (st.casOk ? `期望100=当前100 → 误判成功✗（其实变过两次）` : `值同但版本 v${st.t1Ver}≠v${st.version} → 正确失败✓`) : `共享值=${st.value}${st.act === 'fixed' ? `/v${st.version}` : ''}` },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; casOk: boolean | null; act: string }; return st.phase === 'done' ? '版本号识破' : st.casOk === true ? 'ABA 误判' : st.casOk === false ? '正确失败' : st.act === 'buggy' ? '无版本' : st.act === 'fixed' ? '有版本' : 'CAS' },
+    try: [{ act: '看无版本被骗', watch: '值 100→200→100 绕回，T1 的 CAS 期望 100、当前 100 → 误判成功。' }, { act: '看版本号识破', watch: '加版本后值虽同(100)但 v1≠v3，CAS 正确失败——AtomicStampedReference 就这么干。' }], terms: [],
+  },
   rwlock: {
     question: '读操作互不干扰，为什么还要用一把锁串起来？读写锁怎么放宽？',
     read: [{ at: '锁持有区', is: '当前持读锁的读者们，或独占的写者。', anchor: '.rw-lock' }, { at: '等待队列', is: '进不来、在排队的请求。', anchor: '.rw-queue' }],
