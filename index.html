@@ -6,23 +6,24 @@ font-family:"PingFang SC","Noto Sans SC",system-ui,sans-serif;color:#dfe8f2}
 #c{display:block;width:100vw;height:100vh}</style></head><body><canvas id="c"></canvas>
 <script type="module">
 /* ═══ 1. 调参 ═══ */
-const PASSMUL=6   // 实测:×2→sort 2.5% / ×6→41.5% / ×8→51.5%
+let PASSMUL=13  // 有序度换成严格口径后(相等的相邻柱不算有序),冒泡换不动相等对,
+                // 排序引擎整体变钝 —— 趟数从 6 补到 11 才回到原来的手感   // 实测:×2→sort 2.5% / ×6→41.5% / ×8→51.5%
 const T={VMIN:3,VMAX:20,BUDGET:60,STEPS:3,HAND:5,COST_DIV:6,DEBT_PEN:2,HANDMAX:9}
 const rng=s=>()=>{s|=0;s=s+0x6D2B79F5|0;let t=Math.imul(s^s>>>15,1|s);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}
 
 /* ═══ 2. 敌人:性质决定哪些算法好用 ═══ */
 const FOE={
- shuffled:{n:36,inflow:1,shuffle:1,name:'一团乱序数字',note:'每回合涌入 +1、自我打乱(有序 −1)',kind:'小怪'},
- tape:    {n:38,inflow:2,shuffle:0,seqOnly:.7,name:'只能从头读的磁带',note:'顺序访问:二分查找效果打七折',kind:'小怪'},
- dupes:   {n:40,inflow:2,shuffle:0,vmax:8,name:'爬虫抓回来的重复页',note:'值域窄、量大:平铺处理占便宜',kind:'小怪'},
- stream:  {n:38,inflow:2,shuffle:1,memoDecay:6,name:'实时价格流',note:'数据在变:预处理值每回合 −6',kind:'小怪'},
- graph:   {n:38,inflow:1,shuffle:0,dense:.5,name:'社交网络的六度关系',note:'稠密:每多切两段,每回合多涌入 1',kind:'小怪'},
+ shuffled:{n:36,shape:'random',inflow:1,shuffle:1,name:'一团乱序数字',note:'每回合涌入 +1、自我打乱(有序 −1)',kind:'小怪'},
+ tape:    {n:38,shape:'nearly',inflow:1,shuffle:0,seqOnly:.7,name:'只能从头读的磁带',note:'顺序访问:二分查找效果打七折',kind:'小怪'},
+ dupes:   {n:40,shape:'heavy',inflow:2,shuffle:0,vmax:8,name:'爬虫抓回来的重复页',note:'值域窄、量大:平铺处理占便宜',kind:'小怪'},
+ stream:  {n:38,shape:'tail',inflow:2,shuffle:1,memoDecay:6,name:'实时价格流',note:'数据在变:预处理值每回合 −6',kind:'小怪'},
+ graph:   {n:38,shape:'sparse',inflow:1,shuffle:0,dense:.5,name:'社交网络的六度关系',note:'稠密:每多切两段,每回合多涌入 1',kind:'小怪'},
  // 对抗性输入(精英):专门克制某一条流派
- worst:   {n:42,inflow:1,shuffle:1,antiSort:1,name:'最坏用例',note:'专克排序流:所有排序卡趟数打两五折',kind:'精英'},
- collide: {n:42,inflow:1,shuffle:0,evict:1,name:'哈希碰撞',note:'通用:每回合末随机丢 1 张手牌(键撞了,取不回来)',kind:'精英'},
- regret:  {n:41,inflow:1,shuffle:0,antiGreedy:1,name:'反悔陷阱',note:'专克贪心流:债务惩罚 ×2.2',kind:'精英'},
- explode2:{n:42,inflow:1,shuffle:0,memoCap:20,name:'状态爆炸',note:'专克预处理流:预处理值上限 20',kind:'精英'},
- atomic:  {n:45,inflow:1,shuffle:0,noSplit:2,name:'不可分问题',note:'专克拆解流:段数上限 2、并行处理只剩四成',kind:'精英'},
+ worst:   {n:50,shape:'reversed',inflow:1,shuffle:0,antiSort:1,name:'最坏用例',note:'完全倒序 + 排序卡趟数打五五折 —— 有序度要从零建起',kind:'精英'},
+ collide: {n:42,shape:'heavy',inflow:1,shuffle:0,evict:1,name:'哈希碰撞',note:'通用:每回合末随机丢 1 张手牌(键撞了,取不回来)',kind:'精英'},
+ regret:  {n:41,shape:'nearly',inflow:1,shuffle:0,antiGreedy:1,name:'反悔陷阱',note:'专克贪心流:债务惩罚 ×2.2',kind:'精英'},
+ explode2:{n:42,shape:'random',inflow:1,shuffle:0,memoCap:20,name:'状态爆炸',note:'专克预处理流:预处理值上限 20',kind:'精英'},
+ atomic:  {n:45,shape:'blocks',inflow:1,shuffle:0,noSplit:2,name:'不可分问题',note:'专克拆解流:段数上限 2、并行处理只剩四成',kind:'精英'},
  // Boss
 }
 /* 第二类 · 失误:攻击的是「你的执行」,不是提供可被处理的对象 → 环境效果 */
@@ -35,7 +36,7 @@ const FLAW={
  infinite:{name:'死循环',   note:'每三回合有一回合的第一张卡只生效 70%,除非出「边界条件」'},
 }
 const FOE2={
- expo:    {n:22,mult:1.35,shuffle:0,name:'指数爆炸',note:'每回合末规模 ×倍率 — 加输出没用,得剪枝降阶',kind:'Boss'},
+ expo:    {n:22,shape:'random',mult:1.35,shuffle:0,name:'指数爆炸',note:'每回合末规模 ×倍率 — 加输出没用,得剪枝降阶',kind:'Boss'},
 }
 Object.assign(FOE,FOE2)
 /* ═══ 3. 卡池 ═══ */
@@ -47,6 +48,19 @@ def('bubble','冒泡排序',1,'sort','有序 +1',S=>addSort(S,S.E.antiSort?ASORT
 def('merge','归并排序',2,'sort','有序 +3',S=>addSort(S,S.E.antiSort?ASORT*3:3))
 def('quick','快速排序',2,'sort','有序 +4(最坏用例下只 +1)',S=>{if(S.E.antiSort)S.diag.lostSort+=3;addSort(S,S.E.antiSort?ASORT*4:4)})
 def('bsearch','二分查找',1,'sort','移除 1+有序层数×2 个(顺序访问下打七折)',S=>{const full=1+tier(S)*2,act=S.E.seqOnly?Math.max(1,Math.round(full*S.E.seqOnly)):full;S.diag.lostKill+=full-act;kill(S,act)})
+/* 插入排序的趟数正比于逆序对数量:几乎有序 → 一趟排完;倒序 → 退化成 O(n²)。
+   这正是「笨办法有时更快」那一课,而且它是「几乎有序」这个形状的唯一解法。 */
+def('insertion','插入排序',2,'sort','有序度 ≥50% 时【一次排完】;否则只 +1 层(逆序对太多,退化)',
+  S=>{const a=alive(S)
+   if(sortedness(S)>=.5){const vs=a.map(b=>b.v).sort((x,y)=>x-y);a.forEach((b,i)=>b.v=vs[i])}
+   else addSort(S,S.E.antiSort?ASORT:1)})
+def('counting','计数排序',2,'sort','按值分桶:移除所有【值 ≤ 最矮+2】的元素 —— 值域越窄清得越多',
+  S=>{const a=alive(S);if(!a.length)return
+   const mn=Math.min(...a.map(b=>b.v)),cut=mn+2
+   a.forEach(b=>{if(b.v<=cut)b.dead=true})})
+def('topk','取前 K 大',2,'tool','建堆取 Top-K:移除最高的 3 根 —— 长尾数据一刀砍掉大头',
+  S=>{const a=alive(S).slice().sort((x,y)=>y.v-x.v)
+   for(let i=0;i<Math.min(3,a.length);i++)a[i].dead=true},1)
 def('median','中位数',2,'sort','需有序≥3:移除 1/3 元素',S=>{if(tier(S)>=3)kill(S,Math.ceil(N(S)/3))},1)
 def('recur','递归到底',2,'dc','需段数≥3:移除 1/3 元素',S=>{if(S.splits>=3)kill(S,Math.ceil(N(S)/3))},1)
 def('divide','分治',2,'dc','段数 +1(最多 4)',S=>{S.splits=Math.min(S.E.noSplit??4,S.splits+1)})
@@ -74,7 +88,8 @@ def('prefetch','预读',0,'deck','看牌库顶 3 张,最贵的一张进手,其�
    let bi=0;for(let i=1;i<top.length;i++)if(C[top[i]].cost>C[top[bi]].cost)bi=i
    if(S.hand.length<T.HANDMAX)S.hand.push(top.splice(bi,1)[0])
    S.draw.push(...top)})
-let ASORT=.25,PARCUT=.4,AGREED=2.2   // 精英的专克强度,留成变量方便扫参
+let SHUFMUL=1   // 同上:严格口径下每次打乱的破坏力变大,强度要下调
+let ASORT=.3,PARCUT=.4,AGREED=2.2   // 精英的专克强度,留成变量方便扫参
 def('memoize','复用上一步',1,'deck','立刻重放你这回合打出的上一张牌',
   S=>{const id=S.lastPlayed;if(id)C[id].fn(S)},1)
 def('compress','压缩',1,'deck','弃牌堆立刻洗回牌库,再抽 1',
@@ -96,19 +111,24 @@ const STARTERS={
  greedy:['scan','scan','scan','scan','batch','batch','batch','batch','prefetch','memoize'],
 }
 const starterOf=k=>STARTERS[k]||STARTERS.base
-const KITS={base:[],sort:['bubble','merge','quick','bsearch','bsearch','median'],
+const KITS={base:[],sort:['insertion','merge','quick','bsearch','counting','median'],
  dc:['divide','divide','mergeup','mergeup','parallel','recur'],
  memo:['pre','pre','table','lookup','lookup','dp'],
  greedy:['greedy','local','heur','heur','anneal','approx']}
 const DECKCARDS=['sortdeck','fetch','prefetch','memoize','compress']
 const REWARD_POOL=[...new Set([...KITS.sort,...KITS.dc,...KITS.memo,...KITS.greedy]),
- ...DECKCARDS,'prune','prune','prune','prune','backtrack','hash','guard','guard']
+ ...DECKCARDS,'prune','prune','prune','prune','backtrack','hash','guard','guard','topk','topk']
 
 /* ═══ 4. 战斗引擎 ═══ */
 const alive=S=>S.bars.filter(b=>!b.dead),N=S=>alive(S).length
+/* 只数【严格】的顺序对。相等的相邻柱不提供任何顺序信息 ——
+   把 a[i]<=a[i+1] 算成有序会让倒序数组显示 59% 有序、
+   让稀疏和重复值扎堆的数据白白把二分查找喂满。 */
 function sortedness(S){const a=alive(S);if(a.length<2)return 1
- let ok=0;for(let i=0;i<a.length-1;i++)if(a[i].v<=a[i+1].v)ok++
- return Math.max(0,Math.min(1,(ok/(a.length-1)-.5)*2))}
+ let up=0,down=0
+ for(let i=0;i<a.length-1;i++){const d=a[i+1].v-a[i].v;if(d>0)up++;else if(d<0)down++}
+ if(!up&&!down)return .5
+ return Math.max(0,Math.min(1,(up/(up+down)-.5)*2))}
 const tier=S=>Math.floor(sortedness(S)*4.999)
 function shuffle(S){for(let i=S.draw.length-1;i>0;i--){const j=Math.floor(S.R()*(i+1));[S.draw[i],S.draw[j]]=[S.draw[j],S.draw[i]]}}
 function drawN(S,n){for(let i=0;i<n;i++){if(S.hand.length>=T.HANDMAX)return
@@ -132,12 +152,41 @@ function addMemo(S,n){S.memo=Math.min(S.E.memoCap??999,S.memo+n)}
 let FLAWBONUS=4    // 挂失误的关卡补多少预算。实测:+10 时失误反而是净收益 +7.9 点(方向反了),
                    // +5 中性,+3 净惩罚 5 点。取 4 —— 既不判死,也确实更难
 let DEPTHMUL=.085  // 每深一关:规模 +8.5%(唯一的连续难度轴)
+/* 十一个敌人以前共用一行 `v = 3 + random(vmax-2)` —— 名字讲了十一种数据,形状只有一种。
+   形状不只是好看:它决定哪一类卡划算。几乎有序的数组不该再排序,
+   稀疏的数据一次摊平就能清一大片,长尾的工作量集中在少数几根上。 */
+const SHAPES={
+ random:{name:'均匀随机',hint:'没有可利用的结构 —— 老老实实排序或摊平',
+  gen(n,vmax,R,VMIN){return Array.from({length:n},()=>VMIN+Math.floor(R()*(vmax-VMIN+1)))}},
+ nearly:{name:'几乎有序',hint:'已经差不多排好了 —— 别再花回合排序,直接查找',
+  gen(n,vmax,R,VMIN){const a=Array.from({length:n},(_,i)=>VMIN+Math.round(i*(vmax-VMIN)/(n-1)))
+   for(let k=0;k<Math.max(2,Math.floor(n/12));k++){const i=Math.floor(R()*n),j=Math.floor(R()*n)
+    const t=a[i];a[i]=a[j];a[j]=t}
+   return a}},
+ reversed:{name:'完全倒序',hint:'最坏用例 —— 有序度为零,排序要从头做起',
+  gen(n,vmax,R,VMIN){return Array.from({length:n},(_,i)=>vmax-Math.round(i*(vmax-VMIN)/(n-1)))}},
+ blocks:{name:'分块有序',hint:'每一段内部是好的,乱的是段与段之间 —— 分治的天堂',
+  gen(n,vmax,R,VMIN){const a=[],B=8
+   for(let s2=0;s2<n;s2+=B){const seg=[]
+    for(let i=0;i<Math.min(B,n-s2);i++)seg.push(VMIN+Math.floor(R()*(vmax-VMIN+1)))
+    seg.sort((x,y)=>x-y);a.push(...seg)}
+   return a}},
+ tail:{name:'长尾',hint:'少数几根扛着大部分工作量 —— 摊平型很亏',
+  gen(n,vmax,R,VMIN){return Array.from({length:n},()=>
+   R()<.18?Math.round(vmax*.75+R()*vmax*.25):VMIN+Math.floor(R()*3))}},
+ sparse:{name:'稀疏',hint:'大片接近空 —— 一次摊平就能清掉一大批',
+  gen(n,vmax,R,VMIN){return Array.from({length:n},()=>
+   R()<.7?VMIN:VMIN+Math.floor(R()*(vmax-VMIN+1)))}},
+ heavy:{name:'重复值扎堆',hint:'值域窄且大量重复 —— 按值分桶比逐个比较快',
+  gen(n,vmax,R,VMIN){const pool=[VMIN,VMIN+2,VMIN+4,Math.min(vmax,VMIN+5)]
+   return Array.from({length:n},()=>pool[Math.floor(R()*pool.length)])}},
+}
 function scaleFoe(E,d){ if(!d)return E
  return{...E,n:Math.round(E.n*(1+DEPTHMUL*d)),inflow:E.inflow??0,
    mult:E.mult,depth:d}}
 function newFight(seed,deck,foeId,budget,flawId,depth=0){
  const E=scaleFoe(FOE[foeId],depth),R=rng(seed),vmax=E.vmax??T.VMAX,FL=flawId?FLAW[flawId]:null
- const S={R,E,foeId,bars:Array.from({length:E.n},(_,i)=>({id:i,v:T.VMIN+Math.floor(R()*(vmax-T.VMIN+1)),dead:false})),
+ const S={R,E,foeId,bars:(SHAPES[E.shape]||SHAPES.random).gen(E.n,vmax,R,T.VMIN).map((v,i)=>({id:i,v,dead:false})),
   splits:1,budget:budget+(FL?FLAWBONUS:0),steps:T.STEPS,turn:1,memo:0,debt:0,
   inflow:E.inflow??0,mult:E.mult??1,vmax,flawId:flawId||null,FL,locked:null,guarded:false,loopBroken:false,firstPlay:true,lastPlayed:null,
   draw:[...deck],hand:[],discard:[],exhaust:[],over:null,
@@ -165,7 +214,7 @@ function endTurn(S){if(S.over)return
  S.diag.spent+=base+debtPen;S.diag.turns++
  S.budget-=base+debtPen
  if(S.E.shuffle){S.diag.sortDecay+=S.E.shuffle
-  const a=alive(S);for(let k=0;k<S.E.shuffle*3;k++){
+  const a=alive(S);for(let k=0;k<S.E.shuffle*SHUFMUL;k++){
    const i=Math.floor(S.R()*a.length),j=Math.floor(S.R()*a.length)
    const t=a[i].v;a[i].v=a[j].v;a[j].v=t}}
  if(S.E.memoDecay){S.diag.memoDecayed+=Math.min(S.memo,S.E.memoDecay);S.memo=Math.max(0,S.memo-S.E.memoDecay)}
@@ -216,8 +265,10 @@ function offer3(RUN){const o=[];while(o.length<3){const c=REWARD_POOL[Math.floor
 /* ═══ 6. 批量模拟 ═══ */
 const POL={
  base:S=>pick(S,['scan','batch','watch']),
- sort:S=>tier(S)>=3?pick(S,['median','bsearch','quick','merge','bubble','scan','hash','batch'])
-                   :pick(S,['quick','merge','bubble','bsearch','scan','hash','batch']),
+ sort:S=>{ // 有序度过半就该插入排序一次排完,而不是继续冒泡
+   if(sortedness(S)>=.5){const i=S.hand.indexOf('insertion');if(i>=0&&canPlay(S,i))return i}
+   return tier(S)>=3?pick(S,['median','bsearch','counting','quick','merge','insertion','scan','hash','batch'])
+                    :pick(S,['quick','merge','insertion','bsearch','counting','scan','hash','batch'])},
  dc:S=>S.splits<3?pick(S,['divide','mergeup','parallel','scan','hash','batch'])
                  :pick(S,['recur','parallel','mergeup','divide','scan','hash','batch']),
  memo:S=>S.memo>=17?pick(S,['dp','lookup','table','pre','scan','hash','batch'])
@@ -235,6 +286,11 @@ function pick(S,order){
  if(S.hand.length<=3){for(const d of ['prefetch','fetch']){
   const i=S.hand.indexOf(d);if(i>=0&&canPlay(S,i))return i}}               // 手牌少了就去牌库拿
  if(S.flawId==='infinite'&&!S.loopBroken){const i=S.hand.indexOf('guard');if(i>=0&&canPlay(S,i))return i}
+ {const a=alive(S)
+  if(a.length){const mn=Math.min(...a.map(b=>b.v))
+   if(a.filter(b=>b.v<=mn+2).length>=6){const i=S.hand.indexOf('counting');if(i>=0&&canPlay(S,i))return i}
+   const t=a.slice().sort((x,y)=>y.v-x.v)
+   if(t.length>3&&t[0].v>=t[Math.floor(t.length/2)].v*2.4){const i=S.hand.indexOf('topk');if(i>=0&&canPlay(S,i))return i}}}
  if(S.mult>1){const i=S.hand.indexOf('prune');if(i>=0&&canPlay(S,i))return i}
  if(S.budget<14){const i=S.hand.indexOf('backtrack');if(i>=0&&canPlay(S,i))return i}
  for(const id of order){const i=S.hand.indexOf(id);if(i>=0&&canPlay(S,i))return i}
@@ -266,7 +322,7 @@ function batchRun(kit,n=250){let w=0,d=0;const stuck={}
  for(let s=1;s<=n;s++){const r=runOnce(kit,s*104729)
   if(r.over==='win'){w++;d+=r.deck}else stuck[r.foe]=(stuck[r.foe]||0)+1}
  return{kit,win:+(w/n*100).toFixed(1),avgDeck:w?+(d/w).toFixed(1):null,stuck}}
-Object.assign(window,{__newRun:newRun,__rollNode:rollNode,__chooseNode:chooseNode,__offer3:offer3,__SETDEPTH:v=>{DEPTHMUL=v},__SETASORT:v=>{ASORT=v},__SETPAR:v=>{PARCUT=v},__SETAG:v=>{AGREED=v},__ALLCARDS:()=>Object.keys(C),__newFightD:(kit,foe,seed,deck,budget,flaw,depth)=>newFight(seed,deck,foe,budget,flaw,depth),__canPlay:canPlay,__POL:k=>POL[k],__play2:play,__endTurn2:endTurn,
+Object.assign(window,{__newRun:newRun,__rollNode:rollNode,__chooseNode:chooseNode,__offer3:offer3,__SETDEPTH:v=>{DEPTHMUL=v},__SETASORT:v=>{ASORT=v},__SETSHUF:v=>{SHUFMUL=v},__SETPASS:v=>{PASSMUL=v},__SETPAR:v=>{PARCUT=v},__SETAG:v=>{AGREED=v},__sortedness:sortedness,__SHAPES:()=>SHAPES,__ALLCARDS:()=>Object.keys(C),__newFightD:(kit,foe,seed,deck,budget,flaw,depth)=>newFight(seed,deck,foe,budget,flaw,depth),__canPlay:canPlay,__POL:k=>POL[k],__play2:play,__endTurn2:endTurn,
  __newFightX:(kit,foe,seed,depth)=>newFight(seed,[...starterOf(kit),...KITS[kit]],foe,T.BUDGET,null,depth),
  __batchPolD:(kit,foeId,n,pol,depth)=>{let w=0
   for(let s2=1;s2<=n;s2++){const S=newFight(s2*7919,[...starterOf(kit),...KITS[kit]],foeId,T.BUDGET,null,depth)
@@ -304,6 +360,9 @@ function intelOf(deck,foeId,flawId,depth=0){
  for(const P of PROPS){ if(!E[P.k])continue
   const n=P.hit(deck)
   rows.push({txt:typeof P.txt==='function'?P.txt(E):P.txt,n,dir:P.dir,lbl:P.lbl}) }
+ const SH=SHAPES[E.shape||'random']
+ if(E.shape&&E.shape!=='random')rows.push({txt:'形状「'+SH.name+'」:'+SH.hint,n:0,dir:1,
+   lbl:()=>[SH.name,'cyan']})
  if(E.noSplit)rows.push({txt:`不可分:段数上限 ${E.noSplit}、并行处理只剩四成`,n:cnt(deck,'divide','parallel'),dir:-1})
  if(flawId){const F=FLAW[flawId]
   rows.push({txt:`【失误】${F.name}:${F.note}`,n:flawId==='infinite'?(cnt(deck,'guard')?0:-1):1,dir:-1})}
@@ -411,9 +470,9 @@ function uiPlay(i){
  if(S.over)setTimeout(afterFight,700)
  else if(S.steps<=0)setTimeout(()=>{if(!S.over){endTurn(S);hist.push(hpPct(S));if(S.over)afterFight()}},dur+300)}
 const AK={scan:'sweep',lookup:'sweep',dp:'sweep',parallel:'sweep',
- bubble:'sort',merge:'sort',quick:'sort',
- bsearch:'split',median:'split',divide:'split',recur:'split',
- greedy:'burst',local:'burst',heur:'burst',anneal:'burst',approx:'burst',mergeup:'burst',hash:'burst'}
+ bubble:'sort',merge:'sort',quick:'sort',insertion:'sort',
+ bsearch:'split',median:'split',divide:'split',recur:'split',counting:'bucket',topk:'sortic',
+ greedy:'burst',local:'burst',heur:'burst',anneal:'burst',approx:'burst',mergeup:'burst',hash:'burst',counting:'burst',topk:'burst'}
 function autoTurn(){ if(!S||S.over||offer||RUN.over||anim)return
  const i=POL[KIT](S); if(i<0){endTurn(S);hist.push(hpPct(S));if(S.over)afterFight();return}
  uiPlay(i)}
@@ -514,7 +573,7 @@ const ICON={
    ctx.moveTo(x+i*w*.34+w*.12,y+h*.3);ctx.lineTo(x+i*w*.34+w*.12,y+h*.5);ctx.stroke()}},
 }
 const CARDIC={scan:'sweep',lookup:'table',dp:'table',parallel:'sweep',batch:'shield',watch:'eye',
- bubble:'sortic',merge:'sortic',quick:'sortic',bsearch:'split',median:'split',
+ bubble:'sortic',merge:'sortic',quick:'sortic',insertion:'sortic',counting:'bucket',topk:'stack',bsearch:'split',median:'split',
  divide:'divideic',mergeup:'divideic',recur:'divideic',
  sortdeck:'sortic',fetch:'table',prefetch:'eye',memoize:'stack',compress:'bucket',pre:'stack',table:'stack',
  greedy:'strike',local:'strike',heur:'strike',anneal:'strike',approx:'strike',
@@ -628,6 +687,8 @@ function wrap2(t,x,y,w,lh){let l='',yy=y
    这里逐条摆出来,并且带上「此刻造成了多少」。 */
 function traits(){const E=S.E,o=[]
  const add=(t,v,c)=>o.push([t,v,c])
+ const sh=SHAPES[E.shape||'random']
+ add('数据形状 · '+sh.name,sh.hint,CO.cyan)
  if(E.shuffle)   add('自我打乱','每回合乱 '+(E.shuffle*3)+' 次 · 已累计 −'+S.diag.sortDecay+' 层',CO.amber)
  if(E.seqOnly)   add('顺序访问','二分查找 ×'+E.seqOnly+' · 已少移除 '+Math.round(S.diag.lostKill)+' 个',CO.amber)
  if(E.vmax&&E.vmax<T.VMAX) add('值域窄','柱高只到 '+E.vmax+'(常规 '+T.VMAX+')· 摊平型占便宜',CO.cyan)
@@ -871,6 +932,15 @@ function live(id){ if(!S)return null
   case 'backtrack':return ['预算 '+S.budget+' → '+(S.budget+12),G]
   case 'guard':    return S.FL?['本回合免疫「'+S.FL.name+'」',G]:['这一关没挂失误 —— 现在出会落空',R]
   case 'hash':     return ['抽 1 · 移除 2 个',Cy]
+  case 'insertion':{const sd=Math.round(sortedness(S)*100)
+    return sd>=50?['有序度 '+sd+'% ≥50% —— 这一张直接把它排完',G]
+                 :['有序度 '+sd+'%,不到 50% —— 只 +1 层(逆序对太多)',R]}
+  case 'counting':{const a=alive(S);if(!a.length)return null
+    const mn=Math.min(...a.map(b=>b.v)),k=a.filter(b=>b.v<=mn+2).length
+    return['最矮的是 '+mn+' · 现在能一次清掉 '+k+' 个(值 ≤ '+(mn+2)+')',k>=6?G:k>=3?A:R]}
+  case 'topk':{const a=alive(S);if(!a.length)return null
+    const t=a.slice().sort((x,y)=>y.v-x.v).slice(0,3)
+    return['砍掉最高的三根:'+t.map(b=>b.v).join('/')+' —— 共 '+t.reduce((x,b)=>x+b.v,0)+' 点处理量',G]}
   case 'sortdeck':{const d=S.draw;if(!d.length)return['牌库空了 —— 现在出会落空',R]
     const cheap=d.filter(x=>C[x].cost<=1).length
     return['牌库 '+d.length+' 张,其中 '+cheap+' 张是 1 费以下 —— 排完先抽它们',cheap>=3?G:A]}
