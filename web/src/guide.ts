@@ -386,6 +386,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; kind: string; round: number }; return st.phase === 'done' ? '得到答案' : st.kind === 'action' ? '调工具' : st.kind === 'observation' ? '拿到结果' : st.kind === 'thought' ? `想·第${st.round}轮` : '开始' },
     try: [{ act: '看想→做→看循环', watch: 'Thought 决定查气温 → Action search → Observation 30°C → 下一轮再想。' }, { act: '看工具给真数据', watch: 'calc(30-25) 返回 5，不是模型口算——Agent 用真结果，少幻觉。' }], terms: [],
   },
+  blockingqueue: {
+    question: '生产者比消费者快，队列满了怎么办？空了消费者又怎么办？',
+    read: [{ at: '缓冲槽', is: '有界缓冲的占用/空位。', anchor: '.bq-buffer' }, { at: '两端', is: '生产者/消费者的状态（就绪/阻塞）。', anchor: '.bq-scene' }],
+    step: (s: never) => { const st = s as { op: string; queue: string[]; cap: number; item: string; blockedP: boolean; blockedC: boolean; event: string; phase: string }; return [
+      { k: '本步输入', v: st.phase === 'done' ? '生产者放数据后消费者被唤醒' : st.op === 'intro' ? `容量 ${st.cap} 的有界阻塞队列` : st.event },
+      { k: '判定规则', v: 'put：队列满→生产者在 notFull 上阻塞挂起（等空位）；take：队列空→消费者在 notEmpty 上阻塞（等数据）。对方操作腾空位/放数据后 signal 唤醒。锁+两个条件变量。' },
+      { k: '本步结果', v: st.phase === 'done' ? `取走 ${st.item} → queue=[${st.queue.join(',')}]` : `queue=[${st.queue.join(',')}]（${st.queue.length}/${st.cap}）${st.blockedP ? '，生产者阻塞' : st.blockedC ? '，消费者阻塞' : ''}` },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; op: string; item: string }; return st.phase === 'done' ? '唤醒取走' : st.op === 'blockFull' ? '生产者阻塞' : st.op === 'blockEmpty' ? '消费者阻塞' : st.op === 'wakeP' || st.op === 'wakeC' ? '唤醒' : st.op === 'put' ? `put ${st.item}` : st.op === 'take' ? `take ${st.item}` : '就绪' },
+    try: [{ act: '看满了阻塞生产者', watch: '队列[A,B]满，put(C) 时生产者挂起；消费者 take 腾出空位才唤醒它。' }, { act: '看空了阻塞消费者', watch: '队列空，take 时消费者挂起；生产者 put(D) 放入数据才唤醒它。' }], terms: [],
+  },
   wildcard: {
     question: '通配符 * 能配任意一段，它到底该吃几个字符？怎么不用递归就搞定？',
     read: [{ at: 's / p 两行', is: '双指针位置、* 覆盖的字符(绿)、锚点(黄)。', anchor: '.wc-row' }, { at: '读数', is: '本步、双指针、* 吃了什么。', anchor: '.scdim' }],

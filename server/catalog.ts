@@ -93,6 +93,7 @@ import { lockstrategyKernel } from '../src/kernels/lockstrategy.ts'
 import { bufferpoolKernel } from '../src/kernels/bufferpool.ts'
 import { feedKernel } from '../src/kernels/feed.ts'
 import { wildcardKernel } from '../src/kernels/wildcard.ts'
+import { blockingqueueKernel } from '../src/kernels/blockingqueue.ts'
 import { walKernel } from '../src/kernels/wal.ts'
 import { lsmKernel } from '../src/kernels/lsm.ts'
 import { minikvKernel } from '../src/kernels/minikv.ts'
@@ -1614,6 +1615,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: '通配符匹配用"双指针+回溯锚点"而不是动态规划，好处是?', kind: 'choice',
         compute: () => ({ answer: '只用几个指针变量记锚点，O(n) 时间、O(1) 额外空间；而 DP 要 O(n×m) 的二维表。锚点法本质是把"* 该吃几个"的搜索用回溯代替了枚举', step: 6, evidence: '全程只维护 si/pj/star/sTmp 几个变量，无二维表' }),
         distractors: () => ['双指针一定比 DP 慢', '双指针要 O(n×m) 空间', '两种方法空间一样'],
+      },
+    ],
+  },
+  {
+    id: 'blockingqueue', title: '线程安全阻塞队列', kernel: blockingqueueKernel as Kernel<unknown>, doc: trivialDoc('blockingqueue'),
+    facts: [
+      {
+        id: 'block_when', label: '阻塞队列什么时候阻塞谁',
+        ask: '有界阻塞队列里，什么时候生产者被阻塞、什么时候消费者被阻塞?', kind: 'choice',
+        compute: () => ({ answer: '队列满时 put 让生产者阻塞（等有空位），队列空时 take 让消费者阻塞（等有数据）；对方操作后 signal 唤醒被阻塞的一方', step: 3, evidence: '队列 [A,B] 满，put(C) 时生产者阻塞；消费者 take 腾出空位后唤醒它' }),
+        distractors: () => ['队列空时阻塞生产者、满时阻塞消费者', '任何时候都不阻塞', '只在队列半满时阻塞'],
+      },
+      {
+        id: 'two_conds', label: '为什么要两个条件变量',
+        ask: '实现阻塞队列为什么要两个条件变量（notFull / notEmpty），用 while 判断满/空?', kind: 'choice',
+        compute: () => ({ answer: '生产者在 notFull 上等空位、消费者在 notEmpty 上等数据，分开才能精确唤醒对应的一方；用 while 而非 if 判满/空是为了防"虚假唤醒"——被唤醒后要重新检查条件', step: 10, evidence: '满/空是两个不同的等待条件，各自的等待者不同' }),
+        distractors: () => ['一个条件变量就够了', 'while 只是为了写着好看', '两个条件变量是为了更快'],
       },
     ],
   },

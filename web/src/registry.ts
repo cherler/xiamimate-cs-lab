@@ -294,6 +294,8 @@ import { bufferpoolKernel, type BufPoolState } from '@engine/kernels/bufferpool.
 import { BufferPoolStage } from './stages/BufferPoolStage.tsx'
 import { wildcardKernel, type WildState } from '@engine/kernels/wildcard.ts'
 import { WildcardStage } from './stages/WildcardStage.tsx'
+import { blockingqueueKernel, type BQState } from '@engine/kernels/blockingqueue.ts'
+import { BlockingQueueStage } from './stages/BlockingQueueStage.tsx'
 import { walKernel, type WALState } from '@engine/kernels/wal.ts'
 import { WALStage } from './stages/WALStage.tsx'
 import { lsmKernel, type LSMState } from '@engine/kernels/lsm.ts'
@@ -5561,6 +5563,22 @@ const ecbcbc: Experiment<EcbCbcState> = {
     { label: '重复块', value: s.phase === 'done' ? 'ECB 泄露 / CBC 安全' : '对比中' },
   ],
 }
+const blockingqueue: Experiment<BQState> = {
+  id: 'blockingqueue', group: '并发编程', title: '线程安全阻塞队列', subtitle: '满时 put 阻塞、空时 take 阻塞',
+  kernel: blockingqueueKernel, defaultDoc: { kind: 'blockingqueue', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '无可调参数。容量2的有界阻塞队列:put满→生产者阻塞、take空→消费者阻塞;对方操作腾空位/放数据后唤醒。锁+两条件变量(notFull/notEmpty)。队列/阻塞/唤醒可手核。=Java ArrayBlockingQueue/Go带缓冲channel。详见讲解卡。',
+  bounds: ['put:队列满→生产者在notFull阻塞挂起(非忙等);take:空→消费者在notEmpty阻塞', '对方操作后signal唤醒:take腾空位唤醒生产者、put放数据唤醒消费者', '锁+两个条件变量;while判满/空防虚假唤醒', '天然削峰解耦;=ArrayBlockingQueue/带缓冲channel'],
+  tabs: [{ id: 'bq', label: '阻塞与唤醒' }], Stage: BlockingQueueStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: '唤醒取走' } : s.op === 'blockFull' ? { key: 'bad', label: '生产者阻塞' } : s.op === 'blockEmpty' ? { key: 'bad', label: '消费者阻塞' } : s.op === 'wakeP' || s.op === 'wakeC' ? { key: 'good', label: '唤醒' } : s.op === 'put' ? { key: 'idle', label: `put ${s.item}` } : s.op === 'take' ? { key: 'idle', label: `take ${s.item}` } : { key: 'idle', label: '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 11)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.op === 'blockFull' || s.op === 'blockEmpty' ? '⏳' : s.op === 'wakeP' || s.op === 'wakeC' ? '醒' : s.op === 'put' ? '入' : s.op === 'take' ? '出' : '始'),
+  readouts: s => [
+    { label: '队列', value: s.queue.length ? `[${s.queue.join(',')}]` : '空', tone: s.queue.length >= s.cap ? 'bad' : undefined },
+    { label: '占用', value: `${s.queue.length}/${s.cap}` },
+    { label: '阻塞', value: s.blockedP ? '生产者(等空位)' : s.blockedC ? '消费者(等数据)' : '无', tone: s.blockedP || s.blockedC ? 'bad' : undefined },
+    { label: '本步', value: s.event || (s.phase === 'done' ? '消费者取走' : '就绪'), tone: s.op === 'wakeP' || s.op === 'wakeC' || s.phase === 'done' ? 'good' : undefined },
+  ],
+}
 const wildcard: Experiment<WildState> = {
   id: 'wildcard', group: '算法项目实战', title: '通配符匹配', subtitle: '? 配一个、* 配一段：双指针 + 回溯锚点',
   kernel: wildcardKernel, defaultDoc: { kind: 'wildcard', params: {}, entities: [], streams: [] }, params: [],
@@ -6047,7 +6065,7 @@ export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
   caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt, ecbcbc, birthday, aesround, hmac, totp,
-  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, bufferpool, wildcard, rwlock, aba, happensbefore, lockstrategy, lrucache, lfucache, trie, quickselect, reactagent, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign, topk, feed,
+  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, bufferpool, wildcard, blockingqueue, rwlock, aba, happensbefore, lockstrategy, lrucache, lfucache, trie, quickselect, reactagent, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign, topk, feed,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,
