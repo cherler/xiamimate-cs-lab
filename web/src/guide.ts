@@ -320,6 +320,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; stage: string }; return st.phase === 'done' ? '设计完成' : st.stage.replace(/^[①②③④⑤⑥⑦]\s*/, '') },
     try: [{ act: '按「下一步」走框架', watch: '需求→估算→削峰→Redis预扣→MQ异步→乐观锁，组件一块块搭。' }, { act: '记住两条红线', watch: '绝不超卖(Redis原子+DB乐观锁)、别冲垮DB(削峰+异步)——这两条是面试要点。' }], terms: [],
   },
+  minisearch: {
+    question: '给一堆文档和一个查询，搜索引擎怎么排出"最相关"的几篇？',
+    read: [{ at: '倒排索引', is: '词 → 出现在哪些文档(×词频)，逐篇读入后长出来。', anchor: '.ms-index' }, { at: '打分', is: '每个候选的 TF-IDF 得分条与排名。', anchor: '.ms-scores' }, { at: '读数', is: '阶段、倒排规模、候选、最相关。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { stage: string; focus: string; reading: string; index: unknown[]; query: string[]; candidates: string[]; idf: { term: string; df: number; idf: number }[]; scores: { id: string; score: number }[]; phase: string }; return [
+      { k: '本步输入', v: st.phase === 'done' ? '整条检索流水跑完' : st.reading ? `读入文档 ${st.reading}` : st.scores.length ? '候选打分' : st.idf.length ? '算各词 idf' : st.candidates.length ? '查倒排取候选' : st.query.length ? `收到查询「${st.query.join(' ')}」` : '准备语料' },
+      { k: '判定规则', v: '建倒排索引(词→文档×词频)让查询不扫全库；打分 score=Σ tf×idf：tf=词在该文档出现次数(词频高更相关)，idf=ln(N/df)(词越稀有权重越高)。按分降序返回。' },
+      { k: '本步结果', v: st.phase === 'done' ? `排序 ${st.scores.map(x => `${x.id}(${(Math.round(x.score * 100) / 100).toFixed(2)})`).join(' > ')}` : st.reading ? `倒排索引已含 ${st.index.length} 个词` : st.scores.length ? st.scores.map(x => `${x.id}=${(Math.round(x.score * 100) / 100).toFixed(2)}`).join(', ') : st.idf.length ? st.idf.map(r => `idf(${r.term})=${(Math.round(r.idf * 100) / 100).toFixed(2)}`).join(', ') : st.candidates.length ? `候选 {${st.candidates.join(', ')}}` : st.query.length ? `分词 [${st.query.join(', ')}]` : `${st.index.length} 词的倒排表待建` },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; scores: { id: string }[]; stage: string }; return st.phase === 'done' ? `Top: ${st.scores[0]?.id ?? '—'}` : st.stage.replace(/^[①②③④⑤⑥⑦]\s*/, '') },
+    try: [{ act: '看 D2 为什么第一', watch: '它只含一个查询词"狗"，但"狗"稀有(idf=1.10)，稀有词命中更相关。' }, { act: '看 D3 为什么超过 D1', watch: '都含"猫"，但"猫"在 D3 出现两次(tf=2)，词频高更相关。' }], terms: [],
+  },
   minikv: {
     question: '把学过的零件拼起来，能造一个真能跑的数据库吗？',
     read: [{ at: '五个零件', is: 'WAL/memtable/SSTable/布隆四块 + 当前操作路径。', anchor: '.kv-grid' }, { at: '读数', is: '本步、memtable、SSTable、get 结果。', anchor: '.scdim' }],

@@ -256,6 +256,8 @@ import { lsmKernel, type LSMState } from '@engine/kernels/lsm.ts'
 import { LSMStage } from './stages/LSMStage.tsx'
 import { minikvKernel, type MiniKVState } from '@engine/kernels/minikv.ts'
 import { MiniKVStage } from './stages/MiniKVStage.tsx'
+import { minisearchKernel, type SearchState } from '@engine/kernels/minisearch.ts'
+import { SearchStage } from './stages/SearchStage.tsx'
 import { urlshortenerKernel, type SysDesignState } from '@engine/kernels/urlshortener.ts'
 import { seckillKernel } from '@engine/kernels/seckill.ts'
 import { SysDesignStage } from './stages/SysDesignStage.tsx'
@@ -5557,6 +5559,25 @@ const urlshortener: Experiment<SysDesignState> = {
   ],
 }
 
+const minisearch: Experiment<SearchState> = {
+  id: 'minisearch', group: '项目实战', title: 'mini 搜索引擎', subtitle: '倒排索引 + TF-IDF 打分排序',
+  kernel: minisearchKernel, defaultDoc: { kind: 'minisearch', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '组合式项目：从三篇小文档建倒排索引，查询走 TF-IDF 打分排序。语料小到能手算——tf 和 idf 两个效应都看得见。面试能讲的「我造过搜索引擎」。详见讲解卡。',
+  bounds: ['建倒排索引:词→出现在哪些文档(×词频),查询不扫全库', 'idf=ln(N/df):稀有词权重高(狗 idf=1.10 > 猫 0.41)', 'score=Σ tf×idf:D2靠稀有词赢、D3靠词频超D1', '结果 D2>D3>D1 全由代码从语料算出(可核)'],
+  tabs: [{ id: 'search', label: '建索引→查询打分' }], Stage: SearchStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: `Top: ${s.scores[0]?.id ?? '—'}` }
+    : s.query.length ? { key: 'idle', label: s.stage.replace(/^[①②③④⑤⑥⑦]\s*/, '') }
+      : { key: 'idle', label: s.reading ? `读入 ${s.reading}` : '备料' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 9)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.query.length ? (s.scores.length ? '分' : s.idf.length ? 'idf' : '查') : s.reading ? s.reading.slice(1) : '料'),
+  readouts: s => [
+    { label: '阶段', value: s.stage.replace(/^[①②③④⑤⑥⑦]\s*/, '') || '就绪' },
+    { label: '倒排规模', value: `${s.index.length} 词` },
+    { label: '候选', value: s.candidates.length ? `{${s.candidates.join(',')}}` : '—' },
+    { label: '最相关', value: s.scores.length ? `${s.scores[0].id} (${(Math.round(s.scores[0].score * 100) / 100).toFixed(2)})` : '—', tone: s.phase === 'done' ? 'good' : undefined },
+  ],
+}
+
 const seckill: Experiment<SysDesignState> = {
   id: 'seckill', group: '系统设计', title: '设计秒杀系统', subtitle: '削峰→防超卖→异步化',
   kernel: seckillKernel, defaultDoc: { kind: 'seckill', params: {}, entities: [], streams: [] }, params: [],
@@ -5578,7 +5599,7 @@ export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
   caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt,
-  tokenbucket, consistenthash, skiplist, twopc, otpreuse, wal, lsm, minikv, urlshortener, seckill,
+  tokenbucket, consistenthash, skiplist, twopc, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,

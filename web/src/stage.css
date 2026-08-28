@@ -3937,3 +3937,43 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .sd-decision { margin:0 0 10px; padding:9px 12px; border:1px solid var(--line); border-left:3px solid var(--f-tag); border-radius:8px; background:var(--sunk-1); }
 .sd-focus { font-size:13px; font-weight:600; color:var(--ink); margin-bottom:4px; }
 .sd-detail { margin:0; font-size:12px; line-height:1.6; color:var(--t-body); }
+
+/* ── mini 搜索引擎（倒排索引 + TF-IDF） ── */
+.ms-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:8px 0 12px; }
+.ms-col { display:flex; flex-direction:column; gap:6px; min-width:0; }
+.ms-cap { font-size:11px; font-weight:600; color:var(--dim); margin-top:4px; }
+.ms-cap em { font-size:10px; font-weight:400; font-style:normal; color:var(--faint); margin-left:5px; }
+.ms-docs { display:flex; flex-direction:column; gap:4px; }
+.ms-doc { font-size:12px; padding:4px 9px; border:1px solid var(--line); border-radius:7px; background:var(--sunk-1); color:var(--dim); }
+.ms-doc.in { color:var(--ink); }
+.ms-doc.reading { border-color:var(--now); box-shadow:0 0 0 1px var(--now); background:color-mix(in srgb, var(--now) 8%, var(--panel)); color:var(--ink); }
+.ms-doc.top { border-color:var(--hit); background:color-mix(in srgb, var(--hit) 10%, var(--panel)); }
+.ms-doc b { font-family:var(--mono); margin-right:6px; color:var(--ink); }
+.ms-index { display:flex; flex-direction:column; gap:4px; }
+.ms-row { display:flex; align-items:center; gap:6px; font-size:12px; padding:3px 6px; border-radius:6px; }
+.ms-row.q { background:color-mix(in srgb, var(--now) 9%, transparent); }
+.ms-term { font-weight:700; color:var(--ink); min-width:20px; }
+.ms-term.sm { min-width:0; }
+.ms-arrow { color:var(--faint); }
+.ms-posts { display:flex; flex-wrap:wrap; gap:4px; align-items:center; }
+.ms-post { font-size:11px; font-family:var(--mono); padding:1px 6px; border-radius:5px; border:1px solid var(--line); background:var(--sunk-1); color:var(--dim); }
+.ms-post i { font-style:normal; color:var(--faint); }
+.ms-post.multi { border-color:var(--now); color:var(--now); font-weight:700; }
+.ms-post.multi i { color:var(--now); }
+.ms-df { font-size:10px; color:var(--faint); margin-left:2px; }
+.ms-query { display:flex; gap:6px; min-height:24px; align-items:center; }
+.ms-qterm { font-size:13px; font-weight:700; padding:2px 10px; border-radius:6px; border:1.5px solid var(--now); background:color-mix(in srgb, var(--now) 10%, var(--panel)); color:var(--now); }
+.ms-idf { display:flex; flex-direction:column; gap:3px; }
+.ms-idfrow { display:flex; align-items:center; gap:8px; font-size:12px; }
+.ms-idfexpr { font-family:var(--mono); font-size:11px; color:var(--faint); }
+.ms-idfval { font-family:var(--mono); font-weight:700; color:var(--ink); }
+.ms-idfval.rare { color:var(--hit); }
+.ms-scores { display:flex; flex-direction:column; gap:6px; }
+.ms-score { display:grid; grid-template-columns:26px 26px 1fr 40px; grid-template-areas:"rank id bar val" ". . parts parts"; align-items:center; gap:3px 6px; }
+.ms-srank { grid-area:rank; font-size:11px; font-weight:700; color:var(--faint); }
+.ms-sid { grid-area:id; font-family:var(--mono); font-weight:700; color:var(--ink); }
+.ms-sbar { grid-area:bar; height:9px; border-radius:5px; background:var(--sunk-1); overflow:hidden; }
+.ms-sbar i { display:block; height:100%; background:color-mix(in srgb, var(--now) 55%, var(--panel)); }
+.ms-score.win .ms-sbar i { background:var(--hit); }
+.ms-sval { grid-area:val; font-family:var(--mono); font-weight:700; font-size:12px; color:var(--ink); text-align:right; }
+.ms-sparts { grid-area:parts; font-size:10px; color:var(--faint); font-family:var(--mono); }

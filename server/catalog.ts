@@ -74,6 +74,7 @@ import { lsmKernel } from '../src/kernels/lsm.ts'
 import { minikvKernel } from '../src/kernels/minikv.ts'
 import { urlshortenerKernel } from '../src/kernels/urlshortener.ts'
 import { seckillKernel } from '../src/kernels/seckill.ts'
+import { minisearchKernel } from '../src/kernels/minisearch.ts'
 // 与 registry 同源的预设常量：直接 import 保证 doc 逐字一致（引擎侧，无 React）。
 import { CRC_PRESETS, HAMMING_PRESETS, SUBNET_PRESETS, HUFF_PRESETS, BPLUS_PRESETS } from '../src/presets/sequences.ts'
 import { ROUTE_PRESETS } from '../src/presets/entities.ts'
@@ -1146,6 +1147,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: '秒杀瞬时几万 QPS，但真正成功的只有库存数。把洪峰摊平、别冲垮后端，靠什么?', kind: 'choice',
         compute: () => ({ answer: '层层限流(前端置灰+网关令牌桶) + 消息队列异步下单，削峰填谷', step: 4, evidence: '预扣成功才进 MQ，订单服务平稳消费落库' }),
         distractors: () => ['给数据库加更多连接', '同步下单只是加机器', '关掉缓存直连库'],
+      },
+    ],
+  },
+  {
+    id: 'minisearch', title: 'mini 搜索引擎', kernel: minisearchKernel as Kernel<unknown>, doc: trivialDoc('minisearch'),
+    facts: [
+      {
+        id: 'idf_rare', label: '为什么稀有词排名更靠前',
+        ask: '语料 D1「猫爱吃鱼」D2「狗爱吃肉」D3「猫猫玩鱼」，查询「猫 狗」。为什么只含一个词"狗"的 D2 反而排第一?', kind: 'choice',
+        compute: () => ({ answer: '"狗"只在 1 篇出现(df=1)，idf=ln(3/1)=1.10 远高于"猫"的 ln(3/2)=0.41——稀有词更能区分相关性', step: 8, evidence: 'score(D2)=1×1.10=1.10 > score(D3)=2×0.41=0.81 > score(D1)=1×0.41=0.41' }),
+        distractors: () => ['因为 D2 文档最短', '因为"狗"笔画多', '因为 D2 排在最后'],
+      },
+      {
+        id: 'tf_freq', label: '词频对排名的影响',
+        ask: 'D1 和 D3 都含查询词"猫"，为什么 D3 排在 D1 前面?', kind: 'choice',
+        compute: () => ({ answer: '"猫"在 D3 出现 2 次(tf=2)、在 D1 出现 1 次(tf=1)，score=tf×idf，词频高→更相关', step: 8, evidence: 'score(D3,猫项)=2×0.41=0.81 > score(D1,猫项)=1×0.41=0.41' }),
+        distractors: () => ['D3 的 idf 更高', 'D3 含更多查询词', '两者其实一样，随机排的'],
       },
     ],
   },

@@ -233,6 +233,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { step: 3, stage: '④ Redis 预扣库存', focus: '库存放内存，原子扣减挡住绝大多数', detail: 'x', metric: 'Redis 原子预扣，挡住绝大多数', components: [{ id: 'client', label: '抢购客户端', role: 'r' }, { id: 'redis', label: 'Redis 库存', role: 'r' }], phase: 'run' },
       b: { step: 6, stage: '⑦ 权衡总结', focus: '一句话讲清取舍', detail: '', metric: '削峰(限流+MQ) + 防超卖(Redis原子+DB乐观锁)', components: [{ id: 'client', label: '抢购客户端', role: 'r' }, { id: 'db', label: '数据库', role: 'r' }], phase: 'done' },
     },
+    minisearch: {
+      doc: { kind: 'minisearch', params: {}, entities: [], streams: [] },
+      a: { step: 7, stage: '⑥ TF-IDF 打分', focus: 'score = Σ tf × idf', reading: '', indexed: ['D1', 'D2', 'D3'], index: [], query: ['猫', '狗'], candidates: ['D1', 'D2', 'D3'], idf: [{ term: '猫', df: 2, idf: 0.405 }, { term: '狗', df: 1, idf: 1.099 }], scores: [{ id: 'D2', score: 1.099, parts: '狗:tf1×idf1.10' }, { id: 'D3', score: 0.811, parts: '猫:tf2×idf0.41' }, { id: 'D1', score: 0.405, parts: '猫:tf1×idf0.41' }], phase: 'run' },
+      b: { step: 8, stage: '⑦ 排序返回', focus: '按分降序', reading: '', indexed: ['D1', 'D2', 'D3'], index: [], query: ['猫', '狗'], candidates: ['D1', 'D2', 'D3'], idf: [{ term: '猫', df: 2, idf: 0.405 }, { term: '狗', df: 1, idf: 1.099 }], scores: [{ id: 'D2', score: 1.099, parts: '狗:tf1×idf1.10' }, { id: 'D3', score: 0.811, parts: '猫:tf2×idf0.41' }, { id: 'D1', score: 0.405, parts: '猫:tf1×idf0.41' }], phase: 'done' },
+    },
     minikv: {
       doc: { kind: 'minikv', params: {}, entities: [], streams: [] },
       a: { op: 'get', key: 'a', val: -1, memtable: [], sstables: [[['a', 1], ['b', 2], ['c', 3]], [['a', 9], ['d', 4], ['e', 5]]], bloom: ['a', 'b', 'c', 'd', 'e'], result: '9', bloomHit: true, foundIn: 'SSTable2', note: '从新到旧查', phase: 'run' },
