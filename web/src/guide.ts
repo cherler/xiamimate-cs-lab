@@ -320,6 +320,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; stage: string }; return st.phase === 'done' ? '设计完成' : st.stage.replace(/^[①②③④⑤⑥⑦]\s*/, '') },
     try: [{ act: '按「下一步」走框架', watch: '需求→估算→分区日志→消费组→副本→保序，组件一块块搭。' }, { act: '记住三条要点', watch: '顺序写=高吞吐、offset=可重放、多副本+ack=不丢——面试常问。' }], terms: [],
   },
+  feed: {
+    question: '关注的人发帖，你的时间线怎么组织？推还是拉？大 V 千万粉丝怎么办？',
+    read: [{ at: '架构', is: '一步步搭起来的组件（发帖→推收件箱/拉归并）。', anchor: '.sd-arch' }, { at: '读数', is: '当前阶段、关键数、组件。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { stage: string; focus: string; metric: string; components: unknown[]; phase: string }; return [
+      { k: '本步输入', v: st.phase === 'done' ? '走完整套 Feed 设计' : `${st.stage}` },
+      { k: '判定规则', v: '推(写扩散)：发帖写进每个粉丝收件箱→读快、大 V 写放大；拉(读扩散)：读时现拉关注人归并→写快、读慢；推拉结合：普通推、大 V 拉，补两头短板。每步问"为什么这么选"。' },
+      { k: '本步结果', v: st.phase === 'done' ? '一套 Feed 系统搭好，可讲清推/拉/混合的取舍' : `${st.focus}；关键：${st.metric}（已定 ${st.components.length} 个组件）` },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; stage: string }; return st.phase === 'done' ? '设计完成' : st.stage.replace(/^[①②③④⑤⑥⑦]\s*/, '') },
+    try: [{ act: '按「下一步」走框架', watch: '需求→估算→推→拉→推拉结合，组件一块块搭。' }, { act: '记住两条要点', watch: '推快读写放大、拉快写慢读；大 V 走拉避免写放大——面试要点。' }], terms: [],
+  },
   topk: {
     question: '10 亿条记录求出现最多的 K 个，但内存装不下全部计数，怎么办？',
     read: [{ at: '架构', is: '一步步搭起来的组件（数据源→分片→计数+堆→归并）。', anchor: '.sd-arch' }, { at: '读数', is: '当前阶段、关键数、组件。', anchor: '.scdim' }],

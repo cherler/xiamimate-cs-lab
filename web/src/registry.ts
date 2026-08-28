@@ -304,6 +304,7 @@ import { urlshortenerKernel, type SysDesignState } from '@engine/kernels/urlshor
 import { seckillKernel } from '@engine/kernels/seckill.ts'
 import { mqdesignKernel } from '@engine/kernels/mqdesign.ts'
 import { topkKernel } from '@engine/kernels/topk.ts'
+import { feedKernel } from '@engine/kernels/feed.ts'
 import { SysDesignStage } from './stages/SysDesignStage.tsx'
 import { CollisionStage } from './stages/CollisionStage.tsx'
 import { gcnKernel, type GcnState } from '@engine/kernels/gcn.ts'
@@ -5975,6 +5976,22 @@ const seckill: Experiment<SysDesignState> = {
   ],
 }
 
+const feed: Experiment<SysDesignState> = {
+  id: 'feed', group: '系统设计', title: '设计 Feed 流', subtitle: '时间线：推 vs 拉 vs 推拉结合',
+  kernel: feedKernel, defaultDoc: { kind: 'feed', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '系统设计高频题(时间线/朋友圈)。核心矛盾:读多写少+大V写放大。走一遍——需求→估算→推(写扩散:写进每个粉丝收件箱,读快写放大)→拉(读扩散:读时现拉关注人归并,写快读慢)→推拉结合(普通推、大V拉)→权衡。详见讲解卡。',
+  bounds: ['读多写少,但大V(千万粉丝)写放大可怕', '推(写扩散):发帖写进每个粉丝收件箱→读快、大V写放大', '拉(读扩散):读时拉N个关注人归并→写快、读慢', '推拉结合:普通用户推、大V拉,补两头短板(微博做法)'],
+  tabs: [{ id: 'design', label: '架构逐步搭' }], Stage: SysDesignStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: '设计完成' } : { key: 'idle', label: s.stage.replace(/^[①②③④⑤⑥⑦]\s*/, '') || '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.stage.slice(0, 1) || '设'),
+  readouts: s => [
+    { label: '阶段', value: s.stage || '就绪' },
+    { label: '关键', value: s.metric || '—' },
+    { label: '已定组件', value: `${s.components.length} 个` },
+    { label: '架构', value: s.components.map(c => c.label).join('→') || '—' },
+  ],
+}
 const topk: Experiment<SysDesignState> = {
   id: 'topk', group: '算法系统设计', title: '设计海量数据 Top-K', subtitle: '哈希分片→分片内堆→归并',
   kernel: topkKernel, defaultDoc: { kind: 'topk', params: {}, entities: [], streams: [] }, params: [],
@@ -6012,7 +6029,7 @@ export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
   caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt, ecbcbc, birthday, aesround, hmac, totp,
-  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, bufferpool, rwlock, aba, happensbefore, lockstrategy, lrucache, lfucache, trie, quickselect, reactagent, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign, topk,
+  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, bufferpool, rwlock, aba, happensbefore, lockstrategy, lrucache, lfucache, trie, quickselect, reactagent, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign, topk, feed,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,

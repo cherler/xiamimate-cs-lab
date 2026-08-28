@@ -91,6 +91,7 @@ import { trieKernel } from '../src/kernels/trie.ts'
 import { quickselectKernel } from '../src/kernels/quickselect.ts'
 import { lockstrategyKernel } from '../src/kernels/lockstrategy.ts'
 import { bufferpoolKernel } from '../src/kernels/bufferpool.ts'
+import { feedKernel } from '../src/kernels/feed.ts'
 import { walKernel } from '../src/kernels/wal.ts'
 import { lsmKernel } from '../src/kernels/lsm.ts'
 import { minikvKernel } from '../src/kernels/minikv.ts'
@@ -1578,6 +1579,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: 'MySQL InnoDB 的 midpoint-LRU 靠什么让全表扫描冲不掉热点页?', kind: 'choice',
         compute: () => ({ answer: 'LRU 链分 young(热)+old(冷) 两段，新页插到中点(old 头)而非链表头，只有在 old 段再次被访问才升 young。扫描页只用一次、进不了 young，很快从 old 尾淘汰，young 里的热点不受影响', step: 5, evidence: '扫描 S1/S2/S3 全在 old 段进出，young[A,B,C] 毫发无损' }),
         distractors: () => ['把缓冲池扩大一倍', '扫描时暂时关掉 LRU', '给热点页加锁不让淘汰'],
+      },
+    ],
+  },
+  {
+    id: 'feed', title: '设计 Feed 流', kernel: feedKernel as Kernel<unknown>, doc: trivialDoc('feed'),
+    facts: [
+      {
+        id: 'push_pull', label: 'Feed 的推模型和拉模型差别',
+        ask: 'Feed 时间线的"推（写扩散）"和"拉（读扩散）"，各快在哪、慢在哪?', kind: 'choice',
+        compute: () => ({ answer: '推：发帖时写进每个粉丝的收件箱，读时直接读自己收件箱→读快，但写放大（大 V 发一条写千万次）；拉：发帖只存自己，读时现拉所有关注人的最新帖归并→写快，但读慢（每次拉 N 个人）', step: 3, evidence: '推=fan-out on write 读快写放大；拉=fan-out on read 写快读慢' }),
+        distractors: () => ['推和拉都读快', '推写快、拉读快', '两者没区别'],
+      },
+      {
+        id: 'big_v', label: '推拉结合怎么解决大 V 问题',
+        ask: '大 V 有千万粉丝，推拉结合怎么避免他发帖时的写放大?', kind: 'choice',
+        compute: () => ({ answer: '普通用户走推（写扩散、读快）；大 V 走拉——发帖不推给千万粉丝，粉丝刷时才现拉大 V 的最新帖、和自己收件箱归并。既避免大 V 写放大，普通场景又保持读快', step: 4, evidence: '按粉丝数阈值判定大 V，大 V 的帖读时才拉' }),
+        distractors: () => ['给大 V 更多服务器推', '禁止大 V 发帖太频繁', '大 V 也全量推、只是异步'],
       },
     ],
   },
