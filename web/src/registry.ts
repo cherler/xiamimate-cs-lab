@@ -315,6 +315,7 @@ import { mqdesignKernel, type MqState } from '@engine/kernels/mqdesign.ts'
 import { topkKernel, type TopkState } from '@engine/kernels/topk.ts'
 import { feedKernel, type FeedState } from '@engine/kernels/feed.ts'
 import { fkKernel, type FKState } from '@engine/kernels/fk.ts'
+import { ikKernel, type IKState } from '@engine/kernels/ik.ts'
 import { objectstoreKernel } from '@engine/kernels/objectstore.ts'
 import { SysDesignStage } from './stages/SysDesignStage.tsx'
 import { SeckillStage } from './stages/SeckillStage.tsx'
@@ -323,6 +324,7 @@ import { TopkStage } from './stages/TopkStage.tsx'
 import { MqStage } from './stages/MqStage.tsx'
 import { FeedStage } from './stages/FeedStage.tsx'
 import { FKStage } from './stages/FKStage.tsx'
+import { IKStage } from './stages/IKStage.tsx'
 import { CollisionStage } from './stages/CollisionStage.tsx'
 import { gcnKernel, type GcnState } from '@engine/kernels/gcn.ts'
 import { GcnStage } from './stages/GcnStage.tsx'
@@ -6140,6 +6142,23 @@ const fk: Experiment<FKState> = {
   ],
 }
 
+const ik: Experiment<IKState> = {
+  id: 'ik', group: '机器人学基础', title: '逆运动学 IK', subtitle: '末端目标 → 关节角：多解(肘上/肘下)、可无解',
+  kernel: ikKernel, defaultDoc: { kind: 'ik', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: 'FK 的反问题、机器人干活的核心：给末端要去的目标点，反求各关节该转几度。二连杆 L1=L2=2、目标 (2,2)：先判可达(r 落在 [|L1−L2|,L1+L2] 内)，再用余弦定理求肘角 θ2=±acos(...)（±两支=肘上/肘下两姿势），最后两组解都回代 FK 验证落到 (2,2)。角度全真算。',
+  bounds: ['IK=FK反问题:给末端反求关节角;可能多解/无解(够不到)/奇异——这正是它比FK难的地方', '可达性:r=√(x²+y²)须落在[|L1−L2|,L1+L2];本例r=2.828∈[0,4]够得到,(4.5,0)则无解', '余弦定理:cosθ2=(x²+y²−L1²−L2²)/(2L1L2);θ2=±acos → 肘朝下(0°,90°)/肘朝上(90°,−90°)两解', '每组解回代FK验证末端落到目标;多轴臂用数值IK(雅可比迭代)'],
+  tabs: [{ id: 'design', label: '几何反解' }], Stage: IKStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: `${s.solutions.length} 组解` } : !s.reachable ? { key: 'bad', label: '无解' } : { key: 'idle', label: s.phase === 'reach' ? '判可达' : s.phase === 'cosine' ? '余弦定理' : s.phase === 'solve' ? '解出一支' : '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 5)),
+  tickLabel: s => (s.phase === 'done' ? '解' : s.op === 'branch' ? '支' : s.phase === 'reach' ? '达' : s.phase === 'cosine' ? 'θ' : 'IK'),
+  readouts: s => [
+    { label: '目标距离 r', value: `${s.r}`, tone: s.reachable ? undefined : 'bad' },
+    { label: '可达范围', value: `[${s.reachLo}, ${s.reachHi}]`, tone: s.reachable ? 'good' : 'bad' },
+    { label: 'cosθ2', value: `${s.cosTheta2}` },
+    { label: '解', value: s.solutions.length ? s.solutions.map(x => `(${x.th1}°,${x.th2}°)`).join(' / ') : '求解中' },
+  ],
+}
+
 export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
@@ -6151,7 +6170,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk,
+  fk, ik,
 ] as unknown as AnyExperiment[]
 
 /**

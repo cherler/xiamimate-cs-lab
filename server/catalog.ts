@@ -93,6 +93,7 @@ import { lockstrategyKernel } from '../src/kernels/lockstrategy.ts'
 import { bufferpoolKernel } from '../src/kernels/bufferpool.ts'
 import { feedKernel } from '../src/kernels/feed.ts'
 import { fkKernel } from '../src/kernels/fk.ts'
+import { ikKernel } from '../src/kernels/ik.ts'
 import { objectstoreKernel } from '../src/kernels/objectstore.ts'
 import { queryplanKernel } from '../src/kernels/queryplan.ts'
 import { wildcardKernel } from '../src/kernels/wildcard.ts'
@@ -1619,6 +1620,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: '正向运动学 FK（关节角→末端）和逆运动学 IK（末端→关节角），难度和解的性质有什么本质区别?', kind: 'choice',
         compute: () => ({ answer: 'FK 是唯一解：关节角定了，沿连杆链 cos/sin 累加，末端位姿唯一确定（本例算出 (2.232,3.866)、朝向60°）。IK 反过来求关节角，可能多解、无解(够不到)或奇异，难得多', step: 3, evidence: 'FK 末端 (2.232,3.866) 由关节角唯一算出；IK 是反问题、不唯一' }),
         distractors: () => ['FK 和 IK 都是唯一解', 'IK 更简单因为直接读末端', '两者完全等价、可互相替代'],
+      },
+    ],
+  },
+  {
+    id: 'ik', title: '逆运动学 IK', kernel: ikKernel as Kernel<unknown>, doc: trivialDoc('ik'),
+    facts: [
+      {
+        id: 'multi_solution', label: 'IK 为什么会有多个解',
+        ask: '二连杆机械臂逆运动学，用余弦定理算出 cosθ2 后 θ2=±acos(...)，这个±号意味着什么?', kind: 'choice',
+        compute: () => ({ answer: '±两支对应两种姿势：肘朝下和肘朝上，两组关节角够到同一个末端点。这就是 IK 的"多解"——FK(唯一解)永远没有', step: 2, evidence: '本例 cosθ2=0 → θ2=±90° → 肘朝下(0°,90°) 与 肘朝上(90°,−90°) 都到 (2,2)' }),
+        distractors: () => ['计算出错了，正确答案只有一个', '±号可以随意丢弃一个', '正负号表示误差范围'],
+      },
+      {
+        id: 'reachable', label: 'IK 什么时候无解',
+        ask: '给二连杆机械臂(L1=L2=2)一个末端目标，什么情况下逆运动学无解(够不到)?', kind: 'choice',
+        compute: () => ({ answer: '目标到基座距离 r 超出可达范围 [|L1−L2|, L1+L2]=[0,4] 时无解：太远(r>4)伸直也够不到、太近(r<|L1−L2|)缩不进去。本例目标(2,2) r=2.828 在范围内够得到；(4.5,0) r=4.5>4 就无解', step: 1, evidence: 'r=2.828 ∈ [0,4] 够得到；r=4.5 > 4 手臂伸直也够不到' }),
+        distractors: () => ['IK 永远有解，机械臂能到任何点', '只有目标在原点时无解', '关节数不够时才无解，和距离无关'],
       },
     ],
   },

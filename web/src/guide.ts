@@ -379,6 +379,25 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; revealed: number; points: { x: number; y: number }[] }; return st.phase === 'done' ? `末端 (${st.points[st.points.length - 1]?.x}, ${st.points[st.points.length - 1]?.y})` : st.revealed > 0 ? `第 ${st.revealed} 节` : '基座'; },
     try: [{ act: '逐关节看累计朝向', watch: 'cumθ 是从基座到当前的角度和；关节2 后 cumθ=90°，那一节就竖直向上走 L=2 到 (1.732, 3)。' }, { act: '想反问题：IK', watch: 'FK 是关节角→末端(唯一解)；反过来「要末端到某点，各关节转几度」是逆运动学 IK——可能多解或够不到，难得多。' }], terms: [],
   },
+  ik: {
+    question: '给机械臂末端一个目标点，各关节该转几度？为什么答案不止一个、有时还够不到？',
+    read: [{ at: '臂与目标', is: '目标(空心圈)、可达圆环、两支解的臂姿(肘上/肘下)。', anchor: '.fk-svg' }, { at: '读数', is: '目标距离 r 与可达范围、cosθ2、已求出的解。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { phase: string; op: string; r: number; reachLo: number; reachHi: number; reachable: boolean; cosTheta2: number; solutions: { branch: string; th1: number; th2: number; checkX: number; checkY: number }[]; curBranch: number; focus: string }; return [
+      { k: '本步输入', v: st.phase === 'done' ? '两支解全求出并回代验证' : st.op === 'reach' ? `判目标可达性（r=${st.r}）` : st.op === 'cosine' ? '余弦定理求肘角 θ2' : st.op === 'branch' ? `解第 ${st.curBranch + 1} 支（${st.solutions[st.curBranch]?.branch.split(' ')[0]}）` : '准备反解' },
+      { k: '判定规则', v: '可达：r 须落在 [|L1−L2|, L1+L2]。肘角：cosθ2=(x²+y²−L1²−L2²)/(2L1L2)，θ2=±acos(±两支=肘上/肘下)。肩角 θ1=atan2(y,x)−atan2(L2 sinθ2, L1+L2 cosθ2)。每支回代 FK 验证落到目标。' },
+      { k: '本步结果', v: st.phase === 'done'
+        ? `两组解 ${st.solutions.map(x => `(${x.th1}°,${x.th2}°)`).join(' / ')}，都回代 FK=(${st.solutions[0]?.checkX},${st.solutions[0]?.checkY}) ✓`
+        : st.op === 'reach'
+          ? `r=${st.r} ${st.reachable ? '∈' : '∉'} [${st.reachLo},${st.reachHi}] → ${st.reachable ? '够得到' : '够不到、无解'}`
+          : st.op === 'cosine'
+            ? `cosθ2=${st.cosTheta2} → θ2=±acos → 两支(肘上/肘下)`
+            : st.op === 'branch'
+              ? `θ1=${st.solutions[st.curBranch]?.th1}°、θ2=${st.solutions[st.curBranch]?.th2}° → 回代 FK=(${st.solutions[st.curBranch]?.checkX},${st.solutions[st.curBranch]?.checkY})`
+              : '就绪' },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; op: string; reachable: boolean; solutions: unknown[] }; return st.phase === 'done' ? `${st.solutions.length} 组解` : !st.reachable ? '无解' : st.op === 'branch' ? `解出第 ${st.solutions.length} 支` : st.op === 'cosine' ? '余弦定理' : st.op === 'reach' ? '判可达' : '就绪'; },
+    try: [{ act: '看 ± 两支解', watch: 'cosθ2=0 → θ2=±90°，正负两支就是肘朝下(0°,90°)、肘朝上(90°,−90°)两种姿势，够到同一点 (2,2)。' }, { act: '想无解的情况', watch: '目标 (4.5,0) 的 r=4.5 超出可达上界 4，手臂伸直也够不到——这就是 IK 的"无解"，FK 永远不会遇到。' }], terms: [],
+  },
   topk: {
     question: '内存装不下全部计数，怎么求出现最多的 K 个？哈希分片和小顶堆各解决什么？',
     read: [{ at: '分片表', is: '各片的词→计数；同一个词只会在一片里。', anchor: '.tk-shards' }, { at: '小顶堆', is: 'K 个槽，堆顶(门槛)高亮；新词比门槛大才挤进来。', anchor: '.tk-heap' }],

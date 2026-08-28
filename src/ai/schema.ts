@@ -341,6 +341,7 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   bufferpool: {},
   feed: {},
   fk: {},
+  ik: {},
   wildcard: {},
   blockingqueue: {},
   regex: {},

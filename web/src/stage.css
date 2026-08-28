@@ -4672,3 +4672,11 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .fk-rk{font-size:11px;color:var(--faint)}
 .fk-rv{font-family:var(--mono);font-size:20px;font-weight:700;color:var(--ink)}
 .fk-ra{font-family:var(--mono);font-size:13px;color:var(--dim)}
+
+/* ── 逆运动学 IK（复用 .fk-* 画臂）── */
+.ik-reach{fill:none;stroke:var(--line);stroke-width:1;stroke-dasharray:4 4;opacity:.7}
+.ik-target{fill:none;stroke:var(--hit);stroke-width:2.5}
+.ik-ghost{opacity:.32}
+.ik-reachbox{padding:9px 13px;border-radius:9px;font-family:var(--mono);font-size:12px;text-align:center}
+.ik-reachbox.ok{color:var(--hit);background:color-mix(in srgb,var(--hit) 9%,var(--panel));border:1px solid color-mix(in srgb,var(--hit) 40%,var(--line))}
+.ik-reachbox.no{color:var(--miss);background:color-mix(in srgb,var(--miss) 9%,var(--panel));border:1px solid var(--miss)}

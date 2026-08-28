@@ -373,6 +373,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { step: 2, phase: 'chain', op: 'apply', links: [{ theta: 30, L: 2 }, { theta: 60, L: 2 }, { theta: -30, L: 1 }], revealed: 2, cur: 1, points: [{ x: 0, y: 0 }, { x: 1.732, y: 1 }, { x: 1.732, y: 3 }], cumAngle: 90, endX: 1.732, endY: 3, endAngle: 90, focus: '关节 2：θ=60° → 累计朝向 90°', log: 'x' },
       b: { step: 3, phase: 'done', op: 'summary', links: [{ theta: 30, L: 2 }, { theta: 60, L: 2 }, { theta: -30, L: 1 }], revealed: 3, cur: 2, points: [{ x: 0, y: 0 }, { x: 1.732, y: 1 }, { x: 1.732, y: 3 }, { x: 2.232, y: 3.866 }], cumAngle: 60, endX: 2.232, endY: 3.866, endAngle: 60, focus: '末端执行器', log: 'x' },
     },
+    ik: {
+      doc: { kind: 'ik', params: {}, entities: [], streams: [] },
+      a: { step: 3, phase: 'solve', op: 'branch', L1: 2, L2: 2, target: { x: 2, y: 2 }, r: 2.828, reachLo: 0, reachHi: 4, reachable: true, cosTheta2: 0, solutions: [{ branch: '肘朝下 (elbow-down)', th1: 0, th2: 90, checkX: 2, checkY: 2, valid: true }], curBranch: 0, armPts: [{ x: 0, y: 0 }, { x: 2, y: 0 }, { x: 2, y: 2 }], focus: '解 1（肘朝下）：θ1=0°、θ2=90°', log: 'x' },
+      b: { step: 4, phase: 'done', op: 'summary', L1: 2, L2: 2, target: { x: 2, y: 2 }, r: 2.828, reachLo: 0, reachHi: 4, reachable: true, cosTheta2: 0, solutions: [{ branch: '肘朝下 (elbow-down)', th1: 0, th2: 90, checkX: 2, checkY: 2, valid: true }, { branch: '肘朝上 (elbow-up)', th1: 90, th2: -90, checkX: 2, checkY: 2, valid: true }], curBranch: 1, armPts: [{ x: 0, y: 0 }, { x: 0, y: 2 }, { x: 2, y: 2 }], focus: '解 2（肘朝上）', log: 'x' },
+    },
     topk: {
       doc: { kind: 'topk', params: {}, entities: [], streams: [] },
       a: { step: 10, phase: 'heap', op: 'replace', K: 3, N: 2, shards: [{ id: 0, items: [{ word: '香蕉', count: 4 }, { word: '梨', count: 1 }] }, { id: 1, items: [{ word: '苹果', count: 5 }, { word: '橙子', count: 3 }, { word: '葡萄', count: 2 }, { word: '桃', count: 1 }] }], route: null, heap: [{ word: '橙子', count: 3 }, { word: '香蕉', count: 4 }, { word: '苹果', count: 5 }], consider: { word: '橙子', count: 3 }, evicted: { word: '梨', count: 1 }, threshold: 3, topk: [], focus: '3 > 门槛 1 → 淘汰「梨」换上「橙子」', log: 'x' },
