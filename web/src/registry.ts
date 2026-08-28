@@ -250,6 +250,8 @@ import { twopcKernel, type TwoPCState } from '@engine/kernels/twopc.ts'
 import { TwoPCStage } from './stages/TwoPCStage.tsx'
 import { otpreuseKernel, type OTPReuseState } from '@engine/kernels/otpreuse.ts'
 import { OTPReuseStage } from './stages/OTPReuseStage.tsx'
+import { ecbcbcKernel, type EcbCbcState } from '@engine/kernels/ecbcbc.ts'
+import { ECBCBCStage } from './stages/ECBCBCStage.tsx'
 import { walKernel, type WALState } from '@engine/kernels/wal.ts'
 import { WALStage } from './stages/WALStage.tsx'
 import { lsmKernel, type LSMState } from '@engine/kernels/lsm.ts'
@@ -5499,6 +5501,22 @@ const otpreuse: Experiment<OTPReuseState> = {
   tickLabel: s => (s.phase === 'done' ? '破' : s.xorbit >= 0 ? String(s.xorbit) : '异'),
   readouts: s => [{ label: '密钥', value: '两条消息共用(错误!)' }, { label: '本位', value: s.pos >= 0 ? `c1⊕c2=${s.xorbit}` : '完成' }, { label: 'm1⊕m2', value: s.m1xm2.join('') || '—', tone: s.phase === 'done' ? 'bad' : undefined }, { label: '结论', value: '密钥不能重复用' }],
 }
+const ecbcbc: Experiment<EcbCbcState> = {
+  id: 'ecbcbc', group: '密码学', title: 'ECB vs CBC 工作模式', subtitle: '重复明文块：ECB 泄露、CBC 打散',
+  kernel: ecbcbcKernel, defaultDoc: { kind: 'ecbcbc', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '无可调参数。同一批明文(P1=P3=1010)分别走 ECB(块独立)和 CBC(链接)加密：ECB 得 C1=C3 泄露重复，CBC 得 C1≠C3 打散。分组密码简化成 E(x)=x⊕K 好手算。详见讲解卡。',
+  bounds: ['明文 P=[1010,1100,1010,0011],P1=P3;K=0110,IV=1111', 'ECB:C=P⊕K → [1100,1010,1100,0101],C1=C3(泄露)', 'CBC:C=(P⊕C₋₁)⊕K → [0011,1001,0101,0000],C1≠C3(安全)', 'ECB禁用(企鹅图);要CBC/CTR/GCM+随机IV'],
+  tabs: [{ id: 'mode', label: '两模式对照' }], Stage: ECBCBCStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: 'CBC 打散' } : s.mode === 'ecb' ? (s.ecbLeak ? { key: 'bad', label: 'ECB 泄露' } : { key: 'idle', label: `ECB 块${s.blockIdx + 1}` }) : s.mode === 'cbc' ? { key: 'idle', label: `CBC 块${s.blockIdx + 1}` } : { key: 'idle', label: '看明文' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 11)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.mode === 'ecb' ? 'E' : s.mode === 'cbc' ? 'C' : 'P'),
+  readouts: s => [
+    { label: '模式', value: s.mode === 'intro' ? '看明文' : s.mode.toUpperCase() },
+    { label: 'ECB 密文', value: s.ecbC.length ? s.ecbC.map(x => x.toString(2).padStart(4, '0')).join(' ') : '—', tone: s.ecbLeak ? 'bad' : undefined },
+    { label: 'CBC 密文', value: s.cbcC.length ? s.cbcC.map(x => x.toString(2).padStart(4, '0')).join(' ') : '—', tone: s.cbcSafe ? 'good' : undefined },
+    { label: '重复块', value: s.phase === 'done' ? 'ECB 泄露 / CBC 安全' : '对比中' },
+  ],
+}
 const wal: Experiment<WALState> = {
   id: 'wal', group: '数据库系统', title: '预写日志 WAL', subtitle: '先写日志后改数据，崩溃能恢复',
   kernel: walKernel, defaultDoc: { kind: 'wal', params: {}, entities: [], streams: [] }, params: [],
@@ -5616,7 +5634,7 @@ const mqdesign: Experiment<SysDesignState> = {
 export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
-  caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt,
+  caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt, ecbcbc,
   tokenbucket, consistenthash, skiplist, twopc, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,

@@ -353,6 +353,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; op: string; result: string }; return st.phase === 'done' ? 'KV跑通' : (st.op === 'get' ? (st.result || 'get') : st.op) },
     try: [{ act: '看更新 a=9', watch: '不改旧值，追加新版本；SST1 里 a=1、SST2 里 a=9 同时存在。' }, { act: '看 get(a) 和压实', watch: 'get 从新到旧读到 a=9；压实把旧的 a=1 归并丢掉。' }], terms: [],
   },
+  ecbcbc: {
+    question: '同样一批明文，为什么用 ECB 加密会「泄露」而 CBC 不会？',
+    read: [{ at: '三行', is: '明文 / ECB 密文 / CBC 密文，颜色相同=值相同。', anchor: '.ec-rows' }, { at: '读数', is: '当前模式、ECB/CBC 的重复块结论。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { mode: string; blockIdx: number; ecbC: number[]; cbcC: number[]; ecbLeak: boolean; cbcSafe: boolean; expr: string; phase: string }; const bin = (n: number) => n.toString(2).padStart(4, '0'); return [
+      { k: '本步输入', v: st.phase === 'done' ? '两种模式都加密完' : st.mode === 'intro' ? '明文 P，其中 P1=P3=1010(重复块)' : st.blockIdx >= 0 ? `${st.mode.toUpperCase()} 加密第 ${st.blockIdx + 1} 块` : `${st.mode.toUpperCase()} 小结` },
+      { k: '判定规则', v: 'ECB：每块独立 C=E(P)，相同明文块→相同密文块。CBC：每块先和上一块密文异或再加密 C=E(P⊕C₋₁)，链接把重复打散。这里 E(x)=x⊕K 便于手算。' },
+      { k: '本步结果', v: st.phase === 'done' ? `ECB C1=C3(泄露)、CBC C1≠C3(打散)` : st.expr ? st.expr : st.mode === 'ecb' && st.ecbC.length === 4 ? `ECB=[${st.ecbC.map(bin).join(' ')}]，C1=C3=${bin(st.ecbC[0]!)}` : st.mode === 'cbc' && st.cbcC.length === 4 ? `CBC=[${st.cbcC.map(bin).join(' ')}]，C1≠C3` : '明文 P1=P3=1010' },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; mode: string; ecbLeak: boolean }; return st.phase === 'done' ? 'CBC 打散' : st.mode === 'ecb' && st.ecbLeak ? 'ECB 泄露' : st.mode === 'intro' ? '看明文' : st.mode.toUpperCase() },
+    try: [{ act: '盯第 1、3 块', watch: 'ECB 行里 C1、C3 颜色一样(值相同=泄露)；CBC 行里两块颜色不同。' }, { act: '想为什么', watch: 'ECB 块独立→重复必现；CBC 靠前一块密文参与异或，把相同明文块打散。' }], terms: [],
+  },
   otpreuse: {
     question: '一次一密理论不可破，为什么密钥绝不能重复用？',
     read: [{ at: '三行', is: '两段密文与它们的异或；红=已揭示的 m1⊕m2。', anchor: '.cx-rows' }, { at: '读数', is: '本位异或、泄露的 m1⊕m2。', anchor: '.scdim' }],

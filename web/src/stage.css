@@ -3938,6 +3938,24 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .sd-focus { font-size:13px; font-weight:600; color:var(--ink); margin-bottom:4px; }
 .sd-detail { margin:0; font-size:12px; line-height:1.6; color:var(--t-body); }
 
+/* ── ECB vs CBC（分组密码模式） ── */
+.ec-rows { display:flex; flex-direction:column; gap:9px; margin:8px 0 12px; }
+.ec-row { display:grid; grid-template-columns:120px 1fr; gap:12px; align-items:center; padding:8px 10px; border:1.5px solid var(--line); border-radius:10px; background:var(--panel); }
+.ec-row.on { border-color:var(--now); box-shadow:0 0 0 1px var(--now); }
+.ec-row.leak { border-color:var(--miss); background:color-mix(in srgb, var(--miss) 6%, var(--panel)); }
+.ec-row.safe { border-color:var(--hit); background:color-mix(in srgb, var(--hit) 6%, var(--panel)); }
+.ec-lbl { display:flex; flex-direction:column; gap:1px; font-size:12.5px; font-weight:700; color:var(--ink); }
+.ec-lbl em { font-size:10px; font-weight:400; font-style:normal; color:var(--faint); font-family:var(--mono); }
+.ec-blks { display:flex; flex-wrap:wrap; gap:7px; align-items:center; }
+.ec-blk { font-family:var(--mono); font-size:14px; font-weight:700; letter-spacing:1px; padding:5px 9px; border-radius:6px; min-width:52px; text-align:center; }
+.ec-blk.act { outline:2px solid var(--ink); outline-offset:2px; }
+.ec-blk.ec-ghost { background:var(--sunk-1); color:var(--faint); border:1px dashed var(--line); font-weight:400; }
+.ec-eq { font-size:10.5px; color:var(--faint); margin-left:2px; }
+.ec-badge { font-size:11px; font-weight:600; padding:2px 9px; border-radius:10px; margin-left:4px; }
+.ec-badge.bad { color:var(--miss); background:color-mix(in srgb, var(--miss) 12%, transparent); }
+.ec-badge.good { color:var(--hit); background:color-mix(in srgb, var(--hit) 12%, transparent); }
+.ec-expr { margin:0 0 10px; padding:7px 11px; font-size:12.5px; border-radius:6px; border:1px solid var(--line); background:var(--sunk-1); color:var(--dim); overflow-x:auto; }
+
 /* ── mini 搜索引擎（倒排索引 + TF-IDF） ── */
 .ms-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:8px 0 12px; }
 .ms-col { display:flex; flex-direction:column; gap:6px; min-width:0; }

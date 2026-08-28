@@ -228,6 +228,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { stage: '③ 发号 + 编码', focus: '短码怎么生成', detail: 'x', metric: '62^6 ≈ 568 亿个 6 位短码', components: [{ id: 'client', label: '客户端', role: 'r' }, { id: 'idgen', label: '发号器', role: 'r' }], phase: 'run' },
       b: { stage: '⑦ 权衡总结', focus: '一句话讲清取舍', detail: '', metric: '发号器>哈希>自增；301 vs 302', components: [{ id: 'client', label: '客户端', role: 'r' }, { id: 'cdn', label: 'CDN', role: 'r' }], phase: 'done' },
     },
+    ecbcbc: {
+      doc: { kind: 'ecbcbc', params: {}, entities: [], streams: [] },
+      a: { step: 5, mode: 'ecb', blockIdx: -1, P: [10, 12, 10, 3], K: 6, IV: 15, ecbC: [12, 10, 12, 5], cbcC: [], expr: 'C1=C3=1100', ecbLeak: true, cbcSafe: false, phase: 'run', focus: 'ECB 结论' },
+      b: { step: 10, mode: 'cbc', blockIdx: -1, P: [10, 12, 10, 3], K: 6, IV: 15, ecbC: [12, 10, 12, 5], cbcC: [3, 9, 5, 0], expr: 'CBC: C1=0011 ≠ C3=0101', ecbLeak: true, cbcSafe: true, phase: 'done', focus: '对比' },
+    },
     mqdesign: {
       doc: { kind: 'mqdesign', params: {}, entities: [], streams: [] },
       a: { step: 2, stage: '③ 核心模型：分区顺序日志', focus: 'Topic → Partition → append-only 日志', detail: 'x', metric: 'Topic/Partition/append-only log + offset', components: [{ id: 'producer', label: '生产者', role: 'r' }, { id: 'partition', label: 'Partition 日志', role: 'r' }], phase: 'run' },

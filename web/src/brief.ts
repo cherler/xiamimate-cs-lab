@@ -333,6 +333,12 @@ export const BRIEFS: Record<string, Brief> = {
     tasks: [{ act: '看更新 a=9', watch: '不改旧值：SST1 里 a=1、SST2 里 a=9 同时存在。' }, { act: '看 get(a) 与压实', watch: 'get 从新到旧读到 a=9；compaction 把旧的 a=1 归并丢掉。' }, { act: '看 get(z)', watch: '布隆说"一定不在"，连磁盘都不查——省 I/O。' }],
     verdict: ctx => { const t = ctx.trace as { sstables?: [string, number][][] }[]; const l = t[t.length - 1]; return l ? { pick: 0, say: '五个零件咬合成一个能 put/更新/get 的迷你数据库，压实后旧版本被清。', why: '写快(内存+顺序刷)、更新追加+新值优先、读省(布隆)、WAL 持久——LevelDB 的完整骨架，面试能整套讲。' } : null },
   },
+  ecbcbc: {
+    care: '**分组密码本身只会加密固定大小的一块**（如 AES 一块 16 字节）。数据比一块长时，怎么把一块块接起来，就是「工作模式」——选错模式，再强的分组密码也白搭。\n\n**ECB（电子密码本）**：最直觉的做法——每块**独立**加密 C=E(P)。致命问题：分组密码是**确定性**的，相同的明文块必然得到相同的密文块。于是明文里凡有重复，密文里原样重复——这就是著名的「**ECB 企鹅**」：把一张企鹅图按 ECB 加密，轮廓照样看得见。ECB 泄露了明文的结构。\n\n**CBC（密码块链接）**：每块加密前，先和**上一块密文**异或，再加密：C_i=E(P_i ⊕ C_{i-1})（第一块用随机 IV）。这样即使两个明文块相同，它们异或的"上一块密文"不同，得到的密文也不同——**重复被打散**。\n\n本实验把分组密码简化成 E(x)=x⊕K（4-bit 块），让每步都能手算：明文 P=[1010,1100,1010,0011]（P1=P3），K=0110，IV=1111。结果 **ECB→[1100,1010,1100,0101]（C1=C3，泄露）；CBC→[0011,1001,0101,0000]（C1≠C3，打散）**。\n\n**结论**：ECB 现实里基本禁用，要用 CBC / CTR / GCM 这类带链接或计数器的模式，并配随机 IV（GCM 还额外提供完整性认证）。',
+    guess: { q: '明文 P1=P3(重复块)，为什么 ECB 加密后 C1=C3、泄露了重复?', opts: ['块独立加密，相同明文块必得相同密文块', '因为密钥太短', '因为块只有 4-bit'] },
+    tasks: [{ act: '盯第 1、3 块', watch: 'ECB 行 C1、C3 颜色一样(值相同=泄露)；CBC 行两块颜色不同。' }, { act: '想为什么', watch: 'ECB 块独立→重复必现；CBC 靠前一块密文参与异或，把相同明文块打散。' }],
+    verdict: ctx => { const t = ctx.trace as { ecbC?: number[]; cbcC?: number[] }[]; const l = t[t.length - 1]; const bin = (n: number) => n.toString(2).padStart(4, '0'); return l && l.ecbC && l.cbcC ? { pick: 0, say: `ECB=[${l.ecbC.map(bin).join(' ')}](C1=C3泄露)、CBC=[${l.cbcC.map(bin).join(' ')}](C1≠C3打散)。`, why: 'ECB 块独立确定性→重复明文必得重复密文；CBC 靠链接把相同明文块打散。所以 ECB 禁用，要用 CBC/CTR/GCM+随机 IV。' } : null },
+  },
   otpreuse: {
     care: '一次一密(OTP)理论上不可破——前提是密钥**真随机、和明文等长、只用一次**。\n\n一旦**同一个密钥加密两条消息**就全垮：c1=m1⊕k、c2=m2⊕k，那么 c1⊕c2 = m1⊕m2⊕(k⊕k) = **m1⊕m2**——密钥被异或抵消了！\n\n攻击者不需要密钥，只要拿到两段密文异或，就得到两条明文的异或关系，再结合语言规律就能还原。这是「密钥只能用一次」的铁律来历，WEP、某些 RC4 用法就栽在这。',
     guess: { q: '同密钥加密两消息，攻击者异或两段密文得到？', opts: ['m1⊕m2（密钥消失）', '密钥 k', '乱码'] },

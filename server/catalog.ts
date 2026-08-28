@@ -69,6 +69,7 @@ import { consistentHashKernel } from '../src/kernels/consistenthash.ts'
 import { skiplistKernel } from '../src/kernels/skiplist.ts'
 import { twopcKernel } from '../src/kernels/twopc.ts'
 import { otpreuseKernel } from '../src/kernels/otpreuse.ts'
+import { ecbcbcKernel } from '../src/kernels/ecbcbc.ts'
 import { walKernel } from '../src/kernels/wal.ts'
 import { lsmKernel } from '../src/kernels/lsm.ts'
 import { minikvKernel } from '../src/kernels/minikv.ts'
@@ -1182,6 +1183,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: '要让同一个订单的消息被顺序消费，消息队列怎么做?', kind: 'choice',
         compute: () => ({ answer: '只保证单个分区内有序；按订单 key 哈希路由到固定分区，同 key 消息就都进同一分区、天然有序', step: 5, evidence: '跨分区不保证顺序，key 路由把需要保序的消息收敛到一个分区' }),
         distractors: () => ['全局所有分区都有序', '加副本就能保序', '消费者随机拉取即可'],
+      },
+    ],
+  },
+  {
+    id: 'ecbcbc', title: 'ECB vs CBC 工作模式', kernel: ecbcbcKernel as Kernel<unknown>, doc: trivialDoc('ecbcbc'),
+    facts: [
+      {
+        id: 'ecb_leak', label: '为什么 ECB 会泄露明文 pattern',
+        ask: '明文里有重复块(P1=P3=1010)。为什么 ECB 模式加密后 C1 和 C3 也一模一样、把重复暴露了?', kind: 'choice',
+        compute: () => ({ answer: 'ECB 每块独立、确定性加密(C=E(P))，相同明文块必得相同密文块，所以 C1=C3=1100，明文的重复结构直接暴露', step: 5, evidence: 'ECB 密文=[1100,1010,1100,0101]，C1=C3；这就是"ECB 企鹅"，加密后轮廓还在' }),
+        distractors: () => ['因为密钥太短', '因为块是 4-bit 太小', 'ECB 其实不会泄露，是巧合'],
+      },
+      {
+        id: 'cbc_chain', label: 'CBC 靠什么把重复块打散',
+        ask: '同样是重复明文块(P1=P3)，为什么 CBC 加密后 C1≠C3、不泄露重复?', kind: 'choice',
+        compute: () => ({ answer: 'CBC 有链接：每块先和上一块密文异或再加密(C=E(P⊕C₋₁))，同样的明文块每次异或的密文都不同，所以 C1≠C3', step: 10, evidence: 'CBC 密文=[0011,1001,0101,0000]，C1=0011≠C3=0101；再配随机 IV 连第一块都随机化' }),
+        distractors: () => ['CBC 用了更长的密钥', 'CBC 把块顺序打乱了', 'CBC 每块换一个密钥'],
       },
     ],
   },
