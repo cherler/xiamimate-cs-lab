@@ -79,6 +79,7 @@ import { vectorclockKernel } from '../src/kernels/vectorclock.ts'
 import { quorumKernel } from '../src/kernels/quorum.ts'
 import { circuitbreakerKernel } from '../src/kernels/circuitbreaker.ts'
 import { joinsKernel } from '../src/kernels/joins.ts'
+import { compositeindexKernel } from '../src/kernels/compositeindex.ts'
 import { walKernel } from '../src/kernels/wal.ts'
 import { lsmKernel } from '../src/kernels/lsm.ts'
 import { minikvKernel } from '../src/kernels/minikv.ts'
@@ -1362,6 +1363,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: '大表之间的等值连接（=），优化器通常选哪种 JOIN 算法、为什么?', kind: 'choice',
         compute: () => ({ answer: 'Hash Join：对小表建哈希表(build)、大表逐行 O(1) 探测(probe)，总代价 O(N+M)，远小于嵌套循环的 O(N×M)；代价是只支持等值连接、要额外内存放哈希表', step: 3, evidence: '本例 建3+探4=7 次，远少于 NLJ 的 12' }),
         distractors: () => ['Nested Loop，因为不用预处理', 'Sort-Merge，因为一定要排序', 'Hash Join 只适合小表'],
+      },
+    ],
+  },
+  {
+    id: 'compositeindex', title: '复合索引·最左前缀', kernel: compositeindexKernel as Kernel<unknown>, doc: trivialDoc('compositeindex'),
+    facts: [
+      {
+        id: 'leftmost', label: '复合索引 idx(a,b,c) 什么查询用不上',
+        ask: '有复合索引 idx(a,b,c)。WHERE b=? （只按 b 查）为什么用不上这个索引?', kind: 'choice',
+        compute: () => ({ answer: '违反最左前缀：索引在 B+树里是先按 a 排、a 相同再按 b 排，只按 b 查无法在树里定位（b 是散的）；必须从最左列 a 起、连续命中的等值条件才能用', step: 4, evidence: 'WHERE b=? 用到前缀[]→全表扫；而 WHERE a=? 用到 (a)、WHERE a=?AND b=? 用到 (a,b)' }),
+        distractors: () => ['因为 b 不是主键', '因为 b 的区分度不够', '因为要 SELECT 的列不在索引里'],
+      },
+      {
+        id: 'covering', label: '覆盖索引免回表是什么意思',
+        ask: 'SELECT a,b WHERE a=? 用到 idx(a,b,c) 时"不回表"，而 SELECT a,b,d 就要回表，为什么?', kind: 'choice',
+        compute: () => ({ answer: '覆盖索引：SELECT 需要的列(a,b)都在索引里，直接从索引叶子拿到数据就够了；而 d 不在索引里，必须拿主键再去主键树捞整行（回表），多一次查找', step: 6, evidence: 'SELECT a,b,c 覆盖不回表；SELECT a,b,d 含索引外列 d → 回表' }),
+        distractors: () => ['回表是因为 WHERE 条件不够', '回表是因为索引失效了', '两者其实都要回表'],
       },
     ],
   },

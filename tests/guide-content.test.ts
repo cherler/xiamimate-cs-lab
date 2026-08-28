@@ -228,6 +228,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { stage: '③ 发号 + 编码', focus: '短码怎么生成', detail: 'x', metric: '62^6 ≈ 568 亿个 6 位短码', components: [{ id: 'client', label: '客户端', role: 'r' }, { id: 'idgen', label: '发号器', role: 'r' }], phase: 'run' },
       b: { stage: '⑦ 权衡总结', focus: '一句话讲清取舍', detail: '', metric: '发号器>哈希>自增；301 vs 302', components: [{ id: 'client', label: '客户端', role: 'r' }, { id: 'cdn', label: 'CDN', role: 'r' }], phase: 'done' },
     },
+    compositeindex: {
+      doc: { kind: 'compositeindex', params: {}, entities: [], streams: [] },
+      a: { step: 6, op: 'query', qi: 5, where: ['a'], select: ['a', 'b', 'd'], prefix: ['a'], usesIndex: true, covering: false, history: [], phase: 'run', focus: 'Q6：用索引 (a)，回表' },
+      b: { step: 7, op: 'summary', qi: -1, where: [], select: [], prefix: [], usesIndex: false, covering: false, history: [], phase: 'done', focus: '两条规则：最左前缀 + 覆盖' },
+    },
     joins: {
       doc: { kind: 'joins', params: {}, entities: [], streams: [] },
       a: { step: 3, algo: 'hash', op: 'probe', users: [1, 2, 3], orders: [2, 2, 3, 5], hash: [1, 2, 3], matches: [[2, 2], [2, 2], [3, 3]], cost: 7, costs: { nlj: 0, hash: 0, smj: 0 }, phase: 'run', focus: 'Hash Join · probe：大表逐行探测哈希表' },

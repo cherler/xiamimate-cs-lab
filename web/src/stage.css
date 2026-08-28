@@ -4175,6 +4175,34 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .jn-cval { grid-area:val; font-family:var(--mono); font-size:13px; font-weight:700; color:var(--ink); text-align:right; }
 .jn-cnote { grid-area:note; font-size:10.5px; color:var(--faint); text-align:right; }
 
+/* ── 复合索引 最左前缀 + 覆盖 ── */
+.ci-index { display:flex; align-items:center; gap:6px; margin:8px 0 12px; }
+.ci-ilabel { font-family:var(--mono); font-size:12px; color:var(--faint); margin-right:4px; }
+.ci-col { font-family:var(--mono); font-size:16px; font-weight:700; width:40px; height:40px; display:flex; align-items:center; justify-content:center; border:1.5px solid var(--line); border-radius:8px; background:var(--sunk-1); color:var(--dim); }
+.ci-col.used { border-color:var(--hit); color:var(--hit); background:color-mix(in srgb, var(--hit) 12%, var(--panel)); }
+.ci-col.dim { opacity:.4; }
+.ci-scan { font-size:11.5px; color:var(--miss); margin-left:6px; }
+.ci-query { margin:0 0 12px; padding:9px 12px; border:1px solid var(--line); border-radius:9px; background:var(--panel); }
+.ci-sql { font-family:var(--mono); font-size:12.5px; color:var(--ink); }
+.ci-sql b { color:var(--now); }
+.ci-verdicts { display:flex; flex-wrap:wrap; gap:7px; margin-top:8px; }
+.ci-vtag { font-size:11.5px; font-weight:600; padding:3px 10px; border-radius:10px; }
+.ci-vtag.ok { color:var(--hit); background:color-mix(in srgb, var(--hit) 12%, transparent); }
+.ci-vtag.warn { color:var(--f-tag); background:color-mix(in srgb, var(--f-tag) 14%, transparent); }
+.ci-vtag.bad { color:var(--miss); background:color-mix(in srgb, var(--miss) 12%, transparent); }
+.ci-hist { border:1px solid var(--line); border-radius:9px; overflow:hidden; margin-bottom:10px; }
+.ci-hhead, .ci-hrow { display:grid; grid-template-columns:1fr 88px 64px; gap:8px; padding:6px 11px; align-items:center; }
+.ci-hhead { background:var(--sunk-1); font-size:10.5px; color:var(--faint); font-weight:600; }
+.ci-hrow { font-size:11.5px; border-top:1px solid var(--line); }
+.ci-hrow.cur { background:color-mix(in srgb, var(--now) 8%, var(--panel)); }
+.ci-hq { font-family:var(--mono); color:var(--dim); font-size:11px; }
+.ci-hp { font-family:var(--mono); font-weight:700; }
+.ci-hp.ok { color:var(--hit); }
+.ci-hp.bad { color:var(--miss); }
+.ci-hc { font-weight:600; }
+.ci-hc.ok { color:var(--hit); }
+.ci-hc.warn { color:var(--f-tag); }
+
 /* ── mini 搜索引擎（倒排索引 + TF-IDF） ── */
 .ms-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:8px 0 12px; }
 .ms-col { display:flex; flex-direction:column; gap:6px; min-width:0; }

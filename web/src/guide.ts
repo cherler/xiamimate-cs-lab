@@ -353,6 +353,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; op: string; result: string }; return st.phase === 'done' ? 'KV跑通' : (st.op === 'get' ? (st.result || 'get') : st.op) },
     try: [{ act: '看更新 a=9', watch: '不改旧值，追加新版本；SST1 里 a=1、SST2 里 a=9 同时存在。' }, { act: '看 get(a) 和压实', watch: 'get 从新到旧读到 a=9；压实把旧的 a=1 归并丢掉。' }], terms: [],
   },
+  compositeindex: {
+    question: '有复合索引 idx(a,b,c)，哪些查询能用上它、哪些还要回表？',
+    read: [{ at: '索引三列', is: 'a/b/c，绿色是本查询能用的最左前缀。', anchor: '.ci-index' }, { at: '结果表', is: '每条查询用到的前缀 + 是否回表。', anchor: '.ci-hist' }],
+    step: (s: never) => { const st = s as { op: string; qi: number; where: string[]; select: string[]; prefix: string[]; usesIndex: boolean; covering: boolean; phase: string }; return [
+      { k: '本步输入', v: st.phase === 'done' ? '两条规则总结' : st.op === 'query' ? `Q${st.qi + 1}: WHERE ${st.where.map(c => `${c}=?`).join(' AND ')} · SELECT ${st.select.join(',')}` : '复合索引 idx(a,b,c)' },
+      { k: '判定规则', v: '最左前缀：从最左列 a 起、连续命中的等值条件才能定位（跳列/断层后面就用不上）。覆盖索引：SELECT 的列全在索引里就不用回表。' },
+      { k: '本步结果', v: st.phase === 'done' ? '列顺序决定能不能用；SELECT 列决定回不回表' : st.op === 'query' ? (st.usesIndex ? `走索引 (${st.prefix.join(',')})${st.covering ? '，覆盖不回表' : '，非覆盖要回表'}` : '违反最左前缀 → 全表扫描') : 'idx 按 (a,b,c) 排序' },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; op: string; usesIndex: boolean; covering: boolean }; return st.phase === 'done' ? '两规则' : st.op === 'query' ? (st.usesIndex ? (st.covering ? '走索引·不回表' : '走索引·回表') : '全表扫') : 'idx' },
+    try: [{ act: '看跳列失效', watch: 'WHERE b=?（跳过最左列 a）→ 整个索引用不上，走全表扫。' }, { act: '看回表', watch: 'SELECT 里出现索引外的列 d → 得回主键树捞整行（回表），比覆盖索引慢。' }], terms: [],
+  },
   joins: {
     question: '同一个 JOIN，数据库为什么有时走 Hash、有时走 Nested Loop？',
     read: [{ at: '两表', is: 'Users.id 与 Orders.uid，当前算法怎么配对。', anchor: '.jn-tables' }, { at: '代价', is: '末步三算法的比较次数对比。', anchor: '.jn-costs' }],

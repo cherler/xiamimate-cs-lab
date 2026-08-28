@@ -270,6 +270,8 @@ import { circuitbreakerKernel, type BreakerState } from '@engine/kernels/circuit
 import { BreakerStage } from './stages/BreakerStage.tsx'
 import { joinsKernel, type JoinState } from '@engine/kernels/joins.ts'
 import { JoinsStage } from './stages/JoinsStage.tsx'
+import { compositeindexKernel, type CIndexState } from '@engine/kernels/compositeindex.ts'
+import { CIndexStage } from './stages/CIndexStage.tsx'
 import { walKernel, type WALState } from '@engine/kernels/wal.ts'
 import { WALStage } from './stages/WALStage.tsx'
 import { lsmKernel, type LSMState } from '@engine/kernels/lsm.ts'
@@ -5535,6 +5537,22 @@ const ecbcbc: Experiment<EcbCbcState> = {
     { label: '重复块', value: s.phase === 'done' ? 'ECB 泄露 / CBC 安全' : '对比中' },
   ],
 }
+const compositeindex: Experiment<CIndexState> = {
+  id: 'compositeindex', group: '数据库系统', title: '复合索引·最左前缀', subtitle: 'idx(a,b,c) 走不走索引、要不要回表',
+  kernel: compositeindexKernel, defaultDoc: { kind: 'compositeindex', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '无可调参数。复合索引 idx(a,b,c),6 条查询逐条判:最左前缀(从a起连续等值才能定位,跳列/断层用不上)+覆盖索引(SELECT列全在索引里就免回表)。规则可手核。详见讲解卡。',
+  bounds: ['最左前缀:WHERE从a起连续命中才走索引;WHERE b=跳过a→全表扫', 'WHERE a AND c(b断)→只用到a', '覆盖:SELECT列全在(a,b,c)→不回表;含d→回表', '=EXPLAIN里key=idx vs type=ALL;建索引要卡列顺序'],
+  tabs: [{ id: 'idx', label: '逐条查询判' }], Stage: CIndexStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: '两规则' } : s.op === 'query' ? (s.usesIndex ? (s.covering ? { key: 'good', label: '走索引·不回表' } : { key: 'idle', label: '走索引·回表' }) : { key: 'bad', label: '全表扫' }) : { key: 'idle', label: 'idx(a,b,c)' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 8)),
+  tickLabel: s => (s.phase === 'done' ? '结' : s.op === 'query' ? (s.usesIndex ? 'Q' : '扫') : '始'),
+  readouts: s => [
+    { label: '查询', value: s.op === 'query' ? `Q${s.qi + 1}` : (s.phase === 'done' ? '总结' : '就绪') },
+    { label: '最左前缀', value: s.op === 'query' ? (s.usesIndex ? `用(${s.prefix.join(',')})` : '全表扫') : '—', tone: s.op === 'query' ? (s.usesIndex ? 'good' : 'bad') : undefined },
+    { label: '覆盖', value: s.op === 'query' && s.usesIndex ? (s.covering ? '不回表' : '回表') : '—', tone: s.op === 'query' && s.usesIndex && s.covering ? 'good' : undefined },
+    { label: '已判', value: `${s.history.length}/6` },
+  ],
+}
 const joins: Experiment<JoinState> = {
   id: 'joins', group: '数据库系统', title: '三种 JOIN 算法', subtitle: '嵌套循环 / 哈希 / 排序归并，代价对比',
   kernel: joinsKernel, defaultDoc: { kind: 'joins', params: {}, entities: [], streams: [] }, params: [],
@@ -5797,7 +5815,7 @@ export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
   caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt, ecbcbc, birthday, aesround, hmac, totp,
-  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign,
+  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,

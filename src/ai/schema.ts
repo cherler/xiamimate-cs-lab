@@ -327,6 +327,7 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   quorum: {},
   circuitbreaker: {},
   joins: {},
+  compositeindex: {},
   astar: {},
   perceptron: {},
   pooling: { kind: 'string' },
