@@ -375,6 +375,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; kind: string; round: number }; return st.phase === 'done' ? '得到答案' : st.kind === 'action' ? '调工具' : st.kind === 'observation' ? '拿到结果' : st.kind === 'thought' ? `想·第${st.round}轮` : '开始' },
     try: [{ act: '看想→做→看循环', watch: 'Thought 决定查气温 → Action search → Observation 30°C → 下一轮再想。' }, { act: '看工具给真数据', watch: 'calc(30-25) 返回 5，不是模型口算——Agent 用真结果，少幻觉。' }], terms: [],
   },
+  trie: {
+    question: '搜索框输入几个字母就弹候选，这套自动补全是怎么做的？',
+    read: [{ at: '前缀树', is: '缩进树=Trie，绿色是前缀路径、✓ 是完整词。', anchor: '.tr-tree' }, { at: '搜索框', is: '输入的前缀，末步弹出 Top-K 建议。', anchor: '.tr-search' }],
+    step: (s: never) => { const st = s as { op: string; prefix: string; walked: string; candidates: [string, number][]; suggestions: [string, number][]; phase: string }; return [
+      { k: '本步输入', v: st.phase === 'done' ? '收集完，排序出建议' : st.op === 'intro' || st.op === 'build' ? `词表建成 Trie` : st.op === 'input' ? `输入前缀「${st.prefix}」` : st.op === 'walk' ? `沿树走到 "${st.walked}"` : '在前缀节点 DFS 收集' },
+      { k: '判定规则', v: 'Trie 公共前缀共享节点、末尾标完整词。补全：沿前缀路径走到前缀节点(只跟前缀长度有关) → DFS 收集子树里所有词 → 按热度排序取 Top-K。' },
+      { k: '本步结果', v: st.phase === 'done' ? `按热度排 → 建议 ${st.suggestions.map(x => x[0]).join('、')}` : st.op === 'walk' ? `到达前缀 "${st.walked}" 节点` : st.candidates.length ? `子树词：${st.candidates.map(c => `${c[0]}(${c[1]})`).join('、')}` : `准备沿 "${st.prefix}" 走查` },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; op: string; walked: string; candidates: unknown[] }; return st.phase === 'done' ? 'Top-K 建议' : st.op === 'walk' ? `走到${st.walked}` : st.op === 'collect' ? `收${st.candidates.length}个` : st.op === 'build' ? '建树' : '看结构' },
+    try: [{ act: '看走查路径', watch: '沿 c→a→r 三步走到前缀节点——只跟前缀长度有关，和词表多大无关。' }, { act: '看收集+排序', watch: '前缀节点 DFS 收 car/card/care，按热度排 care(4)>car(3)>card(2)。' }], terms: [],
+  },
   lfucache: {
     question: '缓存满了淘汰谁？LFU 为什么按"用得最少"、而不是"最久没用"？',
     read: [{ at: '缓存卡', is: '每项带 freq 频率徽章，最低频标红。', anchor: '.lfu-cards' }, { at: '读数', is: '本步、缓存(带freq)、结果。', anchor: '.scdim' }],

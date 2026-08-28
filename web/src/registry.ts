@@ -284,6 +284,8 @@ import { reactagentKernel, type ReactState } from '@engine/kernels/reactagent.ts
 import { ReactAgentStage } from './stages/ReactAgentStage.tsx'
 import { lfucacheKernel, type LFUState } from '@engine/kernels/lfucache.ts'
 import { LFUCacheStage } from './stages/LFUCacheStage.tsx'
+import { trieKernel, type TrieState } from '@engine/kernels/trie.ts'
+import { TrieStage } from './stages/TrieStage.tsx'
 import { walKernel, type WALState } from '@engine/kernels/wal.ts'
 import { WALStage } from './stages/WALStage.tsx'
 import { lsmKernel, type LSMState } from '@engine/kernels/lsm.ts'
@@ -5550,6 +5552,22 @@ const ecbcbc: Experiment<EcbCbcState> = {
     { label: '重复块', value: s.phase === 'done' ? 'ECB 泄露 / CBC 安全' : '对比中' },
   ],
 }
+const trie: Experiment<TrieState> = {
+  id: 'trie', group: '算法项目实战', title: 'Trie 自动补全', subtitle: '前缀树走查 + 收集子树 + 按热度 Top-K',
+  kernel: trieKernel, defaultDoc: { kind: 'trie', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '无可调参数。词表 cat/car/card/care/dog 建 Trie,输入前缀 car:沿树走到前缀节点→DFS收集子树词(car/card/care)→按热度排 care(4)/car(3)/card(2)。走查/收集/排序可手核。详见讲解卡。',
+  bounds: ['Trie:每节点一字符、路径拼成前缀、公共前缀共享;末尾节点标完整词', '补全:走到前缀节点O(前缀长度)→DFS收集子树词→按热度Top-K', '前缀car→子树car/card/care→排care(4)/car(3)/card(2)', '大词表优化:节点预存子树TopK;可扩模糊匹配/拼写纠错'],
+  tabs: [{ id: 'trie', label: '走查→收集→排序' }], Stage: TrieStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: 'Top-K 建议' } : s.op === 'walk' ? { key: 'idle', label: `走到 ${s.walked}` } : s.op === 'collect' ? { key: 'good', label: `${s.candidates.length} 候选` } : s.op === 'build' ? { key: 'idle', label: '建树' } : { key: 'idle', label: '看结构' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 8)),
+  tickLabel: s => (s.phase === 'done' ? '荐' : s.op === 'walk' ? (s.walked.slice(-1) || '走') : s.op === 'collect' ? '收' : s.op === 'build' ? '建' : '始'),
+  readouts: s => [
+    { label: '前缀', value: s.prefix || '—' },
+    { label: '走到', value: s.walked || '根' },
+    { label: '子树候选', value: s.candidates.length ? s.candidates.map(c => c[0]).join(',') : '—' },
+    { label: 'Top-K 建议', value: s.suggestions.length ? s.suggestions.map(x => `${x[0]}(${x[1]})`).join(' ') : '—', tone: s.phase === 'done' ? 'good' : undefined },
+  ],
+}
 const lfucache: Experiment<LFUState> = {
   id: 'lfucache', group: '算法项目实战', title: '手写 LFU 缓存', subtitle: '按频率淘汰，同频再按最久未用',
   kernel: lfucacheKernel, defaultDoc: { kind: 'lfucache', params: {}, entities: [], streams: [] }, params: [],
@@ -5940,7 +5958,7 @@ export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
   caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt, ecbcbc, birthday, aesround, hmac, totp,
-  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, rwlock, aba, happensbefore, lrucache, lfucache, reactagent, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign, topk,
+  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, rwlock, aba, happensbefore, lrucache, lfucache, trie, reactagent, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign, topk,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,

@@ -233,6 +233,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { step: 8, kind: 'action', round: 3, text: '', tool: 'calc', arg: '30 - 25', obs: '', history: [{ kind: 'thought', text: '两地都有了：30 和 25。用计算器算差。' }], answer: '', phase: 'run', focus: '第 3 轮 · Action：calc(30 - 25)' },
       b: { step: 11, kind: 'answer', round: 4, text: '北京今天最高 30°C，上海 25°C，北京比上海热 5°C。', tool: '', arg: '', obs: '', history: [{ kind: 'thought', text: 'x' }], answer: '北京今天最高 30°C，上海 25°C，北京比上海热 5°C。', phase: 'done', focus: 'Final Answer：够了，作答' },
     },
+    trie: {
+      doc: { kind: 'trie', params: {}, entities: [], streams: [] },
+      a: { step: 6, op: 'collect', prefix: 'car', walked: 'car', nodes: [], candidates: [['car', 3], ['card', 2], ['care', 4]], suggestions: [], phase: 'run', focus: '从前缀节点 DFS，收集子树里所有完整词' },
+      b: { step: 7, op: 'rank', prefix: 'car', walked: 'car', nodes: [], candidates: [['car', 3], ['card', 2], ['care', 4]], suggestions: [['care', 4], ['car', 3], ['card', 2]], phase: 'done', focus: '按热度排序，返回 Top-3 建议' },
+    },
     lfucache: {
       doc: { kind: 'lfucache', params: {}, entities: [], streams: [] },
       a: { step: 7, op: 'put', opDesc: 'put(4,4)', entries: [{ k: 3, v: 3, freq: 2 }, { k: 4, v: 4, freq: 1 }], result: -2, hit: false, evicted: 1, evictReason: '同频·最久未用', bumped: 4, capacity: 2, phase: 'run', focus: 'put(4,4)：满了→淘汰 1（同频·最久未用）' },

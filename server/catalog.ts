@@ -87,6 +87,7 @@ import { lrucacheKernel } from '../src/kernels/lrucache.ts'
 import { topkKernel } from '../src/kernels/topk.ts'
 import { reactagentKernel } from '../src/kernels/reactagent.ts'
 import { lfucacheKernel } from '../src/kernels/lfucache.ts'
+import { trieKernel } from '../src/kernels/trie.ts'
 import { walKernel } from '../src/kernels/wal.ts'
 import { lsmKernel } from '../src/kernels/lsm.ts'
 import { minikvKernel } from '../src/kernels/minikv.ts'
@@ -1506,6 +1507,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: 'LFU 里有多个 key 的访问频率并列最低，这时淘汰哪一个?', kind: 'choice',
         compute: () => ({ answer: '并列最低频时，用 LRU 打破平手——淘汰这些同频 key 里最久没被使用的那个', step: 7, evidence: 'put(4) 时 1 和 3 都是频率 2，淘汰更久没用的 1' }),
         distractors: () => ['淘汰 key 最小的', '淘汰最近刚用的', '随机淘汰一个同频的'],
+      },
+    ],
+  },
+  {
+    id: 'trie', title: 'Trie 自动补全', kernel: trieKernel as Kernel<unknown>, doc: trivialDoc('trie'),
+    facts: [
+      {
+        id: 'why_trie', label: '自动补全为什么用 Trie 而不是遍历词表',
+        ask: '按前缀补全候选词，为什么用 Trie（前缀树），而不是遍历整个词表找前缀匹配的?', kind: 'choice',
+        compute: () => ({ answer: 'Trie 里公共前缀共享节点，沿前缀路径走一遍就到"前缀节点"，只跟前缀长度有关、和词表大小无关；遍历词表是 O(N)。且公共前缀共享还省空间', step: 5, evidence: '走 c→a→r 三步就定位到前缀节点，不用扫全部词' }),
+        distractors: () => ['Trie 更省内存所以更快', '遍历词表根本找不到', '两者速度一样'],
+      },
+      {
+        id: 'complete_flow', label: 'Trie 补全的三步',
+        ask: '输入前缀「car」后，Trie 自动补全是怎么给出候选的?', kind: 'choice',
+        compute: () => ({ answer: '① 沿 Trie 走到「car」前缀节点；② 从该节点 DFS 收集子树里所有完整词(car/card/care)；③ 按热度排序取 Top-K(care/car/card)', step: 7, evidence: '收集到 car(3)/card(2)/care(4)，按频率排 care(4)>car(3)>card(2)' }),
+        distractors: () => ['直接返回前缀节点的那个词', '把整棵树的词都返回', '按字母序返回不排热度'],
       },
     ],
   },
