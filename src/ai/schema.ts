@@ -343,6 +343,7 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   wildcard: {},
   blockingqueue: {},
   regex: {},
+  objectstore: {},
   astar: {},
   perceptron: {},
   pooling: { kind: 'string' },

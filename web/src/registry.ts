@@ -311,6 +311,7 @@ import { seckillKernel } from '@engine/kernels/seckill.ts'
 import { mqdesignKernel } from '@engine/kernels/mqdesign.ts'
 import { topkKernel } from '@engine/kernels/topk.ts'
 import { feedKernel } from '@engine/kernels/feed.ts'
+import { objectstoreKernel } from '@engine/kernels/objectstore.ts'
 import { SysDesignStage } from './stages/SysDesignStage.tsx'
 import { CollisionStage } from './stages/CollisionStage.tsx'
 import { gcnKernel, type GcnState } from '@engine/kernels/gcn.ts'
@@ -6030,6 +6031,22 @@ const seckill: Experiment<SysDesignState> = {
   ],
 }
 
+const objectstore: Experiment<SysDesignState> = {
+  id: 'objectstore', group: '系统设计', title: '设计对象存储', subtitle: '海量图片视频：切块+纠删码+CDN',
+  kernel: objectstoreKernel, defaultDoc: { kind: 'objectstore', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '系统设计高频题(存海量图片/短视频)。矛盾:数据量大、低成本、读得快。走一遍——需求→估算→对象存储(切块+纠删码/副本+元数据+扁平key)→上传(分片续传+哈希秒传)→分发(CDN+多码率转码切片)→权衡(副本vs纠删码/冷热分层)。详见讲解卡。',
+  bounds: ['对象存储:文件切块+多副本/纠删码存多机+元数据单独存,扁平key水平扩展', '上传:大文件分片续传+哈希秒传去重', '分发:CDN边缘缓存+视频多码率转码切片(HLS)', '副本(3倍存储恢复快)vs纠删码RS(6,3)(1.5倍省钱恢复要算);冷热分层'],
+  tabs: [{ id: 'design', label: '架构逐步搭' }], Stage: SysDesignStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: '设计完成' } : { key: 'idle', label: s.stage.replace(/^[①②③④⑤⑥⑦]\s*/, '') || '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.stage.slice(0, 1) || '设'),
+  readouts: s => [
+    { label: '阶段', value: s.stage || '就绪' },
+    { label: '关键', value: s.metric || '—' },
+    { label: '已定组件', value: `${s.components.length} 个` },
+    { label: '架构', value: s.components.map(c => c.label).join('→') || '—' },
+  ],
+}
 const feed: Experiment<SysDesignState> = {
   id: 'feed', group: '系统设计', title: '设计 Feed 流', subtitle: '时间线：推 vs 拉 vs 推拉结合',
   kernel: feedKernel, defaultDoc: { kind: 'feed', params: {}, entities: [], streams: [] }, params: [],
@@ -6083,7 +6100,7 @@ export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
   caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt, ecbcbc, birthday, aesround, hmac, totp,
-  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, bufferpool, wildcard, regex, blockingqueue, rwlock, aba, happensbefore, lockstrategy, lrucache, lfucache, trie, quickselect, reactagent, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign, topk, feed,
+  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, bufferpool, wildcard, regex, blockingqueue, rwlock, aba, happensbefore, lockstrategy, lrucache, lfucache, trie, quickselect, reactagent, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign, topk, feed, objectstore,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,

@@ -320,6 +320,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; stage: string }; return st.phase === 'done' ? '设计完成' : st.stage.replace(/^[①②③④⑤⑥⑦]\s*/, '') },
     try: [{ act: '按「下一步」走框架', watch: '需求→估算→分区日志→消费组→副本→保序，组件一块块搭。' }, { act: '记住三条要点', watch: '顺序写=高吞吐、offset=可重放、多副本+ack=不丢——面试常问。' }], terms: [],
   },
+  objectstore: {
+    question: '存海量图片、短视频，怎么做到便宜、不丢、还播放不卡？',
+    read: [{ at: '架构', is: '一步步搭起来的组件（上传→对象存储→CDN分发）。', anchor: '.sd-arch' }, { at: '读数', is: '当前阶段、关键数、组件。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { stage: string; focus: string; metric: string; components: unknown[]; phase: string }; return [
+      { k: '本步输入', v: st.phase === 'done' ? '走完整套对象存储设计' : `${st.stage}` },
+      { k: '判定规则', v: '存：文件切块+多副本/纠删码存多机+元数据单独存(扁平key水平扩展)。传：大文件分片续传+哈希秒传去重。发：CDN边缘缓存+视频多码率转码切片。每步问"为什么这么选"。' },
+      { k: '本步结果', v: st.phase === 'done' ? '一套对象存储搭好，可讲清切块/冗余/分发的取舍' : `${st.focus}；关键：${st.metric}（已定 ${st.components.length} 个组件）` },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; stage: string }; return st.phase === 'done' ? '设计完成' : st.stage.replace(/^[①②③④⑤⑥⑦]\s*/, '') },
+    try: [{ act: '按「下一步」走框架', watch: '需求→估算→对象存储→上传→CDN分发，组件一块块搭。' }, { act: '记住两条要点', watch: '副本vs纠删码(成本vs恢复)、CDN+转码让播放快——面试要点。' }], terms: [],
+  },
   feed: {
     question: '关注的人发帖，你的时间线怎么组织？推还是拉？大 V 千万粉丝怎么办？',
     read: [{ at: '架构', is: '一步步搭起来的组件（发帖→推收件箱/拉归并）。', anchor: '.sd-arch' }, { at: '读数', is: '当前阶段、关键数、组件。', anchor: '.scdim' }],

@@ -353,6 +353,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { step: 2, stage: '③ 核心模型：分区顺序日志', focus: 'Topic → Partition → append-only 日志', detail: 'x', metric: 'Topic/Partition/append-only log + offset', components: [{ id: 'producer', label: '生产者', role: 'r' }, { id: 'partition', label: 'Partition 日志', role: 'r' }], phase: 'run' },
       b: { step: 6, stage: '⑦ 权衡总结', focus: '一句话讲清取舍', detail: '', metric: '分区顺序日志 + 消费组offset + 多副本ack + key路由', components: [{ id: 'producer', label: '生产者', role: 'r' }, { id: 'router', label: 'key 路由', role: 'r' }], phase: 'done' },
     },
+    objectstore: {
+      doc: { kind: 'objectstore', params: {}, entities: [], streams: [] },
+      a: { step: 2, stage: '③ 核心：对象存储', focus: '切块 + 冗余存多机 + 扁平 key', detail: 'x', metric: '切块 + 副本/纠删码 + 元数据 + 扁平 key', components: [{ id: 'client', label: '客户端', role: 'r' }, { id: 'store', label: '对象存储集群', role: 'r' }], phase: 'run' },
+      b: { step: 5, stage: '⑥ 权衡总结', focus: '一句话讲清取舍', detail: '', metric: '对象存储(切块+纠删码) + 上传(分片秒传) + 分发(CDN+转码)', components: [{ id: 'client', label: '客户端', role: 'r' }, { id: 'cdn', label: 'CDN', role: 'r' }], phase: 'done' },
+    },
     feed: {
       doc: { kind: 'feed', params: {}, entities: [], streams: [] },
       a: { step: 2, stage: '③ 推模型（写扩散）', focus: '发帖时写进所有粉丝的收件箱', detail: 'x', metric: '写进每个粉丝收件箱 → 读快、写放大', components: [{ id: 'user', label: '用户', role: 'r' }, { id: 'inbox', label: '粉丝收件箱', role: 'r' }], phase: 'run' },

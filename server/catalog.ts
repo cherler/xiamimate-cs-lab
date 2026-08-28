@@ -92,6 +92,7 @@ import { quickselectKernel } from '../src/kernels/quickselect.ts'
 import { lockstrategyKernel } from '../src/kernels/lockstrategy.ts'
 import { bufferpoolKernel } from '../src/kernels/bufferpool.ts'
 import { feedKernel } from '../src/kernels/feed.ts'
+import { objectstoreKernel } from '../src/kernels/objectstore.ts'
 import { wildcardKernel } from '../src/kernels/wildcard.ts'
 import { blockingqueueKernel } from '../src/kernels/blockingqueue.ts'
 import { regexKernel } from '../src/kernels/regex.ts'
@@ -1650,6 +1651,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: '正则的 * 和通配符（glob）的 * 有什么本质区别?', kind: 'choice',
         compute: () => ({ answer: '正则的 * 表示"零或多个它前面那个字符"（如 a* 是零或多个 a）；通配符的 * 表示"任意一段字符"（和前一个字符无关）。语义完全不同', step: 5, evidence: 'p="c*a*b" 里 c*=零或多个c、a*=零或多个a；通配符里 * 是任意段' }),
         distractors: () => ['两者完全一样', '正则 * 匹配一段、通配符 * 匹配一个', '只是写法不同、语义相同'],
+      },
+    ],
+  },
+  {
+    id: 'objectstore', title: '设计对象存储', kernel: objectstoreKernel as Kernel<unknown>, doc: trivialDoc('objectstore'),
+    facts: [
+      {
+        id: 'replica_ec', label: '副本和纠删码怎么选',
+        ask: '对象存储保证数据不丢，用多副本还是纠删码，怎么权衡?', kind: 'choice',
+        compute: () => ({ answer: '多副本(如3副本)=3倍存储、恢复快、简单，适合热数据；纠删码(如RS(6,3))=约1.5倍存储、省钱，但恢复要计算、CPU高、恢复慢，适合冷数据。核心是存储成本 vs 恢复性能的权衡', step: 5, evidence: '3副本3倍空间；纠删码把冗余从"整份复制"降到"校验块"' }),
+        distractors: () => ['副本一定更好', '纠删码一定更好', '两者存储开销一样'],
+      },
+      {
+        id: 'why_object', label: '为什么用对象存储而不是文件系统',
+        ask: '存海量图片视频，为什么用对象存储、而不是传统文件系统的目录树?', kind: 'choice',
+        compute: () => ({ answer: '海量小文件会把文件系统的目录树/inode/元数据撑爆；对象存储用扁平的 key(bucket/hash)而非目录树，元数据单独存、可水平扩展，天然适合海量对象', step: 2, evidence: '目录树扛不住 PB 级海量文件，对象存储扁平 key 可扩展' }),
+        distractors: () => ['对象存储读写更快', '文件系统不能存视频', '对象存储不用存元数据'],
       },
     ],
   },
