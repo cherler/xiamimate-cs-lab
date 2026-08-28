@@ -233,6 +233,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { step: 8, kind: 'action', round: 3, text: '', tool: 'calc', arg: '30 - 25', obs: '', history: [{ kind: 'thought', text: '两地都有了：30 和 25。用计算器算差。' }], answer: '', phase: 'run', focus: '第 3 轮 · Action：calc(30 - 25)' },
       b: { step: 11, kind: 'answer', round: 4, text: '北京今天最高 30°C，上海 25°C，北京比上海热 5°C。', tool: '', arg: '', obs: '', history: [{ kind: 'thought', text: 'x' }], answer: '北京今天最高 30°C，上海 25°C，北京比上海热 5°C。', phase: 'done', focus: 'Final Answer：够了，作答' },
     },
+    lfucache: {
+      doc: { kind: 'lfucache', params: {}, entities: [], streams: [] },
+      a: { step: 7, op: 'put', opDesc: 'put(4,4)', entries: [{ k: 3, v: 3, freq: 2 }, { k: 4, v: 4, freq: 1 }], result: -2, hit: false, evicted: 1, evictReason: '同频·最久未用', bumped: 4, capacity: 2, phase: 'run', focus: 'put(4,4)：满了→淘汰 1（同频·最久未用）' },
+      b: { step: 10, op: 'get', opDesc: 'get(4)', entries: [{ k: 3, v: 3, freq: 3 }, { k: 4, v: 4, freq: 2 }], result: 4, hit: true, evicted: null, evictReason: '', bumped: 4, capacity: 2, phase: 'done', focus: 'get(4)：命中→返回 4，频率+1' },
+    },
     lrucache: {
       doc: { kind: 'lrucache', params: {}, entities: [], streams: [] },
       a: { step: 4, op: 'put', opDesc: 'put(3,3)', list: [{ k: 3, v: 3 }, { k: 1, v: 1 }], result: -2, hit: false, evicted: 2, moved: 3, capacity: 2, phase: 'run', focus: 'put(3,3)：满了→淘汰尾部 2，新节点插到头' },

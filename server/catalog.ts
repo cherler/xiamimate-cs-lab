@@ -86,6 +86,7 @@ import { happensbeforeKernel } from '../src/kernels/happensbefore.ts'
 import { lrucacheKernel } from '../src/kernels/lrucache.ts'
 import { topkKernel } from '../src/kernels/topk.ts'
 import { reactagentKernel } from '../src/kernels/reactagent.ts'
+import { lfucacheKernel } from '../src/kernels/lfucache.ts'
 import { walKernel } from '../src/kernels/wal.ts'
 import { lsmKernel } from '../src/kernels/lsm.ts'
 import { minikvKernel } from '../src/kernels/minikv.ts'
@@ -1488,6 +1489,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: '大模型直接回答"北京今天比上海热多少度"有什么问题，为什么 Agent 要调 search/calc?', kind: 'choice',
         compute: () => ({ answer: '实时气温不在模型训练知识里、直接答会幻觉；调 search 拿真实气温、调 calc 精确算差，Observation 把真结果喂回，答案就基于真数据而非编造', step: 11, evidence: 'search 得到 30/25、calc 得到 5，都是工具的真实返回' }),
         distractors: () => ['调工具只是为了更慢', '模型其实知道，调工具是多余的', '为了减少模型参数'],
+      },
+    ],
+  },
+  {
+    id: 'lfucache', title: '手写 LFU 缓存', kernel: lfucacheKernel as Kernel<unknown>, doc: trivialDoc('lfucache'),
+    facts: [
+      {
+        id: 'lfu_vs_lru', label: 'LFU 和 LRU 的淘汰规则差别',
+        ask: 'LFU 缓存和 LRU 缓存，容量满时淘汰谁的规则有什么本质区别?', kind: 'choice',
+        compute: () => ({ answer: 'LRU 淘汰"最久没用的"（只看时间/最近使用）；LFU 淘汰"用得最少的"（看访问频率），频率相同时才再按最久没用打破平手', step: 4, evidence: 'put(3) 时淘汰频率最低的 2，而不是最久没用的' }),
+        distractors: () => ['两者完全一样', 'LFU 淘汰最近刚用的', 'LFU 随机淘汰'],
+      },
+      {
+        id: 'lfu_tie', label: 'LFU 频率相同时淘汰谁',
+        ask: 'LFU 里有多个 key 的访问频率并列最低，这时淘汰哪一个?', kind: 'choice',
+        compute: () => ({ answer: '并列最低频时，用 LRU 打破平手——淘汰这些同频 key 里最久没被使用的那个', step: 7, evidence: 'put(4) 时 1 和 3 都是频率 2，淘汰更久没用的 1' }),
+        distractors: () => ['淘汰 key 最小的', '淘汰最近刚用的', '随机淘汰一个同频的'],
       },
     ],
   },

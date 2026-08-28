@@ -375,6 +375,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; kind: string; round: number }; return st.phase === 'done' ? '得到答案' : st.kind === 'action' ? '调工具' : st.kind === 'observation' ? '拿到结果' : st.kind === 'thought' ? `想·第${st.round}轮` : '开始' },
     try: [{ act: '看想→做→看循环', watch: 'Thought 决定查气温 → Action search → Observation 30°C → 下一轮再想。' }, { act: '看工具给真数据', watch: 'calc(30-25) 返回 5，不是模型口算——Agent 用真结果，少幻觉。' }], terms: [],
   },
+  lfucache: {
+    question: '缓存满了淘汰谁？LFU 为什么按"用得最少"、而不是"最久没用"？',
+    read: [{ at: '缓存卡', is: '每项带 freq 频率徽章，最低频标红。', anchor: '.lfu-cards' }, { at: '读数', is: '本步、缓存(带freq)、结果。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { op: string; opDesc: string; entries: { k: number; v: number; freq: number }[]; result: number; hit: boolean; evicted: number | null; evictReason: string; bumped: number | null; capacity: number; phase: string }; const show = st.entries.map(e => `${e.k}:${e.v}(f${e.freq})`).join(' '); return [
+      { k: '本步输入', v: st.phase === 'done' && st.op === 'intro' ? '走完一串操作' : st.opDesc || `容量 ${st.capacity} 的缓存` },
+      { k: '判定规则', v: 'get/put 命中让该 key 频率 +1。容量满时淘汰**频率最低**的；若多个并列最低，再按**最久未用**(LRU)打破平手。这是 LFU 和 LRU 的关键差别（频率 vs 时间）。' },
+      { k: '本步结果', v: st.op === 'get' ? (st.hit ? `命中返回 ${st.result}，${st.bumped} 频率+1 → ${show}` : `未命中 -1（${show}）`) : st.evicted !== null ? `淘汰 ${st.evicted}（${st.evictReason}）→ ${show}` : `插入，频率=1 → ${show}` },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; op: string; hit: boolean; result: number; evicted: number | null }; return st.phase === 'done' ? 'O(1) LFU' : st.op === 'get' ? (st.hit ? `命中${st.result}` : '未命中') : st.evicted !== null ? `淘汰${st.evicted}` : '插入' },
+    try: [{ act: '看按频率淘汰', watch: 'put(3) 时淘汰 2——因为 2 频率最低(f1)，1 已被 get 过(f2)。' }, { act: '看同频打平手', watch: 'put(4) 时 1 和 3 都是 f2，淘汰更久没用的 1（同频用 LRU）。' }], terms: [],
+  },
   lrucache: {
     question: '怎么让缓存的 get 和 put 都是 O(1)，还能淘汰"最久没用"的？',
     read: [{ at: '双向链表', is: '头=最近用、尾=最久没用；移头/淘汰尾看这里。', anchor: '.lru-list' }, { at: 'HashMap', is: '缓存里现有的 key。', anchor: '.lru-map' }],

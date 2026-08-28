@@ -334,6 +334,7 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   lrucache: {},
   topk: {},
   reactagent: {},
+  lfucache: {},
   astar: {},
   perceptron: {},
   pooling: { kind: 'string' },

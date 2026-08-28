@@ -282,6 +282,8 @@ import { lrucacheKernel, type LRUState } from '@engine/kernels/lrucache.ts'
 import { LRUCacheStage } from './stages/LRUCacheStage.tsx'
 import { reactagentKernel, type ReactState } from '@engine/kernels/reactagent.ts'
 import { ReactAgentStage } from './stages/ReactAgentStage.tsx'
+import { lfucacheKernel, type LFUState } from '@engine/kernels/lfucache.ts'
+import { LFUCacheStage } from './stages/LFUCacheStage.tsx'
 import { walKernel, type WALState } from '@engine/kernels/wal.ts'
 import { WALStage } from './stages/WALStage.tsx'
 import { lsmKernel, type LSMState } from '@engine/kernels/lsm.ts'
@@ -5548,6 +5550,22 @@ const ecbcbc: Experiment<EcbCbcState> = {
     { label: '重复块', value: s.phase === 'done' ? 'ECB 泄露 / CBC 安全' : '对比中' },
   ],
 }
+const lfucache: Experiment<LFUState> = {
+  id: 'lfucache', group: '算法项目实战', title: '手写 LFU 缓存', subtitle: '按频率淘汰，同频再按最久未用',
+  kernel: lfucacheKernel, defaultDoc: { kind: 'lfucache', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '无可调参数。容量2跑 LeetCode 460 序列。LFU 淘汰频率最低的、同频再按最久未用(LRU打平手)。O(1)实现=频率桶+minFreq。频率/淘汰对象可手核。详见讲解卡。',
+  bounds: ['与LRU区别:LFU看频率、LRU看时间;get/put命中freq+1', 'put(3)淘汰频率最低的2;put(4)两个同频里淘汰最久未用的1', 'O(1)实现:频率桶(freq→双向链表)+minFreq指针', 'LFU坑:老热点赖着不走→真实用带衰减近似LFU(Redis)'],
+  tabs: [{ id: 'lfu', label: 'put/get 全流程' }], Stage: LFUCacheStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: 'O(1) LFU' } : s.op === 'get' ? (s.hit ? { key: 'good', label: `命中 ${s.result}` } : { key: 'bad', label: '未命中' }) : s.evicted !== null ? { key: 'bad', label: `淘汰 ${s.evicted}` } : s.op === 'put' ? { key: 'idle', label: '插入' } : { key: 'idle', label: '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 11)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.op === 'get' ? (s.hit ? '中' : '空') : s.evicted !== null ? '汰' : s.op === 'put' ? '写' : '始'),
+  readouts: s => [
+    { label: '本步', value: s.opDesc || '就绪' },
+    { label: '缓存(freq)', value: s.entries.length ? s.entries.map(e => `${e.k}:${e.v}(f${e.freq})`).join(' ') : '空' },
+    { label: '结果', value: s.op === 'get' ? (s.result === -1 ? '-1' : `${s.result}`) : s.evicted !== null ? `淘汰${s.evicted}(${s.evictReason})` : '插入', tone: s.op === 'get' ? (s.hit ? 'good' : 'bad') : s.evicted !== null ? 'bad' : undefined },
+    { label: '占用', value: `${s.entries.length}/${s.capacity}` },
+  ],
+}
 const reactagent: Experiment<ReactState> = {
   id: 'reactagent', group: '大模型项目实战', title: 'ReAct Agent 循环', subtitle: '想→做(调工具)→看(结果)→再想…→答',
   kernel: reactagentKernel, defaultDoc: { kind: 'reactagent', params: {}, entities: [], streams: [] }, params: [],
@@ -5922,7 +5940,7 @@ export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
   caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt, ecbcbc, birthday, aesround, hmac, totp,
-  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, rwlock, aba, happensbefore, lrucache, reactagent, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign, topk,
+  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, rwlock, aba, happensbefore, lrucache, lfucache, reactagent, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign, topk,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,
