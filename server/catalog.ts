@@ -73,6 +73,7 @@ import { ecbcbcKernel } from '../src/kernels/ecbcbc.ts'
 import { birthdayKernel } from '../src/kernels/birthday.ts'
 import { aesroundKernel } from '../src/kernels/aesround.ts'
 import { hmacKernel } from '../src/kernels/hmac.ts'
+import { totpKernel } from '../src/kernels/totp.ts'
 import { walKernel } from '../src/kernels/wal.ts'
 import { lsmKernel } from '../src/kernels/lsm.ts'
 import { minikvKernel } from '../src/kernels/minikv.ts'
@@ -1254,6 +1255,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: 'HMAC 标签是怎么让收方既挡住伪造、又发现消息被改的?', kind: 'choice',
         compute: () => ({ answer: '标签的计算需要密钥 K：没有 K 就算不出正确标签(防伪造)；消息改一个字节，收方用 K 重算的标签就和附带的对不上(防篡改)', step: 5, evidence: "m 从 'Hi' 改成 'Hj'，重算 HMAC=06≠原 05，收方拒收" }),
         distractors: () => ['靠把消息加密隐藏起来', '靠标签里带一个时间戳', '靠消息本身够长'],
+      },
+    ],
+  },
+  {
+    id: 'totp', title: 'TOTP 动态口令', kernel: totpKernel as Kernel<unknown>, doc: trivialDoc('totp'),
+    facts: [
+      {
+        id: 'offline_same', label: '手机和服务器不通信怎么算出同一个码',
+        ask: 'TOTP 里手机和服务器不联网对表，为什么能各自算出同一个 6 位码?', kind: 'choice',
+        compute: () => ({ answer: '两边都有同一个共享密钥 K，又都看当前时间：码 = 截断(HMAC(K, ⌊t/30⌋))，同一个时间窗算出同一个码，全程不用传密钥、不用通信', step: 4, evidence: 't=30s 时手机与服务器都算窗口 T=1 → 都得 094198' }),
+        distractors: () => ['手机每次把码发给服务器存起来', '服务器提前把所有码发给手机', '靠联网实时同步'],
+      },
+      {
+        id: 'window_change', label: '码为什么每 30 秒变一次',
+        ask: 'TOTP 的码为什么在 30 秒内不变、过 30 秒就换一个?', kind: 'choice',
+        compute: () => ({ answer: '码只取决于时间窗 T=⌊t/30⌋：同一个 30 秒内 T 不变→码不变(给你时间输入)；跨到下一窗口 T+1→HMAC 全变→新码(旧码作废)', step: 3, evidence: 't=0/15/29s 同在窗口0→790815；t=30s 进窗口1→094198' }),
+        distractors: () => ['码是随机生成的，正好 30 秒换', '手机内置了一张 30 秒一换的码表', '服务器每 30 秒推一个新码给手机'],
       },
     ],
   },

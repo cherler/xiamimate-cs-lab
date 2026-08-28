@@ -228,6 +228,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { stage: '③ 发号 + 编码', focus: '短码怎么生成', detail: 'x', metric: '62^6 ≈ 568 亿个 6 位短码', components: [{ id: 'client', label: '客户端', role: 'r' }, { id: 'idgen', label: '发号器', role: 'r' }], phase: 'run' },
       b: { stage: '⑦ 权衡总结', focus: '一句话讲清取舍', detail: '', metric: '发号器>哈希>自增；301 vs 302', components: [{ id: 'client', label: '客户端', role: 'r' }, { id: 'cdn', label: 'CDN', role: 'r' }], phase: 'done' },
     },
+    totp: {
+      doc: { kind: 'totp', params: {}, entities: [], streams: [] },
+      a: { step: 3, op: 'next', t: 30, T: 1, code: '094198', prevCode: '790815', history: [{ t: 0, T: 0, code: '790815' }, { t: 30, T: 1, code: '094198' }], phase: 'run', focus: 't=30s：跨到下一窗口 → 换新码' },
+      b: { step: 4, op: 'verify', t: 30, T: 1, code: '094198', prevCode: '094198', history: [{ t: 0, T: 0, code: '790815' }, { t: 30, T: 1, code: '094198' }], phase: 'done', focus: '服务器验证' },
+    },
     hmac: {
       doc: { kind: 'hmac', params: {}, entities: [], streams: [] },
       a: { step: 2, op: 'inner', K: [0x4b, 0x65, 0x79, 0x31], m: [0x48, 0x69], ki: [0x7d, 0x53, 0x4f, 0x07], ko: [], inner: 0x2f, mac: -1, tamperM: [], tamperMac: -1, phase: 'run', focus: '内层哈希 inner = H(K⊕ipad ‖ m)' },

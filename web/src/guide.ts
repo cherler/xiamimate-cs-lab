@@ -353,6 +353,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; op: string; result: string }; return st.phase === 'done' ? 'KV跑通' : (st.op === 'get' ? (st.result || 'get') : st.op) },
     try: [{ act: '看更新 a=9', watch: '不改旧值，追加新版本；SST1 里 a=1、SST2 里 a=9 同时存在。' }, { act: '看 get(a) 和压实', watch: 'get 从新到旧读到 a=9；压实把旧的 a=1 归并丢掉。' }], terms: [],
   },
+  totp: {
+    question: '手机验证器那个每 30 秒变的 6 位码，是怎么和服务器对上的？',
+    read: [{ at: '管线', is: '时间 → ⌊÷30⌋ 窗口 → HMAC → 截断 → 6 位码。', anchor: '.tp-pipe' }, { at: '读数', is: '当前时间、时间窗 T、6 位码。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { op: string; t: number; T: number; code: string; prevCode: string; phase: string }; return [
+      { k: '本步输入', v: st.phase === 'done' ? '服务器验证' : st.op === 'intro' ? 'TOTP 目标：离线算出同一个码' : `当前时间 t=${st.t}s` },
+      { k: '判定规则', v: '码 = 截断(HMAC(K, T))，T=⌊t/30⌋。同一 30 秒窗口 T 不变 → 码不变；跨窗口 T+1 → HMAC 全变 → 新码。手机和服务器共享 K，各自看时间算，不用通信。' },
+      { k: '本步结果', v: st.phase === 'done' ? `服务器用同 K 算 T=${st.T} 得 ${st.code}，一致→放行（容 ±1 窗口时钟差）` : st.op === 'code' ? `T=${st.T} → 码 ${st.code}` : st.op === 'same' ? `还在窗口 ${st.T}，码不变 ${st.code}` : st.op === 'next' ? `跳到窗口 ${st.T}，换新码 ${st.code}（旧 ${st.prevCode} 作废）` : '共享密钥 + 当前时间' },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; op: string; code: string }; return st.phase === 'done' ? '验证通过' : st.op === 'next' ? '换新码' : st.op === 'same' ? '码不变' : st.op === 'code' ? st.code : '看目标' },
+    try: [{ act: '看同窗不变', watch: 't=0/15/29s 都在窗口 0，码一直是 790815——给你 30 秒时间输入。' }, { act: '看换窗翻码', watch: 't=30s 进窗口 1，HMAC 全变 → 新码 094198，旧码作废。' }], terms: [],
+  },
   hmac: {
     question: '怎么给消息盖一个"只有持密钥者算得出、改一字节就露馅"的标签？',
     read: [{ at: '两条泳道', is: '内层 K⊕ipad‖m→H，外层 K⊕opad‖inner→H。', anchor: '.hm-pipe' }, { at: '读数', is: '内层 inner、HMAC 标签、篡改后。', anchor: '.scdim' }],

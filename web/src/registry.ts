@@ -258,6 +258,8 @@ import { aesroundKernel, type AesState } from '@engine/kernels/aesround.ts'
 import { AesRoundStage } from './stages/AesRoundStage.tsx'
 import { hmacKernel, type HmacState } from '@engine/kernels/hmac.ts'
 import { HmacStage } from './stages/HmacStage.tsx'
+import { totpKernel, type TotpState } from '@engine/kernels/totp.ts'
+import { TotpStage } from './stages/TotpStage.tsx'
 import { walKernel, type WALState } from '@engine/kernels/wal.ts'
 import { WALStage } from './stages/WALStage.tsx'
 import { lsmKernel, type LSMState } from '@engine/kernels/lsm.ts'
@@ -5523,6 +5525,22 @@ const ecbcbc: Experiment<EcbCbcState> = {
     { label: '重复块', value: s.phase === 'done' ? 'ECB 泄露 / CBC 安全' : '对比中' },
   ],
 }
+const totp: Experiment<TotpState> = {
+  id: 'totp', group: '密码学', title: 'TOTP 动态口令', subtitle: '共享密钥+时间窗：离线算出同一个6位码',
+  kernel: totpKernel, defaultDoc: { kind: 'totp', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '无可调参数。码 = 截断(HMAC(K, ⌊t/30⌋))：时间按30秒切窗口，同窗不变、换窗即变。手机和服务器不通信却算出同一个码(共享K+当前时间)。玩具HMAC=FNV mod 10⁶，码可复算。详见讲解卡。',
+  bounds: ['码=截断(HMAC(密钥,时间窗T)),T=⌊t/30⌋', 't=0/15/29s同窗→790815不变;t=30s换窗→094198', '手机与服务器不通信:靠共享K+当前时间各自算', '服务器容时钟差校验T-1/T/T+1;真实=RFC6238'],
+  tabs: [{ id: 'otp', label: '随时间翻码' }], Stage: TotpStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: '验证通过' } : s.op === 'next' ? { key: 'good', label: '换新码' } : s.op === 'same' ? { key: 'idle', label: '码不变' } : s.op === 'code' ? { key: 'idle', label: s.code } : { key: 'idle', label: '看目标' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 5)),
+  tickLabel: s => (s.phase === 'done' ? '验' : s.op === 'next' ? '翻' : s.op === 'same' ? '守' : s.op === 'code' ? String(s.T) : '标'),
+  readouts: s => [
+    { label: '时间', value: `${s.t}s` },
+    { label: '时间窗', value: `T=${s.T}` },
+    { label: '6 位码', value: s.code || '——', tone: s.op === 'next' || s.phase === 'done' ? 'good' : undefined },
+    { label: '和上一步', value: s.op === 'same' ? '同窗·不变' : s.op === 'next' ? '换窗·翻新' : '—' },
+  ],
+}
 const hmac: Experiment<HmacState> = {
   id: 'hmac', group: '密码学', title: 'HMAC 消息认证', subtitle: '密钥+嵌套哈希：防伪造又防篡改',
   kernel: hmacKernel, defaultDoc: { kind: 'hmac', params: {}, entities: [], streams: [] }, params: [],
@@ -5688,7 +5706,7 @@ const mqdesign: Experiment<SysDesignState> = {
 export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
-  caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt, ecbcbc, birthday, aesround, hmac,
+  caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt, ecbcbc, birthday, aesround, hmac, totp,
   tokenbucket, consistenthash, skiplist, twopc, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,

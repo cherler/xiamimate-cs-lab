@@ -4029,6 +4029,26 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .hm-note { font-size:11px; color:var(--faint); }
 .hm-reject { font-size:11.5px; font-weight:700; color:var(--miss); padding:2px 8px; border-radius:10px; background:color-mix(in srgb, var(--miss) 12%, transparent); }
 
+/* ── TOTP 动态口令 ── */
+.tp-pipe { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:8px 0 12px; padding:12px; border:1.5px solid var(--line); border-radius:10px; background:var(--panel); }
+.tp-node { display:inline-flex; flex-direction:column; gap:1px; font-size:13px; font-weight:600; color:var(--ink); padding:5px 10px; border:1px solid var(--line); border-radius:8px; background:var(--sunk-1); }
+.tp-node em { font-size:9.5px; font-weight:400; font-style:normal; color:var(--faint); }
+.tp-op { font-family:var(--mono); font-size:11px; color:var(--faint); }
+.tp-code { font-family:var(--mono); font-size:26px; font-weight:700; letter-spacing:3px; padding:6px 14px; border-radius:10px;
+  border:1.5px dashed var(--line); color:var(--faint); margin-left:auto; }
+.tp-code.lit { border-style:solid; border-color:var(--now); color:var(--now); background:color-mix(in srgb, var(--now) 8%, var(--panel)); }
+.tp-code.flip { border-color:var(--hit); color:var(--hit); background:color-mix(in srgb, var(--hit) 10%, var(--panel)); }
+.tp-code.hold { border-color:var(--line); }
+.tp-flag { margin:0 0 10px; padding:7px 12px; font-size:12.5px; font-weight:600; border-radius:8px; }
+.tp-flag.flip { color:var(--hit); border:1px solid var(--hit); background:color-mix(in srgb, var(--hit) 8%, var(--panel)); }
+.tp-flag.hold { color:var(--dim); border:1px solid var(--line); background:var(--sunk-1); }
+.tp-hist { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-bottom:10px; }
+.tp-hcap { font-size:11px; color:var(--faint); }
+.tp-hitem { display:inline-flex; align-items:center; gap:6px; font-size:11px; color:var(--faint); padding:3px 9px; border:1px solid var(--line); border-radius:8px; background:var(--panel); }
+.tp-hitem b { font-family:var(--mono); font-size:13px; color:var(--dim); letter-spacing:1px; }
+.tp-hitem.cur { border-color:var(--now); }
+.tp-hitem.cur b { color:var(--now); }
+
 /* ── mini 搜索引擎（倒排索引 + TF-IDF） ── */
 .ms-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:8px 0 12px; }
 .ms-col { display:flex; flex-direction:column; gap:6px; min-width:0; }
