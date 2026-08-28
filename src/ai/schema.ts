@@ -323,6 +323,7 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   hmac: {},
   totp: {},
   snowflake: {},
+  vectorclock: {},
   astar: {},
   perceptron: {},
   pooling: { kind: 'string' },

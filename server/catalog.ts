@@ -75,6 +75,7 @@ import { aesroundKernel } from '../src/kernels/aesround.ts'
 import { hmacKernel } from '../src/kernels/hmac.ts'
 import { totpKernel } from '../src/kernels/totp.ts'
 import { snowflakeKernel } from '../src/kernels/snowflake.ts'
+import { vectorclockKernel } from '../src/kernels/vectorclock.ts'
 import { walKernel } from '../src/kernels/wal.ts'
 import { lsmKernel } from '../src/kernels/lsm.ts'
 import { minikvKernel } from '../src/kernels/minikv.ts'
@@ -1290,6 +1291,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: 'Snowflake 生成的 ID 为什么"越晚生成越大"（趋势递增），这有什么用?', kind: 'choice',
         compute: () => ({ answer: '毫秒时间戳放在最高位，所以时间越晚 ID 整体越大；对数据库 B+树索引友好——插入几乎是顺序追加，不会到处分裂页', step: 4, evidence: 't=1000→ID≈41.9亿，t=1001→ID≈41.99亿，时间戳一增 ID 跳一大截' }),
         distractors: () => ['因为序号一直自增不清零', '因为机器码每次都变大', '其实是随机的，不保证递增'],
+      },
+    ],
+  },
+  {
+    id: 'vectorclock', title: '向量时钟', kernel: vectorclockKernel as Kernel<unknown>, doc: trivialDoc('vectorclock'),
+    facts: [
+      {
+        id: 'causal_vs_concurrent', label: '怎么判两个事件是因果还是并发',
+        ask: '向量时钟里，怎么判断事件 a 和 b 是"有先后因果"还是"并发"?', kind: 'choice',
+        compute: () => ({ answer: 'V(a) 每一位都 ≤ V(b) 且不全等 → a 因果先于 b；若两个向量互相都不 ≤ 对方 → 二者并发（谁也没影响谁）', step: 7, evidence: 'a[1,0,0] 每位≤e[2,2,1]→a→e因果；f[3,0,0] 与 e[2,2,1] 互不≤→并发' }),
+        distractors: () => ['比向量各位之和，大的在后', '比物理时间戳谁早', '比第一位 P0 谁大'],
+      },
+      {
+        id: 'recv_rule', label: '收到消息时向量怎么更新',
+        ask: '一个进程收到别人发来的消息（带着对方的向量）时，自己的向量时钟怎么更新?', kind: 'choice',
+        compute: () => ({ answer: '逐位取 max(本地向量, 收到的向量)，把对方"见过的进度"并进来，然后再把自己那一位 +1', step: 5, evidence: 'P2 收到 [2,2,0]：max([0,0,0],[2,2,0])=[2,2,0]，再自己+1 → [2,2,1]' }),
+        distractors: () => ['直接用收到的向量覆盖自己的', '只把自己那位 +1，忽略收到的', '逐位相加两个向量'],
       },
     ],
   },

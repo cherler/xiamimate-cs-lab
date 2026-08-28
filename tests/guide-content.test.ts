@@ -228,6 +228,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { stage: '③ 发号 + 编码', focus: '短码怎么生成', detail: 'x', metric: '62^6 ≈ 568 亿个 6 位短码', components: [{ id: 'client', label: '客户端', role: 'r' }, { id: 'idgen', label: '发号器', role: 'r' }], phase: 'run' },
       b: { stage: '⑦ 权衡总结', focus: '一句话讲清取舍', detail: '', metric: '发号器>哈希>自增；301 vs 302', components: [{ id: 'client', label: '客户端', role: 'r' }, { id: 'cdn', label: 'CDN', role: 'r' }], phase: 'done' },
     },
+    vectorclock: {
+      doc: { kind: 'vectorclock', params: {}, entities: [], streams: [] },
+      a: { step: 5, op: 'recv', proc: 2, label: 'e', clocks: [[2, 0, 0], [2, 2, 0], [2, 2, 1]], msg: [2, 2, 0], cmp: [], phase: 'run', focus: 'e：P2 收消息 → 逐位 max 后自己 +1' },
+      b: { step: 7, op: 'compare', proc: -1, label: '', clocks: [[3, 0, 0], [2, 2, 0], [2, 2, 1]], msg: null, cmp: [{ x: 'a', xv: [1, 0, 0], y: 'e', yv: [2, 2, 1], rel: '因果先行(x→y)' }, { x: 'f', xv: [3, 0, 0], y: 'e', yv: [2, 2, 1], rel: '并发（互不影响）' }], phase: 'done', focus: '判定：a→e 是因果，f 与 e 是并发' },
+    },
     snowflake: {
       doc: { kind: 'snowflake', params: {}, entities: [], streams: [] },
       a: { step: 2, op: 'same', t: 1000, dc: 1, worker: 2, machine: 34, seq: 1, id: 4194443265, ids: [{ t: 1000, seq: 0, id: 4194443264 }, { t: 1000, seq: 1, id: 4194443265 }], phase: 'run', focus: '同一毫秒的第 2 个 → 序号自增' },

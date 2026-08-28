@@ -262,6 +262,8 @@ import { totpKernel, type TotpState } from '@engine/kernels/totp.ts'
 import { TotpStage } from './stages/TotpStage.tsx'
 import { snowflakeKernel, type SnowflakeState } from '@engine/kernels/snowflake.ts'
 import { SnowflakeStage } from './stages/SnowflakeStage.tsx'
+import { vectorclockKernel, type VClockState } from '@engine/kernels/vectorclock.ts'
+import { VClockStage } from './stages/VClockStage.tsx'
 import { walKernel, type WALState } from '@engine/kernels/wal.ts'
 import { WALStage } from './stages/WALStage.tsx'
 import { lsmKernel, type LSMState } from '@engine/kernels/lsm.ts'
@@ -5527,6 +5529,22 @@ const ecbcbc: Experiment<EcbCbcState> = {
     { label: '重复块', value: s.phase === 'done' ? 'ECB 泄露 / CBC 安全' : '对比中' },
   ],
 }
+const vectorclock: Experiment<VClockState> = {
+  id: 'vectorclock', group: '分布式系统', title: '向量时钟', subtitle: '判分布式事件：因果先行 vs 并发',
+  kernel: vectorclockKernel, defaultDoc: { kind: 'vectorclock', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '无可调参数。三进程各持向量 V=[P0,P1,P2]:本地事件自己+1、发消息带走向量、收消息逐位max后自己+1。判定:每位≤且不全等=因果先行,互不≤=并发。末步比 a→e(因果)、f/e(并发)。逐位可手核。详见讲解卡。',
+  bounds: ['规则:本地+1 / 发消息带向量 / 收消息逐位max再+1', 'a[1,0,0]→e[2,2,1]:每位≤→因果先行(a→b→c→d→e)', 'f[3,0,0]与e[2,2,1]:互不≤→并发', '不靠物理时间判先后;用于因果一致性/冲突检测(Dynamo)'],
+  tabs: [{ id: 'vc', label: '事件推进' }], Stage: VClockStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: '因果/并发已判' } : s.op === 'recv' ? { key: 'good', label: `${['P0', 'P1', 'P2'][s.proc]} max` } : s.op === 'send' ? { key: 'idle', label: '发消息' } : s.op === 'local' ? { key: 'idle', label: `事件${s.label}` } : { key: 'idle', label: '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 8)),
+  tickLabel: s => (s.phase === 'done' ? '判' : s.label || '钟'),
+  readouts: s => [
+    { label: 'V0', value: `[${s.clocks[0]!.join(',')}]` },
+    { label: 'V1', value: `[${s.clocks[1]!.join(',')}]` },
+    { label: 'V2', value: `[${s.clocks[2]!.join(',')}]` },
+    { label: '本步', value: s.label ? `事件 ${s.label}` : s.op === 'compare' ? '判先后' : '就绪', tone: s.phase === 'done' ? 'good' : undefined },
+  ],
+}
 const snowflake: Experiment<SnowflakeState> = {
   id: 'snowflake', group: '分布式系统', title: '雪花算法分布式ID', subtitle: '64位=时间戳+机器码+序号，各机自拼、全局唯一',
   kernel: snowflakeKernel, defaultDoc: { kind: 'snowflake', params: {}, entities: [], streams: [] }, params: [],
@@ -5725,7 +5743,7 @@ export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
   caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt, ecbcbc, birthday, aesround, hmac, totp,
-  tokenbucket, consistenthash, skiplist, twopc, snowflake, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign,
+  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,

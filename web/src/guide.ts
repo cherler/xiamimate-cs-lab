@@ -353,6 +353,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; op: string; result: string }; return st.phase === 'done' ? 'KV跑通' : (st.op === 'get' ? (st.result || 'get') : st.op) },
     try: [{ act: '看更新 a=9', watch: '不改旧值，追加新版本；SST1 里 a=1、SST2 里 a=9 同时存在。' }, { act: '看 get(a) 和压实', watch: 'get 从新到旧读到 a=9；压实把旧的 a=1 归并丢掉。' }], terms: [],
   },
+  vectorclock: {
+    question: '没有全局时钟，怎么判断两个分布式事件谁先谁后、还是根本没关系（并发）？',
+    read: [{ at: '三进程', is: '每个进程当前的向量 [P0,P1,P2]，活动进程高亮。', anchor: '.vc-procs' }, { at: '判定', is: '末步两对事件的因果/并发结论。', anchor: '.vc-cmp' }],
+    step: (s: never) => { const st = s as { op: string; proc: number; label: string; clocks: number[][]; msg: number[] | null; phase: string }; const P = ['P0', 'P1', 'P2']; return [
+      { k: '本步输入', v: st.phase === 'done' ? '比两对事件的向量' : st.op === 'intro' ? '三进程各从 [0,0,0] 开始' : `事件 ${st.label}（${P[st.proc]} ${st.op === 'local' ? '本地' : st.op === 'send' ? '发消息' : '收消息'}）` },
+      { k: '判定规则', v: '本地事件→自己那位+1；发消息→自己+1、向量随消息带走；收消息→逐位取max(本地,收到)再自己+1。判先后：每位≤且不全等=因果先行，互不≤=并发。' },
+      { k: '本步结果', v: st.phase === 'done' ? 'a→e 因果（每位≤）；f 与 e 并发（互不≤）' : st.op === 'intro' ? '三个 [0,0,0]' : `${P[st.proc]} 向量 = [${st.clocks[st.proc]!.join(',')}]${st.msg && st.op !== 'local' ? `，消息带 [${st.msg.join(',')}]` : ''}` },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; op: string; label: string; proc: number }; return st.phase === 'done' ? '因果/并发已判' : st.op === 'recv' ? `${['P0', 'P1', 'P2'][st.proc]} max` : st.label ? `事件${st.label}` : '就绪' },
+    try: [{ act: '看收消息取 max', watch: 'P1 收到 [2,0,0] → 逐位 max 再自增 → [2,1,0]，把 P0 的进度并了进来。' }, { act: '看末步判定', watch: 'a 每位≤e→因果；f 和 e 互相都不≤→并发（各干各的）。' }], terms: [],
+  },
   snowflake: {
     question: '分布式下每台机器都要发 ID，怎么做到全局唯一、还大致按时间递增、又不互相协调？',
     read: [{ at: '位布局', is: '64 位切三段：时间戳 / 机器码 / 序号。', anchor: '.sf-layout' }, { at: '已发 ID', is: '同毫秒 ID 只 +1、跨毫秒跳一大截。', anchor: '.sf-hist' }],
