@@ -4049,6 +4049,30 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .tp-hitem.cur { border-color:var(--now); }
 .tp-hitem.cur b { color:var(--now); }
 
+/* ── Snowflake 分布式 ID ── */
+.sf-layout { display:flex; gap:4px; margin:8px 0 10px; }
+.sf-seg { display:flex; flex-direction:column; gap:3px; padding:8px 10px; border:1.5px solid var(--line); border-radius:9px; background:var(--panel); text-align:center; }
+.sf-seg.sign { flex:0 0 auto; }
+.sf-seg.ts { flex:3; }
+.sf-seg.mc { flex:2; }
+.sf-seg.sq { flex:2; }
+.sf-seg.chg { border-color:var(--now); box-shadow:0 0 0 1px var(--now); background:color-mix(in srgb, var(--now) 8%, var(--panel)); }
+.sf-w { font-size:10px; color:var(--faint); font-family:var(--mono); }
+.sf-v { font-size:15px; font-weight:700; color:var(--ink); }
+.sf-v.mono { font-family:var(--mono); font-size:12.5px; letter-spacing:.5px; }
+.sf-n { font-size:10.5px; color:var(--dim); }
+.sf-seg.ts .sf-n { color:var(--now); }
+.sf-calc { margin:0 0 11px; padding:8px 12px; font-size:13px; border-radius:8px; border:1px solid var(--line); background:var(--sunk-1); color:var(--dim); overflow-x:auto; }
+.sf-calc b { color:var(--ink); font-size:14px; }
+.sf-hist { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-bottom:10px; }
+.sf-hcap { font-size:11px; color:var(--faint); }
+.sf-hitem { display:inline-flex; flex-direction:column; gap:1px; padding:4px 9px; border:1px solid var(--line); border-radius:7px; background:var(--panel); }
+.sf-hitem i { font-size:9.5px; font-style:normal; color:var(--faint); font-family:var(--mono); }
+.sf-hitem b { font-family:var(--mono); font-size:12px; color:var(--dim); }
+.sf-hitem.seqchain { border-color:color-mix(in srgb, var(--now) 45%, var(--line)); }
+.sf-hitem.cur { border-color:var(--now); background:color-mix(in srgb, var(--now) 8%, var(--panel)); }
+.sf-hitem.cur b { color:var(--now); }
+
 /* ── mini 搜索引擎（倒排索引 + TF-IDF） ── */
 .ms-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:8px 0 12px; }
 .ms-col { display:flex; flex-direction:column; gap:6px; min-width:0; }

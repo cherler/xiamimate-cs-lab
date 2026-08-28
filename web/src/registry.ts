@@ -260,6 +260,8 @@ import { hmacKernel, type HmacState } from '@engine/kernels/hmac.ts'
 import { HmacStage } from './stages/HmacStage.tsx'
 import { totpKernel, type TotpState } from '@engine/kernels/totp.ts'
 import { TotpStage } from './stages/TotpStage.tsx'
+import { snowflakeKernel, type SnowflakeState } from '@engine/kernels/snowflake.ts'
+import { SnowflakeStage } from './stages/SnowflakeStage.tsx'
 import { walKernel, type WALState } from '@engine/kernels/wal.ts'
 import { WALStage } from './stages/WALStage.tsx'
 import { lsmKernel, type LSMState } from '@engine/kernels/lsm.ts'
@@ -5525,6 +5527,22 @@ const ecbcbc: Experiment<EcbCbcState> = {
     { label: '重复块', value: s.phase === 'done' ? 'ECB 泄露 / CBC 安全' : '对比中' },
   ],
 }
+const snowflake: Experiment<SnowflakeState> = {
+  id: 'snowflake', group: '分布式系统', title: '雪花算法分布式ID', subtitle: '64位=时间戳+机器码+序号，各机自拼、全局唯一',
+  kernel: snowflakeKernel, defaultDoc: { kind: 'snowflake', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '无可调参数。64位切三段:[1符号][41时间戳][10机器码][12序号]。同毫秒序号自增、新毫秒归零;时间戳在高位保证趋势递增,机器码保证不同机不撞。ID=时间戳<<22|机器<<12|序号,可逐段手核。详见讲解卡。',
+  bounds: ['64位=1符号+41时间戳+10机器码+12序号', '同毫秒:序号自增(4096个/ms/机);新毫秒:序号归零', '时间戳高位→趋势递增(B+树友好);机器码不同→不撞;零协调', '风险:时钟回拨会生成重复ID,要检测拒发'],
+  tabs: [{ id: 'id', label: '逐个生成' }], Stage: SnowflakeStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: '唯一+递增' } : s.op === 'same' ? { key: 'idle', label: `序号${s.seq}` } : s.op === 'next' ? { key: 'good', label: '新毫秒' } : s.op === 'gen' ? { key: 'idle', label: '首个ID' } : { key: 'idle', label: '看布局' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.op === 'same' ? '+1' : s.op === 'next' ? '新' : s.op === 'gen' ? '发' : '局'),
+  readouts: s => [
+    { label: '时间戳', value: s.op === 'intro' ? '—' : `${s.t}ms` },
+    { label: '机器码', value: `${s.machine} (dc${s.dc}·w${s.worker})` },
+    { label: '序号', value: s.op === 'intro' ? '—' : `#${s.seq}` },
+    { label: 'ID', value: s.op === 'intro' ? '—' : `${s.id}`, tone: s.phase === 'done' ? 'good' : undefined },
+  ],
+}
 const totp: Experiment<TotpState> = {
   id: 'totp', group: '密码学', title: 'TOTP 动态口令', subtitle: '共享密钥+时间窗：离线算出同一个6位码',
   kernel: totpKernel, defaultDoc: { kind: 'totp', params: {}, entities: [], streams: [] }, params: [],
@@ -5707,7 +5725,7 @@ export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
   caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt, ecbcbc, birthday, aesround, hmac, totp,
-  tokenbucket, consistenthash, skiplist, twopc, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign,
+  tokenbucket, consistenthash, skiplist, twopc, snowflake, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,

@@ -353,6 +353,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; op: string; result: string }; return st.phase === 'done' ? 'KV跑通' : (st.op === 'get' ? (st.result || 'get') : st.op) },
     try: [{ act: '看更新 a=9', watch: '不改旧值，追加新版本；SST1 里 a=1、SST2 里 a=9 同时存在。' }, { act: '看 get(a) 和压实', watch: 'get 从新到旧读到 a=9；压实把旧的 a=1 归并丢掉。' }], terms: [],
   },
+  snowflake: {
+    question: '分布式下每台机器都要发 ID，怎么做到全局唯一、还大致按时间递增、又不互相协调？',
+    read: [{ at: '位布局', is: '64 位切三段：时间戳 / 机器码 / 序号。', anchor: '.sf-layout' }, { at: '已发 ID', is: '同毫秒 ID 只 +1、跨毫秒跳一大截。', anchor: '.sf-hist' }],
+    step: (s: never) => { const st = s as { op: string; t: number; machine: number; seq: number; id: number; phase: string }; return [
+      { k: '本步输入', v: st.phase === 'done' ? '看完生成，收结论' : st.op === 'intro' ? '64 位布局：1符号+41时间戳+10机器+12序号' : `t=${st.t}ms，序号 ${st.seq}` },
+      { k: '判定规则', v: 'ID = (时间戳<<22)|(机器码<<12)|序号。时间戳在高位→趋势递增；机器码不同→不同机不撞；同毫秒序号自增、跨毫秒归零。全本地生成，不问中心。' },
+      { k: '本步结果', v: st.phase === 'done' ? '全局唯一+趋势递增+零协调（注意时钟回拨）' : st.op === 'intro' ? `本机机器码 = ${st.machine}` : `ID = ${st.id}（时间${st.t}|机器${st.machine}|序号${st.seq}）` },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; op: string; seq: number }; return st.phase === 'done' ? '唯一+递增' : st.op === 'same' ? `序号${st.seq}` : st.op === 'next' ? '新毫秒' : st.op === 'gen' ? '首个ID' : '看布局' },
+    try: [{ act: '看同毫秒 +1', watch: 't=1000ms 连发 3 个，ID 只 +1（序号自增），同毫秒也不撞。' }, { act: '看跨毫秒', watch: 't 进到 1001ms，序号归零、ID 跳一大截——时间戳在高位，所以整体递增。' }], terms: [],
+  },
   totp: {
     question: '手机验证器那个每 30 秒变的 6 位码，是怎么和服务器对上的？',
     read: [{ at: '管线', is: '时间 → ⌊÷30⌋ 窗口 → HMAC → 截断 → 6 位码。', anchor: '.tp-pipe' }, { at: '读数', is: '当前时间、时间窗 T、6 位码。', anchor: '.scdim' }],

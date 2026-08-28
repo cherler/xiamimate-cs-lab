@@ -322,6 +322,7 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   aesround: {},
   hmac: {},
   totp: {},
+  snowflake: {},
   astar: {},
   perceptron: {},
   pooling: { kind: 'string' },

@@ -74,6 +74,7 @@ import { birthdayKernel } from '../src/kernels/birthday.ts'
 import { aesroundKernel } from '../src/kernels/aesround.ts'
 import { hmacKernel } from '../src/kernels/hmac.ts'
 import { totpKernel } from '../src/kernels/totp.ts'
+import { snowflakeKernel } from '../src/kernels/snowflake.ts'
 import { walKernel } from '../src/kernels/wal.ts'
 import { lsmKernel } from '../src/kernels/lsm.ts'
 import { minikvKernel } from '../src/kernels/minikv.ts'
@@ -1272,6 +1273,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: 'TOTP 的码为什么在 30 秒内不变、过 30 秒就换一个?', kind: 'choice',
         compute: () => ({ answer: '码只取决于时间窗 T=⌊t/30⌋：同一个 30 秒内 T 不变→码不变(给你时间输入)；跨到下一窗口 T+1→HMAC 全变→新码(旧码作废)', step: 3, evidence: 't=0/15/29s 同在窗口0→790815；t=30s 进窗口1→094198' }),
         distractors: () => ['码是随机生成的，正好 30 秒换', '手机内置了一张 30 秒一换的码表', '服务器每 30 秒推一个新码给手机'],
+      },
+    ],
+  },
+  {
+    id: 'snowflake', title: '雪花算法分布式ID', kernel: snowflakeKernel as Kernel<unknown>, doc: trivialDoc('snowflake'),
+    facts: [
+      {
+        id: 'no_coord', label: '多台机器不协调怎么保证 ID 不撞',
+        ask: '分布式下每台机器都本地发 ID、彼此不通信，Snowflake 怎么保证全局不重复?', kind: 'choice',
+        compute: () => ({ answer: '64 位里有一段"机器码"：每台机器的机器码不同，即使同一毫秒同一序号，拼出的 ID 也因机器码段不同而不同，所以不同机器绝不相撞、无需协调', step: 5, evidence: '机器码=dc<<5|worker，本机=34；这段嵌在 ID 中间' }),
+        distractors: () => ['每台机器发 ID 前都去问中心发号器', '靠随机数碰运气不重复', '所有机器共用一个全局锁'],
+      },
+      {
+        id: 'monotonic', label: 'Snowflake 的 ID 为什么趋势递增',
+        ask: 'Snowflake 生成的 ID 为什么"越晚生成越大"（趋势递增），这有什么用?', kind: 'choice',
+        compute: () => ({ answer: '毫秒时间戳放在最高位，所以时间越晚 ID 整体越大；对数据库 B+树索引友好——插入几乎是顺序追加，不会到处分裂页', step: 4, evidence: 't=1000→ID≈41.9亿，t=1001→ID≈41.99亿，时间戳一增 ID 跳一大截' }),
+        distractors: () => ['因为序号一直自增不清零', '因为机器码每次都变大', '其实是随机的，不保证递增'],
       },
     ],
   },
