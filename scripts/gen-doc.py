@@ -12,7 +12,8 @@ for i in cards:
     cards[i]['ex']=line.rstrip().endswith(',1)')
 KITS=dict(re.findall(r"(\w+):\[([^\]]*)\]",re.search(r"const KITS=\{(.*?)\}\n",src,re.S).group(1)))
 KITS={k:[x.strip().strip("'") for x in v.split(',') if x.strip()] for k,v in KITS.items()}
-STARTER=[x.strip("'") for x in re.search(r"const STARTER=\[([^\]]*)\]",src).group(1).split(',')]
+STARTERS={m.group(1):[x.strip().strip("'") for x in m.group(2).split(',') if x.strip()]
+ for m in re.finditer(r"^ (\w+):\s*\[([^\]]*)\],",re.search(r"const STARTERS=\{(.*?)\n\}",src,re.S).group(1),re.M)}
 # 敌人
 foes={}
 for m in re.finditer(r"^ (\w+):\s*\{([^}]*)\}",src,re.M):
@@ -35,10 +36,20 @@ def kit(k,title,intro):
         o.append(row(i).replace('| '+cards[i]['name']+' |','| %s%s |'%(cards[i]['name'],' ×%d'%n if n>1 else '')))
     return '\n'.join(o)+'\n'
 out=[]
-out.append("### 3.1 起始牌组(10 张,故意平庸)\n")
-out.append("| 卡 | 份 | 效果 |\n|---|:-:|---|")
-for i in dict.fromkeys(STARTER):
-    out.append("| %s | %d | %s |"%(cards[i]['name'],STARTER.count(i),cards[i]['note']))
+out.append("### 3.1 起始牌组(每条流派各一套,10 张)\n")
+out.append("| 流派 | 起手牌 |\n|---|---|")
+NM={'base':'base 不构筑','sort':'排序流','dc':'拆解流','memo':'复利流','greedy':'激进流'}
+for k,ids in STARTERS.items():
+    c={}
+    for i in ids: c[i]=c.get(i,0)+1
+    out.append("| %s | %s |"%(NM.get(k,k),' · '.join(cards[i]['name']+('×%d'%v if v>1 else '') for i,v in c.items())))
+out.append("")
+out.append("| 卡 | 步 | 效果 |\n|---|:-:|---|")
+seen=[]
+for k,ids in STARTERS.items():
+    for i in ids:
+        if i in seen: continue
+        seen.append(i); out.append(row(i))
 out.append("")
 out.append(kit('sort','3.2 流派一 · 排序 → 查找(秩序流)','先整理再动手。前期慢,整理好之后每一击都放大。'))
 out.append(kit('dc','3.3 流派二 · 分治 → 逐层(拆解流)','切段,然后每段同时处理。'))
