@@ -17,7 +17,7 @@ type CState = 'closed' | 'open' | 'halfopen'
 export type BreakerState = {
   i: number
   step: number
-  op: 'intro' | 'pass' | 'fail' | 'trip' | 'reject' | 'timeout' | 'probe' | 'recover'
+  op: 'intro' | 'pass' | 'fail' | 'trip' | 'reject' | 'timeout' | 'probe' | 'probeFail' | 'recover'
   cstate: CState
   fails: number          // 当前失败计数
   threshold: number
@@ -37,31 +37,44 @@ export const circuitbreakerKernel: Kernel<BreakerState> = {
     const push = (f: Omit<Frame, 'step' | 'threshold'>) => frames.push({ step: frames.length, threshold: TH, ...f })
 
     push({ op: 'intro', cstate: 'closed', fails: 0, outcome: '', phase: 'run', focus: '熔断器像保险丝：下游挂了就快速失败，别陪葬',
-      log: `**熔断器：防级联雪崩**\n下游依赖故障时，如果还一直打它、每个请求都卡到超时，会耗光上游线程 → 雪崩。\n三个状态：\n· **Closed**（正常）：放行，累计失败；失败数 ≥ 阈值(${TH}) → 跳 Open\n· **Open**（熔断）：直接快速失败，不打下游；超时后 → Half-Open\n· **Half-Open**（试探）：放几个探测请求，成功→回 Closed，失败→退回 Open` })
+      log: `**熔断器：防级联雪崩**\n下游依赖故障时，如果还一直打它、每个请求都卡到超时，会耗光上游线程 → 雪崩。\n三个状态：\n· **Closed**（正常）：放行，累计失败；失败数 ≥ 阈值(${TH}) → 跳 Open\n· **Open**（熔断）：直接快速失败，不打下游；超时后 → Half-Open\n· **Half-Open**（试探）：放探测请求，成功→回 Closed，失败→退回 Open\n喂一串事件进去，看状态机怎么转（含探测失败退回）。` })
 
-    push({ op: 'pass', cstate: 'closed', fails: 0, outcome: '成功', phase: 'run', focus: 'Closed：请求成功 → 正常放行',
-      log: `**请求 #1（Closed）**\n正常放行下游，返回**成功**。失败计数 = 0。` })
-
-    push({ op: 'fail', cstate: 'closed', fails: 1, outcome: '失败', phase: 'run', focus: 'Closed：请求失败 → 失败计数 +1',
-      log: `**请求 #2（Closed）**\n下游开始出错，返回**失败**。失败计数 = **1**（还没到阈值 ${TH}，继续放行）。` })
-
-    push({ op: 'fail', cstate: 'closed', fails: 2, outcome: '失败', phase: 'run', focus: 'Closed：又一次失败 → 计数 2',
-      log: `**请求 #3（Closed）**\n又**失败**。失败计数 = **2**。逼近阈值。` })
-
-    push({ op: 'trip', cstate: 'open', fails: 3, outcome: '失败→熔断', phase: 'run', focus: '失败数达阈值 → 跳闸到 Open（熔断！）',
-      log: `**请求 #4（Closed）→ 熔断**\n第 3 次**失败**，失败计数 = **3 ≥ 阈值 ${TH}** → **跳闸！状态转到 Open**。\n从此刻起，不再打下游了。` })
-
-    push({ op: 'reject', cstate: 'open', fails: 3, outcome: '快速失败(未打下游)', phase: 'run', focus: 'Open：请求直接快速失败，不打下游',
-      log: `**请求 #5（Open）**\n熔断中——请求**立即返回失败(fail-fast)**，根本不去调用下游。\n这就是熔断的意义：给下游喘息、不让上游线程都卡在超时上。` })
-
-    push({ op: 'timeout', cstate: 'halfopen', fails: 3, outcome: '超时到，试探', phase: 'run', focus: 'Open 超时到 → 进 Half-Open（放探测请求）',
-      log: `**熔断超时到**\nOpen 状态维持一个冷却期，时间一到 → 转 **Half-Open**。\n此时放**少量探测请求**进去，看下游恢复没有。` })
-
-    push({ op: 'probe', cstate: 'halfopen', fails: 3, outcome: '探测请求→成功', phase: 'run', focus: 'Half-Open：探测请求成功',
-      log: `**探测请求（Half-Open）**\n放一个真实请求试探下游 → 返回**成功**！说明下游恢复了。` })
-
-    push({ op: 'recover', cstate: 'closed', fails: 0, outcome: '恢复正常', phase: 'done', focus: '探测成功 → 回 Closed，计数清零，恢复',
-      log: `**恢复（→ Closed）**\n探测成功 → 状态转回 **Closed**，失败计数**清零**，一切恢复正常。\n\n（要是探测**失败**，就退回 Open、再等一个超时——避免下游还没好就被打垮。）\n\n**要点**：熔断器用一个三态机把"故障隔离 + 自动探测恢复"做成自动的。Closed 累计失败、Open 快速失败保护下游、Half-Open 小流量试探。配合超时、降级(fallback)一起用，是微服务容错的标配（Hystrix、Resilience4j、Sentinel）。` })
+    //  —— 真状态机：cstate/fails 由事件按转移规则算出，不写死 ——
+    type Ev = { t: 'req'; ok?: boolean } | { t: 'timeout' } | { t: 'probe'; ok: boolean }
+    const SEQ: Ev[] = [
+      { t: 'req', ok: true },   // #1 成功
+      { t: 'req', ok: false },  // #2 失败
+      { t: 'req', ok: false },  // #3 失败
+      { t: 'req', ok: false },  // #4 失败 → 达阈值跳闸
+      { t: 'req' },             // #5 Open 态 → 快速失败
+      { t: 'timeout' },         // 超时 → Half-Open
+      { t: 'probe', ok: false },// 探测失败 → 退回 Open
+      { t: 'timeout' },         // 再超时 → Half-Open
+      { t: 'probe', ok: true }, // 探测成功 → 回 Closed
+    ]
+    let cstate: BreakerState['cstate'] = 'closed'
+    let fails = 0
+    let reqNo = 0
+    SEQ.forEach((ev, k) => {
+      let op: BreakerState['op'] = 'pass', outcome = '', focus = '', log = ''
+      if (ev.t === 'req') {
+        if (cstate === 'open') { op = 'reject'; outcome = '快速失败(未打下游)'; focus = 'Open：请求直接快速失败，不打下游'; log = `**请求（Open 态）**\n熔断中 → 请求**立即返回失败(fail-fast)**、根本不调用下游。给下游喘息、不让上游线程卡在超时上。` }
+        else { reqNo++
+          if (ev.ok) { fails = 0; op = 'pass'; outcome = '成功'; focus = 'Closed：请求成功 → 正常放行'; log = `**请求 #${reqNo}（Closed）**\n正常放行下游、返回**成功**。失败计数归 0。` }
+          else { fails++
+            if (fails >= TH) { cstate = 'open'; op = 'trip'; outcome = '失败→熔断'; focus = '失败数达阈值 → 跳闸到 Open（熔断！）'; log = `**请求 #${reqNo}（Closed）→ 熔断**\n又失败，失败计数 = **${fails} ≥ 阈值 ${TH}** → **跳闸！状态转 Open**，从此不打下游。` }
+            else { op = 'fail'; outcome = '失败'; focus = `Closed：请求失败 → 失败计数 ${fails}`; log = `**请求 #${reqNo}（Closed）**\n下游出错、返回**失败**。失败计数 = **${fails}**（未达阈值 ${TH}，继续放行）。` }
+          }
+        }
+      } else if (ev.t === 'timeout') {
+        cstate = 'halfopen'; op = 'timeout'; outcome = '超时到，试探'; focus = 'Open 超时到 → 进 Half-Open（放探测）'; log = `**熔断冷却超时到**\nOpen 维持一个冷却期，时间一到 → 转 **Half-Open**，放少量**探测请求**看下游恢复没有。`
+      } else { // probe
+        if (ev.ok) { cstate = 'closed'; fails = 0; op = 'recover'; outcome = '探测成功→恢复'; focus = '探测成功 → 回 Closed，计数清零，恢复'; log = `**探测成功（Half-Open → Closed）**\n放一个真实探测请求 → **成功**，下游恢复了 → 状态回 **Closed**、失败计数清零。` }
+        else { cstate = 'open'; op = 'probeFail'; outcome = '探测失败→退回 Open'; focus = '探测失败 → 退回 Open，再等一个超时'; log = `**探测失败（Half-Open → Open）**\n探测请求还是**失败** → 下游没好 → **退回 Open**、再等一个冷却超时。这一步防止下游还没恢复就被全量流量再次打垮。` }
+      }
+      const last = k === SEQ.length - 1
+      push({ op, cstate, fails, outcome, phase: last ? 'done' : 'run', focus, log: last ? `${log}\n\n**要点**：熔断器用一个三态机把"故障隔离 + 自动探测恢复"做成自动的——Closed 累计失败、Open 快速失败保护下游、Half-Open 小流量试探（成功回 Closed、失败退回 Open）。整条状态转移由失败计数和事件驱动、非写死。配合超时和降级(fallback)，是微服务容错标配（Hystrix / Resilience4j / Sentinel）。` : log })
+    })
 
     const base0: Frame = { op: 'intro', step: -1, cstate: 'closed', fails: 0, threshold: TH, outcome: '', phase: 'run', focus: '', log: '' }
     return {

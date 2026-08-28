@@ -51,6 +51,7 @@ export function BreakerStage({ state }: StageProps<BreakerState>) {
           {op === 'reject' && <span className="cb-alert warn">⛔ Open 中：请求 fail-fast，未调用下游</span>}
           {op === 'timeout' && <span className="cb-alert warn">⏱ 超时到：Open → Half-Open，放探测请求</span>}
           {op === 'probe' && <span className="cb-alert ok">🔎 探测成功：下游看起来恢复了</span>}
+          {op === 'probeFail' && <span className="cb-alert">🔁 探测失败：Half-Open → 退回 Open，再等一个超时</span>}
           {op === 'recover' && <span className="cb-alert ok">✅ Half-Open → Closed，失败计数清零，恢复正常</span>}
           {(op === 'pass' || op === 'fail') && <span className="cb-alert">{outcome === '成功' ? '✓ 请求成功' : `✗ 请求失败（计数 ${fails}/${threshold}）`}</span>}
         </div>

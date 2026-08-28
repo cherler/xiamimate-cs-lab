@@ -311,7 +311,7 @@ console.log('\n【「这一步为什么」真的在跟着走】')
     circuitbreaker: {
       doc: { kind: 'circuitbreaker', params: {}, entities: [], streams: [] },
       a: { step: 4, op: 'trip', cstate: 'open', fails: 3, threshold: 3, outcome: '失败→熔断', phase: 'run', focus: '失败数达阈值 → 跳闸到 Open（熔断！）' },
-      b: { step: 8, op: 'recover', cstate: 'closed', fails: 0, threshold: 3, outcome: '恢复正常', phase: 'done', focus: '探测成功 → 回 Closed，计数清零，恢复' },
+      b: { step: 9, op: 'recover', cstate: 'closed', fails: 0, threshold: 3, outcome: '探测成功→恢复', phase: 'done', focus: '探测成功 → 回 Closed，计数清零，恢复' },
     },
     quorum: {
       doc: { kind: 'quorum', params: {}, entities: [], streams: [] },
