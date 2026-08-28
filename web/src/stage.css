@@ -4240,6 +4240,27 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .ab-verdict.ok { color:var(--hit); border:1px solid var(--hit); background:color-mix(in srgb, var(--hit) 7%, var(--panel)); }
 .ab-verdict.bad { color:var(--miss); border:1px solid var(--miss); background:color-mix(in srgb, var(--miss) 6%, var(--panel)); }
 
+/* ── happens-before / 内存可见性 ── */
+.hb-mem { display:flex; align-items:center; gap:10px; margin:8px 0 12px; padding:10px 13px; border:1.5px solid var(--line); border-radius:10px; background:var(--sunk-1); }
+.hb-mlbl { font-size:11px; font-weight:700; color:var(--dim); }
+.hb-var { font-family:var(--mono); font-size:13px; color:var(--dim); padding:4px 10px; border:1px solid var(--line); border-radius:7px; background:var(--panel); }
+.hb-var b { color:var(--ink); }
+.hb-var.set { border-color:var(--now); color:var(--now); }
+.hb-var.set b { color:var(--now); }
+.hb-var.vol { border-style:dashed; }
+.hb-threads { display:flex; gap:10px; margin:0 0 12px; }
+.hb-thread { flex:1; display:flex; flex-direction:column; gap:6px; padding:11px 13px; border:1.5px solid var(--line); border-radius:10px; background:var(--panel); }
+.hb-thread.on { border-color:var(--now); box-shadow:0 0 0 1px var(--now); }
+.hb-tname { font-size:12.5px; font-weight:700; color:var(--dim); }
+.hb-op { font-family:var(--mono); font-size:12px; color:var(--faint); padding:4px 9px; border-radius:6px; border:1px solid transparent; }
+.hb-op.done { color:var(--hit); background:color-mix(in srgb, var(--hit) 8%, var(--panel)); }
+.hb-op.bad { color:var(--miss); background:color-mix(in srgb, var(--miss) 10%, var(--panel)); border-color:var(--miss); font-weight:700; }
+.hb-op.hazard { color:var(--f-tag); border-color:var(--f-tag); border-style:dashed; }
+.hb-alert { margin:0 0 10px; padding:8px 12px; font-size:12.5px; border-radius:8px; }
+.hb-alert b { font-family:var(--mono); }
+.hb-alert.bad { color:var(--miss); border:1px solid var(--miss); background:color-mix(in srgb, var(--miss) 6%, var(--panel)); }
+.hb-alert.ok { color:var(--hit); border:1px solid var(--hit); background:color-mix(in srgb, var(--hit) 7%, var(--panel)); }
+
 /* ── mini 搜索引擎（倒排索引 + TF-IDF） ── */
 .ms-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:8px 0 12px; }
 .ms-col { display:flex; flex-direction:column; gap:6px; min-width:0; }

@@ -82,6 +82,7 @@ import { joinsKernel } from '../src/kernels/joins.ts'
 import { compositeindexKernel } from '../src/kernels/compositeindex.ts'
 import { rwlockKernel } from '../src/kernels/rwlock.ts'
 import { abaKernel } from '../src/kernels/aba.ts'
+import { happensbeforeKernel } from '../src/kernels/happensbefore.ts'
 import { walKernel } from '../src/kernels/wal.ts'
 import { lsmKernel } from '../src/kernels/lsm.ts'
 import { minikvKernel } from '../src/kernels/minikv.ts'
@@ -1416,6 +1417,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: '给 CAS 加一个版本号(stamp)，为什么就能识破 ABA?', kind: 'choice',
         compute: () => ({ answer: '版本号只增不减，每改一次就 +1。CAS 比较 (值, 版本) 一对：即使值绕回 A，版本也从 v1 变成了 v3、回不去，CAS 发现版本不符就正确失败。这就是 AtomicStampedReference', step: 8, evidence: 'T1 期望 (100,v1)、当前 (100,v3)，值同但版本不符 → CAS 失败' }),
         distractors: () => ['版本号让 CAS 变快了', '版本号把值锁住不让改', '版本号让 A 和 A 变得不相等'],
+      },
+    ],
+  },
+  {
+    id: 'happensbefore', title: 'happens-before 可见性', kernel: happensbeforeKernel as Kernel<unknown>, doc: trivialDoc('happensbefore'),
+    facts: [
+      {
+        id: 'why_stale', label: 'reader 为什么会读到旧值',
+        ask: 'writer 先 data=42 再 ready=true，reader 看到 ready==true 却读到 data=0，为什么?', kind: 'choice',
+        compute: () => ({ answer: '没有同步时，编译器/CPU 可能把 ready=true 重排到 data=42 之前生效，或 data 的新值还停在缓存没让 reader 看见；两条写的顺序和可见性对 reader 都不保证', step: 3, evidence: 'reader 见 ready=true 就读 data，却读到旧值 0——经典可见性/重排 bug' }),
+        distractors: () => ['因为 reader 读得太快', '因为 data 被别的线程改成了 0', '因为 42 存不下'],
+      },
+      {
+        id: 'volatile_hb', label: 'volatile 靠什么保证读到最新',
+        ask: '把 ready 声明为 volatile 后，为什么 reader 就一定能读到 data=42?', kind: 'choice',
+        compute: () => ({ answer: 'volatile 建立 happens-before：volatile 写(ready=true)是释放屏障、把之前的写(data=42)刷出；volatile 读(读 ready)是获取屏障、拿到最新。于是 data=42 先于 reader 读 data 被保证', step: 6, evidence: 'happens-before 传递：data=42 → ready=true → reader 见 ready → reader 读 data，必看见 42' }),
+        distractors: () => ['volatile 给变量加了锁', 'volatile 让 data 也不能被改', 'volatile 只是让读写更快'],
       },
     ],
   },

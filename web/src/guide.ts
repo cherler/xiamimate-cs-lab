@@ -353,6 +353,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; op: string; result: string }; return st.phase === 'done' ? 'KV跑通' : (st.op === 'get' ? (st.result || 'get') : st.op) },
     try: [{ act: '看更新 a=9', watch: '不改旧值，追加新版本；SST1 里 a=1、SST2 里 a=9 同时存在。' }, { act: '看 get(a) 和压实', watch: 'get 从新到旧读到 a=9；压实把旧的 a=1 归并丢掉。' }], terms: [],
   },
+  happensbefore: {
+    question: '一个线程写了变量，另一个线程为什么不一定马上、按顺序看得见？',
+    read: [{ at: '两线程', is: 'Writer 的两步写、Reader 的读，活动线程高亮。', anchor: '.hb-threads' }, { at: '结果', is: 'reader 第 4 步读到 0（旧值）还是 42。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { act: string; who: string; data: number; ready: boolean; isVolatile: boolean; readerData: number; phase: string }; return [
+      { k: '本步输入', v: st.phase === 'done' ? 'volatile 修复完成' : st.act === 'intro' ? '共享 data、ready' : st.who === 'writer' ? `Writer：${st.ready ? 'ready=true' : 'data=42'}` : st.who === 'reader' ? 'Reader 读 data' : '声明 ready 为 volatile' },
+      { k: '判定规则', v: '无同步：编译器/CPU 会重排、值滞留缓存 → 写不保证按序及时可见。volatile 写=释放屏障(刷出之前的写)、读=获取屏障(拿最新)，建立 happens-before → 保证可见有序。' },
+      { k: '本步结果', v: st.phase === 'done' ? 'happens-before 保证 data=42 先于 reader 读 → 读到 42' : st.readerData === 0 ? 'reader 读到 data=0（旧值！重排/可见性 bug）' : st.readerData === 42 ? 'reader 读到 data=42 ✓' : `data=${st.data}, ready=${st.ready}${st.isVolatile ? '(volatile)' : ''}` },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; readerData: number; act: string }; return st.phase === 'done' ? '保证42' : st.readerData === 0 ? '读到旧值0' : st.act === 'plain' ? '无屏障' : st.act === 'volatile' ? 'volatile' : '引入' },
+    try: [{ act: '看读到旧值', watch: '无 volatile：reader 见 ready=true 却读到 data=0——顺序/可见性对它不保证。' }, { act: '看 volatile 修复', watch: '声明 volatile 后建立 happens-before，data=42 一定先于 reader 读到 → 必是 42。' }], terms: [],
+  },
   aba: {
     question: 'CAS 检查了"值没变"，为什么还会被"变一圈又变回来"骗？',
     read: [{ at: '共享值 / T1 记忆', is: '当前值与 T1 读到的旧值（fixed 阶段还带版本）。', anchor: '.ab-lane' }, { at: '判定', is: 'CAS 步的期望 vs 当前，成功还是失败。', anchor: '.ab-verdict' }],

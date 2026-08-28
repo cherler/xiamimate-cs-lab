@@ -276,6 +276,8 @@ import { rwlockKernel, type RWLockState } from '@engine/kernels/rwlock.ts'
 import { RWLockStage } from './stages/RWLockStage.tsx'
 import { abaKernel, type ABAState } from '@engine/kernels/aba.ts'
 import { ABAStage } from './stages/ABAStage.tsx'
+import { happensbeforeKernel, type HBState } from '@engine/kernels/happensbefore.ts'
+import { HBStage } from './stages/HBStage.tsx'
 import { walKernel, type WALState } from '@engine/kernels/wal.ts'
 import { WALStage } from './stages/WALStage.tsx'
 import { lsmKernel, type LSMState } from '@engine/kernels/lsm.ts'
@@ -5541,6 +5543,22 @@ const ecbcbc: Experiment<EcbCbcState> = {
     { label: '重复块', value: s.phase === 'done' ? 'ECB 泄露 / CBC 安全' : '对比中' },
   ],
 }
+const happensbefore: Experiment<HBState> = {
+  id: 'happensbefore', group: '并发编程', title: 'happens-before 可见性', subtitle: '无同步读到旧值，volatile 建立可见有序',
+  kernel: happensbeforeKernel, defaultDoc: { kind: 'happensbefore', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '无可调参数。flag/data 经典例:writer 先 data=42 再 ready=true,reader 见 ready 读 data。无volatile→重排/可见性→读到0;ready声明volatile建立happens-before→保证读到42。两幕对照,可核。详见讲解卡。',
+  bounds: ['无同步:编译器/CPU重排+值滞留缓存→写不一定按序及时可见', 'reader见ready=true却读到data=0(旧值):经典可见性bug', 'ready声明volatile:写=释放屏障/读=获取屏障→建立happens-before', 'data=42先于reader读data被保证→读到42;=JMM核心'],
+  tabs: [{ id: 'hb', label: '读到0→修复42' }], Stage: HBStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: '保证读到42' } : s.readerData === 0 ? { key: 'bad', label: '读到旧值0' } : s.act === 'plain' ? { key: 'bad', label: '无屏障' } : s.act === 'volatile' ? { key: 'good', label: 'volatile' } : { key: 'idle', label: '引入' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 7)),
+  tickLabel: s => (s.phase === 'done' ? '修' : s.readerData === 0 ? '0' : s.readerData === 42 ? '42' : s.who === 'writer' ? '写' : s.who === 'reader' ? '读' : s.act === 'volatile' ? 'V' : '始'),
+  readouts: s => [
+    { label: '演示', value: s.act === 'intro' ? '引入' : s.act === 'plain' ? '① 无 volatile' : '② volatile' },
+    { label: 'ready', value: `${s.isVolatile ? 'volatile ' : ''}${s.ready}` },
+    { label: 'reader 读 data', value: s.readerData < 0 ? '—' : `${s.readerData}`, tone: s.readerData === 0 ? 'bad' : s.readerData === 42 ? 'good' : undefined },
+    { label: '同步', value: s.isVolatile ? 'happens-before' : '无屏障' },
+  ],
+}
 const aba: Experiment<ABAState> = {
   id: 'aba', group: '并发编程', title: 'ABA 问题', subtitle: 'CAS 被 A→B→A 骗，版本号识破',
   kernel: abaKernel, defaultDoc: { kind: 'aba', params: {}, entities: [], streams: [] }, params: [],
@@ -5851,7 +5869,7 @@ export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
   caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt, ecbcbc, birthday, aesround, hmac, totp,
-  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, rwlock, aba, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign,
+  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, rwlock, aba, happensbefore, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,

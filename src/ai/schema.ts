@@ -330,6 +330,7 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   compositeindex: {},
   rwlock: {},
   aba: {},
+  happensbefore: {},
   astar: {},
   perceptron: {},
   pooling: { kind: 'string' },
