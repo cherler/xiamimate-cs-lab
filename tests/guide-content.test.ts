@@ -365,8 +365,8 @@ console.log('\n【「这一步为什么」真的在跟着走】')
     },
     feed: {
       doc: { kind: 'feed', params: {}, entities: [], streams: [] },
-      a: { step: 2, stage: '③ 推模型（写扩散）', focus: '发帖时写进所有粉丝的收件箱', detail: 'x', metric: '写进每个粉丝收件箱 → 读快、写放大', components: [{ id: 'user', label: '用户', role: 'r' }, { id: 'inbox', label: '粉丝收件箱', role: 'r' }], phase: 'run' },
-      b: { step: 5, stage: '⑥ 权衡总结', focus: '一句话讲清取舍', detail: '', metric: '推(写扩散读快) + 拉(读扩散写快) + 大V走拉的混合', components: [{ id: 'user', label: '用户', role: 'r' }, { id: 'merge', label: '归并层', role: 'r' }], phase: 'done' },
+      a: { step: 4, phase: 'push', op: 'postPush', event: { author: 'A', text: 'a2：跑通了！', t: 4, mode: 'push', fanout: 3 }, myInbox: [{ author: 'A', text: 'a1：今天写了个内核', t: 1 }, { author: 'B', text: 'b1：晚饭吃什么', t: 2 }, { author: 'A', text: 'a2：跑通了！', t: 4 }], vOutbox: [{ author: '大V', text: 'v1：新版本发布了', t: 3 }], pushWrites: 9, savedWrites: 1000000, feed: [], focus: 'A 发帖(推) → 写进 3 个粉丝收件箱（累计写 9）', log: 'x' },
+      b: { step: 7, phase: 'done', op: 'summary', event: null, myInbox: [{ author: 'A', text: 'a1：今天写了个内核', t: 1 }, { author: 'B', text: 'b1：晚饭吃什么', t: 2 }, { author: 'A', text: 'a2：跑通了！', t: 4 }], vOutbox: [{ author: '大V', text: 'v1：新版本发布了', t: 3 }, { author: '大V', text: 'v2：直播预告', t: 5 }], pushWrites: 9, savedWrites: 2000000, feed: [{ author: '大V', text: 'v2：直播预告', t: 5 }, { author: 'A', text: 'a2：跑通了！', t: 4 }, { author: '大V', text: 'v1：新版本发布了', t: 3 }, { author: 'B', text: 'b1：晚饭吃什么', t: 2 }, { author: 'A', text: 'a1：今天写了个内核', t: 1 }], focus: '推拉结合', log: 'x' },
     },
     topk: {
       doc: { kind: 'topk', params: {}, entities: [], streams: [] },

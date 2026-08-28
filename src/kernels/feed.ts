@@ -1,76 +1,105 @@
 /**
- * 内核：系统设计 · 设计 Feed 流（时间线）—— 推 vs 拉 vs 推拉结合（后端 · 系统设计 / 求职）
- * 轴：step —— 需求→估算→推模型(写扩散)→拉模型(读扩散)→推拉结合→权衡
+ * 内核：Feed 流 · 推拉扩散真仿真 —— 首页时间线怎么生成：推模式写扩散 vs 拉模式读归并（后端 · 系统设计）
+ * 轴：step —— 普通用户发帖走"推"(写进每个粉丝收件箱)，大V发帖走"拉"(只存自己 outbox)，刷 feed 时收件箱 + 拉大V 归并按时间排
  *
- * 朋友圈/微博时间线是系统设计高频题。核心矛盾:关注的人发帖,我要看到最新;读远多于写;
- * 还有**大 V**(千万粉丝)这个麻烦。三种做法:
- *   · 推(写扩散):发帖时写进**所有粉丝的收件箱**。读快(直接读自己收件箱),但大 V 发一条要写千万次、存储爆。
- *   · 拉(读扩散):发帖只存自己。读时**现拉所有关注人的最新帖归并**。写快,但读慢(每次拉 N 个人)。
- *   · 推拉结合:普通用户用推,大 V 用拉(粉丝读时才现拉大 V)——两头的短板互相补。
- * 复用「需求→估算→核心→扩展→权衡」框架。
+ * "怎么生成一个人的首页 Feed"是社交系统的核心题。矛盾在**读写谁贵**：
+ *   · **推模式(fan-out on write)**：你一发帖,就把它**写进你每个粉丝的收件箱**。读 feed 只需读自己收件箱 → 读快;
+ *     但发帖要写 N 次(N=粉丝数),**大V(百万粉)一发帖=百万次写**,扩散风暴。
+ *   · **拉模式(fan-out on read)**：发帖只存自己 outbox、不扩散 → 写快;读 feed 时**拉你关注的所有人**的帖再归并 → 读贵。
+ *   · **推拉结合(真实做法)**：普通用户用推(粉丝少、写得起、读得爽),**大V 用拉**(粉丝太多、别扩散),
+ *     刷 feed = 读收件箱(推来的普通用户帖) + 实时拉大V帖 → 按时间归并。
+ * 本仿真真跑:普通用户 A/B 发帖走推(看收件箱累积、写入次数),大V 发帖走拉(看省下的百万次写),
+ * 最后刷 feed 把两路按逻辑时间归并成时间线。写入次数、收件箱、归并结果全真算。
  */
 import { type SimDocument } from '../core/document.ts'
 import type { Kernel, CompiledModel } from '../core/kernel.ts'
-import type { SysDesignState } from './_sysdesign.ts'
 
-type Comp = { id: string; label: string; role: string }
-type Frame = Omit<SysDesignState, 'i'>
+type Post = { author: string; text: string; t: number }   // t = 逻辑时间（发帖全局顺序）
+export type FeedState = {
+  i: number
+  step: number
+  phase: 'intro' | 'push' | 'pull' | 'read' | 'done'
+  op: 'intro' | 'postPush' | 'postPull' | 'merge' | 'summary'
+  event: { author: string; text: string; t: number; mode: 'push' | 'pull'; fanout: number } | null  // 本步发的帖
+  myInbox: Post[]                     // 「我」的收件箱（推模式写进来的）
+  vOutbox: Post[]                     // 大V 的 outbox（拉模式，不扩散）
+  pushWrites: number                  // 推模式累计写入次数
+  savedWrites: number                 // 大V 走拉省下的写入次数
+  feed: Post[]                        // 刷新后归并出的 feed（时间降序）
+  focus: string
+  log: string
+}
+type Frame = Omit<FeedState, 'i'>
 
-const STAGES: { stage: string; focus: string; detail: string; metric: string; add?: Comp[] }[] = [
-  {
-    stage: '① 需求澄清', focus: '关注的人发帖，我的时间线看到最新',
-    detail: '功能：关注某些人 → 他们发的帖按时间出现在我的时间线。非功能：**读远多于写**（刷的人多、发的人少）、低延迟、大体按时间倒序。麻烦：**大 V** 有千万粉丝。',
-    metric: '读多写少 + 大 V 千万粉丝这个麻烦',
-    add: [{ id: 'user', label: '用户', role: '发帖 / 刷时间线' }],
-  },
-  {
-    stage: '② 容量估算', focus: '读写严重不对称',
-    detail: '刷时间线（读）的 QPS 远高于发帖（写）。但**写放大**在大 V 身上很可怕：一个千万粉丝的大 V 发一条，若要推给所有粉丝，就是千万次写。选型要在"读快"和"写放大"之间权衡。',
-    metric: '读 QPS ≫ 写；大 V 写放大千万倍',
-    add: [{ id: 'post', label: '发帖服务', role: '写入帖子' }],
-  },
-  {
-    stage: '③ 推模型（写扩散）', focus: '发帖时写进所有粉丝的收件箱',
-    detail: '**推（fan-out on write）**：你一发帖，就把它 ID 写进**每个粉丝的收件箱（timeline 表/Redis 列表）**。读时直接读自己的收件箱 → **读极快**。代价：写放大（大 V 发一条要写千万次）、存储冗余大。',
-    metric: '写进每个粉丝收件箱 → 读快、写放大',
-    add: [{ id: 'inbox', label: '粉丝收件箱', role: '推：预写好的时间线' }],
-  },
-  {
-    stage: '④ 拉模型（读扩散）', focus: '读时现拉所有关注人的最新帖归并',
-    detail: '**拉（fan-out on read）**：发帖只存自己的"发件箱"。读时去**拉你关注的每个人的最新帖、归并排序**。**写极快**（只存一份）、无写放大。代价：读慢（每次要拉 N 个关注人、归并）、读放大。',
-    metric: '读时拉 N 个关注人归并 → 写快、读慢',
-    add: [{ id: 'pull', label: '拉取归并', role: '拉：读时现拉关注人' }],
-  },
-  {
-    stage: '⑤ 推拉结合', focus: '普通用户用推、大 V 用拉，补两头短板',
-    detail: '**混合**：普通用户走推（写扩散，读快）；**大 V 走拉**（发帖不推给千万粉丝，粉丝刷时才现拉大 V 的最新帖，和自己收件箱归并）。这样既避免大 V 的写放大，普通场景又保持读快。这是微博等的真实做法。',
-    metric: '普通用户推 + 大 V 拉 → 两头短板互补',
-    add: [{ id: 'merge', label: '归并层', role: '收件箱 + 大V现拉 合并' }],
-  },
+const BIGV_FOLLOWERS = 1_000_000       // 大V 粉丝（百万级）
+const NORMAL_FOLLOWERS = 3             // 普通用户粉丝（含「我」）
+// 发帖全局顺序（逻辑时间 t）：普通用户 A/B 走推，大V 走拉
+const EVENTS: { author: string; text: string; t: number; mode: 'push' | 'pull' }[] = [
+  { author: 'A', text: 'a1：今天写了个内核', t: 1, mode: 'push' },
+  { author: 'B', text: 'b1：晚饭吃什么', t: 2, mode: 'push' },
+  { author: '大V', text: 'v1：新版本发布了', t: 3, mode: 'pull' },
+  { author: 'A', text: 'a2：跑通了！', t: 4, mode: 'push' },
+  { author: '大V', text: 'v2：直播预告', t: 5, mode: 'pull' },
 ]
 
-export const feedKernel: Kernel<SysDesignState> = {
+export const feedKernel: Kernel<FeedState> = {
   kind: 'feed',
-  compile(_doc: SimDocument): CompiledModel<SysDesignState> {
+  compile(_doc: SimDocument): CompiledModel<FeedState> {
     const frames: Frame[] = []
-    const components: Comp[] = []
-    for (const s of STAGES) {
-      if (s.add) components.push(...s.add)
-      frames.push({
-        step: frames.length, stage: s.stage, focus: s.focus, detail: s.detail, metric: s.metric,
-        components: components.map(c => ({ ...c })), phase: 'run',
-        log: `**${s.stage}：${s.focus}**\n${s.detail}\n关键：${s.metric}`,
-      })
-    }
-    frames.push({
-      step: frames.length, stage: '⑥ 权衡总结', focus: '一句话讲清取舍', detail: '',
-      metric: '推(写扩散读快) + 拉(读扩散写快) + 大V走拉的混合',
-      components: components.map(c => ({ ...c })), phase: 'done',
-      log: `**设计完成**：Feed 三种做法——**推**(写扩散，读快、大 V 写放大)、**拉**(读扩散，写快、读慢)、**推拉结合**(普通推、大 V 拉)。面试加分点：为什么读多写少却怕写(大 V 写放大)、推拉怎么划线(按粉丝数阈值判定大 V)、时间线怎么排序(纯时间 vs 算法推荐)、收件箱存哪(Redis 列表、只存热点用户的、有上限)、拉的时候怎么快(缓存每个人的最新 N 条)、feed 去重和分页(基于游标)。这套也用在信息流、通知、动态。`,
+    const snap = (a: Post[]) => a.map(p => ({ ...p }))
+    const push = (f: Omit<Frame, 'step'>) => frames.push({ step: frames.length, ...f })
+
+    const myInbox: Post[] = []
+    const vOutbox: Post[] = []
+    let pushWrites = 0
+    let savedWrites = 0
+
+    // —— 开场 ——
+    push({
+      phase: 'intro', op: 'intro', event: null, myInbox: [], vOutbox: [], pushWrites: 0, savedWrites: 0, feed: [],
+      focus: '首页 Feed 怎么生成：推(写扩散,读快写贵) vs 拉(读归并,写快读贵)',
+      log: `**Feed 流：推 vs 拉**\n"怎么生成一个人的首页时间线"矛盾在**读写谁贵**：\n· **推**（发帖时写进每个粉丝收件箱）：读快，但发帖写 N 次——**大V 百万粉一发=百万次写**。\n· **拉**（发帖只存自己 outbox）：写快，但读 feed 要拉你关注的所有人再归并。\n· **推拉结合**：普通用户推、**大V 拉**。\n设定：大V 粉丝 ${BIGV_FOLLOWERS.toLocaleString()}，普通用户 A/B 各 ${NORMAL_FOLLOWERS} 粉（含「我」）。「我」关注了 A、B、大V。看发帖和刷新怎么走。`,
     })
-    const base0: Frame = { step: -1, stage: '', focus: '', detail: '', metric: '', components: [], phase: 'run', log: '' }
+
+    // —— 第一/二幕：按全局顺序发帖，普通用户走推、大V 走拉 ——
+    for (const ev of EVENTS) {
+      if (ev.mode === 'push') {
+        pushWrites += NORMAL_FOLLOWERS                    // 写进每个粉丝的收件箱
+        myInbox.push({ author: ev.author, text: ev.text, t: ev.t })   // 「我」是其粉丝之一
+        push({
+          phase: 'push', op: 'postPush', event: { ...ev, fanout: NORMAL_FOLLOWERS }, myInbox: snap(myInbox), vOutbox: snap(vOutbox), pushWrites, savedWrites, feed: [],
+          focus: `${ev.author} 发帖(推) → 写进 ${NORMAL_FOLLOWERS} 个粉丝收件箱（累计写 ${pushWrites}）`,
+          log: `**推：${ev.author} 发「${ev.text}」**\n${ev.author} 粉丝少（${NORMAL_FOLLOWERS}），走**推**：发帖时把这条**写进每个粉丝的收件箱**（fan-out=${NORMAL_FOLLOWERS} 次写，累计 ${pushWrites}）。「我」是粉丝之一 → 收件箱多了这条。\n好处：等「我」刷 feed 时，直接读收件箱就行、**读 O(1)**，不用现算。`,
+        })
+      } else {
+        savedWrites += BIGV_FOLLOWERS                     // 若推需要写这么多次，现在省了
+        vOutbox.push({ author: ev.author, text: ev.text, t: ev.t })
+        push({
+          phase: 'pull', op: 'postPull', event: { ...ev, fanout: 0 }, myInbox: snap(myInbox), vOutbox: snap(vOutbox), pushWrites, savedWrites, feed: [],
+          focus: `${ev.author} 发帖(拉) → 只存 outbox，省下 ${BIGV_FOLLOWERS.toLocaleString()} 次写（累计省 ${savedWrites.toLocaleString()}）`,
+          log: `**拉：${ev.author} 发「${ev.text}」**\n${ev.author} 是大V（${BIGV_FOLLOWERS.toLocaleString()} 粉），若走推要**写 ${BIGV_FOLLOWERS.toLocaleString()} 次**——扩散风暴。所以走**拉**：只把帖存进自己的 **outbox**、不扩散，**省下 ${BIGV_FOLLOWERS.toLocaleString()} 次写**（累计省 ${savedWrites.toLocaleString()}）。\n代价：这条没进任何人的收件箱，等粉丝刷 feed 时**实时拉**。`,
+        })
+      }
+    }
+
+    // —— 第三幕：刷 feed，收件箱 + 拉大V outbox → 归并 ——
+    const feed = [...myInbox, ...vOutbox].sort((a, b) => b.t - a.t)   // 按逻辑时间降序归并
+    push({
+      phase: 'read', op: 'merge', event: null, myInbox: snap(myInbox), vOutbox: snap(vOutbox), pushWrites, savedWrites, feed: snap(feed),
+      focus: `刷 feed：读收件箱(${myInbox.length}) + 拉大V(${vOutbox.length}) → 归并 ${feed.length} 条按时间排`,
+      log: `**「我」刷 feed：两路归并**\n= 读**收件箱**（推来的普通用户帖：${myInbox.map(p => p.text.split('：')[0]).join('、')}）\n+ 实时**拉**关注的大V 的 outbox（${vOutbox.map(p => p.text.split('：')[0]).join('、')}）\n→ 按**逻辑时间**归并排序（多路归并，像 K 个有序链表合并）：\n**${feed.map(p => `${p.text.split('：')[0]}(t${p.t})`).join(' > ')}**。\n普通用户帖早写好在收件箱（读快），大V帖只拉这几个作者（不至于读爆）——这就是推拉结合。`,
+    })
+
+    // —— 收尾 ——
+    push({
+      phase: 'done', op: 'summary', event: null, myInbox: snap(myInbox), vOutbox: snap(vOutbox), pushWrites, savedWrites, feed: snap(feed),
+      focus: `推写 ${pushWrites} 次(读快)；大V走拉省 ${savedWrites.toLocaleString()} 次写；刷 feed = 收件箱 + 拉大V 归并`,
+      log: `**小结：推拉结合**\n· **推(fan-out on write)**：发帖写进每个粉丝收件箱 → 读 O(1)、写 O(粉丝数)。粉丝少的普通用户用它。\n· **拉(fan-out on read)**：发帖只存 outbox → 写 O(1)、读 O(关注数) 要归并。\n· **结合**：普通用户推、大V 拉；刷 feed = 读收件箱(推来的) + 拉少数大V(避免百万扩散)，归并按时间。本仿真里推共写 ${pushWrites} 次，大V 走拉省下 ${savedWrites.toLocaleString()} 次写。\n面试延伸：为什么大V 必须拉（写扩散风暴 + 粉丝里很多僵尸不看）、feed 归并=多路有序合并（小顶堆）、时间线存 postID 不存内容（省空间、内容另查）、新粉丝进来历史 feed 怎么补、读扩散的缓存怎么做。这套用在微博/朋友圈/Twitter timeline。`,
+    })
+
+    const base0: Frame = { phase: 'intro', op: 'intro', step: -1, event: null, myInbox: [], vOutbox: [], pushWrites: 0, savedWrites: 0, feed: [], focus: '', log: '' }
     return {
-      axis: { kind: 'step', label: '设计步' },
+      axis: { kind: 'step', label: 'Feed 步' },
       initial: () => ({ i: -1, ...base0 }),
       describe: s => s.log,
       step(prev) { const b = prev ?? this.initial(); const idx = b.i + 1; if (idx >= frames.length) return null; return { state: { i: idx, ...frames[idx]! }, done: idx === frames.length - 1 } },

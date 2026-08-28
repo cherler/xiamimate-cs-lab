@@ -313,13 +313,14 @@ import type { SysDesignState } from '@engine/kernels/_sysdesign.ts'
 import { seckillKernel, type SeckillState } from '@engine/kernels/seckill.ts'
 import { mqdesignKernel, type MqState } from '@engine/kernels/mqdesign.ts'
 import { topkKernel, type TopkState } from '@engine/kernels/topk.ts'
-import { feedKernel } from '@engine/kernels/feed.ts'
+import { feedKernel, type FeedState } from '@engine/kernels/feed.ts'
 import { objectstoreKernel } from '@engine/kernels/objectstore.ts'
 import { SysDesignStage } from './stages/SysDesignStage.tsx'
 import { SeckillStage } from './stages/SeckillStage.tsx'
 import { UrlStage } from './stages/UrlStage.tsx'
 import { TopkStage } from './stages/TopkStage.tsx'
 import { MqStage } from './stages/MqStage.tsx'
+import { FeedStage } from './stages/FeedStage.tsx'
 import { CollisionStage } from './stages/CollisionStage.tsx'
 import { gcnKernel, type GcnState } from '@engine/kernels/gcn.ts'
 import { GcnStage } from './stages/GcnStage.tsx'
@@ -6070,20 +6071,20 @@ const objectstore: Experiment<SysDesignState> = {
     { label: '架构', value: s.components.map(c => c.label).join('→') || '—' },
   ],
 }
-const feed: Experiment<SysDesignState> = {
-  id: 'feed', group: '系统设计', title: '设计 Feed 流', subtitle: '时间线：推 vs 拉 vs 推拉结合',
+const feed: Experiment<FeedState> = {
+  id: 'feed', group: '系统设计', title: '设计 Feed 流', subtitle: '真仿真：推(写扩散) vs 拉(读归并) 推拉结合',
   kernel: feedKernel, defaultDoc: { kind: 'feed', params: {}, entities: [], streams: [] }, params: [],
-  paramsNote: '系统设计高频题(时间线/朋友圈)。核心矛盾:读多写少+大V写放大。走一遍——需求→估算→推(写扩散:写进每个粉丝收件箱,读快写放大)→拉(读扩散:读时现拉关注人归并,写快读慢)→推拉结合(普通推、大V拉)→权衡。详见讲解卡。',
-  bounds: ['读多写少,但大V(千万粉丝)写放大可怕', '推(写扩散):发帖写进每个粉丝收件箱→读快、大V写放大', '拉(读扩散):读时拉N个关注人归并→写快、读慢', '推拉结合:普通用户推、大V拉,补两头短板(微博做法)'],
-  tabs: [{ id: 'design', label: '架构逐步搭' }], Stage: SysDesignStage, whyInRail: true,
-  tone: s => (s.phase === 'done' ? { key: 'good', label: '设计完成' } : { key: 'idle', label: s.stage.replace(/^[①②③④⑤⑥⑦]\s*/, '') || '就绪' }),
-  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
-  tickLabel: s => (s.phase === 'done' ? '毕' : s.stage.slice(0, 1) || '设'),
+  paramsNote: 'Feed 首页时间线怎么生成。真跑推拉：普通用户 A/B 发帖走推(写进每个粉丝收件箱、读快写贵)，大V 发帖走拉(只存 outbox、省百万次写)，「我」刷 feed = 读收件箱 + 拉大V outbox → 按逻辑时间归并。写入次数/收件箱/归并结果全真算。',
+  bounds: ['矛盾在读写谁贵:推=发帖写进每个粉丝收件箱(读O(1)、写O(粉丝数))', '拉=只存outbox(写O(1)、读时拉关注人归并)', '大V百万粉必须走拉(推=百万次写扩散风暴);普通用户走推', '刷feed=读收件箱(推来的)+拉少数大V→按时间多路归并(小顶堆)'],
+  tabs: [{ id: 'design', label: '推拉扩散' }], Stage: FeedStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: '推拉结合' } : { key: 'idle', label: s.phase === 'push' ? '推·写扩散' : s.phase === 'pull' ? '拉·存outbox' : s.phase === 'read' ? '刷feed归并' : '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 7)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.op === 'postPush' ? '推' : s.op === 'postPull' ? '拉' : s.op === 'merge' ? '并' : 'F'),
   readouts: s => [
-    { label: '阶段', value: s.stage || '就绪' },
-    { label: '关键', value: s.metric || '—' },
-    { label: '已定组件', value: `${s.components.length} 个` },
-    { label: '架构', value: s.components.map(c => c.label).join('→') || '—' },
+    { label: '当前模式', value: s.phase === 'push' ? '推·写扩散' : s.phase === 'pull' ? '拉·存outbox' : s.phase === 'read' || s.phase === 'done' ? '刷feed归并' : '就绪' },
+    { label: '推·累计写入', value: `${s.pushWrites} 次` },
+    { label: '大V拉·省下写', value: `${s.savedWrites.toLocaleString()} 次` },
+    { label: '我的收件箱/Feed', value: `${s.myInbox.length} 条${s.feed.length ? ` → 归并 ${s.feed.length}` : ''}` },
   ],
 }
 const topk: Experiment<TopkState> = {

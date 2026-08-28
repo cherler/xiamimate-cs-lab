@@ -346,15 +346,23 @@ export const GUIDES: Record<string, Guide> = {
     try: [{ act: '按「下一步」走框架', watch: '需求→估算→对象存储→上传→CDN分发，组件一块块搭。' }, { act: '记住两条要点', watch: '副本vs纠删码(成本vs恢复)、CDN+转码让播放快——面试要点。' }], terms: [],
   },
   feed: {
-    question: '关注的人发帖，你的时间线怎么组织？推还是拉？大 V 千万粉丝怎么办？',
-    read: [{ at: '架构', is: '一步步搭起来的组件（发帖→推收件箱/拉归并）。', anchor: '.sd-arch' }, { at: '读数', is: '当前阶段、关键数、组件。', anchor: '.scdim' }],
-    step: (s: never) => { const st = s as { stage: string; focus: string; metric: string; components: unknown[]; phase: string }; return [
-      { k: '本步输入', v: st.phase === 'done' ? '走完整套 Feed 设计' : `${st.stage}` },
-      { k: '判定规则', v: '推(写扩散)：发帖写进每个粉丝收件箱→读快、大 V 写放大；拉(读扩散)：读时现拉关注人归并→写快、读慢；推拉结合：普通推、大 V 拉，补两头短板。每步问"为什么这么选"。' },
-      { k: '本步结果', v: st.phase === 'done' ? '一套 Feed 系统搭好，可讲清推/拉/混合的取舍' : `${st.focus}；关键：${st.metric}（已定 ${st.components.length} 个组件）` },
+    question: '普通用户发帖为什么"推"、大V发帖为什么"拉"？刷 feed 时两路怎么合成时间线？',
+    read: [{ at: '两路箱', is: '「我」的收件箱(推来的) + 大V 的 outbox(不扩散)。', anchor: '.fd-boxes' }, { at: '读数', is: '推累计写入、大V拉省下的写、收件箱/Feed 条数。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { phase: string; op: string; event: { author: string; text: string; mode: string; fanout: number } | null; myInbox: unknown[]; vOutbox: unknown[]; pushWrites: number; savedWrites: number; feed: { text: string; t: number }[]; focus: string }; return [
+      { k: '本步输入', v: st.phase === 'done' ? '发帖(推/拉)+刷feed归并全走完' : st.event ? `${st.event.author} 发帖（走${st.event.mode === 'push' ? '推' : '拉'}）` : st.op === 'merge' ? '「我」刷 feed' : '准备' },
+      { k: '判定规则', v: '推(fan-out on write)：发帖写进每个粉丝收件箱→读 O(1)、写 O(粉丝数)。拉(fan-out on read)：只存 outbox→写 O(1)、读时拉关注人归并。大V 粉丝太多必须拉、普通用户推。刷 feed=收件箱+拉大V→按时间归并。' },
+      { k: '本步结果', v: st.phase === 'done'
+        ? `推共写 ${st.pushWrites} 次、大V走拉省 ${st.savedWrites.toLocaleString()} 次；feed 归并 ${st.feed.length} 条`
+        : st.event?.mode === 'push'
+          ? `写进 ${st.event.fanout} 个粉丝收件箱，累计写 ${st.pushWrites}；我的收件箱 ${st.myInbox.length} 条`
+          : st.event?.mode === 'pull'
+            ? `只存 outbox，省 ${(1_000_000).toLocaleString()} 次写（累计省 ${st.savedWrites.toLocaleString()}）`
+            : st.op === 'merge'
+              ? `收件箱 ${st.myInbox.length} + 拉大V ${st.vOutbox.length} → 归并：${st.feed.map(p => p.text.split('：')[0]).join(' > ')}`
+              : '就绪' },
     ] },
-    verdict: (s: never) => { const st = s as { phase: string; stage: string }; return st.phase === 'done' ? '设计完成' : st.stage.replace(/^[①②③④⑤⑥⑦]\s*/, '') },
-    try: [{ act: '按「下一步」走框架', watch: '需求→估算→推→拉→推拉结合，组件一块块搭。' }, { act: '记住两条要点', watch: '推快读写放大、拉快写慢读；大 V 走拉避免写放大——面试要点。' }], terms: [],
+    verdict: (s: never) => { const st = s as { phase: string; event: { mode: string } | null; op: string; pushWrites: number; savedWrites: number }; return st.phase === 'done' ? `推写${st.pushWrites}/省${st.savedWrites.toLocaleString()}` : st.event?.mode === 'push' ? '推·写扩散' : st.event?.mode === 'pull' ? '拉·存outbox' : st.op === 'merge' ? '刷feed归并' : '就绪'; },
+    try: [{ act: '看普通用户走推', watch: 'A/B 发帖时写进每个粉丝(3人)收件箱——「我」的收件箱直接攒好，刷 feed 读它 O(1)。' }, { act: '看大V走拉省了多少', watch: '大V 百万粉，推要写百万次；走拉只存 outbox、省 2,000,000 次写，刷时才拉这一个作者。最后两路按时间归并成 feed。' }], terms: [],
   },
   topk: {
     question: '内存装不下全部计数，怎么求出现最多的 K 个？哈希分片和小顶堆各解决什么？',
