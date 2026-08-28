@@ -353,6 +353,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; op: string; result: string }; return st.phase === 'done' ? 'KV跑通' : (st.op === 'get' ? (st.result || 'get') : st.op) },
     try: [{ act: '看更新 a=9', watch: '不改旧值，追加新版本；SST1 里 a=1、SST2 里 a=9 同时存在。' }, { act: '看 get(a) 和压实', watch: 'get 从新到旧读到 a=9；压实把旧的 a=1 归并丢掉。' }], terms: [],
   },
+  joins: {
+    question: '同一个 JOIN，数据库为什么有时走 Hash、有时走 Nested Loop？',
+    read: [{ at: '两表', is: 'Users.id 与 Orders.uid，当前算法怎么配对。', anchor: '.jn-tables' }, { at: '代价', is: '末步三算法的比较次数对比。', anchor: '.jn-costs' }],
+    step: (s: never) => { const st = s as { algo: string; op: string; cost: number; matches: unknown[]; costs: { nlj: number; hash: number; smj: number }; phase: string }; return [
+      { k: '本步输入', v: st.phase === 'done' ? '三算法代价对比' : st.algo === 'nlj' ? 'Nested Loop：外表每行×内表每行' : st.op === 'build' ? 'Hash：对小表建哈希表' : st.op === 'probe' ? 'Hash：大表逐行探测' : st.op === 'sort' ? 'Sort-Merge：两表排序' : st.op === 'merge' ? 'Sort-Merge：双指针归并' : '同一对表，三种算法' },
+      { k: '判定规则', v: 'NLJ 比较 |N|×|M| 次(任意条件但会平方爆炸)；Hash 建小表+探大表 O(N+M)(等值主力、吃内存)；Sort-Merge 排序+归并(已排序/要有序/范围连接最好)。优化器按数据估代价选。' },
+      { k: '本步结果', v: st.phase === 'done' ? `NLJ ${st.costs.nlj} / Hash ${st.costs.hash} / SMJ ${st.costs.smj}(+排序)` : st.cost > 0 ? `本算法代价 ${st.cost} 次/步，${st.matches.length} 个匹配` : st.op === 'build' ? '哈希表建好 {1,2,3}' : st.op === 'sort' ? '两表按连接键排好' : '同一个 JOIN 的三条路' },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; algo: string; op: string }; return st.phase === 'done' ? 'Hash/SMJ 更省' : st.algo === 'nlj' ? 'NLJ' : st.algo === 'hash' ? (st.op === 'build' ? 'build' : 'probe') : st.algo === 'smj' ? (st.op === 'sort' ? '排序' : '归并') : '就绪' },
+    try: [{ act: '数 NLJ 的比较', watch: '外表 3 行 × 内表 4 行 = 12 次比较，表一大就平方爆炸。' }, { act: '看 Hash 省在哪', watch: '建表 3 + 探测 4 = 7 次，O(N+M)——大表等值连接就靠它。' }], terms: [],
+  },
   circuitbreaker: {
     question: '下游服务挂了，怎么不让它把上游一起拖垮、还能自动探测恢复？',
     read: [{ at: '三态', is: 'Closed / Open / Half-Open，当前态高亮。', anchor: '.cb-states' }, { at: '读数', is: '状态、失败计数/阈值、本步结果。', anchor: '.scdim' }],

@@ -268,6 +268,8 @@ import { quorumKernel, type QuorumState } from '@engine/kernels/quorum.ts'
 import { QuorumStage } from './stages/QuorumStage.tsx'
 import { circuitbreakerKernel, type BreakerState } from '@engine/kernels/circuitbreaker.ts'
 import { BreakerStage } from './stages/BreakerStage.tsx'
+import { joinsKernel, type JoinState } from '@engine/kernels/joins.ts'
+import { JoinsStage } from './stages/JoinsStage.tsx'
 import { walKernel, type WALState } from '@engine/kernels/wal.ts'
 import { WALStage } from './stages/WALStage.tsx'
 import { lsmKernel, type LSMState } from '@engine/kernels/lsm.ts'
@@ -5533,6 +5535,22 @@ const ecbcbc: Experiment<EcbCbcState> = {
     { label: '重复块', value: s.phase === 'done' ? 'ECB 泄露 / CBC 安全' : '对比中' },
   ],
 }
+const joins: Experiment<JoinState> = {
+  id: 'joins', group: '数据库系统', title: '三种 JOIN 算法', subtitle: '嵌套循环 / 哈希 / 排序归并，代价对比',
+  kernel: joinsKernel, defaultDoc: { kind: 'joins', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '无可调参数。同一对表 Users⋈Orders(3个匹配),依次走 NLJ(3×4=12次)、Hash(建3+探4=7)、Sort-Merge(归并7步)。优化器按表大小/索引/等值vs范围/是否要有序来选。代价可手核。详见讲解卡。',
+  bounds: ['NLJ:外表每行×内表每行=|N|×|M|=12次,任意条件但O(N×M)会爆', 'Hash:小表build+大表probe=N+M=7,等值连接主力但吃内存', 'Sort-Merge:排序+归并=N+M=7步,已排序/要有序/范围连接最好', 'EXPLAIN 里为什么Hash Join还是Nested Loop=这三种代价的估算'],
+  tabs: [{ id: 'join', label: '三算法走一遍' }], Stage: JoinsStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: 'Hash/SMJ 更省' } : s.algo === 'nlj' ? { key: 'bad', label: `NLJ ${s.cost}次` } : s.algo === 'hash' ? { key: 'good', label: s.op === 'build' ? 'build' : 'probe' } : s.algo === 'smj' ? { key: 'idle', label: s.op === 'sort' ? '排序' : '归并' } : { key: 'idle', label: '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 7)),
+  tickLabel: s => (s.phase === 'done' ? '比' : s.algo === 'nlj' ? 'N' : s.algo === 'hash' ? 'H' : s.algo === 'smj' ? 'S' : '始'),
+  readouts: s => [
+    { label: '算法', value: s.algo === 'none' ? (s.phase === 'done' ? '代价对比' : '就绪') : s.algo === 'nlj' ? 'Nested Loop' : s.algo === 'hash' ? 'Hash Join' : 'Sort-Merge' },
+    { label: '阶段', value: s.op === 'build' ? 'build' : s.op === 'probe' ? 'probe' : s.op === 'sort' ? '排序' : s.op === 'merge' ? '归并' : s.op === 'nlj' ? '嵌套循环' : '—' },
+    { label: '代价', value: s.cost > 0 ? `${s.cost}` : (s.phase === 'done' ? 'NLJ12/Hash7/SMJ7' : '—') },
+    { label: '匹配行', value: `${s.matches.length}`, tone: s.matches.length ? 'good' : undefined },
+  ],
+}
 const circuitbreaker: Experiment<BreakerState> = {
   id: 'circuitbreaker', group: '分布式系统', title: '熔断器状态机', subtitle: 'Closed/Open/Half-Open 防级联雪崩',
   kernel: circuitbreakerKernel, defaultDoc: { kind: 'circuitbreaker', params: {}, entities: [], streams: [] }, params: [],
@@ -5779,7 +5797,7 @@ export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
   caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt, ecbcbc, birthday, aesround, hmac, totp,
-  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign,
+  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,

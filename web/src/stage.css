@@ -4152,6 +4152,29 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .cb-alert.ok { color:var(--hit); border-color:var(--hit); background:color-mix(in srgb, var(--hit) 8%, var(--panel)); }
 .cb-event.trip .cb-alert { color:var(--miss); border-color:var(--miss); background:color-mix(in srgb, var(--miss) 8%, var(--panel)); }
 
+/* ── 三种 JOIN 算法 ── */
+.jn-tables { display:flex; align-items:flex-start; gap:12px; margin:8px 0 12px; }
+.jn-tbl { flex:1; display:flex; flex-direction:column; gap:5px; }
+.jn-tname { font-size:11px; font-weight:700; color:var(--dim); font-family:var(--mono); }
+.jn-rows { display:flex; flex-wrap:wrap; gap:5px; }
+.jn-row { font-family:var(--mono); font-size:14px; font-weight:700; min-width:32px; text-align:center; padding:5px 8px; border:1px solid var(--line); border-radius:6px; background:var(--sunk-1); color:var(--ink); }
+.jn-row.hit { border-color:var(--hit); color:var(--hit); background:color-mix(in srgb, var(--hit) 12%, var(--panel)); }
+.jn-row.miss { border-color:var(--miss); color:var(--miss); opacity:.7; }
+.jn-mid { display:flex; flex-direction:column; align-items:center; gap:6px; padding-top:18px; min-width:96px; }
+.jn-join { font-family:var(--mono); font-size:13px; font-weight:700; color:var(--now); }
+.jn-hash { font-size:11px; font-family:var(--mono); color:var(--dim); padding:3px 8px; border:1px dashed var(--now); border-radius:6px; }
+.jn-matches { margin:0 0 10px; font-size:12.5px; color:var(--dim); display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+.jn-mrow { font-family:var(--mono); font-weight:700; color:var(--hit); padding:1px 7px; border:1px solid var(--hit); border-radius:10px; background:color-mix(in srgb, var(--hit) 8%, var(--panel)); }
+.jn-costs { display:flex; flex-direction:column; gap:8px; margin:4px 0 12px; }
+.jn-cbar { display:grid; grid-template-columns:96px 1fr 64px; grid-template-areas:"name track val" "name track note"; align-items:center; gap:2px 10px; }
+.jn-cname { grid-area:name; font-size:13px; font-weight:700; color:var(--ink); }
+.jn-ctrack { grid-area:track; height:16px; border-radius:8px; background:var(--sunk-1); overflow:hidden; }
+.jn-ctrack i { display:block; height:100%; background:color-mix(in srgb, var(--now) 50%, var(--panel)); }
+.jn-cbar.bad .jn-ctrack i { background:var(--miss); }
+.jn-cbar.good .jn-ctrack i { background:var(--hit); }
+.jn-cval { grid-area:val; font-family:var(--mono); font-size:13px; font-weight:700; color:var(--ink); text-align:right; }
+.jn-cnote { grid-area:note; font-size:10.5px; color:var(--faint); text-align:right; }
+
 /* ── mini 搜索引擎（倒排索引 + TF-IDF） ── */
 .ms-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:8px 0 12px; }
 .ms-col { display:flex; flex-direction:column; gap:6px; min-width:0; }

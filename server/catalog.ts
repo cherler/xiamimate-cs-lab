@@ -78,6 +78,7 @@ import { snowflakeKernel } from '../src/kernels/snowflake.ts'
 import { vectorclockKernel } from '../src/kernels/vectorclock.ts'
 import { quorumKernel } from '../src/kernels/quorum.ts'
 import { circuitbreakerKernel } from '../src/kernels/circuitbreaker.ts'
+import { joinsKernel } from '../src/kernels/joins.ts'
 import { walKernel } from '../src/kernels/wal.ts'
 import { lsmKernel } from '../src/kernels/lsm.ts'
 import { minikvKernel } from '../src/kernels/minikv.ts'
@@ -1344,6 +1345,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: '熔断器 Open 一段时间后进入 Half-Open 态，这个中间态的作用是?', kind: 'choice',
         compute: () => ({ answer: '放少量探测请求去试探下游恢复没有：探测成功就回 Closed 恢复正常，探测失败就退回 Open 再等——避免下游还没好就被全量流量再次打垮', step: 7, evidence: '探测请求成功 → 回 Closed 且失败计数清零' }),
         distractors: () => ['直接放全部流量进去试', '永久停在这个状态', '把所有历史失败请求重放一遍'],
+      },
+    ],
+  },
+  {
+    id: 'joins', title: '三种 JOIN 算法', kernel: joinsKernel as Kernel<unknown>, doc: trivialDoc('joins'),
+    facts: [
+      {
+        id: 'nlj_cost', label: '嵌套循环 JOIN 为什么表大就爆',
+        ask: 'Nested Loop Join（嵌套循环连接）在大表上为什么代价高?', kind: 'choice',
+        compute: () => ({ answer: '它是外表每行都去内表整个扫一遍，比较次数 = |外表| × |内表|，即 O(N×M)——两张十万行的表就是百亿次比较', step: 1, evidence: '本例 3×4=12 次；没有索引时随表规模平方爆炸' }),
+        distractors: () => ['因为要先给两表排序', '因为要建很大的哈希表', '因为它只支持等值连接'],
+      },
+      {
+        id: 'hash_best', label: 'Hash Join 适合什么场景',
+        ask: '大表之间的等值连接（=），优化器通常选哪种 JOIN 算法、为什么?', kind: 'choice',
+        compute: () => ({ answer: 'Hash Join：对小表建哈希表(build)、大表逐行 O(1) 探测(probe)，总代价 O(N+M)，远小于嵌套循环的 O(N×M)；代价是只支持等值连接、要额外内存放哈希表', step: 3, evidence: '本例 建3+探4=7 次，远少于 NLJ 的 12' }),
+        distractors: () => ['Nested Loop，因为不用预处理', 'Sort-Merge，因为一定要排序', 'Hash Join 只适合小表'],
       },
     ],
   },
