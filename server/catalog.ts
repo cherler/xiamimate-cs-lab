@@ -102,6 +102,7 @@ import { slamKernel } from '../src/kernels/slam.ts'
 import { impedanceKernel } from '../src/kernels/impedance.ts'
 import { mpcKernel } from '../src/kernels/mpc.ts'
 import { bcKernel } from '../src/kernels/bc.ts'
+import { diffpolicyKernel } from '../src/kernels/diffpolicy.ts'
 import { kalmanKernel } from '../src/kernels/kalman.ts'
 import { pidKernel } from '../src/kernels/pid.ts'
 import { rrtKernel } from '../src/kernels/rrt.ts'
@@ -1750,6 +1751,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: '卡尔曼增益 K=P\'/(P\'+R) 决定什么？什么时候更信 GPS 观测、什么时候更信运动预测?', kind: 'choice',
         compute: () => ({ answer: 'K 是"信预测还是信观测"的权重：x=x\'+K(z−x\')。观测噪声 R 小(GPS 准)→K 大→多信观测；预测方差 P\' 小(预测准)→K 小→多信预测。融合估计比单独任一个都准', step: 8, evidence: '本例 R=1，K 从 0.6 收敛到 ~0.5；估计一路贴真值(误差≤0.13)' }),
         distractors: () => ['K 是固定常数、与方差无关', 'K 越大越好、永远多信观测', 'K 只和步数有关'],
+      },
+    ],
+  },
+  {
+    id: 'diffpolicy', title: 'Diffusion Policy', kernel: diffpolicyKernel as Kernel<unknown>, doc: trivialDoc('diffpolicy'),
+    facts: [
+      {
+        id: 'bc_multimodal', label: 'BC 为什么把多解平均成撞',
+        ask: '绕障碍向左或向右都对，为什么行为克隆(BC)会预测"直行"撞上去?', kind: 'choice',
+        compute: () => ({ answer: 'BC 是回归、只输出一个动作，训练最小化均方误差→最优单点预测就是均值。左(−1)和右(+1)平均=0(直行)→正好撞障碍。这是"回归求均值"的结构缺陷，加大网络也没用', step: 1, evidence: '本例双峰动作 ±1，BC 均值落在 0(直行撞)' }),
+        distractors: () => ['BC 训练不够', '专家示范里没有绕障数据', 'BC 网络太小'],
+      },
+      {
+        id: 'diffusion_multimodal', label: 'Diffusion Policy 怎么治多峰',
+        ask: 'Diffusion Policy 怎么解决 BC 把多峰动作平均成错解的问题?', kind: 'choice',
+        compute: () => ({ answer: '换成生成模型：不预测单个动作，而是建整个动作分布(可多峰)，从随机噪声沿学到的能量/分数去噪采样，落到某一个模态而非平均。不同噪声→不同模态，都是有效解', step: 6, evidence: '本例两个噪声种子去噪分别收敛到 +0.99(右绕)/−0.99(左绕)，BC 却给 0(撞)' }),
+        distractors: () => ['给 BC 加更多层', '把左右两个动作都执行', '只保留一个方向的示范'],
       },
     ],
   },

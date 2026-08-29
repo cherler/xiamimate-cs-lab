@@ -327,6 +327,7 @@ import { slamKernel, type SLAMState } from '@engine/kernels/slam.ts'
 import { impedanceKernel, type ImpState } from '@engine/kernels/impedance.ts'
 import { mpcKernel, type MPCState } from '@engine/kernels/mpc.ts'
 import { bcKernel, type BCState } from '@engine/kernels/bc.ts'
+import { diffpolicyKernel, type DiffPolicyState } from '@engine/kernels/diffpolicy.ts'
 import { objectstoreKernel } from '@engine/kernels/objectstore.ts'
 import { SysDesignStage } from './stages/SysDesignStage.tsx'
 import { SeckillStage } from './stages/SeckillStage.tsx'
@@ -347,6 +348,7 @@ import { SLAMStage } from './stages/SLAMStage.tsx'
 import { ImpedanceStage } from './stages/ImpedanceStage.tsx'
 import { MPCStage } from './stages/MPCStage.tsx'
 import { BCStage } from './stages/BCStage.tsx'
+import { DiffPolicyStage } from './stages/DiffPolicyStage.tsx'
 import { CollisionStage } from './stages/CollisionStage.tsx'
 import { gcnKernel, type GcnState } from '@engine/kernels/gcn.ts'
 import { GcnStage } from './stages/GcnStage.tsx'
@@ -6373,6 +6375,23 @@ const bc: Experiment<BCState> = {
   ],
 }
 
+const diffpolicy: Experiment<DiffPolicyState> = {
+  id: 'diffpolicy', group: '具身学习', title: 'Diffusion Policy', subtitle: '扩散建多峰动作分布、去噪采一个模态；治 BC 平均成撞',
+  kernel: diffpolicyKernel, defaultDoc: { kind: 'diffpolicy', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: 'BC 除了分布漂移，还有多峰被平均的病：绕障向左(−1)或向右(+1)都对，BC 回归求均值→0(直行)→撞。Diffusion Policy 换成生成模型：建整个动作分布(可多峰)，从噪声沿学到的能量去噪采样出某一个模态。本例双阱能量 U=(x²−1)²(模态±1)：BC 均值落 0(撞)，两个噪声种子去噪分别收敛到 +1(右绕)/−1(左绕)。去噪每步真算。',
+  bounds: ['BC第二个病:多峰动作被平均—绕障左(−1)或右(+1)都对,回归求均值→0直行→撞(结构缺陷,加大网络无用)', 'Diffusion Policy=生成模型:建整个动作分布(可多峰),从噪声沿分数/能量去噪采样出一个模态', '不同噪声→不同模态(左/右都有效),不被平均;一整段动作序列内部连贯', '代价:采样迭代多步(DDIM/一致性/流匹配加速);现代VLA(RT/π0)动作头广用扩散;引出VLA'],
+  tabs: [{ id: 'design', label: '去噪采样' }], Stage: DiffPolicyStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: '各落一模态' } : s.phase === 'bc' ? { key: 'bad', label: 'BC 平均成撞' } : { key: 'idle', label: s.phase === 'denoise' ? `去噪 ${s.shown} 步` : '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 8)),
+  tickLabel: s => (s.phase === 'done' ? '峰' : s.op === 'bc' ? '撞' : s.op === 'step' ? `${s.shown}` : 'D'),
+  readouts: s => [
+    { label: '当前', value: s.op === 'bc' ? 'BC 回归' : s.phase === 'done' ? '各落一模态' : s.phase === 'denoise' ? `去噪 ${s.shown} 步` : '就绪' },
+    { label: 'BC 均值', value: `${s.bcAction}（直行→撞）`, tone: 'bad' },
+    { label: '扩散样本 A', value: `${s.aVal}${s.phase === 'done' ? '（右绕）' : ''}`, tone: s.phase === 'done' ? 'good' : undefined },
+    { label: '扩散样本 B', value: `${s.bVal}${s.phase === 'done' ? '（左绕）' : ''}`, tone: s.phase === 'done' ? 'good' : undefined },
+  ],
+}
+
 export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
@@ -6384,7 +6403,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, ik, jacobian, quat, trajectory, kalman, icp, slam, impedance, mpc, pid, rrt, bc,
+  fk, ik, jacobian, quat, trajectory, kalman, icp, slam, impedance, mpc, pid, rrt, bc, diffpolicy,
 ] as unknown as AnyExperiment[]
 
 /**

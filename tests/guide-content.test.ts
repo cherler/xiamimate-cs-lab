@@ -423,6 +423,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { step: 3, phase: 'rollout', op: 'step', demoBound: 0.5, roadBound: 1.5, expert: [0, 0.4, 0.56, 0.62, 0.65, 0.66, 0.66, 0.66, 0.66, 0.66, 0.66, 0.66, 0.66, 0.66, 0.66], bc: [0, 0.4, 0.56, 0.66, 0.76, 0.86, 0.96, 1.06, 1.16, 1.26, 1.36, 1.46, 1.56, 1.66, 1.76], shown: 5, bcY: 0.86, expertY: 0.66, bcOff: true, bcCrashed: false, focus: '漂出示范区', log: 'x' },
       b: { step: 6, phase: 'done', op: 'summary', demoBound: 0.5, roadBound: 1.5, expert: [0, 0.4, 0.56, 0.62, 0.65, 0.66, 0.66, 0.66, 0.66, 0.66, 0.66, 0.66, 0.66, 0.66, 0.66], bc: [0, 0.4, 0.56, 0.66, 0.76, 0.86, 0.96, 1.06, 1.16, 1.26, 1.36, 1.46, 1.56, 1.66, 1.76], shown: 14, bcY: 1.76, expertY: 0.66, bcOff: true, bcCrashed: true, focus: '冲出车道', log: 'x' },
     },
+    diffpolicy: {
+      doc: { kind: 'diffpolicy', params: {}, entities: [], streams: [] },
+      a: { step: 3, phase: 'denoise', op: 'step', bcAction: 0, seedA: [0.35, 0.44, 0.52, 0.59, 0.66, 0.76, 0.85, 0.9, 0.94, 0.97, 0.98, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99], seedB: [-0.5, -0.6, -0.69, -0.77, -0.84, -0.9, -0.95, -0.97, -0.98, -0.99, -0.99, -0.99, -0.99, -0.99, -0.99, -0.99, -0.99], shown: 3, aVal: 0.59, bVal: -0.77, focus: '去噪第 3 步', log: 'x' },
+      b: { step: 7, phase: 'done', op: 'summary', bcAction: 0, seedA: [0.35, 0.44, 0.52, 0.59, 0.66, 0.76, 0.85, 0.9, 0.94, 0.97, 0.98, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99], seedB: [-0.5, -0.6, -0.69, -0.77, -0.84, -0.9, -0.95, -0.97, -0.98, -0.99, -0.99, -0.99, -0.99, -0.99, -0.99, -0.99, -0.99], shown: 16, aVal: 0.99, bVal: -0.99, focus: '各落一模态', log: 'x' },
+    },
     pid: {
       doc: { kind: 'pid', params: {}, entities: [], streams: [] },
       a: { step: 5, phase: 'ponly', op: 'step', target: 10, Kp: 0.4, Kd: 0.9, mode: 'P', k: 5, e: 1.43, uP: 0.572, uD: 0, u: 0.572, v: 4.02, p: 11.77, ponly: [{ k: 1, p: 1 }, { k: 2, p: 2.9 }, { k: 3, p: 5.51 }, { k: 4, p: 8.57 }, { k: 5, p: 11.77 }], pd: [], focus: '纯P 步5：冲过目标', log: 'x' },

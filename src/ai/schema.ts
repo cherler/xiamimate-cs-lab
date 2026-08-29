@@ -351,6 +351,7 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   impedance: {},
   mpc: {},
   bc: {},
+  diffpolicy: {},
   pid: {},
   rrt: {},
   wildcard: {},

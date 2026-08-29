@@ -538,6 +538,20 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; bcCrashed: boolean; bcOff: boolean; bcY: number }; return st.bcCrashed ? 'BC 冲出车道' : st.phase === 'done' ? 'BC 崩了' : st.bcOff ? `BC 漂出 ${st.bcY}` : '示范区内'; },
     try: [{ act: '看 BC 何时开始崩', watch: '第 2 步 BC 偏移越过示范边界 0.5 后，它没学过这些状态、欠修正、压不住扰动，每步再漂一点（复合误差）。' }, { act: '看专家为什么不崩', watch: '专家修正能力不封顶，偏移越大拉得越狠、稳在 0.66；BC 却一路漂到冲出车道 1.76。差别是"训练分布≠自己走出的分布"，靠 DAgger/纠错数据/VLA 海量数据补。' }], terms: [],
   },
+  diffpolicy: {
+    question: '绕障碍向左或向右都对，为什么 BC 会"取平均"直行撞上去？扩散策略怎么修？',
+    read: [{ at: '动作轴', is: '双峰分布(±1)、BC 均值落 0(撞)、两个噪声样本去噪收敛到右/左模态。', anchor: '.fk-svg' }, { at: '读数', is: '当前、BC 均值、扩散样本 A/B。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { phase: string; op: string; bcAction: number; shown: number; aVal: number; bVal: number; focus: string }; return [
+      { k: '本步输入', v: st.op === 'intro' ? '绕障动作是双峰：左(−1)或右(+1)' : st.op === 'bc' ? 'BC 回归拟合' : `扩散去噪第 ${st.shown} 步` },
+      { k: '判定规则', v: 'BC 回归最小化均方误差→最优单点=均值=(−1+1)/2=0=直行→撞。Diffusion Policy 建整个动作分布(可多峰)，从噪声沿学到的能量去噪、落到某一个模态而非平均。' },
+      { k: '本步结果', v: st.op === 'bc' ? `BC 均值 ${st.bcAction}(直行)→撞障碍`
+        : st.op === 'step' ? `样本 A→${st.aVal}、B→${st.bVal}（往两个峰靠，不是往平均 0）`
+          : st.op === 'summary' ? `A→${st.aVal}(右绕)、B→${st.bVal}(左绕)，都是有效解`
+            : '双峰动作分布' },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; op: string; shown: number }; return st.phase === 'done' ? '各落一模态' : st.op === 'bc' ? 'BC 平均成撞' : st.phase === 'denoise' ? `去噪 ${st.shown} 步` : '就绪'; },
+    try: [{ act: '看 BC 为什么撞', watch: '回归的最优单点预测是均值；左(−1)和右(+1)一平均落到 0(直行)，正好撞障碍——加大网络也没用，是回归的结构缺陷。' }, { act: '看扩散去噪采样', watch: '两个样本从随机噪声出发、沿能量往最近的峰拉：A→+1(右绕)、B→−1(左绕)。不同噪声给不同模态=多解，都绕过障碍。这是 VLA 动作头用扩散的原因。' }], terms: [],
+  },
   pid: {
     question: '让机器人关节停到目标角，为什么只用比例(P)会来回震荡？加个 D 项怎么就稳了？',
     read: [{ at: '位置曲线', is: '纯 P(红,冲过头震荡) 与 PD(绿,阻尼收敛) 对目标线(虚线)。', anchor: '.fk-svg' }, { at: '读数', is: '控制器、位置 vs 目标、误差 e、控制量 u=P(+D)。', anchor: '.scdim' }],
