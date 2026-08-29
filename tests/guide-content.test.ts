@@ -418,6 +418,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { step: 1, phase: 'reactive', op: 'reactive', target: 10, U: 1, t: 0, x: 15.98, v: 0, u: 0, brakeDist: 0, predStop: 15.98, braking: false, mpcShown: [], mpcFull: [{ t: 0, x: 0 }], reacFull: [{ t: 0, x: 0 }, { t: 6, x: 15.98 }], reacMax: 15.98, focus: '反应式越界', log: 'x' },
       b: { step: 7, phase: 'done', op: 'summary', target: 10, U: 1, t: 8.25, x: 9.94, v: -0.07, u: 0.58, brakeDist: 0, predStop: 9.94, braking: false, mpcShown: [{ t: 0, x: 0 }, { t: 8.25, x: 9.94 }], mpcFull: [{ t: 0, x: 0 }, { t: 8.25, x: 9.94 }], reacFull: [{ t: 0, x: 0 }, { t: 6, x: 15.98 }], reacMax: 15.98, focus: '停住', log: 'x' },
     },
+    bc: {
+      doc: { kind: 'bc', params: {}, entities: [], streams: [] },
+      a: { step: 3, phase: 'rollout', op: 'step', demoBound: 0.5, roadBound: 1.5, expert: [0, 0.4, 0.56, 0.62, 0.65, 0.66, 0.66, 0.66, 0.66, 0.66, 0.66, 0.66, 0.66, 0.66, 0.66], bc: [0, 0.4, 0.56, 0.66, 0.76, 0.86, 0.96, 1.06, 1.16, 1.26, 1.36, 1.46, 1.56, 1.66, 1.76], shown: 5, bcY: 0.86, expertY: 0.66, bcOff: true, bcCrashed: false, focus: '漂出示范区', log: 'x' },
+      b: { step: 6, phase: 'done', op: 'summary', demoBound: 0.5, roadBound: 1.5, expert: [0, 0.4, 0.56, 0.62, 0.65, 0.66, 0.66, 0.66, 0.66, 0.66, 0.66, 0.66, 0.66, 0.66, 0.66], bc: [0, 0.4, 0.56, 0.66, 0.76, 0.86, 0.96, 1.06, 1.16, 1.26, 1.36, 1.46, 1.56, 1.66, 1.76], shown: 14, bcY: 1.76, expertY: 0.66, bcOff: true, bcCrashed: true, focus: '冲出车道', log: 'x' },
+    },
     pid: {
       doc: { kind: 'pid', params: {}, entities: [], streams: [] },
       a: { step: 5, phase: 'ponly', op: 'step', target: 10, Kp: 0.4, Kd: 0.9, mode: 'P', k: 5, e: 1.43, uP: 0.572, uD: 0, u: 0.572, v: 4.02, p: 11.77, ponly: [{ k: 1, p: 1 }, { k: 2, p: 2.9 }, { k: 3, p: 5.51 }, { k: 4, p: 8.57 }, { k: 5, p: 11.77 }], pd: [], focus: '纯P 步5：冲过目标', log: 'x' },

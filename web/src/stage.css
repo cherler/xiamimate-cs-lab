@@ -4858,3 +4858,17 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .mpc-row.brake{background:color-mix(in srgb,var(--now) 8%,var(--panel));border-left:3px solid var(--now)}
 .mpc-row b{color:var(--ink)}
 .mpc-note{font-size:12px;color:var(--dim);padding:4px 0}
+
+/* ── 模仿学习 BC ── */
+.bc-demo{fill:color-mix(in srgb,var(--hit) 10%,transparent)}
+.bc-demoline{stroke:var(--hit);stroke-width:1;stroke-dasharray:3 3;opacity:.6}
+.bc-road{stroke:var(--miss);stroke-width:1.5;stroke-dasharray:5 3;opacity:.8}
+.bc-lbl{font-family:var(--mono);font-size:9.5px;fill:var(--faint)}
+.bc-expert{fill:none;stroke:var(--hit);stroke-width:2.5}
+.bc-edot{fill:var(--hit)}
+.bc-bc{fill:none;stroke:var(--miss);stroke-width:2.5}
+.bc-bdot{fill:var(--miss);opacity:.6}
+.bc-bdot.off{opacity:1}
+.bc-info{margin:2px 0}
+.bc-row{margin-top:8px;padding:8px 13px;border-radius:8px;font-family:var(--mono);font-size:12px;color:var(--dim);background:var(--sunk-2)}
+.bc-row.off{color:var(--miss);background:color-mix(in srgb,var(--miss) 6%,var(--panel));border-left:3px solid var(--miss)}

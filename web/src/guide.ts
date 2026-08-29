@@ -523,6 +523,21 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; op: string; x: number; reacMax: number; braking: boolean }; return st.phase === 'done' ? `MPC 停在 ${st.x}` : st.op === 'reactive' ? `反应式冲到 ${st.reacMax}` : st.phase === 'mpc' ? (st.braking ? 'MPC 刹车' : 'MPC 加速') : '就绪'; },
     try: [{ act: '看反应式冲过头', watch: '纯比例无预测，一路加速冲向目标，到跟前速度还很大刹不住→冲过目标 10 飙到 15.98（撞穿墙）。' }, { act: '看 MPC 预测刹车', watch: 'MPC 每步算"照现在速度刹停要多远"=预测停点，一旦预测停点够到目标就提前刹车→稳稳停在 9.94。这就是"往前看"，PID/阻抗做不到。' }], terms: [],
   },
+  bc: {
+    question: '让机器人照专家示范学开车，为什么小误差会滚成大祸、冲出车道？',
+    read: [{ at: '轨迹图', is: '专家(绿,留道内) vs BC(红,漂出示范区→冲出车道)；示范区/车道边界。', anchor: '.fk-svg' }, { at: '读数', is: '滚动步、专家偏移、BC 偏移与状态。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { phase: string; op: string; shown: number; expertY: number; bcY: number; demoBound: number; roadBound: number; bcOff: boolean; bcCrashed: boolean; focus: string }; return [
+      { k: '本步输入', v: st.op === 'intro' ? `车道保持，专家只在中线附近示范(|偏移|≤${st.demoBound})` : `第 ${st.shown} 步：扰动把车往外推` },
+      { k: '判定规则', v: 'BC=把专家的状态→动作当回归拟合、一步监督。只在示范过的状态学得好；漂到没示范过的状态就欠修正→漂更远→错上加错(复合误差)。专家修正不封顶、能拉回。' },
+      { k: '本步结果', v: st.phase === 'done'
+        ? `专家稳在 ${st.expertY}(道内)；BC ${st.bcY}——冲出车道(>${st.roadBound})`
+        : st.bcOff
+          ? `专家 ${st.expertY}、BC ${st.bcY}（BC 已漂出示范区、欠修正、误差复合）`
+          : `专家 ${st.expertY}、BC ${st.bcY}（都在示范区、几乎一样）` },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; bcCrashed: boolean; bcOff: boolean; bcY: number }; return st.bcCrashed ? 'BC 冲出车道' : st.phase === 'done' ? 'BC 崩了' : st.bcOff ? `BC 漂出 ${st.bcY}` : '示范区内'; },
+    try: [{ act: '看 BC 何时开始崩', watch: '第 2 步 BC 偏移越过示范边界 0.5 后，它没学过这些状态、欠修正、压不住扰动，每步再漂一点（复合误差）。' }, { act: '看专家为什么不崩', watch: '专家修正能力不封顶，偏移越大拉得越狠、稳在 0.66；BC 却一路漂到冲出车道 1.76。差别是"训练分布≠自己走出的分布"，靠 DAgger/纠错数据/VLA 海量数据补。' }], terms: [],
+  },
   pid: {
     question: '让机器人关节停到目标角，为什么只用比例(P)会来回震荡？加个 D 项怎么就稳了？',
     read: [{ at: '位置曲线', is: '纯 P(红,冲过头震荡) 与 PD(绿,阻尼收敛) 对目标线(虚线)。', anchor: '.fk-svg' }, { at: '读数', is: '控制器、位置 vs 目标、误差 e、控制量 u=P(+D)。', anchor: '.scdim' }],

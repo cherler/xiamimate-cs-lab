@@ -326,6 +326,7 @@ import { icpKernel, type ICPState } from '@engine/kernels/icp.ts'
 import { slamKernel, type SLAMState } from '@engine/kernels/slam.ts'
 import { impedanceKernel, type ImpState } from '@engine/kernels/impedance.ts'
 import { mpcKernel, type MPCState } from '@engine/kernels/mpc.ts'
+import { bcKernel, type BCState } from '@engine/kernels/bc.ts'
 import { objectstoreKernel } from '@engine/kernels/objectstore.ts'
 import { SysDesignStage } from './stages/SysDesignStage.tsx'
 import { SeckillStage } from './stages/SeckillStage.tsx'
@@ -345,6 +346,7 @@ import { ICPStage } from './stages/ICPStage.tsx'
 import { SLAMStage } from './stages/SLAMStage.tsx'
 import { ImpedanceStage } from './stages/ImpedanceStage.tsx'
 import { MPCStage } from './stages/MPCStage.tsx'
+import { BCStage } from './stages/BCStage.tsx'
 import { CollisionStage } from './stages/CollisionStage.tsx'
 import { gcnKernel, type GcnState } from '@engine/kernels/gcn.ts'
 import { GcnStage } from './stages/GcnStage.tsx'
@@ -6353,6 +6355,24 @@ const slam: Experiment<SLAMState> = {
   ],
 }
 
+// ── 具身智能 · 具身学习 ──
+const bc: Experiment<BCState> = {
+  id: 'bc', group: '具身学习', title: '模仿学习 · 行为克隆', subtitle: '从专家示范学策略；分布漂移→复合误差',
+  kernel: bcKernel, defaultDoc: { kind: 'bc', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '让机器人学技能最直接的办法=模仿学习：收集专家示范(状态→动作)、监督学习拟合策略。最简单的行为克隆 BC 就是把状态→动作当回归——VLA 的训练基石。但有致命伤：分布漂移/复合误差。车道保持任务，专家只在中线附近示范(|偏移|≤0.5)：扰动把车推出示范区后，专家修正不封顶稳稳拉回(留道内0.66)，BC 在示范区外欠修正、压不住扰动→一路漂出车道(1.76+)。轨迹每步真算。',
+  bounds: ['模仿学习:收集专家示范(状态→动作)监督学习拟合策略;BC=把状态→动作当回归,VLA训练基石', '致命伤:分布漂移/复合误差—只在专家示范过的状态学得好,自己小误差带到没示范过的状态就崩', '本例:专家留道内(0.66),BC漂出示范区(0.5)后欠修正、误差复合、冲出车道(1.76);代价O(εT²)', '解法:DAgger(在BC走出的新状态补标注)、含纠错的示范、RL微调—也是VLA要海量多样数据的原因;引出Diffusion Policy/VLA'],
+  tabs: [{ id: 'design', label: '专家vs克隆' }], Stage: BCStage, whyInRail: true,
+  tone: s => (s.bcCrashed ? { key: 'bad', label: 'BC 冲出车道' } : s.phase === 'done' ? { key: 'bad', label: 'BC 崩了' } : s.bcOff ? { key: 'bad', label: 'BC 漂出示范区' } : { key: 'idle', label: s.shown > 0 ? `第 ${s.shown} 步` : '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 7)),
+  tickLabel: s => (s.bcCrashed ? '崩' : s.shown > 0 ? `${s.shown}` : 'BC'),
+  readouts: s => [
+    { label: '滚动步', value: `第 ${s.shown} 步` },
+    { label: '专家偏移', value: `${s.expertY}`, tone: 'good' },
+    { label: 'BC 偏移', value: `${s.bcY}`, tone: s.bcCrashed ? 'bad' : undefined },
+    { label: 'BC 状态', value: s.bcCrashed ? '冲出车道' : s.bcOff ? '漂出示范区' : '示范区内' },
+  ],
+}
+
 export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
@@ -6364,7 +6384,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, ik, jacobian, quat, trajectory, kalman, icp, slam, impedance, mpc, pid, rrt,
+  fk, ik, jacobian, quat, trajectory, kalman, icp, slam, impedance, mpc, pid, rrt, bc,
 ] as unknown as AnyExperiment[]
 
 /**
@@ -6536,7 +6556,7 @@ export const DISCIPLINES: Discipline[] = [
     sub: '机器人学 → 感知 · 控制 · 规划 → 具身智能',
     // 从零到具身智能工程师：机器人学基础(运动学/雅可比)→感知(卡尔曼/SLAM)→控制(PID/力控)
     // →规划(RRT)→具身学习(模仿/RL/VLA)→开源实战(LeRobot/MuJoCo)。分组随实验增量补齐。
-    groups: ['机器人学基础', '机器人感知', '机器人控制', '运动规划'],
+    groups: ['机器人学基础', '机器人感知', '机器人控制', '运动规划', '具身学习'],
     guide: { from: '一次关节转动', to: '具身智能工程师', toIcon: '🦾' },
   },
   {
@@ -6592,6 +6612,7 @@ export const GROUP_ANCHOR: Record<string, string> = {
   '机器人感知': 'robot',
   '机器人控制': 'robot',
   '运动规划': 'robot',
+  '具身学习': 'robot',
 }
 
 export const ANCHOR_BY_KEY: Record<string, Anchor> = Object.fromEntries(ANCHORS.map(a => [a.key, a]))

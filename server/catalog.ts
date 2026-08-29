@@ -101,6 +101,7 @@ import { icpKernel } from '../src/kernels/icp.ts'
 import { slamKernel } from '../src/kernels/slam.ts'
 import { impedanceKernel } from '../src/kernels/impedance.ts'
 import { mpcKernel } from '../src/kernels/mpc.ts'
+import { bcKernel } from '../src/kernels/bc.ts'
 import { kalmanKernel } from '../src/kernels/kalman.ts'
 import { pidKernel } from '../src/kernels/pid.ts'
 import { rrtKernel } from '../src/kernels/rrt.ts'
@@ -1749,6 +1750,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: '卡尔曼增益 K=P\'/(P\'+R) 决定什么？什么时候更信 GPS 观测、什么时候更信运动预测?', kind: 'choice',
         compute: () => ({ answer: 'K 是"信预测还是信观测"的权重：x=x\'+K(z−x\')。观测噪声 R 小(GPS 准)→K 大→多信观测；预测方差 P\' 小(预测准)→K 小→多信预测。融合估计比单独任一个都准', step: 8, evidence: '本例 R=1，K 从 0.6 收敛到 ~0.5；估计一路贴真值(误差≤0.13)' }),
         distractors: () => ['K 是固定常数、与方差无关', 'K 越大越好、永远多信观测', 'K 只和步数有关'],
+      },
+    ],
+  },
+  {
+    id: 'bc', title: '模仿学习 · 行为克隆', kernel: bcKernel as Kernel<unknown>, doc: trivialDoc('bc'),
+    facts: [
+      {
+        id: 'bc_what', label: '行为克隆 BC 是什么',
+        ask: '模仿学习里的"行为克隆(BC)"是怎么让机器人学技能的?', kind: 'choice',
+        compute: () => ({ answer: '收集专家示范(状态→动作的数据对)，用监督学习把"状态→动作"当回归/分类拟合出一个策略。简单、可扩展，是 VLA 的训练基石', step: 0, evidence: '本例专家在中线附近示范状态→动作，BC 拟合它' }),
+        distractors: () => ['让机器人自己试错、拿奖励强化(那是强化学习)', '手写 if-else 规则', '让机器人随机探索'],
+      },
+      {
+        id: 'bc_compound', label: 'BC 的致命伤：复合误差',
+        ask: 'BC 有个著名的致命伤，会让小误差滚成大祸(如开车冲出车道)，它是什么、根因是什么?', kind: 'choice',
+        compute: () => ({ answer: '分布漂移/复合误差：BC 只在专家示范过的状态学得好，自己的小误差把它带到没示范过的状态→欠修正→漂更远→错上加错(代价 O(εT²))。根因是训练分布≠测试时自己走出的分布', step: 6, evidence: '本例专家稳在 0.66(道内)，BC 漂出示范区(0.5)后复合误差冲到 1.76(出车道)' }),
+        distractors: () => ['网络太小、拟合能力不够', '专家示范数据有噪声', 'BC 学习率设太大'],
       },
     ],
   },
