@@ -322,10 +322,10 @@ function newFight(seed,deck,foeId,budget,flawId,depth=0){
  const S={R,E,foeId,bars:(SHAPES[E.shape]||SHAPES.random).gen(E.n,vmax,R,T.VMIN).map((v,i)=>({id:i,v,dead:false})),
   splits:1,budget:budget+(FL?FLAWBONUS:0),steps:T.STEPS,turn:1,memo:0,debt:0,
   inflow:E.inflow??0,mult:E.mult??1,vmax,flawId:flawId||null,FL,locked:null,guarded:false,loopBroken:false,firstPlay:true,lastPlayed:null,heapLv:0,prefix:false,monoq:false,actIn:ACTEVERY,turnPlays:0,trig:{},refGain:0,lastTier:0,
-  film:[],turnCards:[],shield:0,skipCost:false,doubleNext:false,fixCost:0,useLastN:false,lastN:0,
+  film:[],turnCards:[],n0:0,shield:0,skipCost:false,doubleNext:false,fixCost:0,useLastN:false,lastN:0,
   draw:[...deck],hand:[],discard:[],exhaust:[],over:null,
   totalWork:0,diag:{plays:{},lostKill:0,lostWork:0,evicted:0,lostMemo:0,lostSort:0,flawLoss:0,extraDebt:0,extraInflow:0,sortDecay:0,memoDecayed:0,spent:0,turns:0}}
- S.totalWork=S.bars.reduce((a,b)=>a+b.v,0)
+ S.totalWork=S.bars.reduce((a,b)=>a+b.v,0);S.n0=S.bars.length
  shuffle(S);drawN(S,T.HAND);return S}
 const canPlay=(S,i)=>{const c=C[S.hand[i]];return c&&S.steps>=c.cost&&!S.over&&!(S.locked===i&&!S.guarded)}
 function play(S,i){if(!canPlay(S,i))return false
@@ -985,21 +985,28 @@ function enemyHeader(A){
  ctx.font='600 10.5px system-ui';ctx.letterSpacing='3px';ctx.fillStyle=kc
  ctx.fillText(`敌人 · ${S.E.kind}`,cx,72);ctx.letterSpacing='0px'
  ctx.font='700 23px system-ui';ctx.fillStyle=CO.ink;ctx.fillText(S.E.name,cx,102)
- const hp=hpPct(S),bw=Math.min(420,A.w*.6),bx=cx-bw/2,by=116
- ctx.fillStyle='rgba(255,255,255,.07)';ctx.fillRect(bx,by,bw,9)
+ // 主条 = 胜利条件(元素数归零就赢);副条 = 剩余工作量(削矮了多少,但还没清掉)
+ // 以前只画后者,而它和真实进度平均差 13 个点、最坏差 60 个点 —— 最显眼的条不是胜负标准
+ const nLeft=N(S), nAll=Math.max(S.n0||nLeft,1), np=Math.round(nLeft/nAll*100)
+ const hp=hpPct(S), bw=Math.min(440,A.w*.62), bx=cx-bw/2, by=112
+ ctx.fillStyle='rgba(255,255,255,.06)';ctx.fillRect(bx,by,bw,11)
  const hg=ctx.createLinearGradient(bx,0,bx+bw,0)
  hg.addColorStop(0,'#ff8f6b');hg.addColorStop(1,'#f0a94a')
- ctx.fillStyle=hg;ctx.fillRect(bx,by,bw*hp/100,9)
- ctx.strokeStyle=CO.line;ctx.strokeRect(bx+.5,by+.5,bw-1,9)
- ctx.font='700 13px system-ui';ctx.fillStyle=CO.ink
- ctx.fillText(`${hp} / 100`,cx,by+30)
- ctx.font='400 11.5px system-ui';ctx.fillStyle=CO.faint;ctx.fillText(S.E.note,cx,by+48)
+ ctx.fillStyle=hg;ctx.fillRect(bx,by,bw*np/100,11)
+ ctx.strokeStyle=CO.line;ctx.strokeRect(bx+.5,by+.5,bw-1,11)
+ ctx.fillStyle='rgba(255,255,255,.05)';ctx.fillRect(bx,by+14,bw,4)
+ ctx.fillStyle='rgba(95,208,232,.55)';ctx.fillRect(bx,by+14,bw*hp/100,4)
+ ctx.font='700 14px system-ui';ctx.fillStyle=CO.ink
+ ctx.fillText('还剩 '+nLeft+' 个元素',cx,by+38)
+ ctx.font='400 10.5px system-ui';ctx.fillStyle=CO.cyan
+ ctx.fillText('清零即胜  ·  下面这条细的是剩余工作量 '+hp+'%(削矮了,但还没清掉)',cx,by+54)
+ ctx.font='400 11.5px system-ui';ctx.fillStyle=CO.faint;ctx.fillText(S.E.note,cx,by+72)
  // 意图:提前亮出招牌动作 —— 敌人第一次真正「要做什么」而不只是「有什么属性」
  const ACT=ACTS[S.foeId]
  if(ACT){const soon=S.actIn<=1
   const t=(S.actIn<=1?'下回合 ▶ ':'再 '+S.actIn+' 回合 ▶ ')+ACT.name+' · '+ACT.desc
   ctx.font='700 12px system-ui';const tw2=ctx.measureText(t).width
-  const bx2=cx-tw2/2-30,by2=by+58,bw2=tw2+60,bh2=24
+  const bx2=cx-tw2/2-30,by2=by+80,bw2=tw2+60,bh2=24
   ctx.fillStyle=soon?'rgba(255,107,94,.18)':'rgba(240,169,74,.10)'
   ctx.fillRect(bx2,by2,bw2,bh2)
   ctx.strokeStyle=soon?CO.red:'rgba(240,169,74,.5)';ctx.lineWidth=soon?1.6:1
