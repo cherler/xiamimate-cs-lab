@@ -6479,6 +6479,8 @@ export const SOFT_LINKS: Record<string, string[]> = {
   '数据库系统': ['bplus', 'bloom'],
   //  信号量/生产者消费者、银行家(死锁)本身就是后端并发面试核心——真身在 408「操作系统」，软链进后端轨。
   '并发编程': ['semaphore', 'banker'],
+  //  A* 栅格寻路也是机器人运动规划的经典——真身在算法轨「经典算法」，软链进具身智能轨「运动规划」，和 RRT(采样式)配成栅格最优 vs 采样两条路。
+  '运动规划': ['astar'],
 }
 
 export const DISCIPLINES: Discipline[] = [
