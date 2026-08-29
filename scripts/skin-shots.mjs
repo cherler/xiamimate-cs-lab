@@ -1,0 +1,15 @@
+import { chromium } from 'playwright'
+const SHOT = '/private/tmp/claude-501/-Users-liuzhenhai-projects-xiamimate/189a1dc3-5374-4dac-bc37-f53e9009146c/scratchpad'
+const b = await chromium.launch(); const p = await b.newPage({ viewport: { width: 1280, height: 720 } })
+const wait = ms => p.waitForTimeout(ms)
+await p.goto('http://localhost:5183/jiguan.html', { waitUntil: 'networkidle' }); await wait(700)
+await p.evaluate(() => window.__poison()); await wait(600)
+await p.screenshot({ path: SHOT + '/skinned-cache.png' })
+await p.goto('http://localhost:5183/shaft.html', { waitUntil: 'networkidle' }); await wait(500)
+await p.evaluate(() => { window.__auto(false); window.__reset(); window.__spawn([0,1,2]); window.__dial(0) }); await wait(700)
+await p.evaluate(() => window.__spawn([2,0,1])); await wait(400); await p.evaluate(() => window.__dial(2)); await wait(200)
+await p.screenshot({ path: SHOT + '/skinned-shaft.png' })
+await p.goto('http://localhost:5183/poison.html', { waitUntil: 'networkidle' }); await wait(500)
+await p.evaluate(() => { window.__reset(); window.__set(78, 'fill') }); await wait(150)
+await p.screenshot({ path: SHOT + '/skinned-poison.png' })
+console.log('done'); await b.close()

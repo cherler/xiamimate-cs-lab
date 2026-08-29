@@ -26,6 +26,8 @@ export class Boot extends Phaser.Scene {
     this.load.image('dns-tower', dnsTower)
   }
   create() {
-    this.scene.start('House')
+    if (/[?&]sandbox\b/.test(location.search)) this.scene.start('Craft')
+    else if (/[?&]craft\b/.test(location.search)) this.scene.start('WebLevel')
+    else this.scene.start('House')
   }
 }

@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>画布 spike · D3</title>
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+<style>
+  html,body{margin:0;height:100%;background:#0e1524;color:#e8e2d6;font-family:sans-serif;overflow:hidden}
+  #wrap{display:flex;height:100vh}
+  #lib{width:190px;flex:0 0 190px;background:#141c2b;border-right:1px solid #2a3446;padding:14px 12px;box-sizing:border-box}
+  #lib h3{margin:0 0 4px;font-size:15px}#lib .hint{color:#7f8ba0;font-size:11px;margin-bottom:12px}
+  .pill{background:#1b2740;border:2px solid #6b8cff;border-radius:8px;padding:7px 10px;margin:6px 0;font-size:13px;cursor:grab;user-select:none}
+  #main{flex:1;position:relative}
+  #bar{position:absolute;top:10px;left:14px;z-index:5;font-size:13px;color:#9fb0c2}
+  #tag{position:absolute;top:10px;right:16px;z-index:5;font-weight:bold;color:#a879d6}
+  svg{width:100%;height:100%;display:block;cursor:grab}
+  .node rect{transition:fill .2s}
+  .ghost{position:fixed;pointer-events:none;z-index:99;background:#24406a;border:2px solid #6b8cff;border-radius:8px;padding:8px 12px;font-size:14px;font-weight:bold;color:#f0e9dc;transform:translate(-50%,-50%)}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="lib"><h3>素材库</h3><div class="hint">拖到画布,加到<b>选中</b>的节点下</div><div id="pills"></div></div>
+  <div id="main">
+    <div id="bar">滚轮缩放 · 拖空白平移 · 点节点折叠/展开(也即选中)</div>
+    <div id="tag">引擎:D3</div>
+    <svg id="svg"><g id="root"></g></svg>
+  </div>
+</div>
+<script type="module">
+import { TREE, PALETTE, LAYER_COLOR } from './tree.js'
+const NW = 138, NH = 40
+const svg = d3.select('#svg'), gRoot = d3.select('#root')
+const tree = d3.tree().nodeSize([NW + 22, NH + 52])
+const root = d3.hierarchy(TREE)
+root.descendants().forEach(d => { d.id = d.data.id })
+let selected = root
+let uid = 0
+
+const zoom = d3.zoom().scaleExtent([0.2, 2.5]).on('zoom', e => gRoot.attr('transform', e.transform))
+svg.call(zoom)
+
+function update() {
+  tree(root)
+  const nodes = root.descendants(), links = root.links()
+  const dur = 350
+
+  // 连线
+  gRoot.selectAll('path.link').data(links, d => d.target.id).join(
+    enter => enter.append('path').attr('class', 'link').attr('fill', 'none')
+      .attr('stroke', '#33405a').attr('stroke-width', 1.5),
+    u => u, ex => ex.remove()
+  ).transition().duration(dur)
+    .attr('d', d3.linkVertical().x(d => d.x).y(d => d.y))
+
+  // 节点
+  const g = gRoot.selectAll('g.node').data(nodes, d => d.id).join(
+    enter => {
+      const ge = enter.append('g').attr('class', 'node').style('cursor', 'pointer')
+        .attr('transform', d => `translate(${d.x},${d.y})`)
+      ge.append('rect').attr('x', -NW / 2).attr('y', -NH / 2).attr('width', NW).attr('height', NH)
+        .attr('rx', 9).attr('fill', '#1a2230').attr('stroke-width', 2)
+      ge.append('text').attr('text-anchor', 'middle').attr('dy', '0.35em')
+        .attr('fill', '#e6ecf5').attr('font-size', 13).style('pointer-events', 'none')
+      ge.on('click', (e, d) => { e.stopPropagation(); toggle(d) })
+      return ge
+    }, u => u, ex => ex.remove()
+  )
+  g.transition().duration(dur).attr('transform', d => `translate(${d.x},${d.y})`)
+  g.select('rect')
+    .attr('stroke', d => LAYER_COLOR[d.data.layer] || '#6b8cff')
+    .attr('fill', d => d === selected ? '#24406a' : '#1a2230')
+  g.select('text').text(d => (d._children ? '⊕ ' : '') + d.data.name)
+
+  fitOnce(nodes)
+}
+
+let fitted = false
+function fitOnce(nodes) {
+  if (fitted) return; fitted = true
+  const xs = nodes.map(d => d.x), ys = nodes.map(d => d.y)
+  const minX = Math.min(...xs) - NW / 2, maxX = Math.max(...xs) + NW / 2
+  const minY = Math.min(...ys) - NH / 2, maxY = Math.max(...ys) + NH / 2
+  const w = maxX - minX, h = maxY - minY
+  const availW = 1280 - 190 - 80, availH = 600
+  const s = Math.min(1.1, availW / w, availH / h)
+  // svg 坐标原点已在素材库右侧(page x=190),这里不能再加 190
+  const tx = (1280 - 190) / 2 - ((minX + maxX) / 2) * s
+  const ty = 96 + availH / 2 - ((minY + maxY) / 2) * s
+  requestAnimationFrame(() => svg.call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(s)))
+}
+
+function toggle(d) {
+  selected = d
+  if (d.children) { d._children = d.children; d.children = null }
+  else if (d._children) { d.children = d._children; d._children = null }
+  update()
+}
+
+update()
+
+// 素材库拖拽 → 加到选中节点下
+const pills = document.getElementById('pills')
+let drag = null, ghost = null
+for (const p of PALETTE) {
+  const el = document.createElement('div'); el.className = 'pill'; el.textContent = p.name
+  el.style.borderColor = LAYER_COLOR[p.layer]
+  el.addEventListener('pointerdown', ev => {
+    drag = p; ghost = document.createElement('div'); ghost.className = 'ghost'; ghost.textContent = p.name
+    ghost.style.left = ev.clientX + 'px'; ghost.style.top = ev.clientY + 'px'; document.body.appendChild(ghost)
+  })
+  pills.appendChild(el)
+}
+addEventListener('pointermove', ev => { if (ghost) { ghost.style.left = ev.clientX + 'px'; ghost.style.top = ev.clientY + 'px' } })
+addEventListener('pointerup', () => {
+  if (!drag) return
+  const child = d3.hierarchy({ ...drag, id: drag.id + '_' + (++uid) })
+  child.id = drag.id + '_' + uid; child.depth = selected.depth + 1; child.parent = selected
+  if (selected._children) { selected.children = selected._children; selected._children = null }
+  selected.children = (selected.children || []).concat(child)
+  drag = null; if (ghost) { ghost.remove(); ghost = null }
+  fitted = true // 加节点后不重置视图
+  update()
+})
+</script>
+</body>
+</html>

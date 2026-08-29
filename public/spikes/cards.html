@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>网络卡牌 · 灰盒(诊断·非喂答案)</title>
+<style>
+  html,body{margin:0;height:100%;background:#0e1524;overflow:hidden;font-family:sans-serif;color:#e8e2d6}
+  #c{display:block;width:100vw;height:100vh}
+  #q{position:fixed;top:12px;left:16px;right:200px;z-index:5;font-size:13px;color:#8a93a6}#q b{color:#ffcb7a}
+  #res{position:fixed;top:12px;right:16px;z-index:5;font-size:16px;font-weight:bold;color:#ff8a8a}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="q">灰盒·卡牌诊断(零美术):<b>敌方只给真实症状、不报答案。读懂它,从手牌里挑对症的那张(有干扰卡)。选错扣血、咕噜点拨你但不直接给。</b></div>
+<div id="res"></div>
+<script>
+const cv=document.getElementById('c'),ctx=cv.getContext('2d')
+let W,H,DPR=Math.min(2,devicePixelRatio||1)
+function resize(){W=cv.clientWidth;H=cv.clientHeight;cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0)}
+addEventListener('resize',resize);resize()
+
+// 一次请求里"依次出问题"的真实症状(不报该出哪张卡)
+const REQUEST=[
+ {stage:0,sym:'名字问出去,半天没回音——一个地址都没返回。',right:'换个 DNS 服务器',
+  hint:'"名字→地址"这一步就断了。地址还没影,跟证书、带宽都不沾边——先怀疑谁负责翻译名字。',
+  traps:{'更新本地时间':'时间是给证书用的,这会儿地址都还没出来呢。','加大带宽':'不是慢,是压根没回音;带宽治不了"翻译不出名字"。'}},
+ {stage:2,sym:'连上了对方 443 端口……连接被"拒绝"了。',right:'重发 / 换条线路重连',
+  hint:'端口能连到、但被拒——多半是瞬时抖动或半开连接,先重试;不是名字问题(那步早过了)也不是证书(还没到握手)。',
+  traps:{'换个 DNS 服务器':'地址早解析好了、都连到端口了,DNS 这步早过去了。','信任根证书':'还没进 TLS 握手呢,证书还没登场。'}},
+ {stage:3,sym:'TLS 握手中断:对方证书的"签发者(CA)"——我不认识。',right:'信任这个根 CA',
+  hint:'注意它说的是"签发者不认识"=不信任签发它的 CA。既不是证书过期,也不是域名对不上。对症下药。',
+  traps:{'更新本地时间':'那是治"证书过期"的;这里明说是"签发者不认识",是信任问题,不是时间。','换个正确域名':'那是治"证书给了别的域名";这里是"CA 不认识",两码事。','换个 DNS 服务器':'都握手到验证书了,名字这步八百年前就过了。'}},
+ {stage:4,sym:'服务器回了个 301,附一个 https:// 的新地址。',right:'跟随重定向到 https',
+  hint:'301=永久重定向,它没报错,是让你"去这个新地址再要一次"。照做就行。',
+  traps:{'重发 / 换条线路重连':'原地重发还是被 301 弹回来——它要你换地址,不是换线路。'}},
+]
+// 手牌:对的 + 一堆看着都相关的干扰
+const HAND=['换个 DNS 服务器','重发 / 换条线路重连','信任这个根 CA','跟随重定向到 https','更新本地时间','换个正确域名','加大带宽']
+const STAGES=['DNS','IP','TCP','TLS','HTTP'],SC=['#e0a94b','#6b8cff','#4fb6a3','#a879d6','#9be29b']
+let idx=0,hp=3,won=false,over=false,msg='读第一个症状,挑对症的卡。',hintTxt='',flash=0
+const res=document.getElementById('res')
+function sync(){window.__cg={idx,hp,won,over,cur:REQUEST[idx]?REQUEST[idx].stage:null}}
+function refresh(){res.textContent=won?'🎉 通了':over?'💀 失败':('❤'.repeat(Math.max(0,hp))||'—');sync()}
+refresh()
+
+function play(card){ if(won||over)return; const P=REQUEST[idx]
+ if(card===P.right){ idx++; hintTxt=''; flash=1
+   if(idx>=REQUEST.length){won=true;msg='🎉 一路诊断到底,网页打开了!'} else msg=`对症!进到「${STAGES[REQUEST[idx].stage]}」这步。`; refresh(); return }
+ hp--; if(hp<=0){over=true;msg='💀 血扣光了,请求失败。';refresh();return}
+ hintTxt = (P.traps&&P.traps[card]) ? ('咕噜:'+P.traps[card]) : ('咕噜:'+P.hint)
+ msg='不对症,-1❤。'; refresh() }
+
+cv.addEventListener('pointerdown',e=>{const x=e.clientX,y=e.clientY
+ const n=HAND.length,cw=150,gap=12,tot=n*cw+(n-1)*gap,x0=W/2-tot/2,cy=H-180
+ for(let i=0;i<n;i++){const bx=x0+i*(cw+gap);if(x>bx&&x<bx+cw&&y>cy&&y<cy+140){play(HAND[i]);return}}})
+
+function rr(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath()}
+function frame(){flash=Math.max(0,flash-0.03);ctx.clearRect(0,0,W,H);ctx.fillStyle='#0e1524';ctx.fillRect(0,0,W,H)
+ const tx=W/2
+ ctx.fillStyle='#cfe0f0';ctx.font='bold 16px sans-serif';ctx.textAlign='center';ctx.fillText('目标:打开 https 网页(读症状、对症下卡)',tx,H*0.15)
+ // 进度轨
+ const gw=104,gg=16,tot=STAGES.length*gw+(STAGES.length-1)*gg,x0=tx-tot/2,ty=H*0.2
+ const curStage=REQUEST[idx]?REQUEST[idx].stage:5
+ for(let i=0;i<STAGES.length;i++){const bx=x0+i*(gw+gg),done=i<curStage,cur=i===curStage
+  ctx.lineWidth=cur?3:2;ctx.strokeStyle=done?SC[i]:cur?'#ffcb7a':'#3a4660';ctx.fillStyle=done?SC[i]:'#141c2b';rr(bx,ty,gw,40,8);ctx.fill();ctx.stroke()
+  ctx.fillStyle=done?'#0e1524':cur?'#ffcb7a':'#7f8ba0';ctx.font='bold 14px sans-serif';ctx.fillText(STAGES[i],bx+gw/2,ty+25)
+  if(i<STAGES.length-1){ctx.fillStyle='#3a4660';ctx.fillText('▶',bx+gw+gg/2,ty+24)}}
+ // 症状框(敌方只给症状)
+ const P=REQUEST[idx]
+ if(won){ctx.fillStyle='#9be29b';ctx.font='bold 30px sans-serif';ctx.save();ctx.shadowColor='#9be29b';ctx.shadowBlur=22;ctx.fillText('🎉 网页打开了',tx,H*0.42);ctx.restore()}
+ else if(over){ctx.fillStyle='#ff6b5b';ctx.font='bold 30px sans-serif';ctx.fillText('💀 请求失败',tx,H*0.42)}
+ else if(P){const bw=760,bx=tx-bw/2,by=H*0.32
+  ctx.strokeStyle='#ff8a5b';ctx.lineWidth=2;ctx.fillStyle='rgba(60,26,16,'+(0.5+flash*0.4)+')';rr(bx,by,bw,84,10);ctx.fill();ctx.stroke()
+  ctx.fillStyle='#ff8a5b';ctx.font='bold 15px sans-serif';ctx.fillText('⚠ 症状',tx,by+26)
+  ctx.fillStyle='#ffe0d6';ctx.font='17px sans-serif';ctx.fillText(P.sym,tx,by+56)}
+ // 咕噜点拨(选错才出,且不报答案)
+ if(hintTxt&&!won&&!over){ctx.fillStyle='#ffcb7a';ctx.font='14px sans-serif';ctx.textAlign='center'
+  wrap(hintTxt,tx,H*0.5,900,20)}
+ ctx.fillStyle='#8a93a6';ctx.font='13px sans-serif';ctx.textAlign='center';ctx.fillText(msg,tx,H*0.58)
+ // 手牌
+ const n=HAND.length,cw=150,gap=12,ht=n*cw+(n-1)*gap,hx0=tx-ht/2,cy=H-180
+ ctx.fillStyle='#8a93a6';ctx.font='12px sans-serif';ctx.fillText('手牌(挑一张对症的)',tx,cy-12)
+ for(let i=0;i<n;i++){const bx=hx0+i*(cw+gap)
+  ctx.lineWidth=2;ctx.strokeStyle='#5a6577';ctx.fillStyle=(won||over)?'#12192a':'#1b2740';ctx.globalAlpha=(won||over)?0.5:1
+  rr(bx,cy,cw,140,10);ctx.fill();ctx.stroke();ctx.globalAlpha=1
+  ctx.fillStyle='#dfe6f0';ctx.font='bold 15px sans-serif';ctx.textAlign='center';wrap(HAND[i],bx+cw/2,cy+50,cw-16,20)}
+ requestAnimationFrame(frame)}
+function wrap(t,cx,cy,maxw,lh){const words=t.split('');let line='',y=cy,lines=[]
+ for(const ch of words){if(ctx.measureText(line+ch).width>maxw){lines.push(line);line=ch}else line+=ch}lines.push(line)
+ lines.forEach((l,i)=>ctx.fillText(l,cx,y+i*lh))}
+requestAnimationFrame(frame)
+window.__play=c=>play(c);window.__state=()=>window.__cg
+</script>
+</body>
+</html>

@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>画布 spike · React Flow</title>
+<link rel="stylesheet" href="https://esm.sh/@xyflow/react@12/dist/style.css" />
+<style>
+  html,body,#app{margin:0;height:100%;background:#0e1524;color:#e8e2d6;font-family:sans-serif;overflow:hidden}
+  #wrap{display:flex;height:100vh}
+  #lib{width:190px;flex:0 0 190px;background:#141c2b;border-right:1px solid #2a3446;padding:14px 12px;box-sizing:border-box;z-index:5}
+  #lib h3{margin:0 0 4px;font-size:15px}#lib .hint{color:#7f8ba0;font-size:11px;margin-bottom:12px}
+  .pill{background:#1b2740;border:2px solid #6b8cff;border-radius:8px;padding:7px 10px;margin:6px 0;font-size:13px;cursor:grab;user-select:none}
+  #flow{flex:1;position:relative}
+  #bar{position:absolute;top:10px;left:14px;z-index:5;font-size:13px;color:#9fb0c2;pointer-events:none}
+  #tag{position:absolute;top:10px;right:16px;z-index:5;font-weight:bold;color:#57b6a3;pointer-events:none}
+  .xnode{border-radius:9px;border:2px solid #6b8cff;background:#1a2230;color:#e6ecf5;font-size:13px;font-weight:600;
+    width:150px;height:42px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 10px rgba(0,0,0,.35)}
+  .react-flow__attribution{display:none}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="lib"><h3>素材库</h3><div class="hint">点一个块,加到<b>选中</b>的节点下</div><div id="pills"></div></div>
+  <div id="flow">
+    <div id="bar">滚轮缩放 · 拖空白平移 · 点节点折叠/展开 · 右下角控件+小地图</div>
+    <div id="tag">引擎:React Flow</div>
+    <div id="app"></div>
+  </div>
+</div>
+<script type="module">
+import React from 'https://esm.sh/react@18.3.1'
+import { createRoot } from 'https://esm.sh/react-dom@18.3.1/client'
+import { ReactFlow, Background, Controls, MiniMap, Handle, Position } from 'https://esm.sh/@xyflow/react@12?deps=react@18.3.1,react-dom@18.3.1'
+import dagre from 'https://esm.sh/@dagrejs/dagre@1'
+import { TREE, PALETTE, LAYER_COLOR } from './tree.js'
+const h = React.createElement
+
+// 树 → nodes/edges
+const rawNodes = [], rawEdges = []
+;(function walk(n, parent) {
+  rawNodes.push({ id: n.id, type: 'x', data: { label: n.name, layer: n.layer }, position: { x: 0, y: 0 } })
+  if (parent) rawEdges.push({ id: parent + '>' + n.id, source: parent, target: n.id, type: 'smoothstep', style: { stroke: '#33405a', strokeWidth: 1.5 } })
+  ;(n.children || []).forEach(c => walk(c, n.id))
+})(TREE, null)
+
+function layout(nodes, edges) {
+  const g = new dagre.graphlib.Graph(); g.setGraph({ rankdir: 'TB', nodesep: 22, ranksep: 54 }); g.setDefaultEdgeLabel(() => ({}))
+  nodes.forEach(n => g.setNode(n.id, { width: 150, height: 42 }))
+  edges.forEach(e => g.setEdge(e.source, e.target))
+  dagre.layout(g)
+  return nodes.map(n => { const p = g.node(n.id); return { ...n, position: { x: p.x - 75, y: p.y - 21 } } })
+}
+
+const XNode = (p) => h('div', { className: 'xnode', style: { borderColor: LAYER_COLOR[p.data.layer] || '#6b8cff', background: p.data.sel ? '#24406a' : '#1a2230' } },
+  h(Handle, { type: 'target', position: Position.Top, style: { opacity: 0 } }),
+  p.data.label,
+  h(Handle, { type: 'source', position: Position.Bottom, style: { opacity: 0 } }),
+)
+const nodeTypes = { x: XNode }
+
+let selected = 'goal', uid = 0
+function App() {
+  const [nodes, setNodes] = React.useState(() => layout(rawNodes, rawEdges))
+  const [edges, setEdges] = React.useState(rawEdges)
+  const [collapsed, setCollapsed] = React.useState(() => new Set())
+
+  const relayout = (allNodes, allEdges, coll, sel) => {
+    // 隐藏被折叠节点的后代
+    const hidden = new Set()
+    const kids = {}; allEdges.forEach(e => (kids[e.source] ||= []).push(e.target))
+    const hide = (id) => (kids[id] || []).forEach(c => { hidden.add(c); hide(c) })
+    coll.forEach(id => hide(id))
+    const vn = allNodes.filter(n => !hidden.has(n.id)).map(n => ({ ...n, data: { ...n.data, sel: n.id === sel } }))
+    const ve = allEdges.filter(e => !hidden.has(e.source) && !hidden.has(e.target))
+    setNodes(layout(vn, ve)); setEdges(ve)
+  }
+  React.useEffect(() => { relayout(rawNodes, rawEdges, collapsed, selected) }, [])
+
+  const onNodeClick = (_e, node) => {
+    selected = node.id
+    const c = new Set(collapsed); if (c.has(node.id)) c.delete(node.id); else c.add(node.id)
+    setCollapsed(c); relayout(rawNodes, rawEdges, c, selected)
+  }
+  window.__addUnderSelected = (item) => {
+    const id = item.id + '_' + (++uid)
+    rawNodes.push({ id, type: 'x', data: { label: item.name, layer: item.layer }, position: { x: 0, y: 0 } })
+    rawEdges.push({ id: selected + '>' + id, source: selected, target: id, type: 'smoothstep', style: { stroke: '#33405a', strokeWidth: 1.5 } })
+    const c = new Set(collapsed); c.delete(selected); relayout(rawNodes, rawEdges, c, selected)
+  }
+
+  return h(ReactFlow, {
+    nodes, edges, nodeTypes, onNodeClick, fitView: true, minZoom: 0.2, maxZoom: 2.5,
+    proOptions: { hideAttribution: true }, style: { background: '#0e1524' },
+  }, h(Background, { color: '#1e2940', gap: 22 }), h(Controls, {}), h(MiniMap, { pannable: true, zoomable: true, maskColor: 'rgba(14,21,36,.7)', nodeColor: (n) => LAYER_COLOR[n.data.layer] || '#6b8cff' }))
+}
+
+createRoot(document.getElementById('app')).render(h(App))
+
+// 素材库(点击加到选中节点下——RF 里演示添加+自动重排)
+const pills = document.getElementById('pills')
+for (const p of PALETTE) {
+  const el = document.createElement('div'); el.className = 'pill'; el.textContent = p.name
+  el.style.borderColor = LAYER_COLOR[p.layer]
+  el.addEventListener('click', () => window.__addUnderSelected && window.__addUnderSelected(p))
+  pills.appendChild(el)
+}
+</script>
+</body>
+</html>

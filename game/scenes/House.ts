@@ -87,7 +87,10 @@ export class House extends Phaser.Scene {
     const btnT = this.add.text(1090, 302, '钻进去看看 →', {
       fontFamily: 'sans-serif', fontSize: '16px', color: '#141210', fontStyle: 'bold',
     }).setOrigin(0.5)
-    btn.on('pointerdown', () => this.scene.start(this.target === 'router' ? 'NetCase' : 'Instance'))
+    btn.on('pointerdown', () => {
+      if (this.target === 'router') this.scene.start('DnsScene', { level: true, seed: 7 })
+      else this.scene.start('Instance')
+    })
     c.add([btn, btnT])
     c.setDepth(100)
     return c

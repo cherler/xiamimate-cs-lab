@@ -122,6 +122,11 @@ export class DnsSim {
     return this.query(name).ip
   }
 
+  /** 直接问到权威的"现在真值"——越过一切缓存/hosts，拿地址的最终出处(真相源)。只读。 */
+  authoritativeIp(name: string): string | null {
+    return this.net.authorityOverride[name] ?? trueIp(name)
+  }
+
   /** 一个域名能不能正常打开（解析成功且地址正确） */
   canOpen(name: string): boolean {
     const r = resolve(this.net, name)
