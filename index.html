@@ -19,7 +19,7 @@ const FOE={
  stream:  {n:38,shape:'tail',inflow:2,shuffle:1,memoDecay:6,name:'实时价格流',note:'数据在变:预处理值每回合 −6',kind:'小怪'},
  graph:   {n:38,shape:'sparse',inflow:1,shuffle:0,dense:.5,name:'社交网络的六度关系',note:'稠密:每多切两段,每回合多涌入 1',kind:'小怪'},
  // 对抗性输入(精英):专门克制某一条流派
- worst:   {n:50,shape:'reversed',inflow:1,shuffle:0,antiSort:1,name:'最坏用例',note:'完全倒序 + 排序卡趟数打五五折 —— 有序度要从零建起',kind:'精英'},
+ worst:   {n:54,shape:'reversed',inflow:1,shuffle:0,antiSort:1,name:'最坏用例',note:'完全倒序 + 排序卡趟数打五五折 —— 有序度要从零建起',kind:'精英'},
  collide: {n:42,shape:'heavy',inflow:1,shuffle:0,evict:1,name:'哈希碰撞',note:'通用:每回合末随机丢 1 张手牌(键撞了,取不回来)',kind:'精英'},
  regret:  {n:41,shape:'nearly',inflow:1,shuffle:0,antiGreedy:1,name:'反悔陷阱',note:'专克贪心流:债务惩罚 ×2.2',kind:'精英'},
  explode2:{n:42,shape:'random',inflow:1,shuffle:0,memoCap:20,name:'状态爆炸',note:'专克预处理流:预处理值上限 20',kind:'精英'},
@@ -47,7 +47,7 @@ def('watch','观察',1,'base','抽 2',S=>drawN(S,2))
 def('bubble','冒泡排序',1,'sort','有序 +1',S=>addSort(S,S.E.antiSort?ASORT:1))
 def('merge','归并排序',2,'sort','有序 +3',S=>addSort(S,S.E.antiSort?ASORT*3:3))
 def('quick','快速排序',2,'sort','有序 +4(最坏用例下只 +1)',S=>{if(S.E.antiSort)S.diag.lostSort+=3;addSort(S,S.E.antiSort?ASORT*4:4)})
-def('bsearch','二分查找',1,'sort','移除 1+有序层数×2 个(顺序访问下打七折)',S=>{const full=1+tier(S)*2,act=S.E.seqOnly?Math.max(1,Math.round(full*S.E.seqOnly)):full;S.diag.lostKill+=full-act;kill(S,act)})
+def('bsearch','二分查找',1,'sort','移除 2+有序层数×2 个(顺序访问下打七折)',S=>{const full=2+tier(S)*2,act=S.E.seqOnly?Math.max(1,Math.round(full*S.E.seqOnly)):full;S.diag.lostKill+=full-act;kill(S,act)})
 /* 插入排序的趟数正比于逆序对数量:几乎有序 → 一趟排完;倒序 → 退化成 O(n²)。
    这正是「笨办法有时更快」那一课,而且它是「几乎有序」这个形状的唯一解法。 */
 def('insertion','插入排序',2,'sort','有序度 ≥50% 时【一次排完】;否则只 +1 层(逆序对太多,退化)',
@@ -65,7 +65,7 @@ def('median','中位数',2,'sort','需有序≥3:移除 1/3 元素',S=>{if(tier(
 def('recur','递归到底',2,'dc','需段数≥3:移除 1/3 元素',S=>{if(S.splits>=3)kill(S,Math.ceil(N(S)/3))},1)
 def('divide','分治',2,'dc','段数 +1(最多 4)',S=>{S.splits=Math.min(S.E.noSplit??4,S.splits+1)})
 def('mergeup','逐层合并',1,'dc','每段移除 2 个',S=>killSeg(S,2))
-def('parallel','并行处理',2,'dc','段数×14 点处理量,平均分给每个元素(不可分下只剩四成)',S=>workTotal(S,S.splits*14*(S.E.noSplit?PARCUT:1)))
+def('parallel','并行处理',2,'dc','段数×11 点处理量,平均分给每个元素(不可分下只剩四成)',S=>workTotal(S,S.splits*11*(S.E.noSplit?PARCUT:1)))
 def('pre','预处理',1,'memo','预处理值 +8',S=>{const b=S.memo;addMemo(S,8);S.diag.lostMemo+=8-(S.memo-b)})
 def('table','建表',2,'memo','预处理值 + 10+规模/4',S=>{const g=10+Math.ceil(N(S)/4),b=S.memo;addMemo(S,g);S.diag.lostMemo+=g-(S.memo-b)})
 def('lookup','查表',0,'memo','处理量 = 预处理值,平均分给每个元素;不消耗预处理值',S=>workTotal(S,S.memo))
@@ -88,8 +88,8 @@ def('prefetch','预读',0,'deck','看牌库顶 3 张,最贵的一张进手,其�
    let bi=0;for(let i=1;i<top.length;i++)if(C[top[i]].cost>C[top[bi]].cost)bi=i
    if(S.hand.length<T.HANDMAX)S.hand.push(top.splice(bi,1)[0])
    S.draw.push(...top)})
-let HEAPCUT=6   // 堆自动弹出的高度门槛
-let PREFIX=1.15 // 前缀和对摊平类的放大
+let HEAPCUT=7   // 堆自动弹出的高度门槛
+let PREFIX=1.25 // 前缀和对摊平类的放大
 let SHUFMUL=1   // 同上:严格口径下每次打乱的破坏力变大,强度要下调
 let ASORT=.3,PARCUT=.4,AGREED=2.2   // 精英的专克强度,留成变量方便扫参
 def('memoize','复用上一步',1,'deck','立刻重放你这回合打出的上一张牌',
@@ -98,7 +98,7 @@ def('compress','压缩',1,'deck','弃牌堆立刻洗回牌库,再抽 1',
   S=>{if(S.discard.length){S.draw.push(...S.discard);S.discard=[];shuffle(S)}drawN(S,1)})
 /* ── 流派五 · 堆(优先队列)。新动词:留在场上持续生效 ──
    前面所有卡都是「打完就没了」。堆建起来之后每回合自动干活,不占你的步数。 */
-def('buildheap','建堆',2,'heap','建立最小堆:此后每回合末自动弹出 1 个高度 ≤6 的元素',
+def('buildheap','建堆',2,'heap','建立最小堆:此后每回合末自动弹出 1 个高度 ≤7 的元素',
   S=>{S.heapLv=Math.max(S.heapLv||0,1)})
 def('heapify','堆化',1,'heap','最小堆每回合多弹出 1 个(上限 3;要先建堆)',
   S=>{if(S.heapLv)S.heapLv=Math.min(3,S.heapLv+1)})
@@ -122,7 +122,7 @@ def('twoptr','两端逼近',1,'twop','从最左和最右各移除 2 根',
    for(let i=0;i<Math.min(2,a.length);i++)a[a.length-1-i].dead=true})
 def('window','滑动窗口',1,'twop','移除连续的 3 根(从最左开始)',
   S=>{const a=alive(S);for(let i=0;i<Math.min(3,a.length);i++)a[i].dead=true})
-def('prefix','前缀和',2,'twop','建立前缀和:此后所有【摊平类】卡的处理量 +15%',
+def('prefix','前缀和',2,'twop','建立前缀和:此后所有【摊平类】卡的处理量 +25%',
   S=>{S.prefix=true})
 def('diff','差分数组',1,'twop','连续 6 根各降低 4 点',
   S=>{const a=alive(S);for(let i=0;i<Math.min(6,a.length);i++){a[i].v-=4;if(a[i].v<=0)a[i].dead=true}})
@@ -169,6 +169,18 @@ def('listener','事件监听',2,'trig','此后敌人每涌入 1 个,立刻移除
 def('assertx','断言',1,'trig','此后有序层数每上升 1 级,移除 2 个',
   S=>{S.trig.assert=true})
 
+/* ── 防御:本回合末少交开销 ──
+   在此之前你只能往前推。回合末开销 = ⌈规模÷6⌉,完全不可控,
+   所以每回合的答案永远是「能出的全出光」(实测 100% 的回合都是这样)。
+   这四张卡和输出卡抢同一份步数 —— 取舍第一次出现。 */
+def('cache','缓存命中',1,'def','本回合末开销 −7(缓存命中就不用重算)',
+  S=>{S.shield=(S.shield||0)+7})
+def('lazy','惰性求值',1,'def','本回合末不收开销;下回合末双倍',
+  S=>{S.skipCost=true;S.doubleNext=true})
+def('batchc','批量提交',2,'def','本回合末开销固定为 4,不管规模多大',
+  S=>{S.fixCost=4})
+def('incr','增量更新',1,'def','本回合末按【上回合的规模】收开销',
+  S=>{S.useLastN=true})
 def('prune','剪枝',1,'tool','增长倍率 −0.25;涌入 −1',S=>{S.mult=Math.max(1,S.mult-.25);S.inflow=Math.max(0,S.inflow-1)})
 def('backtrack','回溯',2,'tool','预算 +12(每场限一次)',S=>{S.budget+=12},1)
 def('guard','边界条件',1,'tool','解除死循环;本回合免疫失误',S=>{S.guarded=true;S.loopBroken=true})
@@ -180,12 +192,12 @@ def('hash','哈希',1,'tool','抽 1;移除 2 个',S=>{drawN(S,1);kill(S,2)})
    注意:牌库操作卡本质上等于精简牌组(提升抽牌质量),加它们必须同时加强敌人。 */
 const STARTERS={
  base:  ['scan','scan','scan','scan','scan','batch','batch','batch','batch','watch'],
- sort:  ['scan','scan','scan','scan','batch','batch','batch','batch','prefetch','sortdeck'],
- dc:    ['scan','scan','scan','batch','batch','batch','batch','prefetch','memoize','sortdeck'],
- memo:  ['scan','scan','scan','batch','batch','batch','batch','prefetch','memoize','sortdeck'],
- greedy:['scan','scan','scan','scan','batch','batch','batch','batch','prefetch','memoize'],
- heap:  ['scan','scan','scan','batch','batch','batch','batch','prefetch','memoize','sortdeck'],
- twop:  ['scan','scan','scan','batch','batch','batch','batch','prefetch','memoize','sortdeck'],
+ sort:  ['scan','scan','scan','scan','batch','batch','batch','cache','prefetch','sortdeck'],
+ dc:    ['scan','scan','scan','batch','batch','batch','cache','prefetch','memoize','sortdeck'],
+ memo:  ['scan','scan','scan','batch','batch','batch','cache','prefetch','memoize','sortdeck'],
+ greedy:['scan','scan','scan','scan','batch','batch','batch','cache','prefetch','memoize'],
+ heap:  ['scan','scan','scan','batch','batch','batch','cache','prefetch','memoize','sortdeck'],
+ twop:  ['scan','scan','scan','batch','batch','batch','cache','prefetch','memoize','sortdeck'],
 }
 const starterOf=k=>STARTERS[k]||STARTERS.base
 const KITS={base:[],sort:['insertion','merge','quick','bsearch','counting','median'],
@@ -196,7 +208,8 @@ const KITS={base:[],sort:['insertion','merge','quick','bsearch','counting','medi
  twop:['twoptr','window','prefix','diff','merge2','monoq']}
 const DECKCARDS=['sortdeck','fetch','prefetch','memoize','compress']
 const REWARD_POOL=[...new Set([...KITS.sort,...KITS.dc,...KITS.memo,...KITS.greedy,...KITS.heap,...KITS.twop]),
- ...DECKCARDS,'prune','prune','prune','prune','backtrack','hash','guard','guard','topk','topk']
+ ...DECKCARDS,'prune','prune','prune','prune','backtrack','hash','guard','guard','topk','topk',
+ 'cache','lazy','batchc','incr']
 
 /* ═══ 4. 战斗引擎 ═══ */
 const alive=S=>S.bars.filter(b=>!b.dead),N=S=>alive(S).length
@@ -309,7 +322,7 @@ function newFight(seed,deck,foeId,budget,flawId,depth=0){
  const S={R,E,foeId,bars:(SHAPES[E.shape]||SHAPES.random).gen(E.n,vmax,R,T.VMIN).map((v,i)=>({id:i,v,dead:false})),
   splits:1,budget:budget+(FL?FLAWBONUS:0),steps:T.STEPS,turn:1,memo:0,debt:0,
   inflow:E.inflow??0,mult:E.mult??1,vmax,flawId:flawId||null,FL,locked:null,guarded:false,loopBroken:false,firstPlay:true,lastPlayed:null,heapLv:0,prefix:false,monoq:false,actIn:ACTEVERY,turnPlays:0,trig:{},refGain:0,lastTier:0,
-  film:[],turnCards:[],
+  film:[],turnCards:[],shield:0,skipCost:false,doubleNext:false,fixCost:0,useLastN:false,lastN:0,
   draw:[...deck],hand:[],discard:[],exhaust:[],over:null,
   totalWork:0,diag:{plays:{},lostKill:0,lostWork:0,evicted:0,lostMemo:0,lostSort:0,flawLoss:0,extraDebt:0,extraInflow:0,sortDecay:0,memoDecayed:0,spent:0,turns:0}}
  S.totalWork=S.bars.reduce((a,b)=>a+b.v,0)
@@ -331,7 +344,13 @@ function play(S,i){if(!canPlay(S,i))return false
  check(S);return true}
 function endTurn(S){if(S.over)return
  const _b={n:N(S),budget:S.budget,memo:S.memo,tier:tier(S),hand:S.hand.length,ex:S.exhaust.length}
- const base=Math.ceil(N(S)/T.COST_DIV),debtPen=S.debt*T.DEBT_PEN*(S.E.antiGreedy?AGREED:1)
+ let sizeFor=S.useLastN&&S.lastN?S.lastN:N(S)
+ let base=S.fixCost?S.fixCost:Math.ceil(sizeFor/T.COST_DIV)
+ const debtPen=S.debt*T.DEBT_PEN*(S.E.antiGreedy?AGREED:1)
+ // 护盾抵【总额】而不是只抵基础开销 —— 否则贪心流(大头是债务惩罚)几乎用不上防御
+ base=Math.max(0,base+debtPen-(S.shield||0))-debtPen
+ if(S.doubleThis)base*=2
+ if(S.skipCost)base=-debtPen
  if(S.E.antiGreedy)S.diag.extraDebt+=S.debt*T.DEBT_PEN
  S.diag.spent+=base+debtPen;S.diag.turns++
  S.budget-=base+debtPen
@@ -362,6 +381,9 @@ function endTurn(S){if(S.over)return
  // 存一帧:这一回合结束时的全部柱子 + 你出了什么 + 敌人发没发招
  S.film.push({v:alive(S).map(b=>b.v),cards:S.turnCards.slice(),act:S.lastAct||null,
    tier:tier(S),budget:S.budget})
+ // 防御只管这一回合,用完清掉;惰性求值的账下回合还
+ S.lastN=N(S);S.doubleThis=S.doubleNext;S.doubleNext=false
+ S.shield=0;S.skipCost=false;S.fixCost=0;S.useLastN=false
  S.turnPlays=0;S.refGain=0;S.turnCards=[]
  S.discard.push(...S.hand);S.hand=keep;S.steps=T.STEPS;S.turn++;S.guarded=false;S.firstPlay=true
  drawN(S,T.HAND)
@@ -428,6 +450,12 @@ const POL={
 function pick(S,order){
  if(S.E.antiGreedy)order=order.filter(x=>!['greedy','local'].includes(x))   // 债务翻倍:别再借
  // 牌库卡各有各的时机 —— 不写清楚 AI 只会拿它们当兜底,量出来的平衡就是假的
+ // 防御:算一下这回合末会不会被打死 / 下回合是不是就要挨招牌动作
+ {const cost=Math.ceil(N(S)/T.COST_DIV)+S.debt*T.DEBT_PEN*(S.E.antiGreedy?AGREED:1)
+  const danger=S.budget-cost<12, incoming=S.actIn<=1
+  if((danger||incoming)&&!S.shield&&!S.skipCost&&!S.fixCost){
+   for(const d of (cost>=10?['lazy','batchc','cache','incr']:['cache','batchc','lazy','incr'])){
+    const i=S.hand.indexOf(d);if(i>=0&&canPlay(S,i))return i}}}
  if(S.lastPlayed&&['median','recur','anneal','approx','bsearch','dp','parallel'].includes(S.lastPlayed)){
   const i=S.hand.indexOf('memoize');if(i>=0&&canPlay(S,i))return i}       // 刚出完大牌,立刻复用
  if(!S.draw.length&&S.discard.length>=4){const i=S.hand.indexOf('compress')
@@ -559,8 +587,8 @@ addEventListener('resize',fit);fit()
 let RUN=null,S=null,offer=null,intel=null,parts=[],KIT='sort',anim=null,hist=[],poster=null
 const CO={bg0:'#050a12',bg1:'#0a141f',line:'rgba(90,150,190,.22)',panel:'rgba(12,24,38,.72)',
  ink:'#e6eef7',dim:'#8ba3bb',faint:'#4d6076',cyan:'#5fd0e8',amber:'#f0a94a',red:'#ff6b5e',green:'#7fd98f',
- tag:{base:'#a8c0d6',sort:'#f0a94a',dc:'#b39ddb',memo:'#7fd98f',greedy:'#ff8f6b',tool:'#5fd0e8',deck:'#9ecbff',heap:'#ffb3d9',twop:'#8ee6c8'}}
-const TAGNAME={base:'起始',sort:'排序流',dc:'拆解流',memo:'复利流',greedy:'激进流',tool:'工具',deck:'牌库',heap:'堆流',twop:'区间流'}
+ tag:{base:'#a8c0d6',sort:'#f0a94a',dc:'#b39ddb',memo:'#7fd98f',greedy:'#ff8f6b',tool:'#5fd0e8',deck:'#9ecbff',heap:'#ffb3d9',twop:'#8ee6c8',def:'#c8b4ff'}}
+const TAGNAME={base:'起始',sort:'排序流',dc:'拆解流',memo:'复利流',greedy:'激进流',tool:'工具',deck:'牌库',heap:'堆流',twop:'区间流',def:'防御'}
 function startRun(k){KIT=k;RUN=newRun(Date.now()&0xffff,k);enter()}
 function enter(){RUN.opts=rollNode(RUN,RUN.node)
  intel=RUN.opts.map(o=>Object.assign(intelOf(RUN.deck,o.foe,o.flaw,RUN.node),o))
@@ -583,13 +611,13 @@ function snap(){return alive(S).map(b=>({id:b.id,v:b.v}))}
    小丑牌的做法:每一环依次点亮,300ms 的动画代替整页说明书。
    CHAIN 在出牌【之前】把因果链算出来,然后一环一环演。 */
 const CHAIN={
- bsearch:S=>{const t=tier(S),full=1+t*2,seq=S.E.seqOnly
-  const o=[['基础 1',CO.faint],['有序层数 '+t+' × 2',CO.amber]]
+ bsearch:S=>{const t=tier(S),full=2+t*2,seq=S.E.seqOnly
+  const o=[['基础 2',CO.faint],['有序层数 '+t+' × 2',CO.amber]]
   if(seq)o.push(['顺序访问 ×'+seq,CO.red])
   return o.concat([['移除 '+(seq?Math.max(1,Math.round(full*seq)):full)+' 个',CO.green]])},
  mergeup:S=>[['每段 2 个',CO.faint],['段数 '+S.splits,'#b39ddb'],['移除 '+(2*S.splits)+' 个',CO.green]],
- parallel:S=>{const h=S.E.noSplit?PARCUT:1,tot=Math.round(S.splits*14*h)
-  const o=[['段数 '+S.splits+' × 14','#b39ddb']]
+ parallel:S=>{const h=S.E.noSplit?PARCUT:1,tot=Math.round(S.splits*11*h)
+  const o=[['段数 '+S.splits+' × 11','#b39ddb']]
   if(h<1)o.push(['不可分 ×'+h,CO.red])
   if(S.prefix)o.push(['前缀和 ×'+PREFIX,'#8ee6c8'])
   return o.concat([['处理量 '+Math.round(tot*(S.prefix?PREFIX:1))+' ÷ '+N(S)+' 个',CO.green]])},
@@ -903,6 +931,7 @@ const CARDIC={scan:'sweep',lookup:'table',dp:'table',parallel:'sweep',batch:'shi
  bubble:'sortic',merge:'sortic',quick:'sortic',insertion:'sortic',counting:'bucket',topk:'stack',bsearch:'split',median:'split',
  divide:'divideic',mergeup:'divideic',recur:'divideic',
  sortdeck:'sortic',fetch:'table',prefetch:'eye',memoize:'stack',compress:'bucket',
+ cache:'shield',lazy:'shield',batchc:'shield',incr:'shield',
  buildheap:'stack',heapify:'stack',poptop:'strike',heapsort:'sortic',medstream:'split',
  twoptr:'split',window:'sweep',prefix:'stack',diff:'sweep',merge2:'bucket',monoq:'shield',pre:'stack',table:'stack',
  greedy:'strike',local:'strike',heur:'strike',anneal:'strike',approx:'strike',
@@ -1019,7 +1048,7 @@ function legendPanel(x,y,w,h){
  row('bar','债务 · 回合末每点 −2 预算',S.debt,'#ff8f6b')
  row('bar','段数 · 逐层类按它放大',S.splits,'#b39ddb')
  if(S.heapLv)row('bar','堆 · 每回合末自动清',S.heapLv,'#ffb3d9')
- if(S.prefix)row('bar','前缀和 · 摊平类 ×1.15',1,'#8ee6c8')
+ if(S.prefix)row('bar','前缀和 · 摊平类 ×1.25',1,'#8ee6c8')
  if(S.monoq)row('bar','单调队列 · 每回合留 1 张',1,'#8ee6c8')
  if(S.mult>1)row('bar','增长倍率 · 剪枝可降',S.mult.toFixed(2),CO.red)
  yy+=6
@@ -1082,7 +1111,11 @@ function statsPanel(x,y,w,h){
  kv('混乱度',(100-(sd*100|0))+'%',CO.faint)
  kv('有序层数',String(tr)+' / 4',tr>=3?CO.green:CO.amber)
  kv('每回合涌入','+'+(S.inflow+(S.E.dense?Math.floor((S.splits-1)*S.E.dense):0)),CO.red)
- kv('回合末开销','−'+Math.ceil(N(S)/T.COST_DIV),CO.red)
+ {const dp=S.debt*T.DEBT_PEN*(S.E.antiGreedy?AGREED:1)
+  const raw=(S.fixCost?S.fixCost:Math.ceil((S.useLastN&&S.lastN?S.lastN:N(S))/T.COST_DIV))+dp
+  let eff=Math.max(0,raw-(S.shield||0)); if(S.doubleThis)eff*=2; if(S.skipCost)eff=0
+  kv('回合末开销',eff===raw?'−'+Math.round(raw):('−'+Math.round(raw)+' → −'+Math.round(eff)),
+    eff<raw?CO.green:eff>raw?CO.red:CO.red)}
  // 进度折线
  ctx.font='600 10px system-ui';ctx.fillStyle=CO.faint;ctx.fillText('剩余工作量走势',x+14,yy+4)
  const gx=x+14,gy=yy+14,gw=w-28,gh=44
@@ -1282,7 +1315,7 @@ function live(id){ if(!S)return null
   case 'watch':    return ['抽 2 · 牌库还剩 '+S.draw.length+' 张',Cy]
   case 'bubble': case 'merge': case 'quick':
     return ['有序层数 '+t+'/4'+(S.E.antiSort?' · 最坏用例下趟数只剩两五折':''),A]
-  case 'bsearch':{const f=1+t*2,act=seq?Math.max(1,Math.round(f*seq)):f
+  case 'bsearch':{const f=2+t*2,act=seq?Math.max(1,Math.round(f*seq)):f
     return ['现在移除 '+act+' 个 ← 有序层数 '+t+'/4'+(seq?' 且顺序访问打七折':''),act>=5?G:act>1?A:R]}
   case 'median':   return t>=3?['现在移除 '+Math.ceil(n/3)+' 个 ← 规模 '+n+' 的 1/3',G]
                               :['有序层数 '+t+',不到 3 —— 现在出会落空',R]
@@ -1290,7 +1323,7 @@ function live(id){ if(!S)return null
                               :['段数已到上限 '+sp+' —— 现在出会落空',R]
   case 'mergeup':  return ['现在移除 '+(2*sp)+' 个 ← 段数 '+sp+' × 每段 2',sp>=3?G:A]
   case 'parallel':{const tot=sp*14*half,w=wprev(tot)
-    return ['段数 '+sp+'×14'+(half<1?'×四折':'')+'='+Math.round(tot)+' ÷ '+w.n+' 个 = 每根矮 '+w.per+w.tail,w.k>0?G:sp>=3?G:A]}
+    return ['段数 '+sp+'×11'+(half<1?'×四折':'')+'='+Math.round(tot)+' ÷ '+w.n+' 个 = 每根矮 '+w.per+w.tail,w.k>0?G:sp>=3?G:A]}
   case 'recur':    return sp>=3?['现在移除 '+Math.ceil(n/3)+' 个 ← 规模 '+n+' 的 1/3',G]
                               :['段数 '+sp+',不到 3 —— 现在出会落空',R]
   case 'pre':      return ['预处理值 '+m+' → '+Math.min(S.E.memoCap??999,m+8),G]
@@ -1311,8 +1344,17 @@ function live(id){ if(!S)return null
   case 'backtrack':return ['预算 '+S.budget+' → '+(S.budget+12),G]
   case 'guard':    return S.FL?['本回合免疫「'+S.FL.name+'」',G]:['这一关没挂失误 —— 现在出会落空',R]
   case 'hash':     return ['抽 1 · 移除 2 个',Cy]
+  case 'cache':{const c0=Math.ceil(N(S)/T.COST_DIV)+S.debt*T.DEBT_PEN*(S.E.antiGreedy?AGREED:1)
+    return['回合末总开销 '+Math.round(c0)+' → '+Math.max(0,Math.round(c0-7-(S.shield||0))),c0>=7?G:A]}
+  case 'lazy':   return S.skipCost?['这回合已经免了 —— 现在出会落空',R]
+    :['这回合末 '+Math.ceil(N(S)/T.COST_DIV)+' 点开销全免 · 下回合末翻倍',
+      Math.ceil(N(S)/T.COST_DIV)>=8?G:A]
+  case 'batchc':{const c0=Math.ceil(N(S)/T.COST_DIV)
+    return['回合末开销 '+c0+' → 固定 4',c0>=8?G:c0>4?A:R]}
+  case 'incr':{const c0=Math.ceil(N(S)/T.COST_DIV),c1=S.lastN?Math.ceil(S.lastN/T.COST_DIV):c0
+    return['按上回合规模收:'+c0+' → '+c1,c1<c0?G:R]}
   case 'buildheap':return S.heapLv?['堆已经建好了('+S.heapLv+'/回合)—— 现在出会落空',R]
-                                  :['建成后每回合末自动弹出 1 个【高度 ≤6】的,不占步数',G]
+                                  :['建成后每回合末自动弹出 1 个【高度 ≤7】的,不占步数',G]
   case 'heapify':  return S.heapLv?['堆 '+S.heapLv+' → '+(S.heapLv+1)+' 个/回合',G]
                                   :['还没建堆 —— 现在出会落空',R]
   case 'poptop':{const a=alive(S).slice().sort((x,y)=>x.v-y.v).slice(0,2)
@@ -1324,7 +1366,7 @@ function live(id){ if(!S)return null
   case 'twoptr':   return['两头各切 2 根 · 现在剩 '+n+' 根',n>=4?G:A]
   case 'window':   return['从最左切走连续 3 根 · 现在剩 '+n+' 根',n>=3?G:A]
   case 'prefix':   return S.prefix?['前缀和已经建好了 —— 现在出会落空',R]
-                                  :['此后摊平类处理量 ×1.15(遍历 16 → 18)',G]
+                                  :['此后摊平类处理量 ×1.25(遍历 16 → 20)',G]
   case 'diff':{const a=alive(S).slice(0,6),k=a.filter(b=>b.v<=4).length
     return['连续 6 根各降 4 点 · 其中 '+k+' 根会直接清零',k>=3?G:A]}
   case 'merge2':{const a=alive(S);let c=0
