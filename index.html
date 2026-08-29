@@ -719,7 +719,7 @@ let autoTimer=null
 window.__demo=(foe,flaw,kit)=>{ if(kit)KIT=kit
  RUN=RUN||newRun(1,KIT); RUN.over=null
  S=newFight(7,RUN.deck,foe,T.BUDGET,flaw); offer=null;hist=[100];intel=null}
-Object.assign(window,{__POL2:S=>POL[KIT](S),__poster:posterCanvas,
+Object.assign(window,{__POL2:S=>POL[KIT](S),__mkGraph:makeGraph,__drawGraph:drawGraph,__comps:comps,__poster:posterCanvas,
  __fightFilm:(kit,seed)=>{const RUN=newRun(seed,kit),out=[]
   for(let i=0;i<8;i++){
    const ch=chooseNode(RUN,rollNode(RUN,i));RUN.used.push(ch.foe)
@@ -738,6 +738,80 @@ Object.assign(window,{__POL2:S=>POL[KIT](S),__poster:posterCanvas,
   return out},__anim:()=>!!anim,__auto:autoTurn,__S:()=>S,__RUN:()=>RUN,__offer:()=>offer,__intel2:()=>intel,
  __play:i=>uiPlay(i),__end:()=>{if(!anim){endTurn(S);hist.push(hpPct(S));if(S.over)afterFight()}},
  __draw:()=>draw(),__FB:v=>{FLAWBONUS=v},__HITBOX:()=>HITBOX,__CARD:id=>C[id],__take:takeCard,__startRun:startRun,__skipIntel:()=>{if(intel)pickNode(0)},__pickNode:k=>pickNode(k),__SHAPE:SHAPE})
+
+/* ═══ 图战场:节点 + 边 + 连通块 ═══
+   数组的胜利条件是「减到 0」,图的胜利条件是「让所有点连通」——
+   换数据结构会顺带换掉胜负轴。这一段是渲染与布局,先看长什么样。 */
+function makeGraph(n,R,A){
+ const nodes=[],MIN=52
+ for(let i=0;i<n;i++){ // 拒绝采样撒点,再做几轮斥力松弛,避免重叠
+  let best=null,bd=-1
+  for(let t=0;t<24;t++){
+   const x=A.x+40+R()*(A.w-80), y=A.y+40+R()*(A.h-80)
+   let d=1e9;for(const m of nodes)d=Math.min(d,Math.hypot(m.x-x,m.y-y))
+   if(!nodes.length){best={x,y};break}
+   if(d>bd){bd=d;best={x,y}}}
+  nodes.push({id:i,x:best.x,y:best.y,comp:i,reached:false,dist:-1})}
+ for(let it=0;it<70;it++)for(const a2 of nodes)for(const b2 of nodes){
+  if(a2===b2)continue
+  const dx=a2.x-b2.x,dy=a2.y-b2.y,d=Math.hypot(dx,dy)||1
+  if(d<MIN){const f=(MIN-d)/d*.5;a2.x+=dx*f;a2.y+=dy*f;b2.x-=dx*f;b2.y-=dy*f}}
+ for(const m of nodes){m.x=Math.max(A.x+26,Math.min(A.x+A.w-26,m.x))
+  m.y=Math.max(A.y+26,Math.min(A.y+A.h-26,m.y))}
+ // 连最近的 k 个邻居(不能用固定像素阈值 —— 那会随画布大小失效)
+ const edges=[],seen=new Set()
+ const add=(i,j)=>{const k=i<j?i+'_'+j:j+'_'+i
+  if(seen.has(k))return;seen.add(k);edges.push({a:i,b:j,alive:true})}
+ for(let i=0;i<n;i++){
+  const near=nodes.map((m,j)=>({j,d:Math.hypot(m.x-nodes[i].x,m.y-nodes[i].y)}))
+   .filter(o=>o.j!==i).sort((a2,b2)=>a2.d-b2.d)
+  const k=1+(R()<.55?1:0)          // 每个点连 1~2 个最近邻 → 自然长出好几个连通块
+  for(let t=0;t<k&&t<near.length;t++)add(i,near[t].j)}
+ const G={nodes,edges};comps(G);return G}
+function comps(G){ // 并查集:算连通块
+ const p=G.nodes.map((_,i)=>i)
+ const find=x=>{while(p[x]!==x){p[x]=p[p[x]];x=p[x]}return x}
+ for(const e of G.edges)if(e.alive){const a2=find(e.a),b2=find(e.b);if(a2!==b2)p[a2]=b2}
+ const map=new Map()
+ G.nodes.forEach(nd=>{const r=find(nd.id);if(!map.has(r))map.set(r,map.size);nd.comp=map.get(r)})
+ G.nc=map.size
+ const cnt={};G.nodes.forEach(nd=>cnt[nd.comp]=(cnt[nd.comp]||0)+1)
+ G.big=Math.max(...Object.values(cnt));G.cnt=cnt
+ return G.nc}
+const COMPC=['#43C3E0','#B39DDB','#8EE6C8','#FFB3D9','#E5A245','#9ECBFF','#FF8F6B']
+function drawGraph(A,G,ripple){
+ // 边:同块的用该块的颜色,亮;跨块的暗
+ for(const e of G.edges){ if(!e.alive)continue
+  const a2=G.nodes[e.a],b2=G.nodes[e.b], same=a2.comp===b2.comp
+  const col=COMPC[a2.comp%COMPC.length]
+  if(same){ // 先描一道更粗的暗色底,再压一道亮线 —— 交叉处不会糊
+   ctx.strokeStyle='rgba(6,12,20,.9)';ctx.lineWidth=4.5
+   ctx.beginPath();ctx.moveTo(a2.x,a2.y);ctx.lineTo(b2.x,b2.y);ctx.stroke()
+   ctx.strokeStyle=col.replace('#','rgba(')&&col;ctx.globalAlpha=.5;ctx.lineWidth=1.8
+   ctx.beginPath();ctx.moveTo(a2.x,a2.y);ctx.lineTo(b2.x,b2.y);ctx.stroke();ctx.globalAlpha=1
+  }else{ctx.strokeStyle='rgba(140,175,205,.10)';ctx.lineWidth=1
+   ctx.beginPath();ctx.moveTo(a2.x,a2.y);ctx.lineTo(b2.x,b2.y);ctx.stroke()}}
+ // BFS 波纹
+ if(ripple){const {cx,cy,t}=ripple
+  for(let k=0;k<3;k++){const r=(t*1.15-k*.16)
+   if(r<=0||r>1)continue
+   ctx.strokeStyle='rgba(95,208,232,'+(0.5*(1-r))+')';ctx.lineWidth=1.4
+   ctx.setLineDash([3,5]);ctx.beginPath();ctx.arc(cx,cy,r*360,0,7);ctx.stroke();ctx.setLineDash([])}}
+ // 节点:先铺一层辉光,再画实心圆和环
+ for(const nd of G.nodes){
+  const col=COMPC[nd.comp%COMPC.length], main=nd.comp===G.mainComp, r=main?12:10
+  const gg=ctx.createRadialGradient(nd.x,nd.y,r*.4,nd.x,nd.y,r*3.2)
+  gg.addColorStop(0,col);gg.addColorStop(1,'rgba(0,0,0,0)')
+  ctx.globalAlpha=main?.30:.16;ctx.fillStyle=gg
+  ctx.beginPath();ctx.arc(nd.x,nd.y,r*3.2,0,7);ctx.fill();ctx.globalAlpha=1
+  ctx.fillStyle='#080E16';ctx.beginPath();ctx.arc(nd.x,nd.y,r,0,7);ctx.fill()
+  ctx.fillStyle=col;ctx.globalAlpha=main?.24:.10
+  ctx.beginPath();ctx.arc(nd.x,nd.y,r,0,7);ctx.fill();ctx.globalAlpha=1
+  ctx.strokeStyle=col;ctx.lineWidth=main?2.2:1.4
+  ctx.beginPath();ctx.arc(nd.x,nd.y,r,0,7);ctx.stroke()
+  if(nd.dist>=0){ctx.fillStyle=col;ctx.font='700 10px "IBM Plex Mono",monospace'
+   ctx.textAlign='center';ctx.fillText(String(nd.dist),nd.x,nd.y+3.6);ctx.textAlign='left'}}
+}
 
 /* ═══ 「这堆数据的一生」——把一整局压成一张竖版海报 ═══
    排序在视觉上就是「噪声收敛成梯度」。把每一回合的柱子压成一行、行行相接,
@@ -942,6 +1016,42 @@ function draw(){
  const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,CO.bg1);g.addColorStop(1,CO.bg0)
  ctx.fillStyle=g;ctx.fillRect(0,0,W,H)
  grid()
+ if(window.__GDEMO){const G=window.__GDEMO
+  const A={x:236,y:150,w:W-236-244,h:H-330}
+  panel(16,150,204,300,'图 战 场')
+  let yy=196
+  const kv2=(k,v,c)=>{ctx.font='400 11.5px system-ui';ctx.fillStyle=CO.dim;ctx.fillText(k,30,yy)
+   ctx.textAlign='right';ctx.font='700 14px system-ui';ctx.fillStyle=c||CO.ink
+   ctx.fillText(v,206,yy);ctx.textAlign='left';yy+=26}
+  kv2('节点',String(G.nodes.length))
+  kv2('边',String(G.edges.filter(e=>e.alive).length))
+  kv2('连通块',String(G.nc),G.nc>1?CO.amber:CO.green)
+  kv2('最大块',G.big+' / '+G.nodes.length,CO.cyan)
+  yy+=8
+  ctx.font='600 10px system-ui';ctx.fillStyle=CO.faint;ctx.letterSpacing='2px'
+  ctx.fillText('连 通 块',30,yy);ctx.letterSpacing='0px';yy+=18
+  Object.entries(G.cnt).sort((a2,b2)=>b2[1]-a2[1]).slice(0,5).forEach(([c,k])=>{
+   ctx.fillStyle=COMPC[c%COMPC.length];ctx.beginPath();ctx.arc(36,yy-3.5,4.5,0,7);ctx.fill()
+   ctx.font='400 11px system-ui';ctx.fillStyle=+c===G.mainComp?CO.ink:CO.dim
+   ctx.fillText(k+' 个节点'+(+c===G.mainComp?'  ← 最大':''),48,yy);yy+=16})
+  const cx2=W/2
+  ctx.textAlign='center'
+  ctx.font='600 10.5px system-ui';ctx.letterSpacing='3px';ctx.fillStyle=CO.dim
+  ctx.fillText('敌人 · 图',cx2,72);ctx.letterSpacing='0px'
+  ctx.font='700 23px system-ui';ctx.fillStyle=CO.ink;ctx.fillText('断开的社交网络',cx2,102)
+  const bw3=Math.min(440,A.w*.62),bx3=cx2-bw3/2,pr=G.big/G.nodes.length
+  ctx.fillStyle='rgba(255,255,255,.06)';ctx.fillRect(bx3,112,bw3,11)
+  const hg3=ctx.createLinearGradient(bx3,0,bx3+bw3,0)
+  hg3.addColorStop(0,'#43C3E0');hg3.addColorStop(1,'#8EE6C8')
+  ctx.fillStyle=hg3;ctx.fillRect(bx3,112,bw3*pr,11)
+  ctx.strokeStyle=CO.line;ctx.strokeRect(bx3+.5,112.5,bw3-1,11)
+  ctx.font='700 14px system-ui';ctx.fillStyle=CO.ink
+  ctx.fillText('最大连通块 '+G.big+' / '+G.nodes.length+' 个节点',cx2,150)
+  ctx.font='400 10.5px system-ui';ctx.fillStyle=CO.cyan
+  ctx.fillText('全部连通即胜  ·  现在还有 '+G.nc+' 块散着',cx2,166)
+  ctx.textAlign='left'
+  drawGraph(A,G,window.__RIP)
+  return req()}
  if(poster){const sc=Math.min((H-40)/poster.height,1)
   ctx.fillStyle='rgba(4,8,13,.97)';ctx.fillRect(0,0,W,H)
   ctx.drawImage(poster,(W-poster.width*sc)/2,20,poster.width*sc,poster.height*sc)
