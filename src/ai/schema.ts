@@ -347,6 +347,7 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   trajectory: {},
   kalman: {},
   icp: {},
+  slam: {},
   pid: {},
   rrt: {},
   wildcard: {},

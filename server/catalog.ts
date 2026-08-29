@@ -98,6 +98,7 @@ import { jacobianKernel } from '../src/kernels/jacobian.ts'
 import { quatKernel } from '../src/kernels/quat.ts'
 import { trajectoryKernel } from '../src/kernels/trajectory.ts'
 import { icpKernel } from '../src/kernels/icp.ts'
+import { slamKernel } from '../src/kernels/slam.ts'
 import { kalmanKernel } from '../src/kernels/kalman.ts'
 import { pidKernel } from '../src/kernels/pid.ts'
 import { rrtKernel } from '../src/kernels/rrt.ts'
@@ -1695,6 +1696,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: '二连杆机械臂 det(J)=L1·L2·sinθ2，什么构型下 J 奇异、末端会丢一个自由度?', kind: 'choice',
         compute: () => ({ answer: 'θ2=0(手臂完全伸直)或 180°(对折)时 sinθ2=0 → det(J)=0、J 奇异：两列平行，末端此刻只能沿一个方向动、丢一个自由度，J⁻¹ 爆炸。工程上要绕开或用阻尼最小二乘', step: 5, evidence: '本例 θ2=90° 时 det=4 可逆；θ2=0 伸直时 det=0 奇异、两列平行' }),
         distractors: () => ['θ1=0 时奇异', '关节速度过大时奇异', 'J 永远可逆、不会奇异'],
+      },
+    ],
+  },
+  {
+    id: 'slam', title: 'SLAM 回环校正', kernel: slamKernel as Kernel<unknown>, doc: trivialDoc('slam'),
+    facts: [
+      {
+        id: 'odom_drift', label: '为什么里程计会漂移',
+        ask: 'SLAM 里机器人靠里程计推算位置，走一圈回到起点却以为自己在别处，为什么?', kind: 'choice',
+        compute: () => ({ answer: '里程计有系统误差(轮子打滑、标定偏差)，每步累积一点点、越走越偏。走一圈本该回到起点，里程计终点却偏出一个缺口，这个缺口就是累计漂移', step: 9, evidence: '本例走八边形一圈，里程计终点 (2.45,0.82) 而非起点 (0,0)，累计漂移 2.58' }),
+        distractors: () => ['里程计没误差，是地图错了', '机器人真的走到了别处', '因为没有 GPS'],
+      },
+      {
+        id: 'loop_closure', label: '回环校正怎么提升精度',
+        ask: 'SLAM 的"回环检测+位姿图优化"怎么把累计漂移大幅抹平?', kind: 'choice',
+        compute: () => ({ answer: '机器人认出回到走过的地方(相同地标)，加一条强约束"终点=起点"；位姿图优化把这个回环误差分摊回整条轨迹(每个位姿按比例拉回)→环闭合、之前的漂移被抹平', step: 10, evidence: '本例回环校正把漂移分摊回去，轨迹平均误差从 1.26 骤降到 0.25、环闭合' }),
+        distractors: () => ['重新走一遍取平均', '把里程计误差直接设为 0', '只修正终点、中间不管'],
       },
     ],
   },

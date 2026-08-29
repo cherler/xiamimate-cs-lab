@@ -4803,3 +4803,20 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .icp-src{fill:var(--hit);stroke:var(--panel);stroke-width:1}
 .icp-iter{border:1px solid var(--line);border-radius:9px;padding:9px 12px}
 .icp-iter .km-ml.ok{color:var(--hit)}
+
+/* ── SLAM 回环校正 ── */
+.slam-true{fill:none;stroke:var(--faint);stroke-width:1.5;stroke-dasharray:5 4;opacity:.6}
+.slam-odom{fill:none;stroke:var(--miss);stroke-width:2}
+.slam-odom.dim{opacity:.35}
+.slam-odot{fill:var(--miss)}
+.slam-odot.dim{opacity:.35}
+.slam-corr{fill:none;stroke:var(--hit);stroke-width:2.5}
+.slam-cdot{fill:var(--hit)}
+.slam-gap{stroke:var(--miss);stroke-width:2;stroke-dasharray:3 2}
+.slam-start{fill:var(--now)}
+.slam-cur{fill:none;stroke:var(--miss);stroke-width:2.5}
+.slam-info{border:1px solid var(--line);border-radius:9px;padding:9px 12px}
+.slam-info.lc{border-left:3px solid var(--miss);background:color-mix(in srgb,var(--miss) 5%,var(--panel))}
+.slam-info.ok{border-left:3px solid var(--hit);background:color-mix(in srgb,var(--hit) 6%,var(--panel))}
+.slam-info .km-ml.brake{color:var(--miss)}
+.slam-info .km-ml.ok{color:var(--hit)}

@@ -479,6 +479,23 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; iterNo: number; error: number }; return st.phase === 'done' ? '配准收敛' : st.iterNo > 0 ? `第${st.iterNo}轮 误差${st.error}` : '就绪'; },
     try: [{ act: '看对应先猜错再修正', watch: '初始没对齐，最近点对应会猜错几个(如两个源点都连到同一目标点)；随着源云转过去，对应越来越准。' }, { act: '看误差单调下降', watch: '误差 0.72→0.55→0.22→0.01，累计旋转还原真值 25°。ICP=猜对应+求变换反复迭代；依赖初值(差太多会陷局部最优)。' }], terms: [],
   },
+  slam: {
+    question: '机器人走一圈回到起点，为什么里程计以为自己在别处？回环怎么把整条轨迹拉正？',
+    read: [{ at: '轨迹图', is: '真实回路(虚线)、里程计漂移轨迹(红,不闭合)、校正后轨迹(绿,闭合)。', anchor: '.fk-svg' }, { at: '读数', is: '进度、回环漂移、轨迹误差(校正前后)。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { phase: string; op: string; poseNo: number; odom: number[][]; drift: number[] | null; driftMag: number; errOdom: number; errCorr: number; focus: string }; return [
+      { k: '本步输入', v: st.op === 'intro' ? '机器人沿八边形走一圈' : st.op === 'step' ? `走到位姿 ${st.poseNo}` : st.op === 'loopclose' ? '走完一圈，识别回环' : '位姿图优化' },
+      { k: '判定规则', v: '里程计每步累积系统漂移→轨迹越走越偏、回不到起点。回环检测认出回到旧地→加约束"终点=起点"，缺口=累计漂移。位姿图优化把漂移按 i/N 分摊回整条轨迹→环闭合、误差抹平。' },
+      { k: '本步结果', v: st.phase === 'done'
+        ? `漂移分摊回去→环闭合，轨迹误差 ${st.errOdom}→${st.errCorr}`
+        : st.op === 'loopclose'
+          ? `终点≠起点，漂移 (${st.drift?.[0]}, ${st.drift?.[1]})、大小 ${st.driftMag}`
+          : st.op === 'step'
+            ? `里程计到 (${st.odom[st.odom.length - 1]?.[0]}, ${st.odom[st.odom.length - 1]?.[1]})，越走越偏`
+            : '起点出发' },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; poseNo: number; driftMag: number; errCorr: number }; return st.phase === 'done' ? `闭环 误差→${st.errCorr}` : st.phase === 'loopclose' ? `漂移 ${st.driftMag}` : st.poseNo > 0 ? `位姿 ${st.poseNo}` : '就绪'; },
+    try: [{ act: '看里程计越走越偏', watch: '系统漂移每步累积，红线一步步偏离真实回路(虚线)，走完一圈终点停在 (2.45,0.82) 而非起点(0,0)——回环不闭合。' }, { act: '看回环校正拉正', watch: '识别回到起点→把 2.58 的漂移按位置比例分摊回整条轨迹→环闭合，绿线贴回真实回路，误差 1.26→0.25。这是 SLAM 精度的关键一跃。' }], terms: [],
+  },
   pid: {
     question: '让机器人关节停到目标角，为什么只用比例(P)会来回震荡？加个 D 项怎么就稳了？',
     read: [{ at: '位置曲线', is: '纯 P(红,冲过头震荡) 与 PD(绿,阻尼收敛) 对目标线(虚线)。', anchor: '.fk-svg' }, { at: '读数', is: '控制器、位置 vs 目标、误差 e、控制量 u=P(+D)。', anchor: '.scdim' }],

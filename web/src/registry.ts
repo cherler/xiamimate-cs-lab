@@ -323,6 +323,7 @@ import { rrtKernel, type RRTState } from '@engine/kernels/rrt.ts'
 import { quatKernel, type QuatState } from '@engine/kernels/quat.ts'
 import { trajectoryKernel, type TrajState } from '@engine/kernels/trajectory.ts'
 import { icpKernel, type ICPState } from '@engine/kernels/icp.ts'
+import { slamKernel, type SLAMState } from '@engine/kernels/slam.ts'
 import { objectstoreKernel } from '@engine/kernels/objectstore.ts'
 import { SysDesignStage } from './stages/SysDesignStage.tsx'
 import { SeckillStage } from './stages/SeckillStage.tsx'
@@ -339,6 +340,7 @@ import { RRTStage } from './stages/RRTStage.tsx'
 import { QuatStage } from './stages/QuatStage.tsx'
 import { TrajStage } from './stages/TrajStage.tsx'
 import { ICPStage } from './stages/ICPStage.tsx'
+import { SLAMStage } from './stages/SLAMStage.tsx'
 import { CollisionStage } from './stages/CollisionStage.tsx'
 import { gcnKernel, type GcnState } from '@engine/kernels/gcn.ts'
 import { GcnStage } from './stages/GcnStage.tsx'
@@ -6295,6 +6297,23 @@ const icp: Experiment<ICPState> = {
   ],
 }
 
+const slam: Experiment<SLAMState> = {
+  id: 'slam', group: '机器人感知', title: 'SLAM 回环校正', subtitle: '里程计漂移→回环把误差分摊回轨迹、拉闭合',
+  kernel: slamKernel, defaultDoc: { kind: 'slam', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: 'SLAM=同时定位与建图。核心难题是里程计漂移(轮子打滑等系统误差逐步累积)。机器人沿八边形走一圈,里程计每步累积漂移、终点偏到(2.45,0.82)不闭合(漂移2.58);回环检测认出回到起点、加约束"终点=起点",位姿图优化把漂移按位置比例分摊回整条轨迹→环闭合、轨迹平均误差从1.26骤降到0.25。漂移/校正/误差全真算。',
+  bounds: ['里程计漂移:系统误差逐步累积,走越久偏越多,回到起点却以为在别处(轨迹不闭合)', '回环检测:认出回到走过的地方(相同地标)→加约束"终点=起点",缺口=累计漂移', '位姿图优化:把回环误差按i/N分摊回整条轨迹→环闭合、之前漂移大幅抹平(误差1.26→0.25)', '本例按比例分摊演示直觉;真实是SE(2)/SE(3)非线性最小二乘(g2o/GTSAM),同时优化位姿+地标;前端找回环靠ICP/视觉词袋'],
+  tabs: [{ id: 'design', label: '走一圈闭环' }], Stage: SLAMStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: '闭环·误差骤降' } : s.phase === 'loopclose' ? { key: 'bad', label: '漂移未闭合' } : { key: 'idle', label: s.poseNo > 0 ? `位姿 ${s.poseNo}` : '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 11)),
+  tickLabel: s => (s.phase === 'done' ? '闭' : s.op === 'loopclose' ? '环' : s.poseNo > 0 ? `${s.poseNo}` : 'S'),
+  readouts: s => [
+    { label: '进度', value: s.phase === 'done' ? '已闭环' : s.phase === 'loopclose' ? '检测回环' : `位姿 ${s.poseNo}` },
+    { label: '回环漂移', value: s.driftMag ? `${s.driftMag}` : '—', tone: s.driftMag > 0 && !s.corrected ? 'bad' : undefined },
+    { label: '轨迹误差', value: s.errOdom ? `里程计 ${s.errOdom}` : '累积中' },
+    { label: '校正后误差', value: s.corrected ? `${s.errCorr}` : '—', tone: s.corrected ? 'good' : undefined },
+  ],
+}
+
 export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
@@ -6306,7 +6325,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, ik, jacobian, quat, trajectory, kalman, icp, pid, rrt,
+  fk, ik, jacobian, quat, trajectory, kalman, icp, slam, pid, rrt,
 ] as unknown as AnyExperiment[]
 
 /**
