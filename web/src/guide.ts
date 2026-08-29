@@ -451,6 +451,23 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; op: string; mode: string; p: number; target: number }; return st.phase === 'done' ? 'PD 稳到目标' : st.op === 'switch' ? '加 D 项' : st.mode === 'P' ? (st.p > st.target ? '纯P冲过头' : '纯 P') : 'P+D'; },
     try: [{ act: '看纯 P 冲过头', watch: '纯 P 到目标时还有速度、刹不住 → 冲到 11.77 还在涨 → 来回震荡（红线）。质量块没有阻尼。' }, { act: '看 D 项刹车', watch: '加 D=Kd·误差变化率：快到目标时 D 变负(反向刹车)、提前减速，绿线平稳停在目标不震荡。' }], terms: [],
   },
+  rrt: {
+    question: '机器人要从起点绕开障碍走到终点，怎么在没有地图公式的情况下"探"出一条路？',
+    read: [{ at: '世界+树', is: '障碍(灰)、起点(绿)、终点(橙)，树逐节点长出、绕障碍，到终点高亮路径。', anchor: '.fk-svg' }, { at: '读数', is: '树节点数、丢弃次数、路径段数。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { phase: string; op: string; nodes: unknown[]; sample: { x: number; y: number } | null; nearest: number; goalward: boolean; rejected: number; reason: string; path: number[] | null; focus: string }; return [
+      { k: '本步输入', v: st.phase === 'intro' ? '起点、终点、中央障碍' : `随机采样 (${st.sample?.x}, ${st.sample?.y})${st.goalward ? '（朝终点）' : ''}` },
+      { k: '判定规则', v: '找树上离采样点最近的节点，朝采样点迈一步 step。若这一步撞障碍/出界就丢弃；否则加为新节点、连边。够到终点就沿父指针回溯出路径。树朝空白蔓延、自动绕障碍。' },
+      { k: '本步结果', v: st.phase === 'done'
+        ? `节点#到终点！回溯出 ${st.path ? st.path.length - 1 : 0} 段路径（共 ${st.nodes.length} 节点、丢弃 ${st.rejected} 次）`
+        : st.op === 'reject'
+          ? `最近#${st.nearest} 迈一步 ${st.reason} → 丢弃（累计丢 ${st.rejected}）`
+          : st.op === 'extend'
+            ? `最近#${st.nearest} 迈一步没撞 → 加节点#${st.nodes.length - 1}（现 ${st.nodes.length} 节点）`
+            : '树只有起点' },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; op: string; nodes: unknown[]; path: number[] | null }; return st.phase === 'done' ? `${st.path ? st.path.length - 1 : 0} 段路径` : st.op === 'reject' ? '撞障碍丢弃' : st.op === 'extend' ? `树 ${st.nodes.length} 节点` : '就绪'; },
+    try: [{ act: '看撞障碍就丢弃', watch: '朝障碍方向迈的步会撞矩形→丢弃(不加进树)；撞的方向长不出去，树只往空白蔓延，这就是自动避障。' }, { act: '看回溯出路径', watch: '有个节点够到终点圈就连上，沿父指针一路回溯到起点=路径。RRT 概率完备但不最优，路径歪、要平滑或用 RRT*。' }], terms: [],
+  },
   topk: {
     question: '内存装不下全部计数，怎么求出现最多的 K 个？哈希分片和小顶堆各解决什么？',
     read: [{ at: '分片表', is: '各片的词→计数；同一个词只会在一片里。', anchor: '.tk-shards' }, { at: '小顶堆', is: 'K 个槽，堆顶(门槛)高亮；新词比门槛大才挤进来。', anchor: '.tk-heap' }],

@@ -319,6 +319,7 @@ import { ikKernel, type IKState } from '@engine/kernels/ik.ts'
 import { jacobianKernel, type JacoState } from '@engine/kernels/jacobian.ts'
 import { kalmanKernel, type KalmanState } from '@engine/kernels/kalman.ts'
 import { pidKernel, type PIDState } from '@engine/kernels/pid.ts'
+import { rrtKernel, type RRTState } from '@engine/kernels/rrt.ts'
 import { objectstoreKernel } from '@engine/kernels/objectstore.ts'
 import { SysDesignStage } from './stages/SysDesignStage.tsx'
 import { SeckillStage } from './stages/SeckillStage.tsx'
@@ -331,6 +332,7 @@ import { IKStage } from './stages/IKStage.tsx'
 import { JacobianStage } from './stages/JacobianStage.tsx'
 import { KalmanStage } from './stages/KalmanStage.tsx'
 import { PIDStage } from './stages/PIDStage.tsx'
+import { RRTStage } from './stages/RRTStage.tsx'
 import { CollisionStage } from './stages/CollisionStage.tsx'
 import { gcnKernel, type GcnState } from '@engine/kernels/gcn.ts'
 import { GcnStage } from './stages/GcnStage.tsx'
@@ -6218,6 +6220,24 @@ const pid: Experiment<PIDState> = {
   ],
 }
 
+// ── 具身智能 · 运动规划 ──
+const rrt: Experiment<RRTState> = {
+  id: 'rrt', group: '运动规划', title: 'RRT 运动规划', subtitle: '采样式避障：随机长树绕障碍到终点',
+  kernel: rrtKernel, defaultDoc: { kind: 'rrt', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '机器人从起点到终点绕开障碍=运动规划。RRT(快速探索随机树)反复：随机采样→找树上最近节点→朝它迈一步(step)→撞障碍/出界就丢弃、否则加进树，够到终点再回溯出路径。10×10 世界+中央障碍，固定种子伪随机(可复现)长出 11 节点的树、绕过障碍、8 段路径。采样/最近点/碰撞判定全真算。',
+  bounds: ['RRT:随机采样+找最近节点+朝它迈一步step+撞障碍丢弃,树朝空白蔓延自动绕障碍', 'goal bias:偶尔直接采终点加速收敛;够到终点沿父指针回溯出路径', '概率完备(采样够多迟早找到)但不最优(路径歪,要平滑或RRT*边长边改父求近似最优)', '高维(机械臂6/7关节空间)也照用—采样式打败网格法维度爆炸;配IK(路径点→关节角)+PID(跟踪)避障抓取'],
+  tabs: [{ id: 'design', label: '长树避障' }], Stage: RRTStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: '找到路径' } : s.op === 'reject' ? { key: 'bad', label: '撞障碍丢弃' } : { key: 'idle', label: s.phase === 'grow' ? `树 ${s.nodes.length} 节点` : '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 20)),
+  tickLabel: s => (s.phase === 'done' ? '路' : s.op === 'reject' ? '丢' : s.op === 'extend' ? '+' : 'R'),
+  readouts: s => [
+    { label: '树节点数', value: `${s.nodes.length}` },
+    { label: '丢弃(撞障碍/出界)', value: `${s.rejected}`, tone: s.rejected > 0 ? 'bad' : undefined },
+    { label: '状态', value: s.found ? '到达终点' : '探索中', tone: s.found ? 'good' : undefined },
+    { label: '路径', value: s.path ? `${s.path.length - 1} 段` : '—' },
+  ],
+}
+
 export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
@@ -6229,7 +6249,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, ik, jacobian, kalman, pid,
+  fk, ik, jacobian, kalman, pid, rrt,
 ] as unknown as AnyExperiment[]
 
 /**
@@ -6399,7 +6419,7 @@ export const DISCIPLINES: Discipline[] = [
     sub: '机器人学 → 感知 · 控制 · 规划 → 具身智能',
     // 从零到具身智能工程师：机器人学基础(运动学/雅可比)→感知(卡尔曼/SLAM)→控制(PID/力控)
     // →规划(RRT)→具身学习(模仿/RL/VLA)→开源实战(LeRobot/MuJoCo)。分组随实验增量补齐。
-    groups: ['机器人学基础', '机器人感知', '机器人控制'],
+    groups: ['机器人学基础', '机器人感知', '机器人控制', '运动规划'],
     guide: { from: '一次关节转动', to: '具身智能工程师', toIcon: '🦾' },
   },
   {
@@ -6454,6 +6474,7 @@ export const GROUP_ANCHOR: Record<string, string> = {
   '机器人学基础': 'robot',
   '机器人感知': 'robot',
   '机器人控制': 'robot',
+  '运动规划': 'robot',
 }
 
 export const ANCHOR_BY_KEY: Record<string, Anchor> = Object.fromEntries(ANCHORS.map(a => [a.key, a]))

@@ -97,6 +97,7 @@ import { ikKernel } from '../src/kernels/ik.ts'
 import { jacobianKernel } from '../src/kernels/jacobian.ts'
 import { kalmanKernel } from '../src/kernels/kalman.ts'
 import { pidKernel } from '../src/kernels/pid.ts'
+import { rrtKernel } from '../src/kernels/rrt.ts'
 import { objectstoreKernel } from '../src/kernels/objectstore.ts'
 import { queryplanKernel } from '../src/kernels/queryplan.ts'
 import { wildcardKernel } from '../src/kernels/wildcard.ts'
@@ -1691,6 +1692,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: 'PID 控制的 P、I、D 三项分别按什么量、起什么作用?', kind: 'choice',
         compute: () => ({ answer: 'P=Kp·e 按当前误差使劲(越远越使劲)；D=Kd·误差变化率提供阻尼(快到时反向刹车、防冲过头);I=Ki·误差累计消除稳态误差(顶掉重力等恒定扰动)。P管现在、I管过去累计、D管趋势', step: 14, evidence: '本例加 D=Kd·误差变化率(负=刹车)后，位置平稳收敛到目标不震荡' }),
         distractors: () => ['三项都按当前误差，只是系数不同', 'D 让响应更快、P 提供阻尼', 'I 提供阻尼、D 消除稳态误差'],
+      },
+    ],
+  },
+  {
+    id: 'rrt', title: 'RRT 运动规划', kernel: rrtKernel as Kernel<unknown>, doc: trivialDoc('rrt'),
+    facts: [
+      {
+        id: 'rrt_avoid', label: 'RRT 怎么自动避开障碍',
+        ask: 'RRT 长树时并没有专门的"避障算法"，它是怎么让路径绕开障碍的?', kind: 'choice',
+        compute: () => ({ answer: '每次朝采样点迈一步时做碰撞检测：若这一步撞障碍/出界就丢弃、不加进树。撞的方向长不出去，树只往空白处蔓延，于是自然绕开障碍', step: 4, evidence: '本例朝中央障碍方向的采样一步步被丢弃(共9次)，树沿左侧空白往上绕过去' }),
+        distractors: () => ['先算出障碍的边界再规划绕行', '把障碍当成排斥力推开树', 'RRT 不能避障、需要额外算法'],
+      },
+      {
+        id: 'rrt_optimal', label: 'RRT 完备但不最优',
+        ask: 'RRT 找到的路径是不是最短/最优的？它的理论保证是什么?', kind: 'choice',
+        compute: () => ({ answer: 'RRT 概率完备(采样够多迟早找到一条可行路)，但不最优——随机采样长出的路径歪歪扭扭、通常不是最短的，要后处理平滑，或用 RRT*(边长树边重接父节点)求近似最优', step: 19, evidence: '本例回溯出的 8 段路径能到终点但不是最短；换种子路径还不一样' }),
+        distractors: () => ['RRT 保证找到最短路径', 'RRT 既不完备也无任何保证', 'RRT 总是找到唯一的一条路'],
       },
     ],
   },

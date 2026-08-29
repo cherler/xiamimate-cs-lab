@@ -345,6 +345,7 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   jacobian: {},
   kalman: {},
   pid: {},
+  rrt: {},
   wildcard: {},
   blockingqueue: {},
   regex: {},

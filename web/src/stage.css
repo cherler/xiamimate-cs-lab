@@ -4740,3 +4740,26 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .pid-term b.brake{color:var(--miss)}
 .pid-term.tot{border-top:1px solid var(--line-soft);margin-top:3px;padding-top:6px}
 .pid-note{font-size:12px;color:var(--dim);line-height:1.7;margin-top:3px}
+
+/* ── RRT 运动规划 ── */
+.rrt-world{fill:none;stroke:var(--line);stroke-width:1.5}
+.rrt-obs{fill:color-mix(in srgb,var(--dim) 22%,var(--panel));stroke:var(--dim);stroke-width:1}
+.rrt-goalr{fill:color-mix(in srgb,var(--now) 8%,transparent);stroke:var(--now);stroke-width:1;stroke-dasharray:3 3;opacity:.6}
+.rrt-edge{stroke:var(--faint);stroke-width:1.2;opacity:.7}
+.rrt-edge.path{stroke:var(--hit);stroke-width:3;opacity:1}
+.rrt-node{fill:var(--dim)}
+.rrt-reach{stroke:var(--now);stroke-width:1;stroke-dasharray:3 3;opacity:.6}
+.rrt-sample{fill:none;stroke:var(--now);stroke-width:1.5}
+.rrt-sample.goalward{fill:var(--now)}
+.rrt-new{fill:var(--hit);stroke:var(--panel);stroke-width:1.5}
+.rrt-rej{fill:none;stroke:var(--miss);stroke-width:2}
+.rrt-start{fill:var(--hit)}
+.rrt-goal{fill:var(--now)}
+.rrt-goal.hit{stroke:var(--hit);stroke-width:3}
+.rrt-info{border:1px solid var(--line);border-radius:9px;padding:9px 12px}
+.rrt-info.ext{border-left:3px solid var(--hit)}
+.rrt-info.rej{border-left:3px solid var(--miss);background:color-mix(in srgb,var(--miss) 4%,var(--panel))}
+.rrt-info.ok{border-left:3px solid var(--hit);background:color-mix(in srgb,var(--hit) 6%,var(--panel))}
+.rrt-info .km-ml.brake{color:var(--miss)}
+.rrt-info .km-ml.ok{color:var(--hit)}
+.rrt-path{font-family:var(--mono);font-size:11px;color:var(--hit);background:color-mix(in srgb,var(--hit) 7%,var(--panel));border-radius:8px;padding:8px 11px;line-height:1.6}
