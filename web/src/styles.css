@@ -291,6 +291,9 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{
 /*  目标 chip 是页眉上唯一一处**会随着你拧旋钮变的字**，所以给它比别的 chip 亮一档；
     达成之后换成 --hit，但**不加动效** —— 它会在拖轴时逐步跳变，闪一下比不闪更吵。 */
 .chip.gchip{color:var(--ink);border-color:var(--line);cursor:pointer}
+/*  AI 学伴入口 chip：本来藏在抽屉里没人找得到，给它一档加亮好被看见。 */
+.chip.aichip{color:var(--now);border-color:#8A5A0044;background:#8A5A000f;cursor:pointer}
+.chip.aichip:hover{border-color:#8A5A0088;background:#8A5A001c}
 /*  编辑器收起：它是**设置**，不是内容。改之前它和舞台一样大（各占屏 8.7%）。 */
 .card.shut>.body{display:none}
 .card>h3 .fold{background:none;border:0;color:var(--faint);cursor:pointer;
@@ -862,6 +865,16 @@ body[data-show="9:16"] .stagewrap{flex:1 1 auto}
 
 /*  巡演时不该有鼠标出现在画面里 —— 这是「4 秒抓手」的前提之一 */
 body[data-show][data-tour]{cursor:none}
+
+/*  展示模式退出键：只在展示模式显示、固定右上角、盖在最上层。
+    即使 data-tour 把全局光标藏了，悬到这颗键上也要恢复指针，否则退不出去。 */
+.showexit{display:none}
+body[data-show] .showexit{
+  display:inline-flex;align-items:center;gap:6px;position:fixed;top:14px;right:14px;z-index:9999;
+  padding:8px 14px;border-radius:999px;border:1px solid #ffffff33;
+  background:#111318cc;color:#fff;font-size:13px;font-weight:600;cursor:pointer;
+  backdrop-filter:blur(6px);box-shadow:0 6px 20px -6px #000}
+body[data-show] .showexit:hover{background:#1c1f26ee;border-color:#ffffff55;cursor:pointer}
 body[data-show][data-tour] *{cursor:none!important}
 
 /* ═══ 实验记录：走带底下那一条（坞的底部形态）═══

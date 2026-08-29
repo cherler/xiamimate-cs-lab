@@ -17,7 +17,7 @@ import { StepLog, ParamPanel, Readouts, Violations, Bounds } from './shell/Panel
 import { ProblemPanel } from './shell/ProblemPanel.tsx'
 import { SequenceEditor, parseSequence, formatSequence } from './shell/SequenceEditor.tsx'
 import { EntityEditor } from './shell/EntityEditor.tsx'
-import { problemsFor, PROBLEMS } from './problems.ts'
+import { problemsFor } from './problems.ts'
 import { ProgressPanel } from './shell/ProgressPanel.tsx'
 import { ChromeHeader, ChromeFooter } from './shell/PlatformChrome.tsx'
 import { Dock } from './shell/Dock.tsx'
@@ -523,15 +523,7 @@ export default function App() {
   }
 
   /** 页眉上的进度数字 —— 全量统计一次，便宜 */
-  const { mastered, totalQ, reviewCount } = useMemo(() => {
-    const all = PROBLEMS.flatMap(p => p.questions.map((_, qi) => ({ problemId: p.id, qi })))
-    const st = progress.statOf(store, all)
-    return {
-      mastered: st.mastered,
-      totalQ: st.total,
-      reviewCount: progress.reviewQueue(store, all).length,
-    }
-  }, [store])
+  //  实验数与进度都**按当前学科**统计（跟着顶条职业切换走），不再是全站合计。见 activeDisc 处。
 
   /*
    * 坞里的四格，**抽出来一份，两个位置共用**。
@@ -599,11 +591,38 @@ export default function App() {
     })
     .filter(([, list]) => list && list.length > 0)
 
+  //  当前学科的实验集合（含软链），用来把"N 个实验 / 进度"按学科统计（跟顶条切换）。
+  const discExpIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const [, list] of activeGroups) for (const e of list) ids.add(e.id)
+    return ids
+  }, [activeDisc])   // activeGroups 由 activeDisc 决定；EXPERIMENTS 运行期不变
+  const discCount = discExpIds.size
+  //  当前学科第一个实验（切换职业时自动选它，让面包屑/主区跟着换）。
+  const firstExpOfDisc = (dk: string) => {
+    const d = DISCIPLINES.find(x => x.key === dk); if (!d) return undefined
+    for (const g of d.groups) {
+      if (grouped[g]?.length) return grouped[g]![0]
+      const lid = (SOFT_LINKS[g] ?? [])[0]
+      const le = lid ? EXPERIMENTS.find(e => e.id === lid) : undefined
+      if (le) return le
+    }
+    return undefined
+  }
+  const { mastered, totalQ, reviewCount } = useMemo(() => {
+    const all = [...discExpIds].flatMap(id => problemsFor(id)).flatMap(p => p.questions.map((_, qi) => ({ problemId: p.id, qi })))
+    const st = progress.statOf(store, all)
+    return { mastered: st.mastered, totalQ: st.total, reviewCount: progress.reviewQueue(store, all).length }
+  }, [store, discExpIds])
+
   return (
     <>
     {/* 平台横条在 .app 外面：它要通栏，而 .app 是 1420px 居中的。
         没并入主站时这两个组件什么都不渲染（连占位的空 div 都不留）。 */}
     <ChromeHeader />
+    {/*  展示模式退出键：展示模式藏掉了全部外壳(含 .chips)，Esc 万一不灵就没出口。
+         这颗按钮定位在 .chips 之外、固定在右上角，只在展示模式显示，点一下退出。 */}
+    {show.on && <button className="showexit" onClick={() => { location.href = location.pathname }} title="退出展示模式（也可按 Esc）">✕ 退出展示</button>}
     <div className="app">
       {/*
         * 学科切换 = 最高一级菜单：独立成一条通栏顶条，不再塞在左栏目录上头。
@@ -615,7 +634,12 @@ export default function App() {
           <button key={d.key} type="button" role="tab"
             aria-selected={d.key === activeDisc}
             className={`disctab ${d.key === activeDisc ? 'on' : ''} ${d.status === 'planned' ? 'soon' : ''}`}
-            onClick={() => setActiveDisc(d.key)}
+            onClick={() => {
+              setActiveDisc(d.key)
+              //  切职业时自动跳到该职业第一个实验：面包屑/主舞台/读数一起跟着换，
+              //  而不是停在上一个职业的实验上（用户原话：目录换了、这里没换）。
+              if (d.status !== 'planned') { const f = firstExpOfDisc(d.key); if (f && f.id !== expId) selectExp(f.id) }
+            }}
             title={d.status === 'planned' ? `${d.title} · 即将开放（guide：从${d.guide.from}到${d.guide.to}）` : `${d.title} 学科`}>
             <span className="dti">{d.icon}</span>
             <span className="dtn">{d.title}</span>
@@ -654,7 +678,7 @@ export default function App() {
                出错那一档留着 —— 「配置不合法」在别处没有第二个出处。 */}
           {violations.length > 0 && <span className="chip warn">配置不合法</span>}
           {problem && <span className="chip on">{problem.source}</span>}
-          <span className="chip">{EXPERIMENTS.length} 个实验</span>
+          <span className="chip">{discCount} 个实验</span>
           {/*
             ⚠️ 这枚 chip 原来印的是「目标 · SSTF · 累计 236」——
             读起来像"目标就是 SSTF、目标值 236"，而真实条件恰恰是**不用 SSTF**。
@@ -669,6 +693,12 @@ export default function App() {
           <button className="chip mapchip" onClick={() => setGuideOpen(true)}
              data-tip="打开本学科地图：从地基通到那件职业/造物，节点可点直接进实验">
             🗺️ 地图
+          </button>
+          {/*  AI 学伴入口：本来只藏在底部「实验记录」抽屉的一个页签里，用户找不到。
+               这里给一个显眼的入口——点它就展开抽屉、切到 AI 学伴那格。 */}
+          <button className="chip aichip" onClick={() => { putDockFold(expId, false); setDock('ai') }}
+             data-tip="AI 学伴：就着这个实验，焊死引擎出题 / 答疑 / 当面试官（答案钉在真实步骤上、少幻觉）">
+            🤖 AI 学伴
           </button>
           <a className="chip livetoggle attn" href="/lab/explainer"
              data-tip="在浏览器里看 Qwen 怎么想：注意力 + 下一词预测（服务器推理，可切 0.5B/1.5B）">
