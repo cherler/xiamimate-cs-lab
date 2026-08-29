@@ -4721,3 +4721,22 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .km-mh{font-size:11px;font-weight:600;color:var(--ink);margin-bottom:5px}
 .km-ml{font-family:var(--mono);font-size:12px;color:var(--dim);line-height:1.9}
 .km-ml b{color:var(--ink)}
+
+/* ── PID 控制 ── */
+.pid-target{stroke:var(--faint);stroke-width:1.5;stroke-dasharray:5 4;opacity:.7}
+.pid-tlbl{font-family:var(--mono);font-size:10px;fill:var(--faint)}
+.pid-ponly{fill:none;stroke:var(--miss);stroke-width:2}
+.pid-podot{fill:var(--miss)}
+.pid-pd{fill:none;stroke:var(--hit);stroke-width:2}
+.pid-pddot{fill:var(--hit)}
+.pid-cur{fill:none;stroke-width:2.5}
+.pid-cur.po{stroke:var(--miss)}
+.pid-cur.pd{stroke:var(--hit)}
+.pid-terms{border:1px solid var(--line);border-radius:9px;padding:10px 13px}
+.pid-terms.po{background:color-mix(in srgb,var(--miss) 5%,var(--panel));border-left:3px solid var(--miss)}
+.pid-terms.pd{background:color-mix(in srgb,var(--hit) 6%,var(--panel));border-left:3px solid var(--hit)}
+.pid-term{display:flex;justify-content:space-between;align-items:baseline;font-family:var(--mono);font-size:12.5px;color:var(--dim);padding:3px 0}
+.pid-term b{color:var(--ink);font-size:14px}
+.pid-term b.brake{color:var(--miss)}
+.pid-term.tot{border-top:1px solid var(--line-soft);margin-top:3px;padding-top:6px}
+.pid-note{font-size:12px;color:var(--dim);line-height:1.7;margin-top:3px}

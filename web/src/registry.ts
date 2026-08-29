@@ -318,6 +318,7 @@ import { fkKernel, type FKState } from '@engine/kernels/fk.ts'
 import { ikKernel, type IKState } from '@engine/kernels/ik.ts'
 import { jacobianKernel, type JacoState } from '@engine/kernels/jacobian.ts'
 import { kalmanKernel, type KalmanState } from '@engine/kernels/kalman.ts'
+import { pidKernel, type PIDState } from '@engine/kernels/pid.ts'
 import { objectstoreKernel } from '@engine/kernels/objectstore.ts'
 import { SysDesignStage } from './stages/SysDesignStage.tsx'
 import { SeckillStage } from './stages/SeckillStage.tsx'
@@ -329,6 +330,7 @@ import { FKStage } from './stages/FKStage.tsx'
 import { IKStage } from './stages/IKStage.tsx'
 import { JacobianStage } from './stages/JacobianStage.tsx'
 import { KalmanStage } from './stages/KalmanStage.tsx'
+import { PIDStage } from './stages/PIDStage.tsx'
 import { CollisionStage } from './stages/CollisionStage.tsx'
 import { gcnKernel, type GcnState } from '@engine/kernels/gcn.ts'
 import { GcnStage } from './stages/GcnStage.tsx'
@@ -6198,6 +6200,24 @@ const kalman: Experiment<KalmanState> = {
   ],
 }
 
+// ── 具身智能 · 机器人控制 ──
+const pid: Experiment<PIDState> = {
+  id: 'pid', group: '机器人控制', title: 'PID 控制', subtitle: '纯 P 震荡 vs 加 D 阻尼收敛到目标',
+  kernel: pidKernel, defaultDoc: { kind: 'pid', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '让机器人关节/底盘停到目标靠反馈控制，最常用 PID：每拍算误差 e=目标−实际，三项合成控制量——P=Kp·e(误差越大越使劲)、D=Kd·误差变化率(快到时反向刹车、阻尼)、I=Ki·误差累计(消稳态误差)。被控对象是质量块(双积分)：纯 P 会冲过头震荡(到 11.77 还在涨)，加 Kd=0.9 后平稳收敛到目标 10。误差/三项/位置每步真算。',
+  bounds: ['PID:u=Kp·e+Ki·∫e+Kd·(de/dt);P按当前误差、D按误差变化率、I按误差累计', '质量块(双积分)纯P必震荡:到目标还有速度、刹不住→冲过头→反向→来回震荡', 'D=Kd·误差变化率提供阻尼:快到时反向刹车、提前减速→平稳停住', 'I消除稳态误差(顶掉重力等恒定扰动);调参Kp快易震/Kd稳/Ki消稳态但易饱和超调'],
+  tabs: [{ id: 'design', label: '闭环控制' }], Stage: PIDStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: 'PD 稳到目标' } : s.mode === 'P' && s.p > s.target ? { key: 'bad', label: '纯P冲过头' } : { key: 'idle', label: s.mode === 'P' ? '纯 P 控制' : s.mode === 'PD' ? 'P+D 控制' : '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 15)),
+  tickLabel: s => (s.phase === 'done' ? '稳' : s.op === 'switch' ? '+D' : s.mode === 'P' ? `P${s.k}` : s.mode === 'PD' ? `D${s.k}` : 'PID'),
+  readouts: s => [
+    { label: '控制器', value: s.mode === 'P' ? '纯 P' : s.mode === 'PD' ? 'P + D' : '就绪' },
+    { label: '位置 / 目标', value: `${s.p} / ${s.target}`, tone: s.mode === 'P' && s.p > s.target ? 'bad' : s.phase === 'done' ? 'good' : undefined },
+    { label: '误差 e', value: `${s.e}` },
+    { label: '控制量 u = P+D', value: `${s.u}（P=${s.uP}${s.mode === 'PD' ? `, D=${s.uD}` : ''}）` },
+  ],
+}
+
 export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
@@ -6209,7 +6229,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, ik, jacobian, kalman,
+  fk, ik, jacobian, kalman, pid,
 ] as unknown as AnyExperiment[]
 
 /**
@@ -6379,7 +6399,7 @@ export const DISCIPLINES: Discipline[] = [
     sub: '机器人学 → 感知 · 控制 · 规划 → 具身智能',
     // 从零到具身智能工程师：机器人学基础(运动学/雅可比)→感知(卡尔曼/SLAM)→控制(PID/力控)
     // →规划(RRT)→具身学习(模仿/RL/VLA)→开源实战(LeRobot/MuJoCo)。分组随实验增量补齐。
-    groups: ['机器人学基础', '机器人感知'],
+    groups: ['机器人学基础', '机器人感知', '机器人控制'],
     guide: { from: '一次关节转动', to: '具身智能工程师', toIcon: '🦾' },
   },
   {
@@ -6433,6 +6453,7 @@ export const GROUP_ANCHOR: Record<string, string> = {
   '大模型项目实战': 'llm',
   '机器人学基础': 'robot',
   '机器人感知': 'robot',
+  '机器人控制': 'robot',
 }
 
 export const ANCHOR_BY_KEY: Record<string, Anchor> = Object.fromEntries(ANCHORS.map(a => [a.key, a]))

@@ -96,6 +96,7 @@ import { fkKernel } from '../src/kernels/fk.ts'
 import { ikKernel } from '../src/kernels/ik.ts'
 import { jacobianKernel } from '../src/kernels/jacobian.ts'
 import { kalmanKernel } from '../src/kernels/kalman.ts'
+import { pidKernel } from '../src/kernels/pid.ts'
 import { objectstoreKernel } from '../src/kernels/objectstore.ts'
 import { queryplanKernel } from '../src/kernels/queryplan.ts'
 import { wildcardKernel } from '../src/kernels/wildcard.ts'
@@ -1673,6 +1674,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: '卡尔曼增益 K=P\'/(P\'+R) 决定什么？什么时候更信 GPS 观测、什么时候更信运动预测?', kind: 'choice',
         compute: () => ({ answer: 'K 是"信预测还是信观测"的权重：x=x\'+K(z−x\')。观测噪声 R 小(GPS 准)→K 大→多信观测；预测方差 P\' 小(预测准)→K 小→多信预测。融合估计比单独任一个都准', step: 8, evidence: '本例 R=1，K 从 0.6 收敛到 ~0.5；估计一路贴真值(误差≤0.13)' }),
         distractors: () => ['K 是固定常数、与方差无关', 'K 越大越好、永远多信观测', 'K 只和步数有关'],
+      },
+    ],
+  },
+  {
+    id: 'pid', title: 'PID 控制', kernel: pidKernel as Kernel<unknown>, doc: trivialDoc('pid'),
+    facts: [
+      {
+        id: 'p_oscillate', label: '纯 P 为什么震荡',
+        ask: '用纯比例(P)控制一个质量块到目标位置，为什么会冲过头、来回震荡?', kind: 'choice',
+        compute: () => ({ answer: '质量块是双积分、没有天然阻尼：纯 P 把它推向目标，但到目标时还有速度、刹不住 → 冲过头 → 反向 → 来回震荡。必须加 D(微分)提供阻尼才能停住', step: 5, evidence: '本例纯 P(Kp=0.4)第5步冲到 11.77(过目标10)还在涨' }),
+        distractors: () => ['Kp 太小，调大就不震荡了', '质量块自己会震荡、和控制无关', '因为没有用积分 I'],
+      },
+      {
+        id: 'pid_terms', label: 'PID 三项各管什么',
+        ask: 'PID 控制的 P、I、D 三项分别按什么量、起什么作用?', kind: 'choice',
+        compute: () => ({ answer: 'P=Kp·e 按当前误差使劲(越远越使劲)；D=Kd·误差变化率提供阻尼(快到时反向刹车、防冲过头);I=Ki·误差累计消除稳态误差(顶掉重力等恒定扰动)。P管现在、I管过去累计、D管趋势', step: 14, evidence: '本例加 D=Kd·误差变化率(负=刹车)后，位置平稳收敛到目标不震荡' }),
+        distractors: () => ['三项都按当前误差，只是系数不同', 'D 让响应更快、P 提供阻尼', 'I 提供阻尼、D 消除稳态误差'],
       },
     ],
   },

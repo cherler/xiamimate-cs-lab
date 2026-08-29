@@ -388,6 +388,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { step: 2, phase: 'update', op: 'update', u: 1, Q: 0.5, R: 1, stepNo: 1, x: 1.12, P: 0.6, truePos: 1, z: 1.2, K: 0.6, innov: 0.2, xPred: 1, history: [{ step: 1, truePos: 1, x: 1.12, sd: 0.775, z: 1.2 }], focus: '步 1 · Update：K=0.6 融合观测 z=1.2 → x=1.12', log: 'x' },
       b: { step: 8, phase: 'done', op: 'summary', u: 1, Q: 0.5, R: 1, stepNo: 4, x: 4.014, P: 0.502, truePos: 4, z: 3.9, K: 0.501, innov: -0.228, xPred: 4.128, history: [{ step: 1, truePos: 1, x: 1.12, sd: 0.775, z: 1.2 }, { step: 2, truePos: 2, x: 1.952, sd: 0.724, z: 1.8 }, { step: 3, truePos: 3, x: 3.128, sd: 0.711, z: 3.3 }, { step: 4, truePos: 4, x: 4.014, sd: 0.709, z: 3.9 }], focus: '步 4 · Update 收敛', log: 'x' },
     },
+    pid: {
+      doc: { kind: 'pid', params: {}, entities: [], streams: [] },
+      a: { step: 5, phase: 'ponly', op: 'step', target: 10, Kp: 0.4, Kd: 0.9, mode: 'P', k: 5, e: 1.43, uP: 0.572, uD: 0, u: 0.572, v: 4.02, p: 11.77, ponly: [{ k: 1, p: 1 }, { k: 2, p: 2.9 }, { k: 3, p: 5.51 }, { k: 4, p: 8.57 }, { k: 5, p: 11.77 }], pd: [], focus: '纯P 步5：冲过目标', log: 'x' },
+      b: { step: 14, phase: 'done', op: 'summary', target: 10, Kp: 0.4, Kd: 0.9, mode: 'PD', k: 8, e: 1.48, uP: 0.593, uD: -1.417, u: -0.824, v: -0.5, p: 9.1, ponly: [{ k: 1, p: 1 }, { k: 2, p: 2.9 }, { k: 3, p: 5.51 }, { k: 4, p: 8.57 }, { k: 5, p: 11.77 }], pd: [{ k: 1, p: 1 }, { k: 2, p: 2.45 }, { k: 3, p: 4 }, { k: 4, p: 5.46 }, { k: 5, p: 6.71 }, { k: 6, p: 7.73 }, { k: 7, p: 8.52 }, { k: 8, p: 9.1 }], focus: '步 8 · PD 收敛', log: 'x' },
+    },
     topk: {
       doc: { kind: 'topk', params: {}, entities: [], streams: [] },
       a: { step: 10, phase: 'heap', op: 'replace', K: 3, N: 2, shards: [{ id: 0, items: [{ word: '香蕉', count: 4 }, { word: '梨', count: 1 }] }, { id: 1, items: [{ word: '苹果', count: 5 }, { word: '橙子', count: 3 }, { word: '葡萄', count: 2 }, { word: '桃', count: 1 }] }], route: null, heap: [{ word: '橙子', count: 3 }, { word: '香蕉', count: 4 }, { word: '苹果', count: 5 }], consider: { word: '橙子', count: 3 }, evicted: { word: '梨', count: 1 }, threshold: 3, topk: [], focus: '3 > 门槛 1 → 淘汰「梨」换上「橙子」', log: 'x' },

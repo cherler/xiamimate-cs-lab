@@ -434,6 +434,23 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; op: string; x: number; P: number; K: number | null }; return st.phase === 'done' ? `x=${st.x}·P=${st.P}` : st.op === 'predict' ? '预测·方差涨' : st.op === 'update' ? `校正·K=${st.K}` : '就绪'; },
     try: [{ act: '看方差 P 的锯齿', watch: 'predict 时 P 涨(误差棒变长、越推越不确定)、update 时 P 缩(观测拉回、更确定)，收敛到稳态 ~0.5。' }, { act: '看增益 K 权衡', watch: 'K=P/(P+R)：预测不确定(P大)时 K 大、多信观测；确定后 K 小、多信预测。融合估计比单独预测或观测都贴真值。' }], terms: [],
   },
+  pid: {
+    question: '让机器人关节停到目标角，为什么只用比例(P)会来回震荡？加个 D 项怎么就稳了？',
+    read: [{ at: '位置曲线', is: '纯 P(红,冲过头震荡) 与 PD(绿,阻尼收敛) 对目标线(虚线)。', anchor: '.fk-svg' }, { at: '读数', is: '控制器、位置 vs 目标、误差 e、控制量 u=P(+D)。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { phase: string; op: string; mode: string; k: number; target: number; e: number; uP: number; uD: number; u: number; p: number; focus: string }; return [
+      { k: '本步输入', v: st.phase === 'intro' ? '目标=10、被控对象是质量块' : st.op === 'switch' ? '纯 P 震荡 → 加 D 项' : `${st.mode === 'P' ? '纯 P' : 'PD'} 步 ${st.k}：当前误差 e=${st.e}` },
+      { k: '判定规则', v: '每拍 e=目标−实际；P=Kp·e(误差越大越使劲推)、D=Kd·误差变化率(快到时反向刹车、阻尼)、I=Ki·误差累计(消稳态误差)。u=P+I+D 推质量块。纯 P 无阻尼→震荡；加 D 才稳。' },
+      { k: '本步结果', v: st.phase === 'done'
+        ? `PD 平稳收敛：位置 ${st.p}→目标 ${st.target}，不震荡（D 阻尼掉了）`
+        : st.op === 'switch'
+          ? '重跑：Kp 不变、加 Kd=0.9 提供阻尼'
+          : st.mode === 'P'
+            ? `u=P=${st.uP} → 位置 ${st.p}${st.p > st.target ? '（冲过目标 10！）' : ''}`
+            : `P=${st.uP}、D=${st.uD}(刹车) → u=${st.u} → 位置 ${st.p}` },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; op: string; mode: string; p: number; target: number }; return st.phase === 'done' ? 'PD 稳到目标' : st.op === 'switch' ? '加 D 项' : st.mode === 'P' ? (st.p > st.target ? '纯P冲过头' : '纯 P') : 'P+D'; },
+    try: [{ act: '看纯 P 冲过头', watch: '纯 P 到目标时还有速度、刹不住 → 冲到 11.77 还在涨 → 来回震荡（红线）。质量块没有阻尼。' }, { act: '看 D 项刹车', watch: '加 D=Kd·误差变化率：快到目标时 D 变负(反向刹车)、提前减速，绿线平稳停在目标不震荡。' }], terms: [],
+  },
   topk: {
     question: '内存装不下全部计数，怎么求出现最多的 K 个？哈希分片和小顶堆各解决什么？',
     read: [{ at: '分片表', is: '各片的词→计数；同一个词只会在一片里。', anchor: '.tk-shards' }, { at: '小顶堆', is: 'K 个槽，堆顶(门槛)高亮；新词比门槛大才挤进来。', anchor: '.tk-heap' }],
