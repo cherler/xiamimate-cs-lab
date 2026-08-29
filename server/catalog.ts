@@ -99,6 +99,7 @@ import { quatKernel } from '../src/kernels/quat.ts'
 import { trajectoryKernel } from '../src/kernels/trajectory.ts'
 import { icpKernel } from '../src/kernels/icp.ts'
 import { slamKernel } from '../src/kernels/slam.ts'
+import { impedanceKernel } from '../src/kernels/impedance.ts'
 import { kalmanKernel } from '../src/kernels/kalman.ts'
 import { pidKernel } from '../src/kernels/pid.ts'
 import { rrtKernel } from '../src/kernels/rrt.ts'
@@ -1747,6 +1748,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: '卡尔曼增益 K=P\'/(P\'+R) 决定什么？什么时候更信 GPS 观测、什么时候更信运动预测?', kind: 'choice',
         compute: () => ({ answer: 'K 是"信预测还是信观测"的权重：x=x\'+K(z−x\')。观测噪声 R 小(GPS 准)→K 大→多信观测；预测方差 P\' 小(预测准)→K 小→多信预测。融合估计比单独任一个都准', step: 8, evidence: '本例 R=1，K 从 0.6 收敛到 ~0.5；估计一路贴真值(误差≤0.13)' }),
         distractors: () => ['K 是固定常数、与方差无关', 'K 越大越好、永远多信观测', 'K 只和步数有关'],
+      },
+    ],
+  },
+  {
+    id: 'impedance', title: '阻抗 / 力控', kernel: impedanceKernel as Kernel<unknown>, doc: trivialDoc('impedance'),
+    facts: [
+      {
+        id: 'why_not_position', label: '接触任务为什么不能只用位置控制',
+        ask: '机械臂做装配/打磨等接触任务，为什么纯位置控制会砸坏工件?', kind: 'choice',
+        compute: () => ({ answer: '位置控制很刚：为把位置误差压到 0 会死命顶。命令去墙后面的目标时，剩下的位置误差消不掉，就输出巨大接触力去顶——砸坏工件、伤人。它不知道该松手', step: 1, evidence: '本例命令去 x=8、墙在 x=5，位置控制硬顶出 480N' }),
+        distractors: () => ['位置控制会停在墙前不动', '位置控制会自动绕过墙', '位置控制接触力太小、夹不住'],
+      },
+      {
+        id: 'impedance_spring', label: '阻抗控制怎么柔顺、怎么调接触力',
+        ask: '阻抗控制让机械臂柔顺接触，它把末端表现成什么？接触力怎么调?', kind: 'choice',
+        compute: () => ({ answer: '让末端表现得像虚拟弹簧+阻尼 F=K(x目标−x)−D·ẋ，遇阻柔顺让步而非硬顶。接触力≈K×侵入深度，K(刚度)是你设的旋钮：软(小K)→轻贴、吸冲击、对人安全；硬(大K)→接近位置控制', step: 7, evidence: '本例阻抗控制(K=25)接触力 settle 到 ~73N，比刚性 480N 柔和 6.6 倍' }),
+        distractors: () => ['让末端完全不动', '把电机关掉靠惯性', '接触力是固定的、不能调'],
       },
     ],
   },

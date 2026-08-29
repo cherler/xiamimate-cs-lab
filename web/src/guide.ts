@@ -496,6 +496,19 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; poseNo: number; driftMag: number; errCorr: number }; return st.phase === 'done' ? `闭环 误差→${st.errCorr}` : st.phase === 'loopclose' ? `漂移 ${st.driftMag}` : st.poseNo > 0 ? `位姿 ${st.poseNo}` : '就绪'; },
     try: [{ act: '看里程计越走越偏', watch: '系统漂移每步累积，红线一步步偏离真实回路(虚线)，走完一圈终点停在 (2.45,0.82) 而非起点(0,0)——回环不闭合。' }, { act: '看回环校正拉正', watch: '识别回到起点→把 2.58 的漂移按位置比例分摊回整条轨迹→环闭合，绿线贴回真实回路，误差 1.26→0.25。这是 SLAM 精度的关键一跃。' }], terms: [],
   },
+  impedance: {
+    question: '机械臂去拧螺丝、打磨、和人协作，为什么不能只用位置控制？怎么让它"会用力"、柔顺接触？',
+    read: [{ at: '轨道', is: '末端(块)、墙、目标、软弹簧；末端遇墙柔顺贴住。', anchor: '.fk-svg' }, { at: '接触力对比', is: '刚性(砸,红) vs 柔顺(贴,绿) 两条力条。', anchor: '.imp-cmp' }],
+    step: (s: never) => { const st = s as { phase: string; op: string; xCmd: number; xWall: number; x: number; contactForce: number; penetration: number; stiffForce: number; t: number; focus: string }; return [
+      { k: '本步输入', v: st.op === 'intro' ? `命令末端去 x=${st.xCmd}、墙在 x=${st.xWall}` : st.op === 'stiff' ? '刚性位置控制' : `阻抗控制 t=${st.t}s` },
+      { k: '判定规则', v: '位置控制刚度高：为把位置误差压到 0 会死命顶墙、输出巨大接触力。阻抗控制让末端像虚拟弹簧+阻尼 F=K(x目标−x)−D·ẋ，遇阻柔顺让步；接触力≈K×侵入深度，K 你自己设。' },
+      { k: '本步结果', v: st.op === 'stiff' ? `硬顶：接触力 ${st.stiffForce}N（砸），侵入墙 ${st.penetration}`
+        : st.op === 'sample' || st.op === 'summary' ? `末端 ${st.x}${st.contactForce > 0 ? `，接触力 ${st.contactForce}N（柔顺）` : '（还没碰墙）'}${st.op === 'summary' ? `——刚性 ${st.stiffForce}N vs 柔顺 ${st.contactForce}N` : ''}`
+          : '就绪' },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; op: string; contactForce: number; stiffForce: number }; return st.phase === 'done' ? `柔顺 ${st.contactForce}N` : st.op === 'stiff' ? `刚性 ${st.stiffForce}N` : st.phase === 'compliant' ? '阻抗逼近' : '就绪'; },
+    try: [{ act: '看刚性硬顶', watch: '位置控制命令去 x=8、墙挡在 x=5，剩 3 的位置误差消不掉→死命顶出 480N，砸坏工件。' }, { act: '看柔顺贴合', watch: '阻抗控制让末端像软弹簧被拉向目标、遇墙柔顺让步，接触力 settle 到 ~73N。接触力=K×侵入，K 是你设的旋钮——软就轻贴、对人安全。' }], terms: [],
+  },
   pid: {
     question: '让机器人关节停到目标角，为什么只用比例(P)会来回震荡？加个 D 项怎么就稳了？',
     read: [{ at: '位置曲线', is: '纯 P(红,冲过头震荡) 与 PD(绿,阻尼收敛) 对目标线(虚线)。', anchor: '.fk-svg' }, { at: '读数', is: '控制器、位置 vs 目标、误差 e、控制量 u=P(+D)。', anchor: '.scdim' }],

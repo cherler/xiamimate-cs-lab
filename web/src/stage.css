@@ -4820,3 +4820,22 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .slam-info.ok{border-left:3px solid var(--hit);background:color-mix(in srgb,var(--hit) 6%,var(--panel))}
 .slam-info .km-ml.brake{color:var(--miss)}
 .slam-info .km-ml.ok{color:var(--hit)}
+
+/* ── 阻抗/力控 impedance ── */
+.imp-track{stroke:var(--line);stroke-width:2}
+.imp-wall{fill:color-mix(in srgb,var(--dim) 22%,var(--panel));stroke:var(--dim);stroke-width:1}
+.imp-tgt{stroke:var(--faint);stroke-width:1.5;stroke-dasharray:4 3}
+.imp-spring{fill:none;stroke:var(--now);stroke-width:1.8}
+.imp-arm{fill:var(--hit);stroke:var(--panel);stroke-width:1.5;rx:3}
+.imp-arm.slam{fill:var(--miss)}
+.imp-lbl{font-family:var(--mono);font-size:10px;fill:var(--faint)}
+.imp-cmp{display:flex;flex-direction:column;gap:8px;margin:4px 0}
+.imp-bar{display:flex;align-items:center;gap:10px}
+.imp-bl{flex:0 0 108px;font-size:12px;color:var(--dim)}
+.imp-track2{flex:1;height:14px;background:var(--sunk-3);border-radius:7px;overflow:hidden}
+.imp-fill{height:100%;border-radius:7px;transition:width .2s}
+.imp-fill.slam{background:var(--miss)}
+.imp-fill.soft{background:var(--hit)}
+.imp-bv{flex:0 0 56px;text-align:right;font-family:var(--mono);font-size:13px;font-weight:700}
+.imp-bv.slam{color:var(--miss)}
+.imp-bv.soft{color:var(--hit)}

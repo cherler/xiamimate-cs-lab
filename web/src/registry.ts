@@ -324,6 +324,7 @@ import { quatKernel, type QuatState } from '@engine/kernels/quat.ts'
 import { trajectoryKernel, type TrajState } from '@engine/kernels/trajectory.ts'
 import { icpKernel, type ICPState } from '@engine/kernels/icp.ts'
 import { slamKernel, type SLAMState } from '@engine/kernels/slam.ts'
+import { impedanceKernel, type ImpState } from '@engine/kernels/impedance.ts'
 import { objectstoreKernel } from '@engine/kernels/objectstore.ts'
 import { SysDesignStage } from './stages/SysDesignStage.tsx'
 import { SeckillStage } from './stages/SeckillStage.tsx'
@@ -341,6 +342,7 @@ import { QuatStage } from './stages/QuatStage.tsx'
 import { TrajStage } from './stages/TrajStage.tsx'
 import { ICPStage } from './stages/ICPStage.tsx'
 import { SLAMStage } from './stages/SLAMStage.tsx'
+import { ImpedanceStage } from './stages/ImpedanceStage.tsx'
 import { CollisionStage } from './stages/CollisionStage.tsx'
 import { gcnKernel, type GcnState } from '@engine/kernels/gcn.ts'
 import { GcnStage } from './stages/GcnStage.tsx'
@@ -6245,6 +6247,24 @@ const kalman: Experiment<KalmanState> = {
 }
 
 // ── 具身智能 · 机器人控制 ──
+const impedance: Experiment<ImpState> = {
+  id: 'impedance', group: '机器人控制', title: '阻抗 / 力控', subtitle: '柔顺接触：末端像虚拟弹簧，接触力可调',
+  kernel: impedanceKernel, defaultDoc: { kind: 'impedance', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '装配/打磨/协作等接触任务，机器人不能只盯位置。纯位置控制很刚：撞上工件为消位置误差会硬顶出巨大接触力。阻抗控制让末端像虚拟弹簧+阻尼 F=K(x目标−x)−D·ẋ，遇阻柔顺让步，接触力≈K×侵入、K 你自己设。本例命令去 x=8、墙在 x=5：刚性(K=200)硬顶 480N，阻抗(K=25)动态逼近、轻贴、力 settle 到 ~73N。位置/接触力由弹簧-阻尼-墙反力动力学真跑。',
+  bounds: ['接触任务:位置控制很刚→撞工件为消位置误差硬顶出巨大力(本例480N)、砸坏', '阻抗控制=末端像虚拟弹簧+阻尼 F=K(x目标−x)−D·ẋ,遇阻柔顺让步', '接触力≈K×侵入深度,K(刚度)是旋钮:软→轻贴/吸冲击/对人安全(本例73N),硬→接近位置控制', '变体:导纳控制(测力改位置)、混合力/位控(打磨:沿面控位/压向控力)、直接力控;靠力矩/力传感器测力'],
+  tabs: [{ id: 'design', label: '柔顺接触' }], Stage: ImpedanceStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: '柔顺贴合' } : s.phase === 'stiff' ? { key: 'bad', label: '刚性硬顶' } : { key: 'idle', label: s.phase === 'compliant' ? '阻抗逼近' : '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 8)),
+  tickLabel: s => (s.phase === 'done' ? '贴' : s.phase === 'stiff' ? '砸' : s.op === 'sample' ? `${s.t}` : '力'),
+  readouts: s => [
+    { label: '模式', value: s.phase === 'stiff' ? '刚性位置控制' : s.phase === 'done' ? '柔顺·稳定' : s.phase === 'compliant' ? '阻抗控制' : '就绪' },
+    { label: '末端位置', value: `${s.x}（墙 ${s.xWall}）` },
+    { label: '接触力', value: `${s.contactForce}N`, tone: s.contactForce > 200 ? 'bad' : s.contactForce > 0 ? 'good' : undefined },
+    { label: '刚性 vs 柔顺', value: `${s.stiffForce}N vs ${s.phase === 'done' ? s.contactForce : '~73'}N` },
+  ],
+}
+
+// ── 具身智能 · 机器人控制 ──
 const pid: Experiment<PIDState> = {
   id: 'pid', group: '机器人控制', title: 'PID 控制', subtitle: '纯 P 震荡 vs 加 D 阻尼收敛到目标',
   kernel: pidKernel, defaultDoc: { kind: 'pid', params: {}, entities: [], streams: [] }, params: [],
@@ -6325,7 +6345,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, ik, jacobian, quat, trajectory, kalman, icp, slam, pid, rrt,
+  fk, ik, jacobian, quat, trajectory, kalman, icp, slam, impedance, pid, rrt,
 ] as unknown as AnyExperiment[]
 
 /**
