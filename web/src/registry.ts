@@ -320,6 +320,7 @@ import { jacobianKernel, type JacoState } from '@engine/kernels/jacobian.ts'
 import { kalmanKernel, type KalmanState } from '@engine/kernels/kalman.ts'
 import { pidKernel, type PIDState } from '@engine/kernels/pid.ts'
 import { rrtKernel, type RRTState } from '@engine/kernels/rrt.ts'
+import { quatKernel, type QuatState } from '@engine/kernels/quat.ts'
 import { objectstoreKernel } from '@engine/kernels/objectstore.ts'
 import { SysDesignStage } from './stages/SysDesignStage.tsx'
 import { SeckillStage } from './stages/SeckillStage.tsx'
@@ -333,6 +334,7 @@ import { JacobianStage } from './stages/JacobianStage.tsx'
 import { KalmanStage } from './stages/KalmanStage.tsx'
 import { PIDStage } from './stages/PIDStage.tsx'
 import { RRTStage } from './stages/RRTStage.tsx'
+import { QuatStage } from './stages/QuatStage.tsx'
 import { CollisionStage } from './stages/CollisionStage.tsx'
 import { gcnKernel, type GcnState } from '@engine/kernels/gcn.ts'
 import { GcnStage } from './stages/GcnStage.tsx'
@@ -6184,6 +6186,23 @@ const jacobian: Experiment<JacoState> = {
   ],
 }
 
+const quat: Experiment<QuatState> = {
+  id: 'quat', group: '机器人学基础', title: '位姿与四元数', subtitle: '轴-角→四元数→矩阵→转向量；欧拉角万向锁',
+  kernel: quatKernel, defaultDoc: { kind: 'quat', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '机器人表达"朝向"有几种等价写法：欧拉角(直观但万向锁)、旋转矩阵(3×3)、四元数(4 个数、无奇异、首选)。绕 z 轴 90°：q=(cos45°,0,0,sin45°)=(0.707,0,0,0.707) |q|=1；转成 R 把 (1,0,0) 转到 (0,1,0)；自乘 q⊗q=转 180°→(-1,0,0)；最后 pitch=90° 时三组不同欧拉角给出同一个 R(万向锁)。四元数/矩阵/向量全真算。',
+  bounds: ['轴-角→四元数:q=(cos(θ/2),sin(θ/2)·轴),|q|=1;4个数编码旋转(矩阵要9个带6约束)', '四元数→旋转矩阵R,R乘向量把它转过去;绕z90°把(1,0,0)转到(0,1,0)', '组合旋转=四元数相乘q1⊗q2(不可交换),比连乘矩阵省、不漂移', '欧拉角pitch=90°万向锁:yaw和roll锁成一个自由度(三组不同角同一R);四元数无奇异,首选(IMU/SLAM/图形)'],
+  tabs: [{ id: 'design', label: '旋转表示' }], Stage: QuatStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: '四元数首选' } : s.phase === 'gimbal' ? { key: 'bad', label: '万向锁' } : { key: 'idle', label: s.phase === 'quat' ? '轴角→四元数' : s.phase === 'matrix' ? '→旋转矩阵' : s.phase === 'rotate' ? '转向量' : s.phase === 'compose' ? '相乘组合' : '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 7)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.phase === 'gimbal' ? '锁' : s.op === 'quat' ? 'q' : s.op === 'matrix' ? 'R' : s.op === 'rotate' ? 'v' : s.op === 'compose' ? '⊗' : '姿'),
+  readouts: s => [
+    { label: '四元数 q', value: `(${s.q.join(', ')})` },
+    { label: '|q|²', value: `${s.qnorm}`, tone: 'good' },
+    { label: '累计转角', value: `${s.angleShown}°` },
+    { label: '当前向量', value: `(${s.vecNow.join(', ')})` },
+  ],
+}
+
 // ── 具身智能 · 机器人感知 ──
 const kalman: Experiment<KalmanState> = {
   id: 'kalman', group: '机器人感知', title: '卡尔曼滤波', subtitle: '预测+观测按方差融合：机器人定位的地基',
@@ -6249,7 +6268,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, ik, jacobian, kalman, pid, rrt,
+  fk, ik, jacobian, quat, kalman, pid, rrt,
 ] as unknown as AnyExperiment[]
 
 /**

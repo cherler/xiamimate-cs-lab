@@ -417,6 +417,22 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; op: string; singular: boolean; det: number }; return st.singular ? '奇异·丢自由度' : st.phase === 'done' ? '可逆' : st.op === 'apply' ? '速度映射' : st.op === 'build' ? '求 J' : st.op === 'det' ? `det=${st.det}` : '就绪'; },
     try: [{ act: '看 J 的两列', watch: '每一列 = 只转那个关节时末端往哪动；θ̇=[1,0] 的末端速度就是第 1 列 (-2.732, 0.732)。' }, { act: '看伸直时的奇异', watch: 'θ2=0 手臂伸直 → det(J)=L1L2 sin0=0，J 两列平行，末端只能沿一条线动、丢了一个自由度，J⁻¹ 爆炸——这就是奇异构型。' }], terms: [],
   },
+  quat: {
+    question: '机器人的"朝向"怎么表示？为什么用四元数而不是直观的欧拉角（roll/pitch/yaw）？',
+    read: [{ at: '向量旋转', is: 'xy 平面里向量随四元数转过去（起始虚箭头→当前实箭头）。', anchor: '.fk-svg' }, { at: '读数', is: '四元数 q=(w,x,y,z)、|q|²、累计转角。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { phase: string; op: string; q: number[]; qnorm: number; R: number[][]; vecNow: number[]; angleShown: number; eulerSets: { yaw: number; pitch: number; roll: number }[]; focus: string }; return [
+      { k: '本步输入', v: st.phase === 'intro' ? '绕 z 轴转 90°，向量 (1,0,0)' : st.op === 'quat' ? '轴-角 (0,0,1)、90°' : st.op === 'matrix' ? '四元数 → 旋转矩阵' : st.op === 'rotate' ? 'R 乘向量 (1,0,0)' : st.op === 'compose' ? '再转 90°（四元数自乘）' : st.op === 'gimbal' ? 'pitch=90° 的三组欧拉角' : '收束' },
+      { k: '判定规则', v: 'q=(cos(θ/2), sin(θ/2)·轴)，|q|=1；四元数→矩阵有固定公式，R 乘向量=转它；组合旋转=四元数相乘(不可交换)；欧拉角 pitch=90° 时 yaw 与 roll 绕同轴→丢自由度(万向锁)。' },
+      { k: '本步结果', v: st.op === 'quat' ? `q=(${st.q.join(', ')})，|q|²=${st.qnorm}`
+        : st.op === 'matrix' ? `R=[[${st.R[0].join(',')}],[${st.R[1].join(',')}],[${st.R[2].join(',')}]]`
+          : st.op === 'rotate' ? `R·(1,0,0)=(${st.vecNow.join(', ')})，x 轴→y 轴`
+            : st.op === 'compose' ? `q⊗q → 转 ${st.angleShown}°，(1,0,0)→(${st.vecNow.join(', ')})`
+              : st.op === 'gimbal' ? `三组不同欧拉角(yaw−roll 都=30)→同一个 R，丢一个自由度`
+                : st.phase === 'done' ? '四元数：4 数、无奇异、好插值 → 机器人首选' : '就绪' },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; op: string; angleShown: number }; return st.phase === 'done' ? '四元数首选' : st.phase === 'gimbal' ? '万向锁' : st.op === 'quat' ? '轴角→q' : st.op === 'matrix' ? '→矩阵' : st.op === 'rotate' ? `转 ${st.angleShown}°` : st.op === 'compose' ? '相乘组合' : '就绪'; },
+    try: [{ act: '看 |q| 恒为 1', watch: '绕轴转 θ → q=(cos(θ/2), sin(θ/2)·轴)，w²+x²+y²+z²=1。只用 4 个数编码一个旋转，比矩阵的 9 个省。' }, { act: '看万向锁', watch: 'pitch=90° 时 (30,90,0)、(60,90,30)、(50,90,20) 给出同一个 R——yaw 和 roll 锁成一个、丢一个自由度。四元数没这毛病，所以机器人/IMU 用它。' }], terms: [],
+  },
   kalman: {
     question: '里程计会漂、GPS 会跳，机器人怎么把两个都不准的信息融合成一个更准的位置估计？',
     read: [{ at: '滤波图', is: '真值(绿)、GPS观测(空心)、融合估计(橙)带 ±√P 不确定带。', anchor: '.fk-svg' }, { at: '读数', is: '本拍、估计 x vs 真值、方差 P、增益 K。', anchor: '.scdim' }],

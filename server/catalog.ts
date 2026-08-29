@@ -95,6 +95,7 @@ import { feedKernel } from '../src/kernels/feed.ts'
 import { fkKernel } from '../src/kernels/fk.ts'
 import { ikKernel } from '../src/kernels/ik.ts'
 import { jacobianKernel } from '../src/kernels/jacobian.ts'
+import { quatKernel } from '../src/kernels/quat.ts'
 import { kalmanKernel } from '../src/kernels/kalman.ts'
 import { pidKernel } from '../src/kernels/pid.ts'
 import { rrtKernel } from '../src/kernels/rrt.ts'
@@ -1641,6 +1642,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: '给二连杆机械臂(L1=L2=2)一个末端目标，什么情况下逆运动学无解(够不到)?', kind: 'choice',
         compute: () => ({ answer: '目标到基座距离 r 超出可达范围 [|L1−L2|, L1+L2]=[0,4] 时无解：太远(r>4)伸直也够不到、太近(r<|L1−L2|)缩不进去。本例目标(2,2) r=2.828 在范围内够得到；(4.5,0) r=4.5>4 就无解', step: 1, evidence: 'r=2.828 ∈ [0,4] 够得到；r=4.5 > 4 手臂伸直也够不到' }),
         distractors: () => ['IK 永远有解，机械臂能到任何点', '只有目标在原点时无解', '关节数不够时才无解，和距离无关'],
+      },
+    ],
+  },
+  {
+    id: 'quat', title: '位姿与四元数', kernel: quatKernel as Kernel<unknown>, doc: trivialDoc('quat'),
+    facts: [
+      {
+        id: 'quat_unit', label: '四元数为什么单位、几个数',
+        ask: '机器人用四元数表示旋转，绕单位轴转 θ 的四元数怎么写、有什么约束?', kind: 'choice',
+        compute: () => ({ answer: 'q=(w,x,y,z)=(cos(θ/2), sin(θ/2)·轴)，始终 |q|=1(单位四元数)。只用 4 个数编码一个旋转，比旋转矩阵的 9 个数(带 6 个正交约束)紧凑得多', step: 1, evidence: '本例绕 z 转 90° → q=(0.707,0,0,0.707)，|q|²=0.707²+0.707²=1' }),
+        distractors: () => ['q=(θ, 轴)，共 4 个数、无约束', '四元数是 3 个数、和欧拉角一样', 'q 的模可以是任意值'],
+      },
+      {
+        id: 'gimbal_lock', label: '万向锁：为什么不用欧拉角',
+        ask: '欧拉角(roll/pitch/yaw)表示旋转有个致命问题叫"万向锁"，它具体是什么、什么时候发生?', kind: 'choice',
+        compute: () => ({ answer: 'pitch=±90° 时 yaw 和 roll 变成绕同一根轴转，只剩它们的差起作用 → 丢一个自由度，本该三个独立角变两个。四元数和旋转矩阵没有这个奇异', step: 5, evidence: '本例 pitch=90° 时 (30,90,0)、(60,90,30)、(50,90,20) 三组不同角给出同一个旋转矩阵' }),
+        distractors: () => ['欧拉角超过 360° 会溢出', '欧拉角计算量太大', '万向锁只发生在四元数上'],
       },
     ],
   },
