@@ -94,6 +94,7 @@ import { bufferpoolKernel } from '../src/kernels/bufferpool.ts'
 import { feedKernel } from '../src/kernels/feed.ts'
 import { fkKernel } from '../src/kernels/fk.ts'
 import { ikKernel } from '../src/kernels/ik.ts'
+import { jacobianKernel } from '../src/kernels/jacobian.ts'
 import { objectstoreKernel } from '../src/kernels/objectstore.ts'
 import { queryplanKernel } from '../src/kernels/queryplan.ts'
 import { wildcardKernel } from '../src/kernels/wildcard.ts'
@@ -1637,6 +1638,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: '给二连杆机械臂(L1=L2=2)一个末端目标，什么情况下逆运动学无解(够不到)?', kind: 'choice',
         compute: () => ({ answer: '目标到基座距离 r 超出可达范围 [|L1−L2|, L1+L2]=[0,4] 时无解：太远(r>4)伸直也够不到、太近(r<|L1−L2|)缩不进去。本例目标(2,2) r=2.828 在范围内够得到；(4.5,0) r=4.5>4 就无解', step: 1, evidence: 'r=2.828 ∈ [0,4] 够得到；r=4.5 > 4 手臂伸直也够不到' }),
         distractors: () => ['IK 永远有解，机械臂能到任何点', '只有目标在原点时无解', '关节数不够时才无解，和距离无关'],
+      },
+    ],
+  },
+  {
+    id: 'jacobian', title: '雅可比矩阵', kernel: jacobianKernel as Kernel<unknown>, doc: trivialDoc('jacobian'),
+    facts: [
+      {
+        id: 'jaco_meaning', label: '雅可比矩阵是什么',
+        ask: '机器人学里的雅可比矩阵 J 把什么映射成什么？它的每一列代表什么?', kind: 'choice',
+        compute: () => ({ answer: 'J 把关节角速度线性映成末端线速度：ẋ=Jθ̇，J=末端(x,y)对关节(θ1,θ2)的偏导。每一列 = 只转那个关节时末端往哪动；反着用 J⁻¹ 就是速度层 IK', step: 1, evidence: '本例 J=[[-2.732,-1.732],[0.732,-1]]；θ̇=[1,0]→末端速度=第1列(-2.732,0.732)' }),
+        distractors: () => ['把末端位置映成关节角(那是 IK)', '把力映成加速度', 'J 是常数矩阵，和构型无关'],
+      },
+      {
+        id: 'singularity', label: '奇异构型：det(J)=0',
+        ask: '二连杆机械臂 det(J)=L1·L2·sinθ2，什么构型下 J 奇异、末端会丢一个自由度?', kind: 'choice',
+        compute: () => ({ answer: 'θ2=0(手臂完全伸直)或 180°(对折)时 sinθ2=0 → det(J)=0、J 奇异：两列平行，末端此刻只能沿一个方向动、丢一个自由度，J⁻¹ 爆炸。工程上要绕开或用阻尼最小二乘', step: 5, evidence: '本例 θ2=90° 时 det=4 可逆；θ2=0 伸直时 det=0 奇异、两列平行' }),
+        distractors: () => ['θ1=0 时奇异', '关节速度过大时奇异', 'J 永远可逆、不会奇异'],
       },
     ],
   },

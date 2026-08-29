@@ -398,6 +398,25 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; op: string; reachable: boolean; solutions: unknown[] }; return st.phase === 'done' ? `${st.solutions.length} 组解` : !st.reachable ? '无解' : st.op === 'branch' ? `解出第 ${st.solutions.length} 支` : st.op === 'cosine' ? '余弦定理' : st.op === 'reach' ? '判可达' : '就绪'; },
     try: [{ act: '看 ± 两支解', watch: 'cosθ2=0 → θ2=±90°，正负两支就是肘朝下(0°,90°)、肘朝上(90°,−90°)两种姿势，够到同一点 (2,2)。' }, { act: '想无解的情况', watch: '目标 (4.5,0) 的 r=4.5 超出可达上界 4，手臂伸直也够不到——这就是 IK 的"无解"，FK 永远不会遇到。' }], terms: [],
   },
+  jacobian: {
+    question: '关节以某个角速度转，机械臂末端会以什么速度、朝哪动？手臂伸直时为什么会"卡住"？',
+    read: [{ at: '臂+速度箭头', is: '当前构型的臂 + 末端速度向量(绿箭头)。', anchor: '.fk-svg' }, { at: 'J 矩阵', is: '2×2 雅可比与 det；奇异时标红。', anchor: '.jc-matwrap' }],
+    step: (s: never) => { const st = s as { phase: string; op: string; theta1: number; theta2: number; J: number[][]; det: number; singular: boolean; dtheta: [number, number] | null; endVel: { vx: number; vy: number } | null; focus: string }; return [
+      { k: '本步输入', v: st.phase === 'done' ? '把 θ2 转到 0（手臂伸直）看奇异' : st.op === 'build' ? `在 θ=[${st.theta1}°,${st.theta2}°] 求 J` : st.op === 'apply' ? `施加关节速度 θ̇=[${st.dtheta?.[0]}, ${st.dtheta?.[1]}]` : st.op === 'det' ? '算 det(J) 判可逆' : '准备' },
+      { k: '判定规则', v: '雅可比 J=末端(x,y)对关节(θ1,θ2)的偏导；ẋ=Jθ̇ 把关节速度线性映成末端速度。det(J)=L1L2 sinθ2：≠0 可逆(能反解)，=0 奇异(两列平行、末端丢一个自由度、J⁻¹ 爆炸)。' },
+      { k: '本步结果', v: st.phase === 'done'
+        ? `θ2=0 手臂伸直 → det(J)=${st.det} 奇异！两列平行，末端只能沿一个方向动、丢自由度`
+        : st.op === 'build'
+          ? `J=[[${st.J[0][0]}, ${st.J[0][1]}], [${st.J[1][0]}, ${st.J[1][1]}]]`
+          : st.op === 'apply'
+            ? `末端速度 = (${st.endVel?.vx}, ${st.endVel?.vy})`
+            : st.op === 'det'
+              ? `det(J)=${st.det} ≠ 0 → 可逆，能反解关节速度(速度层 IK)`
+              : '就绪' },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; op: string; singular: boolean; det: number }; return st.singular ? '奇异·丢自由度' : st.phase === 'done' ? '可逆' : st.op === 'apply' ? '速度映射' : st.op === 'build' ? '求 J' : st.op === 'det' ? `det=${st.det}` : '就绪'; },
+    try: [{ act: '看 J 的两列', watch: '每一列 = 只转那个关节时末端往哪动；θ̇=[1,0] 的末端速度就是第 1 列 (-2.732, 0.732)。' }, { act: '看伸直时的奇异', watch: 'θ2=0 手臂伸直 → det(J)=L1L2 sin0=0，J 两列平行，末端只能沿一条线动、丢了一个自由度，J⁻¹ 爆炸——这就是奇异构型。' }], terms: [],
+  },
   topk: {
     question: '内存装不下全部计数，怎么求出现最多的 K 个？哈希分片和小顶堆各解决什么？',
     read: [{ at: '分片表', is: '各片的词→计数；同一个词只会在一片里。', anchor: '.tk-shards' }, { at: '小顶堆', is: 'K 个槽，堆顶(门槛)高亮；新词比门槛大才挤进来。', anchor: '.tk-heap' }],

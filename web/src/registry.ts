@@ -316,6 +316,7 @@ import { topkKernel, type TopkState } from '@engine/kernels/topk.ts'
 import { feedKernel, type FeedState } from '@engine/kernels/feed.ts'
 import { fkKernel, type FKState } from '@engine/kernels/fk.ts'
 import { ikKernel, type IKState } from '@engine/kernels/ik.ts'
+import { jacobianKernel, type JacoState } from '@engine/kernels/jacobian.ts'
 import { objectstoreKernel } from '@engine/kernels/objectstore.ts'
 import { SysDesignStage } from './stages/SysDesignStage.tsx'
 import { SeckillStage } from './stages/SeckillStage.tsx'
@@ -325,6 +326,7 @@ import { MqStage } from './stages/MqStage.tsx'
 import { FeedStage } from './stages/FeedStage.tsx'
 import { FKStage } from './stages/FKStage.tsx'
 import { IKStage } from './stages/IKStage.tsx'
+import { JacobianStage } from './stages/JacobianStage.tsx'
 import { CollisionStage } from './stages/CollisionStage.tsx'
 import { gcnKernel, type GcnState } from '@engine/kernels/gcn.ts'
 import { GcnStage } from './stages/GcnStage.tsx'
@@ -6159,6 +6161,23 @@ const ik: Experiment<IKState> = {
   ],
 }
 
+const jacobian: Experiment<JacoState> = {
+  id: 'jacobian', group: '机器人学基础', title: '雅可比矩阵', subtitle: '关节速度↔末端速度；det=0 奇异丢自由度',
+  kernel: jacobianKernel, defaultDoc: { kind: 'jacobian', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: 'FK/IK 求位置之上的速度层：关节以什么角速度转、末端就以什么线速度动，矩阵就是雅可比 J（末端 x,y 对关节 θ 的偏导）。ẋ=Jθ̇ 正着算末端速度、θ̇=J⁻¹ẋ 反着做速度层 IK。det(J)=L1L2 sinθ2，手臂伸直(θ2=0)时 det=0 奇异、丢自由度、J⁻¹ 爆炸。矩阵/速度全真算。',
+  bounds: ['雅可比 J=∂(末端x,y)/∂(关节θ1,θ2);ẋ=Jθ̇ 关节速度线性映成末端速度', 'J每一列=只转该关节时末端往哪动;任意末端速度=两列线性组合', 'det(J)=L1·L2·sinθ2;≠0可逆→能反解(速度层IK,沿直线走/力控)', 'θ2=0伸直或180°对折→det=0奇异,两列平行,末端丢一个自由度,J⁻¹爆炸;工程绕开或用阻尼最小二乘'],
+  tabs: [{ id: 'design', label: '速度映射' }], Stage: JacobianStage, whyInRail: true,
+  tone: s => (s.singular ? { key: 'bad', label: '奇异' } : s.phase === 'done' ? { key: 'good', label: '可逆' } : { key: 'idle', label: s.phase === 'build' ? '求 J' : s.phase === 'apply' ? '速度映射' : s.phase === 'det' ? '判可逆' : '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => (s.singular ? '奇' : s.phase === 'done' ? '毕' : s.op === 'apply' ? 'v' : s.op === 'build' ? 'J' : s.op === 'det' ? 'd' : '雅'),
+  readouts: s => [
+    { label: '当前构型', value: `θ=[${s.theta1}°,${s.theta2}°]` },
+    { label: 'det(J)', value: `${s.det}`, tone: s.singular ? 'bad' : 'good' },
+    { label: 'J 状态', value: s.singular ? '奇异·丢自由度' : '可逆', tone: s.singular ? 'bad' : 'good' },
+    { label: '末端速度', value: s.endVel ? `(${s.endVel.vx}, ${s.endVel.vy})` : '—' },
+  ],
+}
+
 export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
@@ -6170,7 +6189,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, ik,
+  fk, ik, jacobian,
 ] as unknown as AnyExperiment[]
 
 /**

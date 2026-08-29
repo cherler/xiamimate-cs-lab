@@ -4680,3 +4680,19 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .ik-reachbox{padding:9px 13px;border-radius:9px;font-family:var(--mono);font-size:12px;text-align:center}
 .ik-reachbox.ok{color:var(--hit);background:color-mix(in srgb,var(--hit) 9%,var(--panel));border:1px solid color-mix(in srgb,var(--hit) 40%,var(--line))}
 .ik-reachbox.no{color:var(--miss);background:color-mix(in srgb,var(--miss) 9%,var(--panel));border:1px solid var(--miss)}
+
+/* ── 雅可比矩阵（复用 .fk-* 画臂）── */
+.fk-link.jc-straight{stroke:var(--miss)}
+.jc-vel{stroke:var(--hit);stroke-width:2.5}
+.jc-vlbl{font-family:var(--mono);font-size:10px;fill:var(--hit)}
+.jc-matwrap{border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.jc-mat{display:flex;align-items:stretch;justify-content:center;gap:4px;padding:12px 10px;background:var(--panel-2)}
+.jc-mat.sing{background:color-mix(in srgb,var(--miss) 7%,var(--panel))}
+.jc-br{font-size:44px;color:var(--faint);font-weight:300;line-height:1}
+.jc-cells{display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;align-items:center;padding:2px 0}
+.jc-cells span{font-family:var(--mono);font-size:14px;font-weight:600;color:var(--ink);text-align:right;min-width:52px}
+.jc-det{padding:7px 12px;font-family:var(--mono);font-size:12px;color:var(--hit);border-top:1px solid var(--line-soft);text-align:center}
+.jc-det.sing{color:var(--miss);font-weight:600}
+.jc-map{border:1px solid var(--line);border-radius:9px;padding:9px 12px;background:var(--sunk-2)}
+.jc-mk{font-size:11px;color:var(--faint)}
+.jc-mv{font-family:var(--mono);font-size:12.5px;color:var(--ink);margin-top:2px}
