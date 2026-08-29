@@ -27,6 +27,11 @@ const FOE={
  // Boss
 }
 /* 第二类 · 失误:攻击的是「你的执行」,不是提供可被处理的对象 → 环境效果 */
+const GFOE={
+ netsplit:{graph:1,n:36,cut:3,name:'断开的社交网络',note:'每回合断 3 条边 —— 桥优先',kind:'小怪'},
+ shatter: {graph:1,n:40,cut:4,name:'分区故障',note:'每回合断 4 条边',kind:'小怪'},
+ partition:{graph:1,n:44,cut:5,name:'脑裂',note:'每回合断 5 条边,而且专断桥',kind:'精英'},
+}
 const FLAW={
  offByOne:{name:'差一错误', note:'移除 ≥6 时 −1 个、处理量 −10%(边界都差一格)'},
  nullPtr: {name:'空指针',   note:'每回合随机一张手牌不可用'},
@@ -38,7 +43,7 @@ const FLAW={
 const FOE2={
  expo:    {n:22,shape:'random',mult:1.35,shuffle:0,name:'指数爆炸',note:'每回合末规模 ×倍率 — 加输出没用,得剪枝降阶',kind:'Boss'},
 }
-Object.assign(FOE,FOE2)
+Object.assign(FOE,FOE2,GFOE)
 /* ═══ 3. 卡池 ═══ */
 const C={},def=(id,name,cost,tag,note,fn,ex)=>C[id]={id,name,cost,tag,note,fn,exhaust:!!ex}
 def('scan','遍历',1,'base','16 点处理量,平均分给每个元素',S=>workTotal(S,16))
@@ -88,6 +93,7 @@ def('prefetch','预读',0,'deck','看牌库顶 3 张,最贵的一张进手,其�
    let bi=0;for(let i=1;i<top.length;i++)if(C[top[i]].cost>C[top[bi]].cost)bi=i
    if(S.hand.length<T.HANDMAX)S.hand.push(top.splice(bi,1)[0])
    S.draw.push(...top)})
+let GCLUST=6, GDENS=3   // 图:每簇几个节点 / 簇内每点连几个邻居(1 = 链状,桥多)
 let HEAPCUT=7   // 堆自动弹出的高度门槛
 let PREFIX=1.25 // 前缀和对摊平类的放大
 let SHUFMUL=1   // 同上:严格口径下每次打乱的破坏力变大,强度要下调
@@ -181,6 +187,29 @@ def('batchc','批量提交',2,'def','本回合末开销固定为 4,不管规模�
   S=>{S.fixCost=4})
 def('incr','增量更新',1,'def','本回合末按【上回合的规模】收开销',
   S=>{S.useLastN=true})
+/* ── 流派七 · 图算法。战场不是柱状图,是节点和边 ──
+   胜利条件也不同:不是「减到 0」,是「让所有点连通」。
+   玩家加边,敌人断边。开销按连通块数收 —— 越散越贵,合并有即时回报。 */
+def('bfs','广度优先',1,'graph','从最大块【同时】向外并入 1 个最近的节点',
+  S=>{if(S.G)gLink(S.G,S.G.mainComp,1,false)})
+def('dfs','深度优先',1,'graph','沿一条链【连续】并入 2 个 —— 伸出一条须',
+  S=>{if(S.G)gLink(S.G,S.G.mainComp,2,true)})
+def('dsu','并查集',2,'graph','直接合并最大的两块 —— 不看距离',
+  S=>{if(S.G)gMerge(S.G)})
+def('sp','最短路',2,'graph','把最大块连到【最远的】那一块',
+  S=>{if(!S.G)return;const G=S.G
+   const main=G.nodes.filter(n=>n.comp===G.mainComp)
+   let bi=null,bj=null,bd=-1
+   for(const a of main)for(const b of G.nodes){ if(b.comp===a.comp)continue
+    const d=gd(a,b);if(d>bd){bd=d;bi=a;bj=b}}
+   if(bi){G.edges.push({a:bi.id,b:bj.id,alive:true,mine:true});comps(G);gMain(G)}})
+def('mst','生成树',2,'graph','一口气并入 3 个最近的节点',
+  S=>{if(S.G)gLink(S.G,S.G.mainComp,3,false)},1)
+def('bridge','桥加固',1,'graph','把最关键的 3 条边加固 —— 敌人断不掉,进展就锁住了',
+  S=>{if(!S.G)return;const G=S.G,live=G.edges.filter(e=>e.alive&&!e.safe)
+   const scored=live.map(e=>{e.alive=false;const nc=comps(G);e.alive=true;return{e,nc}})
+    .sort((a,b)=>b.nc-a.nc)
+   scored.slice(0,3).forEach(o=>o.e.safe=true);comps(G);gMain(G)})
 def('prune','剪枝',1,'tool','增长倍率 −0.25;涌入 −1',S=>{S.mult=Math.max(1,S.mult-.25);S.inflow=Math.max(0,S.inflow-1)})
 def('backtrack','回溯',2,'tool','预算 +12(每场限一次)',S=>{S.budget+=12},1)
 def('guard','边界条件',1,'tool','解除死循环;本回合免疫失误',S=>{S.guarded=true;S.loopBroken=true})
@@ -198,6 +227,7 @@ const STARTERS={
  greedy:['scan','scan','scan','scan','batch','batch','batch','cache','prefetch','memoize'],
  heap:  ['scan','scan','scan','batch','batch','batch','cache','prefetch','memoize','sortdeck'],
  twop:  ['scan','scan','scan','batch','batch','batch','cache','prefetch','memoize','sortdeck'],
+ graph: ['batch','batch','batch','batch','cache','cache','prefetch','memoize','sortdeck','bridge'],
 }
 const starterOf=k=>STARTERS[k]||STARTERS.base
 const KITS={base:[],sort:['insertion','merge','quick','bsearch','counting','median'],
@@ -205,7 +235,8 @@ const KITS={base:[],sort:['insertion','merge','quick','bsearch','counting','medi
  memo:['pre','pre','table','lookup','lookup','dp'],
  greedy:['greedy','local','heur','heur','anneal','approx'],
  heap:['buildheap','heapify','poptop','heapsort','medstream','poptop'],
- twop:['twoptr','window','prefix','diff','merge2','monoq']}
+ twop:['twoptr','window','prefix','diff','merge2','monoq'],
+ graph:['bfs','dfs','dsu','bridge','bridge','mst']}
 const DECKCARDS=['sortdeck','fetch','prefetch','memoize','compress']
 const REWARD_POOL=[...new Set([...KITS.sort,...KITS.dc,...KITS.memo,...KITS.greedy,...KITS.heap,...KITS.twop]),
  ...DECKCARDS,'prune','prune','prune','prune','backtrack','hash','guard','guard','topk','topk',
@@ -313,6 +344,10 @@ const ACTS={
  explode2:{name:'状态翻倍',desc:'预处理值砍半',
   fn(S){const d=Math.floor(S.memo/2);S.diag.lostMemo+=d;S.memo-=d}},
  atomic:{name:'凝固',desc:'段数 −1',fn(S){S.splits=Math.max(1,S.splits-1)}},
+ netsplit:{name:'网络分裂',desc:'一次断掉 3 条边',fn(S){gCut(S.G,3)}},
+ shatter:{name:'级联故障',desc:'一次断掉 4 条边',fn(S){gCut(S.G,4)}},
+ partition:{name:'脑裂',desc:'断掉 5 条边,加固全部失效',
+  fn(S){S.G.edges.forEach(e=>e.safe=false);gCut(S.G,5)}},
  expo:{name:'链式爆炸',desc:'这一次额外 +25% 规模',
   fn(S){const add=Math.ceil(N(S)*.25);for(let i=0;i<add;i++)push1(S)}},
 }
@@ -326,6 +361,11 @@ function newFight(seed,deck,foeId,budget,flawId,depth=0){
   draw:[...deck],hand:[],discard:[],exhaust:[],over:null,
   totalWork:0,diag:{plays:{},lostKill:0,lostWork:0,evicted:0,lostMemo:0,lostSort:0,flawLoss:0,extraDebt:0,extraInflow:0,sortDecay:0,memoDecayed:0,spent:0,turns:0}}
  S.totalWork=S.bars.reduce((a,b)=>a+b.v,0);S.n0=S.bars.length
+ if(E.graph){ // 图战场:没有柱子,只有节点和边
+  S.mode='graph';S.bars=[]
+  const A={x:300,y:200,w:900,h:470}
+  S.G=makeGraph(Math.round(E.n*(1+DEPTHMUL*depth)),R,A)
+  gMain(S.G);S.nc0=S.G.nc;S.totalWork=1;S.n0=S.G.nodes.length}
  shuffle(S);drawN(S,T.HAND);return S}
 const canPlay=(S,i)=>{const c=C[S.hand[i]];return c&&S.steps>=c.cost&&!S.over&&!(S.locked===i&&!S.guarded)}
 function play(S,i){if(!canPlay(S,i))return false
@@ -343,6 +383,20 @@ function play(S,i){if(!canPlay(S,i))return false
  if(c.id!=='memoize')S.lastPlayed=c.id
  check(S);return true}
 function endTurn(S){if(S.over)return
+ if(S.mode==='graph'){
+  const G=S.G, b0=G.nc
+  // 越散越贵 —— 合并有即时回报,这就是「让所有点连通」和「活下去」对齐的地方
+  let cost=2+G.nc*2
+  cost=Math.max(0,cost-(S.shield||0))
+  if(S.skipCost)cost=0
+  S.diag.spent+=cost;S.diag.turns++;S.budget-=cost
+  const cut=gCut(G,S.E.cut||1)
+  S.film.push({v:[],cards:S.turnCards.slice(),act:S.lastAct||null,nc:G.nc,big:G.big})
+  const ACT2=ACTS[S.foeId]
+  if(ACT2){S.actIn--;if(S.actIn<=0){ACT2.fn(S);S.actIn=ACTEVERY;S.lastAct=ACT2.name}else S.lastAct=null}
+  S.shield=0;S.skipCost=false;S.turnPlays=0;S.turnCards=[];S.lastCut=cut;S.lastNc=b0
+  S.discard.push(...S.hand);S.hand=[];S.steps=T.STEPS;S.turn++;S.guarded=false;S.firstPlay=true
+  drawN(S,T.HAND);check(S);return}
  const _b={n:N(S),budget:S.budget,memo:S.memo,tier:tier(S),hand:S.hand.length,ex:S.exhaust.length}
  let sizeFor=S.useLastN&&S.lastN?S.lastN:N(S)
  let base=S.fixCost?S.fixCost:Math.ceil(sizeFor/T.COST_DIV)
@@ -400,7 +454,9 @@ const push1=S=>{const b={id:_uid++,v:T.VMIN+Math.floor(S.R()*(S.vmax-T.VMIN+1)),
  S.totalWork+=b.v;S.bars.push(b)
  if(S.trig.listen){const a=alive(S);if(a.length){a[0].dead=true
   S.trigHit=(S.trigHit||[]).concat([['◆ 事件监听 · 涌入即清',CO.cyan]])}}}
-function check(S){if(N(S)<=0)S.over='win';else if(S.budget<=0)S.over='lose'
+function check(S){
+ if(S.mode==='graph'){ if(S.G.nc<=1)S.over='win';else if(S.budget<=0)S.over='lose';return}
+ if(N(S)<=0)S.over='win';else if(S.budget<=0)S.over='lose'
  // 牌被吃光后无牌可出:直接判负,不要拖成 70 回合的空转
  else if(!S.hand.length&&!S.draw.length&&!S.discard.length){S.over='lose';S.diag.decked=1}}
 
@@ -446,7 +502,15 @@ const POL={
        :pick(S,['heapify','medstream','poptop','heapsort','buildheap','scan','hash','batch']),
  // 区间流:先铺前缀和(放大所有摊平类),再靠位置操作切
  twop:S=>!S.prefix?pick(S,['prefix','window','twoptr','diff','scan','hash','batch'])
-       :pick(S,['window','merge2','twoptr','diff','scan','monoq','hash','batch'])}
+       :pick(S,['window','merge2','twoptr','diff','scan','monoq','hash','batch']),
+ // 图算法:块多先用并查集直接合并(不看距离),块少了再用便宜的就近并入
+ graph:S=>{const G=S.G
+   if(G&&G.nc>=4){const i=S.hand.indexOf('dsu');if(i>=0&&canPlay(S,i))return i}
+   if(G&&G.nc<=2){const i=S.hand.indexOf('sp');if(i>=0&&canPlay(S,i))return i}
+   // 连上的边如果不固住,下回合就被断回去 —— 有未加固的跨块边就先固
+   if(G){const weak=G.edges.filter(e=>e.alive&&!e.safe&&G.nodes[e.a].cl!==G.nodes[e.b].cl).length
+    if(weak>=1||S.actIn<=1){const i=S.hand.indexOf('bridge');if(i>=0&&canPlay(S,i))return i}}
+   return pick(S,['mst','dsu','bfs','dfs','sp','batch','prefetch','cache'])}}
 function pick(S,order){
  if(S.E.antiGreedy)order=order.filter(x=>!['greedy','local'].includes(x))   // 债务翻倍:别再借
  // 牌库卡各有各的时机 —— 不写清楚 AI 只会拿它们当兜底,量出来的平衡就是假的
@@ -587,8 +651,8 @@ addEventListener('resize',fit);fit()
 let RUN=null,S=null,offer=null,intel=null,parts=[],KIT='sort',anim=null,hist=[],poster=null
 const CO={bg0:'#050a12',bg1:'#0a141f',line:'rgba(90,150,190,.22)',panel:'rgba(12,24,38,.72)',
  ink:'#e6eef7',dim:'#8ba3bb',faint:'#4d6076',cyan:'#5fd0e8',amber:'#f0a94a',red:'#ff6b5e',green:'#7fd98f',
- tag:{base:'#a8c0d6',sort:'#f0a94a',dc:'#b39ddb',memo:'#7fd98f',greedy:'#ff8f6b',tool:'#5fd0e8',deck:'#9ecbff',heap:'#ffb3d9',twop:'#8ee6c8',def:'#c8b4ff'}}
-const TAGNAME={base:'起始',sort:'排序流',dc:'拆解流',memo:'复利流',greedy:'激进流',tool:'工具',deck:'牌库',heap:'堆流',twop:'区间流',def:'防御'}
+ tag:{base:'#a8c0d6',sort:'#f0a94a',dc:'#b39ddb',memo:'#7fd98f',greedy:'#ff8f6b',tool:'#5fd0e8',deck:'#9ecbff',heap:'#ffb3d9',twop:'#8ee6c8',def:'#c8b4ff',graph:'#7fd1ff'}}
+const TAGNAME={base:'起始',sort:'排序流',dc:'拆解流',memo:'复利流',greedy:'激进流',tool:'工具',deck:'牌库',heap:'堆流',twop:'区间流',def:'防御',graph:'图算法'}
 function startRun(k){KIT=k;RUN=newRun(Date.now()&0xffff,k);enter()}
 function enter(){RUN.opts=rollNode(RUN,RUN.node)
  intel=RUN.opts.map(o=>Object.assign(intelOf(RUN.deck,o.foe,o.flaw,RUN.node),o))
@@ -719,7 +783,7 @@ let autoTimer=null
 window.__demo=(foe,flaw,kit)=>{ if(kit)KIT=kit
  RUN=RUN||newRun(1,KIT); RUN.over=null
  S=newFight(7,RUN.deck,foe,T.BUDGET,flaw); offer=null;hist=[100];intel=null}
-Object.assign(window,{__POL2:S=>POL[KIT](S),__mkGraph:makeGraph,__drawGraph:drawGraph,__comps:comps,__poster:posterCanvas,
+Object.assign(window,{__POL2:S=>POL[KIT](S),__SETG:(c,d)=>{GCLUST=c;GDENS=d},__SETCUT:(f,v)=>{FOE[f].cut=v},__mkGraph:makeGraph,__drawGraph:drawGraph,__comps:comps,__poster:posterCanvas,
  __fightFilm:(kit,seed)=>{const RUN=newRun(seed,kit),out=[]
   for(let i=0;i<8;i++){
    const ch=chooseNode(RUN,rollNode(RUN,i));RUN.used.push(ch.foe)
@@ -738,6 +802,47 @@ Object.assign(window,{__POL2:S=>POL[KIT](S),__mkGraph:makeGraph,__drawGraph:draw
   return out},__anim:()=>!!anim,__auto:autoTurn,__S:()=>S,__RUN:()=>RUN,__offer:()=>offer,__intel2:()=>intel,
  __play:i=>uiPlay(i),__end:()=>{if(!anim){endTurn(S);hist.push(hpPct(S));if(S.over)afterFight()}},
  __draw:()=>draw(),__FB:v=>{FLAWBONUS=v},__HITBOX:()=>HITBOX,__CARD:id=>C[id],__take:takeCard,__startRun:startRun,__skipIntel:()=>{if(intel)pickNode(0)},__pickNode:k=>pickNode(k),__SHAPE:SHAPE})
+
+/* ── 图上的操作:玩家加边,敌人断边 ── */
+function gAdj(G){const a={};for(const e of G.edges)if(e.alive){
+ (a[e.a]=a[e.a]||[]).push(e.b);(a[e.b]=a[e.b]||[]).push(e.a)}return a}
+function gMain(G){let best=-1,bn=-1
+ for(const c in G.cnt)if(G.cnt[c]>bn){bn=G.cnt[c];best=+c}
+ G.mainComp=best;return best}
+const gd=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y)
+/* 从 from 这些节点里,找离它们最近的一个「不同块」的节点,连上 */
+function gLink(G,fromComp,maxLinks,chain){
+ let added=0,src=G.nodes.filter(n=>n.comp===fromComp)
+ for(let k=0;k<maxLinks;k++){
+  let bi=null,bj=null,bd=1e9
+  for(const a of src)for(const b of G.nodes){
+   if(b.comp===a.comp)continue
+   const d=gd(a,b);if(d<bd){bd=d;bi=a;bj=b}}
+  if(!bi)break
+  G.edges.push({a:bi.id,b:bj.id,alive:true,mine:true});added++
+  comps(G);gMain(G)
+  src=chain?[bj]:G.nodes.filter(n=>n.comp===G.nodes[bj.id].comp)}
+ return added}
+/* 合并「最大的两块」——不看距离,所以贵 */
+function gMerge(G){
+ const ord=Object.entries(G.cnt).sort((a,b)=>b[1]-a[1])
+ if(ord.length<2)return 0
+ const A2=+ord[0][0],B2=+ord[1][0]
+ let bi=null,bj=null,bd=1e9
+ for(const a of G.nodes)if(a.comp===A2)for(const b of G.nodes)if(b.comp===B2){
+  const d=gd(a,b);if(d<bd){bd=d;bi=a;bj=b}}
+ if(!bi)return 0
+ G.edges.push({a:bi.id,b:bj.id,alive:true,mine:true});comps(G);gMain(G);return 1}
+/* 敌人断边:优先断「桥」——断掉就会多出一块 */
+function gCut(G,k){let cut=0
+ for(let t=0;t<k;t++){
+  const live=G.edges.filter(e=>e.alive&&!e.safe);if(!live.length)break
+  let best=null,bestGain=-1
+  for(const e of live){e.alive=false;const nc=comps(G);e.alive=true
+   const gain=nc-G.nc0
+   if(gain>bestGain){bestGain=gain;best=e}}
+  if(best){best.alive=false;cut++;comps(G);gMain(G)}}
+ return cut}
 
 /* ═══ 图战场:节点 + 边 + 连通块 ═══
    数组的胜利条件是「减到 0」,图的胜利条件是「让所有点连通」——
@@ -767,14 +872,38 @@ function makeGraph(n,R,A){
    .filter(o=>o.j!==i).sort((a2,b2)=>a2.d-b2.d)
   const k=1+(R()<.55?1:0)          // 每个点连 1~2 个最近邻 → 自然长出好几个连通块
   for(let t=0;t<k&&t<near.length;t++)add(i,near[t].j)}
- const G={nodes,edges};comps(G);return G}
+ const G={nodes,edges};comps(G)
+ // 断桥会把叶子一个个剥下来 —— 得到一堆单点,不好看也不好玩。
+ // 改成按【空间位置】分簇:每个节点归到最近的簇心,只保留簇内的边。
+ // 这样天然长出几个大小相当的「小圈子」,正是社交网络的样子。
+ const K=Math.max(3,Math.min(8,Math.round(Math.sqrt(n)*0.9)))
+ const cent=[]
+ for(let i=0;i<K;i++){let best=null,bd=-1
+  for(let t=0;t<40;t++){const c={x:A.x+60+R()*(A.w-120),y:A.y+60+R()*(A.h-120)}
+   let d=1e9;for(const m of cent)d=Math.min(d,Math.hypot(m.x-c.x,m.y-c.y))
+   if(!cent.length){best=c;break}
+   if(d>bd){bd=d;best=c}}
+  cent.push(best)}
+ for(const nd of G.nodes){let bi=0,bd=1e9
+  cent.forEach((c,i)=>{const d=Math.hypot(c.x-nd.x,c.y-nd.y);if(d<bd){bd=d;bi=i}})
+  nd.cl=bi}
+ for(const e of G.edges)if(G.nodes[e.a].cl!==G.nodes[e.b].cl)e.alive=false
+ // 簇内补边,保证每个簇自己是连通的
+ for(let c=0;c<K;c++){const grp=G.nodes.filter(nd=>nd.cl===c)
+  for(const a2 of grp){let near=grp.filter(b2=>b2!==a2)
+    .sort((x,y)=>Math.hypot(x.x-a2.x,x.y-a2.y)-Math.hypot(y.x-a2.x,y.y-a2.y))
+   for(let t=0;t<GDENS&&t<near.length;t++){
+    const i=a2.id,j=near[t].id
+    const ex=G.edges.find(e=>(e.a===i&&e.b===j)||(e.a===j&&e.b===i))
+    if(ex)ex.alive=true;else G.edges.push({a:i,b:j,alive:true})}}}
+ comps(G);gMain(G);return G}
 function comps(G){ // 并查集:算连通块
  const p=G.nodes.map((_,i)=>i)
  const find=x=>{while(p[x]!==x){p[x]=p[p[x]];x=p[x]}return x}
  for(const e of G.edges)if(e.alive){const a2=find(e.a),b2=find(e.b);if(a2!==b2)p[a2]=b2}
  const map=new Map()
  G.nodes.forEach(nd=>{const r=find(nd.id);if(!map.has(r))map.set(r,map.size);nd.comp=map.get(r)})
- G.nc=map.size
+ G.nc0=G.nc||map.size;G.nc=map.size
  const cnt={};G.nodes.forEach(nd=>cnt[nd.comp]=(cnt[nd.comp]||0)+1)
  G.big=Math.max(...Object.values(cnt));G.cnt=cnt
  return G.nc}
@@ -1072,7 +1201,8 @@ function fightScreen(){
  legendPanel(16,150,204,(S.mult>1?452:430)+(S.FL?66:0))
  const th=traitPanel(W-228,150,212)
  statsPanel(W-228,150+th+12,212,ARENA.h+28-th)
- arena(ARENA); flawBanner()
+ if(S.mode==='graph'){graphArena(ARENA)}else{arena(ARENA)}
+ flawBanner()
  deckPile(16,HANDY+16); handRow(HANDY)
  btn(W-166,H-58,148,40,'结束回合'); discardPile(W-166,HANDY+16)}
 
@@ -1097,6 +1227,27 @@ function enemyHeader(A){
  ctx.font='700 23px system-ui';ctx.fillStyle=CO.ink;ctx.fillText(S.E.name,cx,102)
  // 主条 = 胜利条件(元素数归零就赢);副条 = 剩余工作量(削矮了多少,但还没清掉)
  // 以前只画后者,而它和真实进度平均差 13 个点、最坏差 60 个点 —— 最显眼的条不是胜负标准
+ if(S.mode==='graph'){const G=S.G,bw4=Math.min(440,A.w*.62),bx4=cx-bw4/2,pr=G.big/G.nodes.length
+  ctx.fillStyle='rgba(255,255,255,.06)';ctx.fillRect(bx4,112,bw4,11)
+  const g4=ctx.createLinearGradient(bx4,0,bx4+bw4,0)
+  g4.addColorStop(0,'#43C3E0');g4.addColorStop(1,'#8EE6C8')
+  ctx.fillStyle=g4;ctx.fillRect(bx4,112,bw4*pr,11)
+  ctx.strokeStyle=CO.line;ctx.strokeRect(bx4+.5,112.5,bw4-1,11)
+  ctx.font='700 14px system-ui';ctx.fillStyle=CO.ink
+  ctx.fillText('最大连通块 '+G.big+' / '+G.nodes.length+' 个节点',cx,150)
+  ctx.font='400 10.5px system-ui';ctx.fillStyle=CO.cyan
+  ctx.fillText('全部连通即胜  ·  现在还散成 '+G.nc+' 块',cx,166)
+  ctx.font='400 11.5px system-ui';ctx.fillStyle=CO.faint;ctx.fillText(S.E.note,cx,188)
+  const ACT3=ACTS[S.foeId]
+  if(ACT3){const t3=(S.actIn<=1?'下回合 ▶ ':'再 '+S.actIn+' 回合 ▶ ')+ACT3.name+' · '+ACT3.desc
+   ctx.font='700 12px system-ui';const tw3=ctx.measureText(t3).width
+   const soon3=S.actIn<=1
+   ctx.fillStyle=soon3?'rgba(255,107,94,.18)':'rgba(240,169,74,.10)'
+   ctx.fillRect(cx-tw3/2-30,196,tw3+60,24)
+   ctx.strokeStyle=soon3?CO.red:'rgba(240,169,74,.5)';ctx.lineWidth=soon3?1.6:1
+   ctx.strokeRect(cx-tw3/2-29.5,196.5,tw3+59,23)
+   ctx.fillStyle=soon3?CO.red:CO.amber;ctx.fillText(t3,cx,212)}
+  ctx.textAlign='left';return}
  const nLeft=N(S), nAll=Math.max(S.n0||nLeft,1), np=Math.round(nLeft/nAll*100)
  const hp=hpPct(S), bw=Math.min(440,A.w*.62), bx=cx-bw/2, by=112
  ctx.fillStyle='rgba(255,255,255,.06)';ctx.fillRect(bx,by,bw,11)
@@ -1144,6 +1295,16 @@ function legendPanel(x,y,w,h){
   if(val!=null){ctx.textAlign='right';ctx.font='700 12px system-ui'
    ctx.fillStyle=val?c:CO.faint;ctx.fillText(String(val),x+w-14,yy);ctx.textAlign='left'}
   yy+=23}
+ if(S.mode==='graph'){
+  ctx.font='600 10px system-ui';ctx.fillStyle=CO.faint
+  ctx.fillText('圆 = 一个节点,线 = 一条边',x+14,yy);yy+=20
+  ctx.font='400 11px system-ui';ctx.fillStyle=CO.cyan;ctx.fillText('你加边',x+14,yy)
+  ctx.fillStyle=CO.dim;ctx.fillText('把散块并进最大块',x+62,yy);yy+=17
+  ctx.fillStyle=CO.red;ctx.fillText('它断边',x+14,yy)
+  ctx.fillStyle=CO.dim;ctx.fillText('优先断「桥」—— 断了就多一块',x+62,yy);yy+=17
+  ctx.fillStyle=CO.amber;ctx.fillText('开销',x+14,yy)
+  ctx.fillStyle=CO.dim;ctx.fillText('按块数收 —— 越散越贵',x+62,yy);yy+=20
+  return}
  ctx.font='600 10px system-ui';ctx.fillStyle=CO.faint;ctx.fillText('柱 = 一个元素,高 = 剩余处理量',x+14,yy);yy+=20
  row('bar','值小',null,'hsl(188 88% 58%)')
  row('bar','值中',null,'hsl(38 88% 58%)')
@@ -1216,8 +1377,26 @@ function traitPanel(x,y,w){const ts=traits()
  return h}
 function statsPanel(x,y,w,h){
  panel(x,y,w,h,'数 据 性 质')
- const sd=sortedness(S),tr=tier(S)
  let yy=y+50
+ if(S.mode==='graph'){const G=S.G
+  const kv3=(k,v,c)=>{ctx.font='400 11.5px system-ui';ctx.fillStyle=CO.dim;ctx.fillText(k,x+14,yy)
+   ctx.textAlign='right';ctx.font='700 14px system-ui';ctx.fillStyle=c||CO.ink
+   ctx.fillText(v,x+w-14,yy);ctx.textAlign='left';yy+=26}
+  kv3('节点',String(G.nodes.length))
+  kv3('活着的边',String(G.edges.filter(e=>e.alive).length))
+  kv3('连通块',String(G.nc),G.nc>1?CO.amber:CO.green)
+  kv3('最大块',G.big+' / '+G.nodes.length,CO.cyan)
+  kv3('加固的边',String(G.edges.filter(e=>e.alive&&e.safe).length),CO.green)
+  kv3('回合末开销','−'+Math.max(0,2+G.nc*2-(S.shield||0)),CO.red)
+  yy+=8
+  ctx.font='600 10px system-ui';ctx.fillStyle=CO.faint;ctx.letterSpacing='2px'
+  ctx.fillText('连 通 块',x+14,yy);ctx.letterSpacing='0px';yy+=18
+  Object.entries(G.cnt).sort((a,b)=>b[1]-a[1]).slice(0,6).forEach(([c,k])=>{
+   ctx.fillStyle=COMPC[c%COMPC.length];ctx.beginPath();ctx.arc(x+20,yy-3.5,4.5,0,7);ctx.fill()
+   ctx.font='400 11px system-ui';ctx.fillStyle=+c===G.mainComp?CO.ink:CO.dim
+   ctx.fillText(k+' 个节点'+(+c===G.mainComp?'  ← 最大':''),x+32,yy);yy+=16})
+  return}
+ const sd=sortedness(S),tr=tier(S)
  const kv=(k,v,c)=>{ctx.font='400 11.5px system-ui';ctx.fillStyle=CO.dim;ctx.fillText(k,x+14,yy)
   ctx.textAlign='right';ctx.font='700 14px system-ui';ctx.fillStyle=c||CO.ink
   ctx.fillText(v,x+w-14,yy);ctx.textAlign='left';yy+=26}
@@ -1305,6 +1484,12 @@ const MOTIF={
     k?X.lineTo(x,y):X.moveTo(x,y)}X.stroke()
    X.fillStyle='rgba(255,107,94,'+(.10+.05*Math.sin(t*2))+')';X.fillRect(A.x,A.y,A.w,A.h)}},
 }
+function graphArena(A){const G=S.G
+ drawGraph({x:A.x,y:A.y,w:A.w,h:A.h},G,null)
+ ctx.textAlign='center'
+ ctx.font='400 11px system-ui';ctx.fillStyle=CO.faint
+ ctx.fillText('每回合末按连通块数收开销:2 + 块数 × 2 = '+(2+G.nc*2),A.x+A.w/2,A.y+A.h+16)
+ ctx.textAlign='left'}
 function arena(A){
  const a=alive(S); if(!a.length)return
  const t=anim?Math.min(1,(performance.now()-anim.t0)/anim.dur):1
@@ -1422,9 +1607,9 @@ function wprev(tot){const a=alive(S); if(!a.length)return null
  return{per:per<1?per.toFixed(2):per.toFixed(1),k:a.filter(b=>b.v<=per).length,n:a.length,
         hp,tail:(a.filter(b=>b.v<=per).length?' · 打掉 '+a.filter(b=>b.v<=per).length+' 个':'')+' · 血条 −'+hp+'%'}}
 function live(id){ if(!S)return null
- if(!alive(S).length)return null   // 元素清零(赢了)时 wprev 返回 null,别再往下算
+ if(S.mode!=='graph'&&!alive(S).length)return null   // 元素清零(赢了)时 wprev 返回 null,别再往下算
  const n=N(S),t=tier(S),sp=S.splits,m=S.memo,d=S.debt,seq=S.E.seqOnly,half=S.E.noSplit?.4:1
- const G=CO.green,A=CO.amber,Cy=CO.cyan,R=CO.red,P='#b39ddb'
+ const G=CO.green,A=CO.amber,Cy=CO.cyan,R=CO.red,P='#b39ddb',G2c=CO.green
  switch(id){
   case 'scan':{const w=wprev(16)
     return ['16 ÷ '+w.n+' 个 = 每根矮 '+w.per+w.tail,w.k>0?G:Cy]}
@@ -1461,11 +1646,21 @@ function live(id){ if(!S)return null
   case 'backtrack':return ['预算 '+S.budget+' → '+(S.budget+12),G]
   case 'guard':    return S.FL?['本回合免疫「'+S.FL.name+'」',G]:['这一关没挂失误 —— 现在出会落空',R]
   case 'hash':     return ['抽 1 · 移除 2 个',Cy]
-  case 'cache':{const c0=Math.ceil(N(S)/T.COST_DIV)+S.debt*T.DEBT_PEN*(S.E.antiGreedy?AGREED:1)
+  case 'bfs': case 'dfs': case 'mst': case 'sp': case 'dsu': case 'bridge':{
+    if(!S.G)return['这一关不是图战场 —— 出了会落空',R]
+    const G=S.G,k={bfs:1,dfs:2,mst:3}[id]
+    if(id==='bridge')return['加固 3 条关键边 · 现在已加固 '+G.edges.filter(e=>e.alive&&e.safe).length+' 条',G.nc>1?G2c:A]
+    if(id==='dsu')return G.nc>1?['合并最大的两块('+Object.values(G.cnt).sort((a,b)=>b-a).slice(0,2).join(' + ')+' 个节点)',G2c]
+                              :['已经全连通了 —— 出了会落空',R]
+    if(id==='sp')return G.nc>1?['连到最远的那一块 · 现在还散成 '+G.nc+' 块',G2c]:['已经全连通 —— 落空',R]
+    const out=G.nodes.length-G.big
+    return G.nc>1?['并入 '+Math.min(k,out)+' 个 · 块外还剩 '+out+' 个节点',G2c]:['已经全连通 —— 落空',R]}
+  case 'cache':{const c0=S.mode==='graph'?2+S.G.nc*2
+    :Math.ceil(N(S)/T.COST_DIV)+S.debt*T.DEBT_PEN*(S.E.antiGreedy?AGREED:1)
     return['回合末总开销 '+Math.round(c0)+' → '+Math.max(0,Math.round(c0-7-(S.shield||0))),c0>=7?G:A]}
-  case 'lazy':   return S.skipCost?['这回合已经免了 —— 现在出会落空',R]
-    :['这回合末 '+Math.ceil(N(S)/T.COST_DIV)+' 点开销全免 · 下回合末翻倍',
-      Math.ceil(N(S)/T.COST_DIV)>=8?G:A]
+  case 'lazy':{ if(S.skipCost)return['这回合已经免了 —— 现在出会落空',R]
+    const c1=S.mode==='graph'?2+S.G.nc*2:Math.ceil(N(S)/T.COST_DIV)
+    return['这回合末 '+c1+' 点开销全免 · 下回合末翻倍',c1>=8?G:A]}
   case 'batchc':{const c0=Math.ceil(N(S)/T.COST_DIV)
     return['回合末开销 '+c0+' → 固定 4',c0>=8?G:c0>4?A:R]}
   case 'incr':{const c0=Math.ceil(N(S)/T.COST_DIV),c1=S.lastN?Math.ceil(S.lastN/T.COST_DIV):c0
