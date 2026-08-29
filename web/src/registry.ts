@@ -325,6 +325,7 @@ import { trajectoryKernel, type TrajState } from '@engine/kernels/trajectory.ts'
 import { icpKernel, type ICPState } from '@engine/kernels/icp.ts'
 import { slamKernel, type SLAMState } from '@engine/kernels/slam.ts'
 import { impedanceKernel, type ImpState } from '@engine/kernels/impedance.ts'
+import { mpcKernel, type MPCState } from '@engine/kernels/mpc.ts'
 import { objectstoreKernel } from '@engine/kernels/objectstore.ts'
 import { SysDesignStage } from './stages/SysDesignStage.tsx'
 import { SeckillStage } from './stages/SeckillStage.tsx'
@@ -343,6 +344,7 @@ import { TrajStage } from './stages/TrajStage.tsx'
 import { ICPStage } from './stages/ICPStage.tsx'
 import { SLAMStage } from './stages/SLAMStage.tsx'
 import { ImpedanceStage } from './stages/ImpedanceStage.tsx'
+import { MPCStage } from './stages/MPCStage.tsx'
 import { CollisionStage } from './stages/CollisionStage.tsx'
 import { gcnKernel, type GcnState } from '@engine/kernels/gcn.ts'
 import { GcnStage } from './stages/GcnStage.tsx'
@@ -6246,6 +6248,23 @@ const kalman: Experiment<KalmanState> = {
   ],
 }
 
+const mpc: Experiment<MPCState> = {
+  id: 'mpc', group: '机器人控制', title: 'MPC 模型预测控制', subtitle: '预测未来+优化+只执行第一步；提前刹车不越界',
+  kernel: mpcKernel, defaultDoc: { kind: 'mpc', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: 'PID/阻抗只看当前误差反应；MPC 每步用模型预测未来一段(预测时域)、优化整条控制序列(到目标+满足约束+省劲)、只执行第一步、下步重规划(滚动时域)。质量块要精准停在 x=10(也是墙)：MPC 每步算刹车距离(预测停点)，够到目标就提前刹车→停在 9.94；反应式无预测→冲过目标飙到 15.98。位置/速度/控制由双积分动力学真跑。',
+  bounds: ['MPC三件套:用模型预测未来一段+优化整条控制序列(跟踪+约束+省劲)+只执行第一步再滚动重规划', '会往前看:能提前刹车/避让、显式满足约束(不越界/超速/超力矩),反应式做不到', '本例预测=刹车距离→预测停点,够到目标就提前刹→停在9.94;反应式冲到15.98(越界)', '代价:要准模型+每步在线求解(QP/NLP,算力大);用在自动驾驶/四足步态/无人机/过程控制'],
+  tabs: [{ id: 'design', label: '预测控制' }], Stage: MPCStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: '精准停住' } : s.phase === 'reactive' ? { key: 'bad', label: '反应式越界' } : { key: 'idle', label: s.phase === 'mpc' ? (s.braking ? 'MPC 刹车' : 'MPC 加速') : '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 8)),
+  tickLabel: s => (s.phase === 'done' ? '停' : s.phase === 'reactive' ? '冲' : s.op === 'sample' ? (s.braking ? '刹' : '加') : 'M'),
+  readouts: s => [
+    { label: '当前', value: s.op === 'reactive' ? '反应式(无预测)' : s.phase === 'done' ? 'MPC 停住' : s.phase === 'mpc' ? (s.braking ? 'MPC 刹车' : 'MPC 加速') : '就绪' },
+    { label: '位置 x', value: s.op === 'reactive' ? `${s.reacMax}(越界)` : `${s.x}（目标 ${s.target}）`, tone: s.op === 'reactive' ? 'bad' : s.phase === 'done' ? 'good' : undefined },
+    { label: '预测停点', value: s.op === 'sample' || s.op === 'summary' ? `${s.predStop}` : '—' },
+    { label: '反应式 vs MPC', value: `${s.reacMax} vs ${s.phase === 'done' ? s.x : '~10'}` },
+  ],
+}
+
 // ── 具身智能 · 机器人控制 ──
 const impedance: Experiment<ImpState> = {
   id: 'impedance', group: '机器人控制', title: '阻抗 / 力控', subtitle: '柔顺接触：末端像虚拟弹簧，接触力可调',
@@ -6345,7 +6364,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, ik, jacobian, quat, trajectory, kalman, icp, slam, impedance, pid, rrt,
+  fk, ik, jacobian, quat, trajectory, kalman, icp, slam, impedance, mpc, pid, rrt,
 ] as unknown as AnyExperiment[]
 
 /**

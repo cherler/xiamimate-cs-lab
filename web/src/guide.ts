@@ -509,6 +509,20 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; op: string; contactForce: number; stiffForce: number }; return st.phase === 'done' ? `柔顺 ${st.contactForce}N` : st.op === 'stiff' ? `刚性 ${st.stiffForce}N` : st.phase === 'compliant' ? '阻抗逼近' : '就绪'; },
     try: [{ act: '看刚性硬顶', watch: '位置控制命令去 x=8、墙挡在 x=5，剩 3 的位置误差消不掉→死命顶出 480N，砸坏工件。' }, { act: '看柔顺贴合', watch: '阻抗控制让末端像软弹簧被拉向目标、遇墙柔顺让步，接触力 settle 到 ~73N。接触力=K×侵入，K 是你设的旋钮——软就轻贴、对人安全。' }], terms: [],
   },
+  mpc: {
+    question: '质量块要精准停在目标(也是墙)，为什么反应式控制会冲过头？MPC 怎么"往前看"提前刹车？',
+    read: [{ at: '位置图', is: 'MPC(绿,预测刹车停在目标) vs 反应式(红,冲过目标);当前步显示预测停点。', anchor: '.fk-svg' }, { at: '读数', is: '当前模式、位置、预测停点、反应式 vs MPC。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { phase: string; op: string; target: number; t: number; x: number; v: number; u: number; brakeDist: number; predStop: number; braking: boolean; reacMax: number; focus: string }; return [
+      { k: '本步输入', v: st.op === 'intro' ? `质量块从 0 要停在目标 x=${st.target}` : st.op === 'reactive' ? '反应式(纯比例,无预测)' : `MPC t=${st.t}s：x=${st.x}、v=${st.v}` },
+      { k: '判定规则', v: 'MPC 每步用模型预测未来一段、优化整条控制序列、只执行第一步、下步重规划。本例预测=刹车距离(照现在速度刹停要多远)→预测停点；预测停点够到目标就提前刹车，否则加速。反应式只看当前误差、无预测。' },
+      { k: '本步结果', v: st.op === 'reactive' ? `无预测→冲过目标飙到 ${st.reacMax}（越界）`
+        : st.op === 'sample' ? `预测停点 ${st.predStop} ${st.braking ? `≥目标→提前刹车(u=${st.u})` : `<目标→加速(u=${st.u})`}`
+          : st.op === 'summary' ? `精准停在 x=${st.x}（目标 ${st.target}）；反应式冲到 ${st.reacMax}`
+            : '就绪' },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; op: string; x: number; reacMax: number; braking: boolean }; return st.phase === 'done' ? `MPC 停在 ${st.x}` : st.op === 'reactive' ? `反应式冲到 ${st.reacMax}` : st.phase === 'mpc' ? (st.braking ? 'MPC 刹车' : 'MPC 加速') : '就绪'; },
+    try: [{ act: '看反应式冲过头', watch: '纯比例无预测，一路加速冲向目标，到跟前速度还很大刹不住→冲过目标 10 飙到 15.98（撞穿墙）。' }, { act: '看 MPC 预测刹车', watch: 'MPC 每步算"照现在速度刹停要多远"=预测停点，一旦预测停点够到目标就提前刹车→稳稳停在 9.94。这就是"往前看"，PID/阻抗做不到。' }], terms: [],
+  },
   pid: {
     question: '让机器人关节停到目标角，为什么只用比例(P)会来回震荡？加个 D 项怎么就稳了？',
     read: [{ at: '位置曲线', is: '纯 P(红,冲过头震荡) 与 PD(绿,阻尼收敛) 对目标线(虚线)。', anchor: '.fk-svg' }, { at: '读数', is: '控制器、位置 vs 目标、误差 e、控制量 u=P(+D)。', anchor: '.scdim' }],

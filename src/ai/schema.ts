@@ -349,6 +349,7 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   icp: {},
   slam: {},
   impedance: {},
+  mpc: {},
   pid: {},
   rrt: {},
   wildcard: {},

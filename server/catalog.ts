@@ -100,6 +100,7 @@ import { trajectoryKernel } from '../src/kernels/trajectory.ts'
 import { icpKernel } from '../src/kernels/icp.ts'
 import { slamKernel } from '../src/kernels/slam.ts'
 import { impedanceKernel } from '../src/kernels/impedance.ts'
+import { mpcKernel } from '../src/kernels/mpc.ts'
 import { kalmanKernel } from '../src/kernels/kalman.ts'
 import { pidKernel } from '../src/kernels/pid.ts'
 import { rrtKernel } from '../src/kernels/rrt.ts'
@@ -1748,6 +1749,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: '卡尔曼增益 K=P\'/(P\'+R) 决定什么？什么时候更信 GPS 观测、什么时候更信运动预测?', kind: 'choice',
         compute: () => ({ answer: 'K 是"信预测还是信观测"的权重：x=x\'+K(z−x\')。观测噪声 R 小(GPS 准)→K 大→多信观测；预测方差 P\' 小(预测准)→K 小→多信预测。融合估计比单独任一个都准', step: 8, evidence: '本例 R=1，K 从 0.6 收敛到 ~0.5；估计一路贴真值(误差≤0.13)' }),
         distractors: () => ['K 是固定常数、与方差无关', 'K 越大越好、永远多信观测', 'K 只和步数有关'],
+      },
+    ],
+  },
+  {
+    id: 'mpc', title: 'MPC 模型预测控制', kernel: mpcKernel as Kernel<unknown>, doc: trivialDoc('mpc'),
+    facts: [
+      {
+        id: 'mpc_predict', label: 'MPC 和 PID 的本质区别',
+        ask: 'MPC(模型预测控制)和 PID/阻抗这类反应式控制，本质区别是什么?', kind: 'choice',
+        compute: () => ({ answer: 'MPC 会往前看：每步用模型预测未来一段、优化整条控制序列(跟踪+约束+省劲)、只执行第一步、下步重规划(滚动时域)。PID/阻抗只看当前误差反应、没有预测', step: 7, evidence: '本例 MPC 预测刹车距离→提前刹车停在 9.94；反应式无预测冲过目标到 15.98' }),
+        distractors: () => ['MPC 用的力更大', 'MPC 是 PID 加了积分项', '两者没本质区别、只是参数不同'],
+      },
+      {
+        id: 'mpc_constraint', label: 'MPC 怎么提前刹车不越界',
+        ask: '质量块要停在目标(墙)，MPC 靠什么做到提前刹车、不冲过去?', kind: 'choice',
+        compute: () => ({ answer: '每步预测"照现在速度刹停还要多远"(刹车距离)=预测停点；一旦预测停点够到目标就提前刹车，否则加速。这就是用预测显式满足"不越界"约束——反应式做不到', step: 5, evidence: '本例 MPC 在预测停点将超过目标时切换到刹车(u=-1)，稳稳停在 9.94' }),
+        distractors: () => ['等撞到墙才反应', '把目标设得更近一点', '靠运气、多试几次'],
       },
     ],
   },
