@@ -317,6 +317,7 @@ import { feedKernel, type FeedState } from '@engine/kernels/feed.ts'
 import { fkKernel, type FKState } from '@engine/kernels/fk.ts'
 import { ikKernel, type IKState } from '@engine/kernels/ik.ts'
 import { jacobianKernel, type JacoState } from '@engine/kernels/jacobian.ts'
+import { kalmanKernel, type KalmanState } from '@engine/kernels/kalman.ts'
 import { objectstoreKernel } from '@engine/kernels/objectstore.ts'
 import { SysDesignStage } from './stages/SysDesignStage.tsx'
 import { SeckillStage } from './stages/SeckillStage.tsx'
@@ -327,6 +328,7 @@ import { FeedStage } from './stages/FeedStage.tsx'
 import { FKStage } from './stages/FKStage.tsx'
 import { IKStage } from './stages/IKStage.tsx'
 import { JacobianStage } from './stages/JacobianStage.tsx'
+import { KalmanStage } from './stages/KalmanStage.tsx'
 import { CollisionStage } from './stages/CollisionStage.tsx'
 import { gcnKernel, type GcnState } from '@engine/kernels/gcn.ts'
 import { GcnStage } from './stages/GcnStage.tsx'
@@ -6178,6 +6180,24 @@ const jacobian: Experiment<JacoState> = {
   ],
 }
 
+// ── 具身智能 · 机器人感知 ──
+const kalman: Experiment<KalmanState> = {
+  id: 'kalman', group: '机器人感知', title: '卡尔曼滤波', subtitle: '预测+观测按方差融合：机器人定位的地基',
+  kernel: kalmanKernel, defaultDoc: { kind: 'kalman', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '每个传感器都有噪声（里程计漂移、GPS 跳）。卡尔曼把"运动预测的位置"和"观测的位置"按各自不确定度(方差)最优融合。1D 定位版两拍循环：predict 用里程计前推(方差 +Q 涨)、update 用 GPS 观测校正(增益 K=P/(P+R) 融合、方差 (1−K)P 缩)。u=1、Q=0.5、R=1 喂 4 个读数，估计贴着真值走、方差收敛。每步算术全真算。',
+  bounds: ['每传感器有噪声→把运动预测与观测按各自方差最优融合;状态估计/SLAM的地基', 'Predict:x\'=x+u(里程计),P\'=P+Q(推得越久越不确定,方差涨)', 'Update:增益K=P\'/(P\'+R)权衡信预测还是信观测;x=x\'+K(z−x\'),P=(1−K)P\'(观测后方差缩)', '融合估计比单独预测或观测都准;方差predict涨update缩、收敛稳态(K→~0.5);EKF处理非线性'],
+  tabs: [{ id: 'design', label: 'predict+update' }], Stage: KalmanStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: '收敛贴真值' } : { key: 'idle', label: s.phase === 'predict' ? 'Predict·方差涨' : s.phase === 'update' ? 'Update·方差缩' : '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 9)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.phase === 'predict' ? '预' : s.phase === 'update' ? '校' : '卡'),
+  readouts: s => [
+    { label: '本拍', value: s.op === 'predict' ? 'Predict' : s.op === 'update' || s.op === 'summary' ? 'Update' : '就绪' },
+    { label: '估计 x / 真值', value: `${s.x} / ${s.truePos}` },
+    { label: '方差 P', value: `${s.P}`, tone: s.phase === 'predict' ? 'bad' : 'good' },
+    { label: '卡尔曼增益 K', value: s.K !== null ? `${s.K}` : '—' },
+  ],
+}
+
 export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
@@ -6189,7 +6209,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, ik, jacobian,
+  fk, ik, jacobian, kalman,
 ] as unknown as AnyExperiment[]
 
 /**
@@ -6359,7 +6379,7 @@ export const DISCIPLINES: Discipline[] = [
     sub: '机器人学 → 感知 · 控制 · 规划 → 具身智能',
     // 从零到具身智能工程师：机器人学基础(运动学/雅可比)→感知(卡尔曼/SLAM)→控制(PID/力控)
     // →规划(RRT)→具身学习(模仿/RL/VLA)→开源实战(LeRobot/MuJoCo)。分组随实验增量补齐。
-    groups: ['机器人学基础'],
+    groups: ['机器人学基础', '机器人感知'],
     guide: { from: '一次关节转动', to: '具身智能工程师', toIcon: '🦾' },
   },
   {
@@ -6412,6 +6432,7 @@ export const GROUP_ANCHOR: Record<string, string> = {
   '算法项目实战': 'software',
   '大模型项目实战': 'llm',
   '机器人学基础': 'robot',
+  '机器人感知': 'robot',
 }
 
 export const ANCHOR_BY_KEY: Record<string, Anchor> = Object.fromEntries(ANCHORS.map(a => [a.key, a]))

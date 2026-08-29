@@ -383,6 +383,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { step: 2, phase: 'apply', op: 'apply', L1: 2, L2: 2, theta1: 30, theta2: 90, J: [[-2.732, -1.732], [0.732, -1]], det: 4, singular: false, dtheta: [1, 0], endVel: { vx: -2.732, vy: 0.732 }, armPts: [{ x: 0, y: 0 }, { x: 1.732, y: 1 }, { x: 0.732, y: 2.732 }], which: '只转关节1（θ̇=[1, 0]）', focus: 'θ̇=[1,0] → 末端速度 = (-2.732, 0.732)', log: 'x' },
       b: { step: 5, phase: 'done', op: 'summary', L1: 2, L2: 2, theta1: 30, theta2: 0, J: [[-2, -1], [3.464, 1.732]], det: 0, singular: true, dtheta: [1, 0], endVel: { vx: -2, vy: 3.464 }, armPts: [{ x: 0, y: 0 }, { x: 1.732, y: 1 }, { x: 3.464, y: 2 }], which: '手臂伸直 θ2=0', focus: 'θ2=0 手臂伸直 → det(J)=0 奇异', log: 'x' },
     },
+    kalman: {
+      doc: { kind: 'kalman', params: {}, entities: [], streams: [] },
+      a: { step: 2, phase: 'update', op: 'update', u: 1, Q: 0.5, R: 1, stepNo: 1, x: 1.12, P: 0.6, truePos: 1, z: 1.2, K: 0.6, innov: 0.2, xPred: 1, history: [{ step: 1, truePos: 1, x: 1.12, sd: 0.775, z: 1.2 }], focus: '步 1 · Update：K=0.6 融合观测 z=1.2 → x=1.12', log: 'x' },
+      b: { step: 8, phase: 'done', op: 'summary', u: 1, Q: 0.5, R: 1, stepNo: 4, x: 4.014, P: 0.502, truePos: 4, z: 3.9, K: 0.501, innov: -0.228, xPred: 4.128, history: [{ step: 1, truePos: 1, x: 1.12, sd: 0.775, z: 1.2 }, { step: 2, truePos: 2, x: 1.952, sd: 0.724, z: 1.8 }, { step: 3, truePos: 3, x: 3.128, sd: 0.711, z: 3.3 }, { step: 4, truePos: 4, x: 4.014, sd: 0.709, z: 3.9 }], focus: '步 4 · Update 收敛', log: 'x' },
+    },
     topk: {
       doc: { kind: 'topk', params: {}, entities: [], streams: [] },
       a: { step: 10, phase: 'heap', op: 'replace', K: 3, N: 2, shards: [{ id: 0, items: [{ word: '香蕉', count: 4 }, { word: '梨', count: 1 }] }, { id: 1, items: [{ word: '苹果', count: 5 }, { word: '橙子', count: 3 }, { word: '葡萄', count: 2 }, { word: '桃', count: 1 }] }], route: null, heap: [{ word: '橙子', count: 3 }, { word: '香蕉', count: 4 }, { word: '苹果', count: 5 }], consider: { word: '橙子', count: 3 }, evicted: { word: '梨', count: 1 }, threshold: 3, topk: [], focus: '3 > 门槛 1 → 淘汰「梨」换上「橙子」', log: 'x' },

@@ -343,6 +343,7 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   fk: {},
   ik: {},
   jacobian: {},
+  kalman: {},
   wildcard: {},
   blockingqueue: {},
   regex: {},

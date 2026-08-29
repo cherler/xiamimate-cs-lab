@@ -95,6 +95,7 @@ import { feedKernel } from '../src/kernels/feed.ts'
 import { fkKernel } from '../src/kernels/fk.ts'
 import { ikKernel } from '../src/kernels/ik.ts'
 import { jacobianKernel } from '../src/kernels/jacobian.ts'
+import { kalmanKernel } from '../src/kernels/kalman.ts'
 import { objectstoreKernel } from '../src/kernels/objectstore.ts'
 import { queryplanKernel } from '../src/kernels/queryplan.ts'
 import { wildcardKernel } from '../src/kernels/wildcard.ts'
@@ -1655,6 +1656,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: '二连杆机械臂 det(J)=L1·L2·sinθ2，什么构型下 J 奇异、末端会丢一个自由度?', kind: 'choice',
         compute: () => ({ answer: 'θ2=0(手臂完全伸直)或 180°(对折)时 sinθ2=0 → det(J)=0、J 奇异：两列平行，末端此刻只能沿一个方向动、丢一个自由度，J⁻¹ 爆炸。工程上要绕开或用阻尼最小二乘', step: 5, evidence: '本例 θ2=90° 时 det=4 可逆；θ2=0 伸直时 det=0 奇异、两列平行' }),
         distractors: () => ['θ1=0 时奇异', '关节速度过大时奇异', 'J 永远可逆、不会奇异'],
+      },
+    ],
+  },
+  {
+    id: 'kalman', title: '卡尔曼滤波', kernel: kalmanKernel as Kernel<unknown>, doc: trivialDoc('kalman'),
+    facts: [
+      {
+        id: 'predict_update', label: '卡尔曼的两拍：预测涨、校正缩',
+        ask: '卡尔曼滤波每步 predict 和 update 两拍，位置估计的不确定度(方差 P)分别怎么变、为什么?', kind: 'choice',
+        compute: () => ({ answer: 'Predict 用运动模型前推(x\'=x+u)，推得越久越不确定 → 方差涨 P\'=P+Q；Update 用观测校正，观测带来新信息 → 方差缩 P=(1−K)P\'。所以 P 呈锯齿、收敛到稳态', step: 1, evidence: '本例 P: 1→predict 1.5→update 0.6→predict 1.1→update 0.524…收敛~0.5' }),
+        distractors: () => ['predict 和 update 都让方差变小', '方差一直不变', 'predict 缩、update 涨'],
+      },
+      {
+        id: 'kalman_gain', label: '卡尔曼增益 K 是什么权重',
+        ask: '卡尔曼增益 K=P\'/(P\'+R) 决定什么？什么时候更信 GPS 观测、什么时候更信运动预测?', kind: 'choice',
+        compute: () => ({ answer: 'K 是"信预测还是信观测"的权重：x=x\'+K(z−x\')。观测噪声 R 小(GPS 准)→K 大→多信观测；预测方差 P\' 小(预测准)→K 小→多信预测。融合估计比单独任一个都准', step: 8, evidence: '本例 R=1，K 从 0.6 收敛到 ~0.5；估计一路贴真值(误差≤0.13)' }),
+        distractors: () => ['K 是固定常数、与方差无关', 'K 越大越好、永远多信观测', 'K 只和步数有关'],
       },
     ],
   },

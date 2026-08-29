@@ -417,6 +417,23 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; op: string; singular: boolean; det: number }; return st.singular ? '奇异·丢自由度' : st.phase === 'done' ? '可逆' : st.op === 'apply' ? '速度映射' : st.op === 'build' ? '求 J' : st.op === 'det' ? `det=${st.det}` : '就绪'; },
     try: [{ act: '看 J 的两列', watch: '每一列 = 只转那个关节时末端往哪动；θ̇=[1,0] 的末端速度就是第 1 列 (-2.732, 0.732)。' }, { act: '看伸直时的奇异', watch: 'θ2=0 手臂伸直 → det(J)=L1L2 sin0=0，J 两列平行，末端只能沿一条线动、丢了一个自由度，J⁻¹ 爆炸——这就是奇异构型。' }], terms: [],
   },
+  kalman: {
+    question: '里程计会漂、GPS 会跳，机器人怎么把两个都不准的信息融合成一个更准的位置估计？',
+    read: [{ at: '滤波图', is: '真值(绿)、GPS观测(空心)、融合估计(橙)带 ±√P 不确定带。', anchor: '.fk-svg' }, { at: '读数', is: '本拍、估计 x vs 真值、方差 P、增益 K。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { phase: string; op: string; stepNo: number; x: number; P: number; truePos: number; z: number | null; K: number | null; innov: number | null; xPred: number; Q: number; R: number; focus: string }; return [
+      { k: '本步输入', v: st.phase === 'intro' ? '初始 x=0、P=1' : st.op === 'predict' ? `步 ${st.stepNo} · Predict：里程计前进 u` : `步 ${st.stepNo} · Update：GPS 观测 z=${st.z}` },
+      { k: '判定规则', v: 'Predict：x\'=x+u、P\'=P+Q(方差涨)。Update：增益 K=P\'/(P\'+R)、x=x\'+K(z−x\')、P=(1−K)P\'(方差缩)。K 是"信预测还是信观测"的权重：观测准(R小)→K大→多信观测。' },
+      { k: '本步结果', v: st.phase === 'done'
+        ? `估计 x=${st.x} 贴着真值 ${st.truePos}，方差收敛到 ${st.P}（K→${st.K}）`
+        : st.op === 'predict'
+          ? `x'=${st.x}、P'=${st.P} ↑（真值 ${st.truePos}，只靠预测会漂）`
+          : st.K !== null
+            ? `K=${st.K} 融合 → x=${st.x}（真值 ${st.truePos}），方差缩到 ${st.P}`
+            : '就绪' },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; op: string; x: number; P: number; K: number | null }; return st.phase === 'done' ? `x=${st.x}·P=${st.P}` : st.op === 'predict' ? '预测·方差涨' : st.op === 'update' ? `校正·K=${st.K}` : '就绪'; },
+    try: [{ act: '看方差 P 的锯齿', watch: 'predict 时 P 涨(误差棒变长、越推越不确定)、update 时 P 缩(观测拉回、更确定)，收敛到稳态 ~0.5。' }, { act: '看增益 K 权衡', watch: 'K=P/(P+R)：预测不确定(P大)时 K 大、多信观测；确定后 K 小、多信预测。融合估计比单独预测或观测都贴真值。' }], terms: [],
+  },
   topk: {
     question: '内存装不下全部计数，怎么求出现最多的 K 个？哈希分片和小顶堆各解决什么？',
     read: [{ at: '分片表', is: '各片的词→计数；同一个词只会在一片里。', anchor: '.tk-shards' }, { at: '小顶堆', is: 'K 个槽，堆顶(门槛)高亮；新词比门槛大才挤进来。', anchor: '.tk-heap' }],
