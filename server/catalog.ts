@@ -103,6 +103,7 @@ import { impedanceKernel } from '../src/kernels/impedance.ts'
 import { mpcKernel } from '../src/kernels/mpc.ts'
 import { bcKernel } from '../src/kernels/bc.ts'
 import { diffpolicyKernel } from '../src/kernels/diffpolicy.ts'
+import { vlaKernel } from '../src/kernels/vla.ts'
 import { kalmanKernel } from '../src/kernels/kalman.ts'
 import { pidKernel } from '../src/kernels/pid.ts'
 import { rrtKernel } from '../src/kernels/rrt.ts'
@@ -1751,6 +1752,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: '卡尔曼增益 K=P\'/(P\'+R) 决定什么？什么时候更信 GPS 观测、什么时候更信运动预测?', kind: 'choice',
         compute: () => ({ answer: 'K 是"信预测还是信观测"的权重：x=x\'+K(z−x\')。观测噪声 R 小(GPS 准)→K 大→多信观测；预测方差 P\' 小(预测准)→K 小→多信预测。融合估计比单独任一个都准', step: 8, evidence: '本例 R=1，K 从 0.6 收敛到 ~0.5；估计一路贴真值(误差≤0.13)' }),
         distractors: () => ['K 是固定常数、与方差无关', 'K 越大越好、永远多信观测', 'K 只和步数有关'],
+      },
+    ],
+  },
+  {
+    id: 'vla', title: 'VLA 视觉-语言-动作', kernel: vlaKernel as Kernel<unknown>, doc: trivialDoc('vla'),
+    facts: [
+      {
+        id: 'vla_action_token', label: 'VLA 怎么让大模型"说出"动作',
+        ask: 'RT-2 这类 VLA 怎么让视觉-语言大模型输出连续的机器人动作?', kind: 'choice',
+        compute: () => ({ answer: '动作 token 化：把连续动作(Δx/Δy/Δz/夹爪)每一维按范围离散成 256 个格子、每格=一个 token id，动作就变成一串"词"；大模型像预测下一个单词一样自回归吐出这串动作 token，机器人端再反 token 化回连续位姿执行。动作和语言共用词表', step: 3, evidence: '本例 Δpose→动作 token [204,96,77,255]，反解误差≈0' }),
+        distractors: () => ['大模型直接输出电机电压', '动作由另一个独立规则程序算', '每个动作硬编码成一个固定指令'],
+      },
+      {
+        id: 'vla_generalize', label: 'VLA 为什么能泛化',
+        ask: 'VLA 能听懂机器人示范数据里从没出现过的物体/指令(如"拿起紫色的杯子")，为什么?', kind: 'choice',
+        compute: () => ({ answer: '骨干是在海量网络图文上预训练的视觉-语言大模型，早就见过无数紫色的、无数杯子、懂各种概念和语言——这份世界知识让它能把没在机器人数据里出现过的新概念直接接到动作上。从零训练的策略没有这份知识就做不到', step: 5, evidence: '本例换成没训过的"紫色的杯子"，靠骨干网络知识仍能理解并伸手去拿' }),
+        distractors: () => ['因为机器人数据其实覆盖了所有物体', '因为动作 token 化', '靠随机试探碰运气'],
       },
     ],
   },

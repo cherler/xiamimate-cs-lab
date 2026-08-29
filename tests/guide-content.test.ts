@@ -428,6 +428,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { step: 3, phase: 'denoise', op: 'step', bcAction: 0, seedA: [0.35, 0.44, 0.52, 0.59, 0.66, 0.76, 0.85, 0.9, 0.94, 0.97, 0.98, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99], seedB: [-0.5, -0.6, -0.69, -0.77, -0.84, -0.9, -0.95, -0.97, -0.98, -0.99, -0.99, -0.99, -0.99, -0.99, -0.99, -0.99, -0.99], shown: 3, aVal: 0.59, bVal: -0.77, focus: '去噪第 3 步', log: 'x' },
       b: { step: 7, phase: 'done', op: 'summary', bcAction: 0, seedA: [0.35, 0.44, 0.52, 0.59, 0.66, 0.76, 0.85, 0.9, 0.94, 0.97, 0.98, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99], seedB: [-0.5, -0.6, -0.69, -0.77, -0.84, -0.9, -0.95, -0.97, -0.98, -0.99, -0.99, -0.99, -0.99, -0.99, -0.99, -0.99, -0.99], shown: 16, aVal: 0.99, bVal: -0.99, focus: '各落一模态', log: 'x' },
     },
+    vla: {
+      doc: { kind: 'vla', params: {}, entities: [], streams: [] },
+      a: { step: 3, phase: 'tokenize', op: 'tokenize', instruction: '把红积木放进碗', dims: [{ name: 'Δx', val: 0.12, lo: -0.2, hi: 0.2, bin: 204, back: 0.12 }, { name: 'Δy', val: -0.05, lo: -0.2, hi: 0.2, bin: 96, back: -0.05 }, { name: 'Δz', val: -0.08, lo: -0.2, hi: 0.2, bin: 77, back: -0.08 }], tokens: [204, 96, 77, 255], gripTok: 255, stage: 2, novelObj: '紫色的杯子', focus: '动作 token 化', log: 'x' },
+      b: { step: 6, phase: 'done', op: 'summary', instruction: '把红积木放进碗', dims: [{ name: 'Δx', val: 0.12, lo: -0.2, hi: 0.2, bin: 204, back: 0.12 }, { name: 'Δy', val: -0.05, lo: -0.2, hi: 0.2, bin: 96, back: -0.05 }, { name: 'Δz', val: -0.08, lo: -0.2, hi: 0.2, bin: 77, back: -0.08 }], tokens: [204, 96, 77, 255], gripTok: 255, stage: 4, novelObj: '紫色的杯子', focus: '通才策略', log: 'x' },
+    },
     pid: {
       doc: { kind: 'pid', params: {}, entities: [], streams: [] },
       a: { step: 5, phase: 'ponly', op: 'step', target: 10, Kp: 0.4, Kd: 0.9, mode: 'P', k: 5, e: 1.43, uP: 0.572, uD: 0, u: 0.572, v: 4.02, p: 11.77, ponly: [{ k: 1, p: 1 }, { k: 2, p: 2.9 }, { k: 3, p: 5.51 }, { k: 4, p: 8.57 }, { k: 5, p: 11.77 }], pd: [], focus: '纯P 步5：冲过目标', log: 'x' },

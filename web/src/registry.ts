@@ -328,6 +328,7 @@ import { impedanceKernel, type ImpState } from '@engine/kernels/impedance.ts'
 import { mpcKernel, type MPCState } from '@engine/kernels/mpc.ts'
 import { bcKernel, type BCState } from '@engine/kernels/bc.ts'
 import { diffpolicyKernel, type DiffPolicyState } from '@engine/kernels/diffpolicy.ts'
+import { vlaKernel, type VLAState } from '@engine/kernels/vla.ts'
 import { objectstoreKernel } from '@engine/kernels/objectstore.ts'
 import { SysDesignStage } from './stages/SysDesignStage.tsx'
 import { SeckillStage } from './stages/SeckillStage.tsx'
@@ -349,6 +350,7 @@ import { ImpedanceStage } from './stages/ImpedanceStage.tsx'
 import { MPCStage } from './stages/MPCStage.tsx'
 import { BCStage } from './stages/BCStage.tsx'
 import { DiffPolicyStage } from './stages/DiffPolicyStage.tsx'
+import { VLAStage } from './stages/VLAStage.tsx'
 import { CollisionStage } from './stages/CollisionStage.tsx'
 import { gcnKernel, type GcnState } from '@engine/kernels/gcn.ts'
 import { GcnStage } from './stages/GcnStage.tsx'
@@ -6392,6 +6394,23 @@ const diffpolicy: Experiment<DiffPolicyState> = {
   ],
 }
 
+const vla: Experiment<VLAState> = {
+  id: 'vla', group: '具身学习', title: 'VLA 视觉-语言-动作', subtitle: '预训练大模型吃图像+指令、直接吐机器人动作',
+  kernel: vlaKernel, defaultDoc: { kind: 'vla', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: 'VLA=拿网络图文预训练的视觉-语言大模型(VLM)当骨干+接动作输出+机器人示范微调，吃一张图+一句自然语言、直接产动作。RT-2 的动作 token 化：连续 Δpose 每维按范围离散成 256 格→token id，大模型像预测单词一样自回归吐这串动作 token，再反解成位姿执行。指令「把红积木放进碗」→动作 token [204,96,77,255]，反解误差≈0。杀手锏=靠骨干网络知识泛化到没训过的物体/指令。',
+  bounds: ['VLA=网络预训练VLM骨干+动作输出+机器人示范微调;吃图像+语言直接产动作', '动作token化(RT-2):连续Δpose每维离散256格→token,大模型像吐单词一样自回归生成,和语言共用词表', '连续动作头(π0):扩散/流匹配产连续动作块=Diffusion Policy;本例token[204,96,77,255]反解≈0', '杀手锏:骨干带网络知识→泛化到没训过的物体/自由指令(BC做不到);代表RT-2/OpenVLA/π0/RDT;瓶颈=机器人数据/算力/精度'],
+  tabs: [{ id: 'design', label: '图像+语言→动作' }], Stage: VLAStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: '通才策略' } : { key: 'idle', label: s.phase === 'backbone' ? 'VLM 骨干' : s.phase === 'tokenize' ? '动作token化' : s.phase === 'execute' ? '生成执行' : s.phase === 'generalize' ? '泛化' : s.phase === 'input' ? '图像+指令' : '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 7)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.op === 'tokenize' ? 'tok' : s.op === 'backbone' ? '骨' : s.op === 'execute' ? '动' : s.op === 'generalize' ? '泛' : 'V'),
+  readouts: s => [
+    { label: '当前阶段', value: s.phase === 'input' ? '图像+指令' : s.phase === 'backbone' ? '预训练VLM骨干' : s.phase === 'tokenize' ? '动作token化' : s.phase === 'execute' ? '生成+执行' : s.phase === 'generalize' ? '泛化' : s.phase === 'done' ? '通才策略' : '就绪' },
+    { label: '指令', value: `「${s.instruction}」` },
+    { label: '动作 token', value: `[${s.tokens.join(', ')}]` },
+    { label: '泛化到', value: s.phase === 'generalize' || s.phase === 'done' ? `没训过的「${s.novelObj}」` : '—' },
+  ],
+}
+
 export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
@@ -6403,7 +6422,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, ik, jacobian, quat, trajectory, kalman, icp, slam, impedance, mpc, pid, rrt, bc, diffpolicy,
+  fk, ik, jacobian, quat, trajectory, kalman, icp, slam, impedance, mpc, pid, rrt, bc, diffpolicy, vla,
 ] as unknown as AnyExperiment[]
 
 /**

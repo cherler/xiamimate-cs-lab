@@ -552,6 +552,21 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; op: string; shown: number }; return st.phase === 'done' ? '各落一模态' : st.op === 'bc' ? 'BC 平均成撞' : st.phase === 'denoise' ? `去噪 ${st.shown} 步` : '就绪'; },
     try: [{ act: '看 BC 为什么撞', watch: '回归的最优单点预测是均值；左(−1)和右(+1)一平均落到 0(直行)，正好撞障碍——加大网络也没用，是回归的结构缺陷。' }, { act: '看扩散去噪采样', watch: '两个样本从随机噪声出发、沿能量往最近的峰拉：A→+1(右绕)、B→−1(左绕)。不同噪声给不同模态=多解，都绕过障碍。这是 VLA 动作头用扩散的原因。' }], terms: [],
   },
+  vla: {
+    question: '一个机器人怎么吃"一张图 + 一句话"就直接干活？动作是怎么从大模型里"说出来"的？',
+    read: [{ at: '流水线', is: '图像+指令→预训练VLM骨干→动作token→反解执行，逐段点亮。', anchor: '.vla-pipe' }, { at: 'token化表', is: '连续 Δpose 每维离散成格→token→反解。', anchor: '.vla-tok' }],
+    step: (s: never) => { const st = s as { phase: string; op: string; instruction: string; tokens: number[]; novelObj: string; focus: string }; return [
+      { k: '本步输入', v: st.op === 'intro' ? `指令「${st.instruction}」+ 场景图` : st.op === 'input' ? '图像(视觉token)+指令(文本token)' : st.op === 'backbone' ? '过预训练 VLM 骨干' : st.op === 'tokenize' ? '连续动作 Δpose' : st.op === 'execute' ? '生成的动作 token' : `换个没训过的物体「${st.novelObj}」` },
+      { k: '判定规则', v: 'VLA=网络预训练视觉-语言大模型当骨干+动作输出+机器人示范微调。动作 token 化(RT-2)：连续 Δpose 每维按范围离散成 256 格→token，大模型像预测单词一样自回归生成，机器人端反解回位姿。骨干带网络知识→泛化到没训过的物体。' },
+      { k: '本步结果', v: st.op === 'backbone' ? '骨干已懂"红/碗/放进"，理解出要把红积木放进碗'
+        : st.op === 'tokenize' ? `Δpose → 动作 token [${st.tokens.join(', ')}]（和语言共用词表）`
+          : st.op === 'execute' ? `自回归吐 token [${st.tokens.join(', ')}]→反解成 Δpose→机械臂执行`
+            : st.op === 'generalize' ? `骨干在网络见过无数「${st.novelObj}」→直接接到动作、伸手去拿`
+              : st.phase === 'done' ? 'VLA=通才机器人策略，把网络知识迁移到机器人' : '就绪' },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; op: string }; return st.phase === 'done' ? '通才策略' : st.op === 'tokenize' ? '动作token化' : st.op === 'backbone' ? 'VLM 骨干' : st.op === 'execute' ? '生成执行' : st.op === 'generalize' ? '泛化' : '就绪'; },
+    try: [{ act: '看动作怎么 token 化', watch: '连续 Δpose 每维按范围离散成 256 格→token id，动作变成一串"词"[204,96,77,255]，大模型像预测单词一样吐出来、再反解回位姿。' }, { act: '看它为什么能泛化', watch: '换成「拿起紫色的杯子」——机器人数据里没有，但骨干在网络图文里见过无数紫色的、杯子→直接接到动作。这是"预训练大模型+少量机器人数据"的威力，BC 做不到。' }], terms: [],
+  },
   pid: {
     question: '让机器人关节停到目标角，为什么只用比例(P)会来回震荡？加个 D 项怎么就稳了？',
     read: [{ at: '位置曲线', is: '纯 P(红,冲过头震荡) 与 PD(绿,阻尼收敛) 对目标线(虚线)。', anchor: '.fk-svg' }, { at: '读数', is: '控制器、位置 vs 目标、误差 e、控制量 u=P(+D)。', anchor: '.scdim' }],
