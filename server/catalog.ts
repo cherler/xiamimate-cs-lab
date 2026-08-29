@@ -97,6 +97,7 @@ import { ikKernel } from '../src/kernels/ik.ts'
 import { jacobianKernel } from '../src/kernels/jacobian.ts'
 import { quatKernel } from '../src/kernels/quat.ts'
 import { trajectoryKernel } from '../src/kernels/trajectory.ts'
+import { icpKernel } from '../src/kernels/icp.ts'
 import { kalmanKernel } from '../src/kernels/kalman.ts'
 import { pidKernel } from '../src/kernels/pid.ts'
 import { rrtKernel } from '../src/kernels/rrt.ts'
@@ -1694,6 +1695,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: '二连杆机械臂 det(J)=L1·L2·sinθ2，什么构型下 J 奇异、末端会丢一个自由度?', kind: 'choice',
         compute: () => ({ answer: 'θ2=0(手臂完全伸直)或 180°(对折)时 sinθ2=0 → det(J)=0、J 奇异：两列平行，末端此刻只能沿一个方向动、丢一个自由度，J⁻¹ 爆炸。工程上要绕开或用阻尼最小二乘', step: 5, evidence: '本例 θ2=90° 时 det=4 可逆；θ2=0 伸直时 det=0 奇异、两列平行' }),
         distractors: () => ['θ1=0 时奇异', '关节速度过大时奇异', 'J 永远可逆、不会奇异'],
+      },
+    ],
+  },
+  {
+    id: 'icp', title: 'ICP 点云配准', kernel: icpKernel as Kernel<unknown>, doc: trivialDoc('icp'),
+    facts: [
+      {
+        id: 'icp_two_steps', label: 'ICP 的两步迭代',
+        ask: 'ICP 并不知道两片点云的点怎么对应，它靠什么把点云对齐?', kind: 'choice',
+        compute: () => ({ answer: '两步反复迭代：① 每个源点找目标里欧氏最近的点当对应(一开始会猜错几个)；② 用这批点对算最佳刚体变换(Kabsch/SVD)搬过去。对应和变换互相改进、误差单调下降', step: 1, evidence: '本例对应从 00134 逐轮修正到 01234，误差 0.72→0.55→0.22→0.01' }),
+        distractors: () => ['穷举所有点的配对组合找最优', '需要人工标注每个点的对应关系', '直接用一次最小二乘就能对齐'],
+      },
+      {
+        id: 'icp_local', label: 'ICP 为什么依赖初值',
+        ask: 'ICP 有个著名的局限：依赖初值。为什么初始差太多会失败?', kind: 'choice',
+        compute: () => ({ answer: '初始差太大时，欧氏最近点算出的对应会系统性地错(点连到错误的目标点)，基于错对应求出的变换把点云带向错误方向 → 陷入局部最优。所以实际先用粗配准(特征匹配/IMU 里程计)给个好初值再上 ICP 精配', step: 4, evidence: '本例初始 25° 尚可收敛；若初始偏差过大对应全错就收不回来' }),
+        distractors: () => ['ICP 从不失败、总能全局最优', '初值只影响速度、不影响结果', 'ICP 需要初值是因为要设旋转角'],
       },
     ],
   },

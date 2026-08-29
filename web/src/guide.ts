@@ -464,6 +464,21 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; op: string; x: number; P: number; K: number | null }; return st.phase === 'done' ? `x=${st.x}·P=${st.P}` : st.op === 'predict' ? '预测·方差涨' : st.op === 'update' ? `校正·K=${st.K}` : '就绪'; },
     try: [{ act: '看方差 P 的锯齿', watch: 'predict 时 P 涨(误差棒变长、越推越不确定)、update 时 P 缩(观测拉回、更确定)，收敛到稳态 ~0.5。' }, { act: '看增益 K 权衡', watch: 'K=P/(P+R)：预测不确定(P大)时 K 大、多信观测；确定后 K 小、多信预测。融合估计比单独预测或观测都贴真值。' }], terms: [],
   },
+  icp: {
+    question: '激光雷达两帧点云，机器人不知道哪个点对哪个点，怎么把它们对齐、算出自己动了多少？',
+    read: [{ at: '点云图', is: '目标点云(空心)、源点云(实心)、对应连线；源云逐轮转到目标上。', anchor: '.fk-svg' }, { at: '读数', is: '迭代轮、点对平均误差、累计旋转 vs 真值。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { phase: string; op: string; iterNo: number; iterRot: number; cumRot: number; error: number; trueRot: number; focus: string }; return [
+      { k: '本步输入', v: st.op === 'intro' ? `源点云 + 目标(转 ${st.trueRot}°+平移)、初始误差 ${st.error}` : `第 ${st.iterNo} 轮：当前源点云位置` },
+      { k: '判定规则', v: '① 每个源点在目标里找欧氏最近的点当对应(一开始会猜错几个)；② 用这批点对算最佳刚体变换(去质心、交叉协方差求旋转)；③ 把源点云搬过去；④ 重来。对应和变换互相改进，误差单调下降。' },
+      { k: '本步结果', v: st.phase === 'done'
+        ? `收敛：累计旋转 ${st.cumRot}°(真 ${st.trueRot}°)、误差 ${st.error}≈0，两片点云重合`
+        : st.op === 'iter'
+          ? `本轮旋转 ${st.iterRot}°(累计 ${st.cumRot}°)，误差降到 ${st.error}`
+          : '两片点云未对齐' },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; iterNo: number; error: number }; return st.phase === 'done' ? '配准收敛' : st.iterNo > 0 ? `第${st.iterNo}轮 误差${st.error}` : '就绪'; },
+    try: [{ act: '看对应先猜错再修正', watch: '初始没对齐，最近点对应会猜错几个(如两个源点都连到同一目标点)；随着源云转过去，对应越来越准。' }, { act: '看误差单调下降', watch: '误差 0.72→0.55→0.22→0.01，累计旋转还原真值 25°。ICP=猜对应+求变换反复迭代；依赖初值(差太多会陷局部最优)。' }], terms: [],
+  },
   pid: {
     question: '让机器人关节停到目标角，为什么只用比例(P)会来回震荡？加个 D 项怎么就稳了？',
     read: [{ at: '位置曲线', is: '纯 P(红,冲过头震荡) 与 PD(绿,阻尼收敛) 对目标线(虚线)。', anchor: '.fk-svg' }, { at: '读数', is: '控制器、位置 vs 目标、误差 e、控制量 u=P(+D)。', anchor: '.scdim' }],

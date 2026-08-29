@@ -4796,3 +4796,10 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .traj-note{font-size:12px;color:var(--dim);line-height:1.7;margin-top:5px}
 .traj-now{margin:11px 0 2px;padding:8px 13px;border-radius:8px;font-family:var(--mono);font-size:13px;color:var(--dim);background:var(--sunk-2)}
 .traj-now b{color:var(--ink)}
+
+/* ── ICP 点云配准 ── */
+.icp-corr{stroke:var(--faint);stroke-width:1;opacity:.5}
+.icp-tgt{fill:none;stroke:var(--now);stroke-width:2}
+.icp-src{fill:var(--hit);stroke:var(--panel);stroke-width:1}
+.icp-iter{border:1px solid var(--line);border-radius:9px;padding:9px 12px}
+.icp-iter .km-ml.ok{color:var(--hit)}

@@ -322,6 +322,7 @@ import { pidKernel, type PIDState } from '@engine/kernels/pid.ts'
 import { rrtKernel, type RRTState } from '@engine/kernels/rrt.ts'
 import { quatKernel, type QuatState } from '@engine/kernels/quat.ts'
 import { trajectoryKernel, type TrajState } from '@engine/kernels/trajectory.ts'
+import { icpKernel, type ICPState } from '@engine/kernels/icp.ts'
 import { objectstoreKernel } from '@engine/kernels/objectstore.ts'
 import { SysDesignStage } from './stages/SysDesignStage.tsx'
 import { SeckillStage } from './stages/SeckillStage.tsx'
@@ -337,6 +338,7 @@ import { PIDStage } from './stages/PIDStage.tsx'
 import { RRTStage } from './stages/RRTStage.tsx'
 import { QuatStage } from './stages/QuatStage.tsx'
 import { TrajStage } from './stages/TrajStage.tsx'
+import { ICPStage } from './stages/ICPStage.tsx'
 import { CollisionStage } from './stages/CollisionStage.tsx'
 import { gcnKernel, type GcnState } from '@engine/kernels/gcn.ts'
 import { GcnStage } from './stages/GcnStage.tsx'
@@ -6276,6 +6278,23 @@ const rrt: Experiment<RRTState> = {
   ],
 }
 
+const icp: Experiment<ICPState> = {
+  id: 'icp', group: '机器人感知', title: 'ICP 点云配准', subtitle: '迭代最近点：两片点云对齐求位姿',
+  kernel: icpKernel, defaultDoc: { kind: 'icp', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '激光雷达/深度相机每帧一片点云，把这帧和上帧对齐、对齐的刚体变换就是位姿变化(激光 SLAM 前端)。ICP(迭代最近点)不知道点的真实对应，就猜+迭代：①每个源点找目标里最近点当对应；②用点对算最佳旋转+平移(2D Kabsch)；③搬过去；④重来。源=5点形状，目标=转25°+平移，ICP 从猜错的对应开始 4 轮把误差从 0.72 收到 ~0、还原 25°。对应/旋转/误差全真算。',
+  bounds: ['ICP=找最近点对应+用点对求最佳刚体变换(Kabsch/SVD),两步反复迭代,误差单调降', '不知道点的真实对应→用欧氏最近点猜(一开始会错几个),迭代中对应越来越准', '本例4轮:误差0.72→0.55→0.22→0.01,累计旋转还原真值25°', '依赖初值(差太多→对应全错→局部最优),实际先粗配准(特征/IMU)再ICP精配;点面ICP/GICP/鲁棒核'],
+  tabs: [{ id: 'design', label: '迭代配准' }], Stage: ICPStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: '配准收敛' } : { key: 'idle', label: s.iterNo > 0 ? `第 ${s.iterNo} 轮` : '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 5)),
+  tickLabel: s => (s.phase === 'done' ? '齐' : s.iterNo > 0 ? `${s.iterNo}` : 'ICP'),
+  readouts: s => [
+    { label: '迭代轮', value: `第 ${s.iterNo} 轮` },
+    { label: '点对平均误差', value: `${s.error}`, tone: s.error < 0.1 ? 'good' : undefined },
+    { label: '累计旋转', value: `${s.cumRot}°（真 ${s.trueRot}°）` },
+    { label: '本轮旋转', value: `${s.iterRot}°` },
+  ],
+}
+
 export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
@@ -6287,7 +6306,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, ik, jacobian, quat, trajectory, kalman, pid, rrt,
+  fk, ik, jacobian, quat, trajectory, kalman, icp, pid, rrt,
 ] as unknown as AnyExperiment[]
 
 /**

@@ -398,6 +398,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { step: 2, phase: 'update', op: 'update', u: 1, Q: 0.5, R: 1, stepNo: 1, x: 1.12, P: 0.6, truePos: 1, z: 1.2, K: 0.6, innov: 0.2, xPred: 1, history: [{ step: 1, truePos: 1, x: 1.12, sd: 0.775, z: 1.2 }], focus: '步 1 · Update：K=0.6 融合观测 z=1.2 → x=1.12', log: 'x' },
       b: { step: 8, phase: 'done', op: 'summary', u: 1, Q: 0.5, R: 1, stepNo: 4, x: 4.014, P: 0.502, truePos: 4, z: 3.9, K: 0.501, innov: -0.228, xPred: 4.128, history: [{ step: 1, truePos: 1, x: 1.12, sd: 0.775, z: 1.2 }, { step: 2, truePos: 2, x: 1.952, sd: 0.724, z: 1.8 }, { step: 3, truePos: 3, x: 3.128, sd: 0.711, z: 3.3 }, { step: 4, truePos: 4, x: 4.014, sd: 0.709, z: 3.9 }], focus: '步 4 · Update 收敛', log: 'x' },
     },
+    icp: {
+      doc: { kind: 'icp', params: {}, entities: [], streams: [] },
+      a: { step: 1, phase: 'iterate', op: 'iter', target: [[0.9, 1.1], [2.6, 0.4], [3.5, 0.9], [2.9, 2.3], [0.3, 2.7]], cur: [[0.3, 0.2], [2.1, 0.1], [3, 0.3], [3.1, 1.7], [1.1, 2.6]], corr: [0, 1, 1, 3, 4], iterNo: 1, iterRot: 12.18, cumRot: 12.18, error: 0.55, trueRot: 25, focus: '第 1 轮', log: 'x' },
+      b: { step: 4, phase: 'done', op: 'summary', target: [[0.9, 1.1], [2.6, 0.4], [3.5, 0.9], [2.9, 2.3], [0.3, 2.7]], cur: [[0.9, 1.1], [2.6, 0.4], [3.5, 0.9], [2.9, 2.3], [0.3, 2.7]], corr: [0, 1, 2, 3, 4], iterNo: 4, iterRot: 0.03, cumRot: 25.01, error: 0.01, trueRot: 25, focus: '收敛', log: 'x' },
+    },
     pid: {
       doc: { kind: 'pid', params: {}, entities: [], streams: [] },
       a: { step: 5, phase: 'ponly', op: 'step', target: 10, Kp: 0.4, Kd: 0.9, mode: 'P', k: 5, e: 1.43, uP: 0.572, uD: 0, u: 0.572, v: 4.02, p: 11.77, ponly: [{ k: 1, p: 1 }, { k: 2, p: 2.9 }, { k: 3, p: 5.51 }, { k: 4, p: 8.57 }, { k: 5, p: 11.77 }], pd: [], focus: '纯P 步5：冲过目标', log: 'x' },
