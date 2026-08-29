@@ -388,6 +388,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { step: 3, phase: 'rotate', op: 'rotate', axis: [0, 0, 1], angle: 90, q: [0.707, 0, 0, 0.707], qnorm: 1, R: [[0, -1, 0], [1, 0, 0], [0, 0, 1]], vecStart: [1, 0, 0], vecNow: [0, 1, 0], angleShown: 90, eulerSets: [], gimbalR: null, focus: 'R·(1,0,0)=(0,1,0)', log: 'x' },
       b: { step: 6, phase: 'done', op: 'summary', axis: [0, 0, 1], angle: 90, q: [0.707, 0, 0, 0.707], qnorm: 1, R: [[0, -1, 0], [1, 0, 0], [0, 0, 1]], vecStart: [1, 0, 0], vecNow: [-1, 0, 0], angleShown: 180, eulerSets: [{ yaw: 30, pitch: 90, roll: 0 }, { yaw: 60, pitch: 90, roll: 30 }, { yaw: 50, pitch: 90, roll: 20 }], gimbalR: [[0, -0.5, 0.866], [0, 0.866, 0.5], [-1, 0, 0]], focus: '四元数首选', log: 'x' },
     },
+    trajectory: {
+      doc: { kind: 'trajectory', params: {}, entities: [], streams: [] },
+      a: { step: 4, phase: 'trace', op: 'sample', theta0: 0, thetaF: 90, T: 2, a: [0, 0, 67.5, -22.5], t: 0.4, theta: 9.36, vel: 43.2, accel: 81, linVel: 45, samples: [{ t: 0, theta: 0, vel: 0 }, { t: 0.4, theta: 9.36, vel: 43.2 }], focus: 't=0.4s 采样', log: 'x' },
+      b: { step: 8, phase: 'done', op: 'summary', theta0: 0, thetaF: 90, T: 2, a: [0, 0, 67.5, -22.5], t: 2, theta: 90, vel: 0, accel: -135, linVel: 45, samples: [{ t: 0, theta: 0, vel: 0 }, { t: 0.4, theta: 9.36, vel: 43.2 }, { t: 0.8, theta: 31.68, vel: 64.8 }, { t: 1.2, theta: 58.32, vel: 64.8 }, { t: 1.6, theta: 80.64, vel: 43.2 }, { t: 2, theta: 90, vel: 0 }], focus: 't=2s 到位', log: 'x' },
+    },
     kalman: {
       doc: { kind: 'kalman', params: {}, entities: [], streams: [] },
       a: { step: 2, phase: 'update', op: 'update', u: 1, Q: 0.5, R: 1, stepNo: 1, x: 1.12, P: 0.6, truePos: 1, z: 1.2, K: 0.6, innov: 0.2, xPred: 1, history: [{ step: 1, truePos: 1, x: 1.12, sd: 0.775, z: 1.2 }], focus: '步 1 · Update：K=0.6 融合观测 z=1.2 → x=1.12', log: 'x' },

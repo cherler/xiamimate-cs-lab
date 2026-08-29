@@ -96,6 +96,7 @@ import { fkKernel } from '../src/kernels/fk.ts'
 import { ikKernel } from '../src/kernels/ik.ts'
 import { jacobianKernel } from '../src/kernels/jacobian.ts'
 import { quatKernel } from '../src/kernels/quat.ts'
+import { trajectoryKernel } from '../src/kernels/trajectory.ts'
 import { kalmanKernel } from '../src/kernels/kalman.ts'
 import { pidKernel } from '../src/kernels/pid.ts'
 import { rrtKernel } from '../src/kernels/rrt.ts'
@@ -1642,6 +1643,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: '给二连杆机械臂(L1=L2=2)一个末端目标，什么情况下逆运动学无解(够不到)?', kind: 'choice',
         compute: () => ({ answer: '目标到基座距离 r 超出可达范围 [|L1−L2|, L1+L2]=[0,4] 时无解：太远(r>4)伸直也够不到、太近(r<|L1−L2|)缩不进去。本例目标(2,2) r=2.828 在范围内够得到；(4.5,0) r=4.5>4 就无解', step: 1, evidence: 'r=2.828 ∈ [0,4] 够得到；r=4.5 > 4 手臂伸直也够不到' }),
         distractors: () => ['IK 永远有解，机械臂能到任何点', '只有目标在原点时无解', '关节数不够时才无解，和距离无关'],
+      },
+    ],
+  },
+  {
+    id: 'trajectory', title: '轨迹规划', kernel: trajectoryKernel as Kernel<unknown>, doc: trivialDoc('trajectory'),
+    facts: [
+      {
+        id: 'why_not_linear', label: '为什么不能匀速(线性插值)走',
+        ask: '机器人关节从一个角度到另一个角度，为什么不能简单地线性插值(匀速)走过去?', kind: 'choice',
+        compute: () => ({ answer: '匀速意味着速度在起点从 0 突跳到匀速值、终点又突跳回 0，那一瞬间加速度无穷大 → 电机顿挫、机械抖动。要平滑必须让速度在两端连续(为 0)', step: 1, evidence: '本例线性速度恒 45°/s，但起终点从 0 突跳=无穷加速度' }),
+        distractors: () => ['匀速走速度太慢', '线性插值算不出中间位置', '匀速会走过头'],
+      },
+      {
+        id: 'cubic_traj', label: '三次多项式怎么平滑起停',
+        ask: '三次多项式轨迹 θ(t)=a0+a1t+a2t²+a3t³ 靠什么保证起停平滑？它的位置和速度曲线什么形状?', kind: 'choice',
+        compute: () => ({ answer: '用 4 个边界条件定 4 个系数：两端位置 + 两端速度=0(起停静止)。于是位置走平滑 S 曲线、速度呈钟形(两端归零、中点最大)、加速度有限(不再无穷)', step: 8, evidence: '本例 a=[0,0,67.5,-22.5]，速度 0→64.8→0，t=2s 到位且速度归零' }),
+        distractors: () => ['靠调大 T 让它慢慢走', '位置和速度都是直线', '三次多项式和线性插值效果一样'],
       },
     ],
   },

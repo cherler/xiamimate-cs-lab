@@ -321,6 +321,7 @@ import { kalmanKernel, type KalmanState } from '@engine/kernels/kalman.ts'
 import { pidKernel, type PIDState } from '@engine/kernels/pid.ts'
 import { rrtKernel, type RRTState } from '@engine/kernels/rrt.ts'
 import { quatKernel, type QuatState } from '@engine/kernels/quat.ts'
+import { trajectoryKernel, type TrajState } from '@engine/kernels/trajectory.ts'
 import { objectstoreKernel } from '@engine/kernels/objectstore.ts'
 import { SysDesignStage } from './stages/SysDesignStage.tsx'
 import { SeckillStage } from './stages/SeckillStage.tsx'
@@ -335,6 +336,7 @@ import { KalmanStage } from './stages/KalmanStage.tsx'
 import { PIDStage } from './stages/PIDStage.tsx'
 import { RRTStage } from './stages/RRTStage.tsx'
 import { QuatStage } from './stages/QuatStage.tsx'
+import { TrajStage } from './stages/TrajStage.tsx'
 import { CollisionStage } from './stages/CollisionStage.tsx'
 import { gcnKernel, type GcnState } from '@engine/kernels/gcn.ts'
 import { GcnStage } from './stages/GcnStage.tsx'
@@ -6203,6 +6205,23 @@ const quat: Experiment<QuatState> = {
   ],
 }
 
+const trajectory: Experiment<TrajState> = {
+  id: 'trajectory', group: '机器人学基础', title: '轨迹规划', subtitle: '三次多项式：平滑起停 vs 线性插值速度突跳',
+  kernel: trajectoryKernel, defaultDoc: { kind: 'trajectory', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: 'FK/IK 给位置，还要一条平滑的时间轨迹(每时刻位置/速度/加速度)。线性插值匀速走→速度两端从 0 突跳=无穷加速度、顿挫。三次多项式 θ(t)=a0+a1t+a2t²+a3t³ 用 4 个边界条件(两端位置+两端速度=0)定系数：关节 0°→90°、T=2s 解出 a=[0,0,67.5,-22.5]，位置走 S 曲线、速度呈钟形(两端归零)、加速度有限。系数与每时刻值全真算。',
+  bounds: ['轨迹规划=时间参数化的平滑运动(每时刻位置/速度/加速度),几何路径是RRT的活', '线性插值速度两端从0突跳→无穷大加速度,电机顿挫抖动', '三次多项式:4边界条件(两端位置+两端速度0)→a=[0,0,3Δθ/T²,-2Δθ/T³];位置S曲线、速度钟形两端0', '要加速度也平滑用五次多项式;多路点用样条;还有梯形/S速度曲线;轨迹交PID跟踪、每点IK转关节角'],
+  tabs: [{ id: 'design', label: '平滑轨迹' }], Stage: TrajStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: '平滑到位' } : s.phase === 'linear' ? { key: 'bad', label: '线性速度突跳' } : { key: 'idle', label: s.phase === 'solve' ? '解系数' : s.phase === 'trace' ? `t=${s.t}s` : '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 9)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.phase === 'linear' ? '线' : s.phase === 'solve' ? 'a' : s.op === 'sample' ? `${s.t}` : '轨'),
+  readouts: s => [
+    { label: '时间 t', value: `${s.t}s` },
+    { label: '位置 θ', value: `${s.theta}°` },
+    { label: '速度 θ̇', value: `${s.vel}°/s`, tone: (s.op === 'summary' && s.vel === 0) ? 'good' : undefined },
+    { label: '加速度 θ̈', value: `${s.accel}°/s²` },
+  ],
+}
+
 // ── 具身智能 · 机器人感知 ──
 const kalman: Experiment<KalmanState> = {
   id: 'kalman', group: '机器人感知', title: '卡尔曼滤波', subtitle: '预测+观测按方差融合：机器人定位的地基',
@@ -6268,7 +6287,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, ik, jacobian, quat, kalman, pid, rrt,
+  fk, ik, jacobian, quat, trajectory, kalman, pid, rrt,
 ] as unknown as AnyExperiment[]
 
 /**

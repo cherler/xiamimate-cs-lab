@@ -4779,3 +4779,20 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .quat-eset{font-family:var(--mono);font-size:11.5px;color:var(--dim);padding:2px 0}
 .quat-eset em{font-style:normal;color:var(--miss);margin-left:4px}
 .quat-eq{margin-top:5px;font-family:var(--mono);font-size:10.5px;color:var(--ink);border-top:1px solid var(--line-soft);padding-top:5px}
+
+/* ── 轨迹规划 ── */
+.traj-charts{margin:14px 0 4px}
+.traj-lin{stroke:var(--faint);stroke-width:1.5;stroke-dasharray:5 4;opacity:.7}
+.traj-jump{stroke:var(--miss);stroke-width:1.5;stroke-dasharray:2 2}
+.traj-cubic{fill:none;stroke:var(--now);stroke-width:2.5}
+.traj-dot{fill:var(--now)}
+.traj-cur{fill:none;stroke:var(--now);stroke-width:2.5}
+.traj-pre{margin:14px 0 4px}
+.traj-warn{padding:11px 14px;border-radius:9px;font-size:13px;color:var(--ink);background:color-mix(in srgb,var(--miss) 6%,var(--panel));border-left:3px solid var(--miss)}
+.traj-warn .brake{color:var(--miss)}
+.traj-coef{border:1px solid var(--line);border-radius:9px;padding:11px 14px}
+.traj-crow{display:flex;justify-content:space-between;gap:12px;font-family:var(--mono);font-size:12.5px;color:var(--ink);padding:4px 0}
+.traj-crow span{flex:1}
+.traj-note{font-size:12px;color:var(--dim);line-height:1.7;margin-top:5px}
+.traj-now{margin:11px 0 2px;padding:8px 13px;border-radius:8px;font-family:var(--mono);font-size:13px;color:var(--dim);background:var(--sunk-2)}
+.traj-now b{color:var(--ink)}

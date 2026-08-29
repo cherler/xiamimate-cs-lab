@@ -433,6 +433,20 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; op: string; angleShown: number }; return st.phase === 'done' ? '四元数首选' : st.phase === 'gimbal' ? '万向锁' : st.op === 'quat' ? '轴角→q' : st.op === 'matrix' ? '→矩阵' : st.op === 'rotate' ? `转 ${st.angleShown}°` : st.op === 'compose' ? '相乘组合' : '就绪'; },
     try: [{ act: '看 |q| 恒为 1', watch: '绕轴转 θ → q=(cos(θ/2), sin(θ/2)·轴)，w²+x²+y²+z²=1。只用 4 个数编码一个旋转，比矩阵的 9 个省。' }, { act: '看万向锁', watch: 'pitch=90° 时 (30,90,0)、(60,90,30)、(50,90,20) 给出同一个 R——yaw 和 roll 锁成一个、丢一个自由度。四元数没这毛病，所以机器人/IMU 用它。' }], terms: [],
   },
+  trajectory: {
+    question: '机器人关节从 0° 转到 90°，为什么不能匀速直接走？怎么生成一条平滑的时间轨迹？',
+    read: [{ at: '位置/速度图', is: '三次多项式(实线)的位置 S 曲线、速度钟形；线性(虚线)的速度两端突跳。', anchor: '.traj-charts' }, { at: '读数', is: '时间、位置 θ、速度 θ̇、加速度 θ̈。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { phase: string; op: string; theta0: number; thetaF: number; T: number; a: number[]; t: number; theta: number; vel: number; accel: number; linVel: number; focus: string }; return [
+      { k: '本步输入', v: st.op === 'intro' ? `关节 ${st.theta0}°→${st.thetaF}°、T=${st.T}s` : st.op === 'linear' ? '线性插值（匀速）' : st.op === 'solve' ? '解三次多项式系数' : `采样 t=${st.t}s` },
+      { k: '判定规则', v: '线性插值速度两端从 0 突跳=无穷加速度。三次多项式 θ(t)=a0+a1t+a2t²+a3t³，用 4 个边界条件(θ(0)、θ(T)、θ̇(0)=0、θ̇(T)=0)定系数：位置 S 曲线、速度钟形(两端归零)、加速度有限。' },
+      { k: '本步结果', v: st.op === 'linear' ? `速度恒 ${st.linVel}°/s，但两端突跳→无穷加速度`
+        : st.op === 'solve' ? `a=[${st.a.join(', ')}]（两端速度=0 定死）`
+          : st.op === 'sample' || st.op === 'summary' ? `t=${st.t}s：θ=${st.theta}°、θ̇=${st.vel}°/s、θ̈=${st.accel}°/s²${st.op === 'summary' ? '（到位、速度归零）' : ''}`
+            : '就绪' },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; op: string; t: number; vel: number }; return st.phase === 'done' ? '平滑到位' : st.op === 'linear' ? '速度突跳' : st.op === 'solve' ? '解系数' : st.op === 'sample' ? `t=${st.t}s v=${st.vel}` : '就绪'; },
+    try: [{ act: '看线性的速度突跳', watch: '线性插值速度恒 45°/s，但起点从 0 突跳到 45、终点又跳回 0=瞬间无穷大加速度，真电机顿挫抖动。' }, { act: '看三次的速度钟形', watch: '三次多项式速度从 0 爬到中点最大(64.8)再回 0，位置走 S 曲线——起步和停止都平滑。要加速度也平滑就用五次多项式。' }], terms: [],
+  },
   kalman: {
     question: '里程计会漂、GPS 会跳，机器人怎么把两个都不准的信息融合成一个更准的位置估计？',
     read: [{ at: '滤波图', is: '真值(绿)、GPS观测(空心)、融合估计(橙)带 ±√P 不确定带。', anchor: '.fk-svg' }, { at: '读数', is: '本拍、估计 x vs 真值、方差 P、增益 K。', anchor: '.scdim' }],
