@@ -353,6 +353,7 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   bc: {},
   diffpolicy: {},
   vla: {},
+  lerobot: {},
   pid: {},
   rrt: {},
   wildcard: {},

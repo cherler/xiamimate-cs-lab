@@ -104,6 +104,7 @@ import { mpcKernel } from '../src/kernels/mpc.ts'
 import { bcKernel } from '../src/kernels/bc.ts'
 import { diffpolicyKernel } from '../src/kernels/diffpolicy.ts'
 import { vlaKernel } from '../src/kernels/vla.ts'
+import { lerobotKernel } from '../src/kernels/lerobot.ts'
 import { kalmanKernel } from '../src/kernels/kalman.ts'
 import { pidKernel } from '../src/kernels/pid.ts'
 import { rrtKernel } from '../src/kernels/rrt.ts'
@@ -1752,6 +1753,23 @@ export const CATALOG: CatalogEntry[] = [
         ask: '卡尔曼增益 K=P\'/(P\'+R) 决定什么？什么时候更信 GPS 观测、什么时候更信运动预测?', kind: 'choice',
         compute: () => ({ answer: 'K 是"信预测还是信观测"的权重：x=x\'+K(z−x\')。观测噪声 R 小(GPS 准)→K 大→多信观测；预测方差 P\' 小(预测准)→K 小→多信预测。融合估计比单独任一个都准', step: 8, evidence: '本例 R=1，K 从 0.6 收敛到 ~0.5；估计一路贴真值(误差≤0.13)' }),
         distractors: () => ['K 是固定常数、与方差无关', 'K 越大越好、永远多信观测', 'K 只和步数有关'],
+      },
+    ],
+  },
+  {
+    id: 'lerobot', title: 'LeRobot × SO-101 开源实战', kernel: lerobotKernel as Kernel<unknown>, doc: trivialDoc('lerobot'),
+    facts: [
+      {
+        id: 'lerobot_pipeline', label: 'SO-101+LeRobot 自主抓取的全链路',
+        ask: '用 SO-101 机械臂 + LeRobot 做一个会自主抓取的策略，要走哪几步？训练数据从哪来?', kind: 'choice',
+        compute: () => ({ answer: '模仿学习全链路：装配标定→手推 leader 臂遥操 follower、用 lerobot-record 录≥50 段示范(相机+关节+动作)→lerobot-train 训一个策略(默认 ACT 动作分块 Transformer)→lerobot-rollout 部署让 follower 臂自主执行。训练数据来自你自己遥操作采集的示范', step: 8, evidence: '本例走完 硬件→装配标定→采集→训练ACT→部署抓取 全链路，含真实 CLI 命令' }),
+        distractors: () => ['训练数据从网上下载现成的，不用自己采', '手写规则程序控制、不用学习', '只需要一条臂、不用 leader/follower'],
+      },
+      {
+        id: 'so101_hardware', label: 'SO-101 硬件与主从臂',
+        ask: 'SO-101 机械臂的 leader 和 follower 两条臂各是干什么的？它有几个自由度?', kind: 'choice',
+        compute: () => ({ answer: 'follower(从臂)真干活、执行任务；leader(主臂)当你手里的遥操作手柄(用不同减速比让你轻松推动)，你推 leader、follower 跟随来采集示范。6 颗 STS3215 舵机、6 关节=5 自由度+夹爪', step: 1, evidence: 'SO-101：5 自由度+夹爪、6 舵机、leader/follower 主从两条臂' }),
+        distractors: () => ['leader 和 follower 是两个独立机器人、各干各的', '只有一条臂、没有主从之分', 'leader 负责计算、follower 负责供电'],
       },
     ],
   },

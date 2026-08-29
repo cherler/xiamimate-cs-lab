@@ -433,6 +433,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { step: 3, phase: 'tokenize', op: 'tokenize', instruction: '把红积木放进碗', dims: [{ name: 'Δx', val: 0.12, lo: -0.2, hi: 0.2, bin: 204, back: 0.12 }, { name: 'Δy', val: -0.05, lo: -0.2, hi: 0.2, bin: 96, back: -0.05 }, { name: 'Δz', val: -0.08, lo: -0.2, hi: 0.2, bin: 77, back: -0.08 }], tokens: [204, 96, 77, 255], gripTok: 255, stage: 2, novelObj: '紫色的杯子', focus: '动作 token 化', log: 'x' },
       b: { step: 6, phase: 'done', op: 'summary', instruction: '把红积木放进碗', dims: [{ name: 'Δx', val: 0.12, lo: -0.2, hi: 0.2, bin: 204, back: 0.12 }, { name: 'Δy', val: -0.05, lo: -0.2, hi: 0.2, bin: 96, back: -0.05 }, { name: 'Δz', val: -0.08, lo: -0.2, hi: 0.2, bin: 77, back: -0.08 }], tokens: [204, 96, 77, 255], gripTok: 255, stage: 4, novelObj: '紫色的杯子', focus: '通才策略', log: 'x' },
     },
+    lerobot: {
+      doc: { kind: 'lerobot', params: {}, entities: [], streams: [] },
+      a: { step: 6, phase: 'deploy', op: 'pose', stageLabel: '⑤ 部署 · 自主抓取', cmd: '', armPts: [[0, 0], [1.9, 0.62], [3.26, -0.4], [3.41, -1.49], [3.24, -2.07]], gripper: 'open', objPos: [3.24, -2.07], holding: false, poseName: '伸手下探到方块', focus: '伸手下探', log: 'x' },
+      b: { step: 8, phase: 'done', op: 'summary', stageLabel: '⑤ 部署 · 自主抓取', cmd: '', armPts: [[0, 0], [1.29, 1.53], [2.97, 1.77], [3.97, 1.32], [4.42, 0.92]], gripper: 'closed', objPos: [4.42, 0.92], holding: true, poseName: '抬起', focus: '抬起', log: 'x' },
+    },
     pid: {
       doc: { kind: 'pid', params: {}, entities: [], streams: [] },
       a: { step: 5, phase: 'ponly', op: 'step', target: 10, Kp: 0.4, Kd: 0.9, mode: 'P', k: 5, e: 1.43, uP: 0.572, uD: 0, u: 0.572, v: 4.02, p: 11.77, ponly: [{ k: 1, p: 1 }, { k: 2, p: 2.9 }, { k: 3, p: 5.51 }, { k: 4, p: 8.57 }, { k: 5, p: 11.77 }], pd: [], focus: '纯P 步5：冲过目标', log: 'x' },

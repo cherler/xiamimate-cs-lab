@@ -329,6 +329,7 @@ import { mpcKernel, type MPCState } from '@engine/kernels/mpc.ts'
 import { bcKernel, type BCState } from '@engine/kernels/bc.ts'
 import { diffpolicyKernel, type DiffPolicyState } from '@engine/kernels/diffpolicy.ts'
 import { vlaKernel, type VLAState } from '@engine/kernels/vla.ts'
+import { lerobotKernel, type LeRobotState } from '@engine/kernels/lerobot.ts'
 import { objectstoreKernel } from '@engine/kernels/objectstore.ts'
 import { SysDesignStage } from './stages/SysDesignStage.tsx'
 import { SeckillStage } from './stages/SeckillStage.tsx'
@@ -351,6 +352,7 @@ import { MPCStage } from './stages/MPCStage.tsx'
 import { BCStage } from './stages/BCStage.tsx'
 import { DiffPolicyStage } from './stages/DiffPolicyStage.tsx'
 import { VLAStage } from './stages/VLAStage.tsx'
+import { LeRobotStage } from './stages/LeRobotStage.tsx'
 import { CollisionStage } from './stages/CollisionStage.tsx'
 import { gcnKernel, type GcnState } from '@engine/kernels/gcn.ts'
 import { GcnStage } from './stages/GcnStage.tsx'
@@ -6411,6 +6413,24 @@ const vla: Experiment<VLAState> = {
   ],
 }
 
+// ── 具身智能 · 具身项目实战 ──
+const lerobot: Experiment<LeRobotState> = {
+  id: 'lerobot', group: '具身项目实战', title: 'LeRobot × SO-101 开源实战', subtitle: '低成本机械臂：装配→采集→训练→自主抓取（含真算 FK 仿真）',
+  kernel: lerobotKernel, defaultDoc: { kind: 'lerobot', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '把前面所有课落到能真买真搭的开源硬件：SO-101(HuggingFace×TheRobotStudio 低成本3D打印臂，5自由度+夹爪、6颗STS3215舵机、leader/follower主从两条臂)+LeRobot库。全链路走一遍并给真实CLI命令(照抄自官方文档、可据此真搭)：装配标定→leader遥操follower采集≥50段示范→lerobot-train训ACT策略→lerobot-rollout自主抓取。部署段接一个真算FK的SO-101手臂抓取仿真(home→伸手→合爪→抬起，位姿每帧正运动学现算)。',
+  bounds: ['SO-101=低成本3D打印臂:6颗STS3215舵机、5自由度+夹爪、leader(遥操手柄)/follower(干活)主从两条臂', '全链路(模仿学习那套):装配标定(find-port/setup-motors/calibrate)→leader遥操follower采集示范(lerobot-record ≥50段)→训练(lerobot-train --policy.type=act)→部署(lerobot-rollout)', '策略:ACT(动作分块Transformer,默认)/Diffusion Policy(多峰)/π0/SmolVLA(VLA);评估策略base/sentry/dagger(人在环)', '部署段是真算模拟引擎:SO-101简化四连杆,手臂每帧位姿由正运动学从关节角现算、方块抓住跟夹爪走(真机用MuJoCo/硬件);命令照抄官方文档'],
+  tabs: [{ id: 'design', label: '开源实战' }], Stage: LeRobotStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: '抓取成功' } : s.holding ? { key: 'good', label: '抓住方块' } : { key: 'idle', label: s.stageLabel.replace(/^[①②③④⑤]\s*/, '').split(' ')[0] || '就绪' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 9)),
+  tickLabel: s => (s.phase === 'done' ? '抓' : s.op === 'pose' ? '臂' : s.op === 'train' ? '训' : s.op === 'record' ? '采' : s.op === 'setup' ? '标' : s.op === 'hardware' ? '硬' : 'L'),
+  readouts: s => [
+    { label: '阶段', value: s.stageLabel || '就绪' },
+    { label: '策略', value: 'ACT（也可 Diffusion/π0）' },
+    { label: '夹爪', value: s.gripper === 'closed' ? '合' : '开', tone: s.holding ? 'good' : undefined },
+    { label: '抓取', value: s.holding ? '抓住方块' : s.phase === 'deploy' || s.phase === 'done' ? '执行中' : '—', tone: s.holding ? 'good' : undefined },
+  ],
+}
+
 export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
@@ -6422,7 +6442,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, ik, jacobian, quat, trajectory, kalman, icp, slam, impedance, mpc, pid, rrt, bc, diffpolicy, vla,
+  fk, ik, jacobian, quat, trajectory, kalman, icp, slam, impedance, mpc, pid, rrt, bc, diffpolicy, vla, lerobot,
 ] as unknown as AnyExperiment[]
 
 /**
@@ -6594,7 +6614,7 @@ export const DISCIPLINES: Discipline[] = [
     sub: '机器人学 → 感知 · 控制 · 规划 → 具身智能',
     // 从零到具身智能工程师：机器人学基础(运动学/雅可比)→感知(卡尔曼/SLAM)→控制(PID/力控)
     // →规划(RRT)→具身学习(模仿/RL/VLA)→开源实战(LeRobot/MuJoCo)。分组随实验增量补齐。
-    groups: ['机器人学基础', '机器人感知', '机器人控制', '运动规划', '具身学习'],
+    groups: ['机器人学基础', '机器人感知', '机器人控制', '运动规划', '具身学习', '具身项目实战'],
     guide: { from: '一次关节转动', to: '具身智能工程师', toIcon: '🦾' },
   },
   {
@@ -6651,6 +6671,7 @@ export const GROUP_ANCHOR: Record<string, string> = {
   '机器人控制': 'robot',
   '运动规划': 'robot',
   '具身学习': 'robot',
+  '具身项目实战': 'robot',
 }
 
 export const ANCHOR_BY_KEY: Record<string, Anchor> = Object.fromEntries(ANCHORS.map(a => [a.key, a]))

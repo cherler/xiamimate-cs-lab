@@ -567,6 +567,19 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; op: string }; return st.phase === 'done' ? '通才策略' : st.op === 'tokenize' ? '动作token化' : st.op === 'backbone' ? 'VLM 骨干' : st.op === 'execute' ? '生成执行' : st.op === 'generalize' ? '泛化' : '就绪'; },
     try: [{ act: '看动作怎么 token 化', watch: '连续 Δpose 每维按范围离散成 256 格→token id，动作变成一串"词"[204,96,77,255]，大模型像预测单词一样吐出来、再反解回位姿。' }, { act: '看它为什么能泛化', watch: '换成「拿起紫色的杯子」——机器人数据里没有，但骨干在网络图文里见过无数紫色的、杯子→直接接到动作。这是"预训练大模型+少量机器人数据"的威力，BC 做不到。' }], terms: [],
   },
+  lerobot: {
+    question: '想自己动手搞一套会自主抓取的机械臂，从买硬件到部署要走哪几步？',
+    read: [{ at: '工作流', is: '硬件→装配标定→采集→训练→部署，逐段点亮。', anchor: '.lr-flow' }, { at: '手臂仿真', is: '真算 FK 的 SO-101 手臂 + 方块 + 夹爪开合。', anchor: '.fk-svg' }],
+    step: (s: never) => { const st = s as { phase: string; op: string; stageLabel: string; poseName: string; gripper: string; holding: boolean; armPts: number[][]; focus: string }; return [
+      { k: '本步输入', v: st.op === 'intro' ? 'SO-101 硬件 + LeRobot 库' : st.op === 'pose' || st.op === 'summary' ? `部署执行：${st.poseName}` : `${st.stageLabel}` },
+      { k: '判定规则', v: '全链路=模仿学习：装配标定(find-port/setup-motors/calibrate)→leader遥操follower采集≥50段示范(lerobot-record)→训练ACT策略(lerobot-train)→自主部署(lerobot-rollout)。部署段手臂位姿由四连杆正运动学从关节角现算(真实模拟引擎)。' },
+      { k: '本步结果', v: st.op === 'pose' || st.op === 'summary'
+        ? `${st.poseName}：夹爪${st.gripper === 'closed' ? '合' : '开'}${st.holding ? '、抓住方块' : ''}，末端 (${st.armPts[st.armPts.length - 1]?.join(', ')})`
+        : `${st.stageLabel}：照真实命令走` },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; holding: boolean; stageLabel: string }; return st.phase === 'done' ? '抓取成功' : st.holding ? '抓住方块' : st.stageLabel.replace(/^[①②③④⑤]\s*/, '').split(' ')[0] || '就绪'; },
+    try: [{ act: '看全链路怎么走', watch: '装配标定→leader 遥操 follower 采集示范→lerobot-train 训 ACT→lerobot-rollout 自主执行。每步都有真实 CLI 命令，照着能搭。' }, { act: '看真算的抓取仿真', watch: '部署段手臂从 home→伸手→合爪→抬起，每帧位姿是四连杆正运动学现算的、方块抓住后跟夹爪走——这是"真实模拟引擎"，不是画的动画。' }], terms: [],
+  },
   pid: {
     question: '让机器人关节停到目标角，为什么只用比例(P)会来回震荡？加个 D 项怎么就稳了？',
     read: [{ at: '位置曲线', is: '纯 P(红,冲过头震荡) 与 PD(绿,阻尼收敛) 对目标线(虚线)。', anchor: '.fk-svg' }, { at: '读数', is: '控制器、位置 vs 目标、误差 e、控制量 u=P(+D)。', anchor: '.scdim' }],
