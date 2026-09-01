@@ -5285,3 +5285,30 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .pb-cfill.cached{height:100%;background:color-mix(in srgb,var(--hit) 60%,transparent)}
 .pb-cost-n{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:5px;font-size:var(--t-ui);color:var(--dim)}
 .pb-good b{color:var(--hit)} .pb-full b{color:var(--miss)} .pb-save b{color:var(--hit)}
+
+/* ── ACT 动作分块·时序集成 actte ─────────────────────────────────────── */
+.at-h{font:var(--t-meta) var(--sans);color:var(--faint);margin:6px 0 4px;font-weight:600}
+.at-votes{display:flex;flex-direction:column;gap:3px;margin:6px 0}
+.at-v{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;padding:3px 8px;border-radius:4px;border-left:3px solid var(--line);background:var(--panel);font-size:var(--t-ui)}
+.at-v.old{border-left-color:var(--now);background:color-mix(in srgb,var(--now) 7%,transparent)}
+.at-v.new{border-left-color:var(--hit);background:color-mix(in srgb,var(--hit) 7%,transparent)}
+.at-vc{flex:1 1 auto;color:var(--ink)}
+.at-vval{flex:none;font:var(--t-ui) var(--mono);color:var(--dim)}
+.at-vw{flex:none;font:var(--t-meta) var(--mono);color:var(--faint)}
+.at-result{margin-top:6px;padding:6px 9px;border-radius:5px;background:color-mix(in srgb,var(--hit) 8%,transparent);border:1px solid color-mix(in srgb,var(--hit) 35%,var(--line));font-size:var(--t-ui)}
+.at-result b{color:var(--hit);font-size:1.1em}
+.at-cmp{color:var(--faint);font-size:var(--t-meta)}
+.at-note{margin-top:5px;font:var(--t-meta) var(--sans);color:var(--faint)}
+/* 轨迹 */
+.at-traj{margin:8px 0}
+.at-spark{width:100%;max-width:420px;height:auto;display:block;background:var(--sunk-1);border:1px solid var(--line);border-radius:6px}
+.at-spark path{fill:none;stroke-width:1.6;stroke-linejoin:round;stroke-linecap:round}
+.at-spark .at-true{stroke:var(--faint);stroke-dasharray:3 2}
+.at-spark .at-newest{stroke:var(--now)}
+.at-spark .at-ens{stroke:var(--hit);stroke-width:2}
+.at-legend{display:flex;gap:14px;margin-top:5px;font:var(--t-meta) var(--sans)}
+.at-l-true{color:var(--faint)} .at-l-newest{color:var(--now)} .at-l-ens{color:var(--hit)}
+.at-rows{margin-top:5px;font:var(--t-meta) var(--mono);color:var(--dim);display:flex;flex-direction:column;gap:1px}
+.at-rows b{color:var(--ink)}
+.at-r-new{color:var(--now)} .at-r-new b{color:var(--now)}
+.at-r-ens{color:var(--hit)} .at-r-ens b{color:var(--hit)}

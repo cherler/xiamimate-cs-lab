@@ -302,6 +302,8 @@ import { planningKernel, type PlanState } from '@engine/kernels/planning.ts'
 import { PlanningStage } from './stages/PlanningStage.tsx'
 import { promptbuildKernel, type PBState } from '@engine/kernels/promptbuild.ts'
 import { PromptBuildStage } from './stages/PromptBuildStage.tsx'
+import { actteKernel, type ActState } from '@engine/kernels/actte.ts'
+import { ActTeStage } from './stages/ActTeStage.tsx'
 import { lfucacheKernel, type LFUState } from '@engine/kernels/lfucache.ts'
 import { LFUCacheStage } from './stages/LFUCacheStage.tsx'
 import { trieKernel, type TrieState } from '@engine/kernels/trie.ts'
@@ -6707,6 +6709,33 @@ const vla: Experiment<VLAState> = {
 }
 
 // ── 具身智能 · 具身项目实战 ──
+const actte: Experiment<ActState> = {
+  id: 'actte', group: '具身项目实战', title: 'ACT · 动作分块 + 时序集成', subtitle: 'LeRobot 旗舰策略：预测一整块动作、把重叠预测加权平均，治抖动与复合误差',
+  kernel: actteKernel, defaultDoc: { kind: 'actte', params: { m: '默认' }, entities: [], streams: [] },
+  params: [{ key: 'm', label: '集成权重', kind: 'enum', options: ['均等', '默认', '重旧'] }],
+  paramsNote: 'LeRobot 旗舰策略 ACT 怎么让机械臂不抖不漂(面试高频)。单步 BC 一步错、状态偏、误差滚雪球(复合误差)。ACT 两招：①**动作分块**——一次观测预测未来 K 个动作(真值 chunk_size=100)，有效时域 T→T/K；②**时序集成**——每步都重预测一整块，同一动作被好几块预测到(不一致=抖)，加权平均抹平：权重 **w_i=exp(-m·i)**、i=0 是**最旧**那条，执行 a_t=Σw·P/Σw。m 默认 0.01≈均匀略偏旧。⚠️八股陷阱：LeRobot **默认关**集成(走队列 receding-horizon)、读配置别只读论文。切「权重 m」看集成。集成/轨迹现算。连「模仿学习·行为克隆」的复合误差。详见讲解卡。',
+  bounds: [
+    '动作分块:一次预测 K 个动作(chunk_size=100)、有效时域 T→T/K、把复合误差机会砍到 1/K',
+    '时序集成:每步重预测→同一动作多块重叠→加权平均抹抖动；权重 w_i=exp(-m·i)、最旧 w₀、m 默认 0.01',
+    '分块≠集成(独立两招);⚠️ LeRobot 默认关集成(n_action_steps=100 走队列)、开要 n_action_steps=1',
+    'ACT 还用 CVAE 潜变量吸收人类示范多样性(测试 z=0)。连 BC 复合误差;对比 Diffusion Policy(迭代去噪)。真实框架:LeRobot(ACT 论文 2304.13705)',
+  ],
+  tabs: [{ id: 'at', label: 'ACT 逐步跑' }], Stage: ActTeStage, whyInRail: true,
+  tone: s => (s.stage === 'done' ? { key: 'good', label: '分块+集成' }
+    : s.stage === 'traj' ? { key: 'good', label: '集成更平滑' }
+    : s.stage === 'ensemble' ? { key: 'good', label: `a${s.detailT}=${s.ensembled}` }
+    : s.stage === 'overlap' ? { key: 'bad', label: `${s.votes.length} 块重叠·抖` }
+    : s.stage === 'chunk' ? { key: 'idle', label: `预测 K=${s.K}` }
+    : { key: 'idle', label: `权重 ${s.mKey}` }),
+  metric: s => (s.stage === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => ({ intro: '始', chunk: '块', overlap: '叠', ensemble: '集', traj: '轨', done: '成' }[s.stage] ?? '·'),
+  readouts: s => [
+    { label: '动作块长 K', value: `${s.K}（真值 100）` },
+    { label: '集成权重', value: `${s.mKey}（m=${s.m}，w_i=exp(-m·i)）` },
+    { label: `a${s.detailT} 集成 / 只用最新`, value: s.ensembled ? `${s.ensembled} / ${s.newest}（真值≈${s.trajTrue[s.detailT]}）` : '—', tone: s.ensembled ? 'good' : undefined },
+    { label: '本步', value: ({ intro: '动作分块+时序集成', chunk: '① 分块预测', overlap: '② 多块重叠', ensemble: '③ 加权集成', traj: '④ 全程对比', done: '收尾' } as Record<string, string>)[s.stage] ?? '—' },
+  ],
+}
 const lerobot: Experiment<LeRobotState> = {
   id: 'lerobot', group: '具身项目实战', title: 'LeRobot × SO-101 开源实战', subtitle: '低成本机械臂：装配→采集→训练→自主抓取（含真算 FK 仿真）',
   kernel: lerobotKernel, defaultDoc: { kind: 'lerobot', params: {}, entities: [], streams: [] }, params: [],
@@ -6735,7 +6764,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, ik, jacobian, quat, trajectory, kalman, icp, slam, impedance, mpc, pid, rrt, bc, diffpolicy, vla, lerobot,
+  fk, ik, jacobian, quat, trajectory, kalman, icp, slam, impedance, mpc, pid, rrt, bc, diffpolicy, vla, lerobot, actte,
 ] as unknown as AnyExperiment[]
 
 /**

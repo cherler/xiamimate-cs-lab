@@ -283,6 +283,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { i: 1, step: 1, stage: 'assemble', ordering: '静态优先', secs: [], prefixTok: 85, tailTok: 87, turn2Cached: 95.5, turn2Full: 172, phase: 'run', focus: '排序定断点', log: '' },
       b: { i: 3, step: 3, stage: 'turn2', ordering: '静态优先', secs: [], prefixTok: 85, tailTok: 87, turn2Cached: 95.5, turn2Full: 172, phase: 'run', focus: '读缓存', log: '' },
     },
+    actte: {
+      doc: { kind: 'actte', params: { m: '默认' }, entities: [], streams: [] },
+      a: { i: 3, step: 3, stage: 'ensemble', mKey: '默认', m: 0.01, K: 4, T: 6, detailT: 3, votes: [{ chunk: 0, val: 45, w: 1 }, { chunk: 1, val: 38, w: 0.99 }, { chunk: 2, val: 39, w: 0.98 }, { chunk: 3, val: 41, w: 0.97 }], ensembled: 40.8, newest: 41, trajTrue: [30, 35, 42, 40, 34, 28], trajNewest: [], trajEns: [], phase: 'run', focus: '加权集成', log: '' },
+      b: { i: 2, step: 2, stage: 'overlap', mKey: '默认', m: 0.01, K: 4, T: 6, detailT: 3, votes: [{ chunk: 0, val: 45, w: 1 }, { chunk: 1, val: 38, w: 0.99 }, { chunk: 2, val: 39, w: 0.98 }, { chunk: 3, val: 41, w: 0.97 }], ensembled: 0, newest: 41, trajTrue: [30, 35, 42, 40, 34, 28], trajNewest: [], trajEns: [], phase: 'run', focus: '多块重叠', log: '' },
+    },
     queryplan: {
       doc: { kind: 'queryplan', params: {}, entities: [], streams: [] },
       a: { step: 1, op: 'path', query: 'q', revealed: 1, cur: 0, chosen: -1, paths: [{ name: '全表扫描', type: 'ALL', key: '—', rows: 10000, note: 'x' }, { name: '走 idx(city)', type: 'ref', key: 'idx_city', rows: 500, note: 'x' }, { name: '走 idx(age)', type: 'range', key: 'idx_age', rows: 6000, note: 'x' }], phase: 'run', focus: '候选路径：全表扫描（type=ALL，估扫 10000 行）' },

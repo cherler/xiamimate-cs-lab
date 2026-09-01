@@ -96,6 +96,7 @@ import { reflectionKernel } from '../src/kernels/reflection.ts'
 import { memwriteKernel } from '../src/kernels/memwrite.ts'
 import { planningKernel } from '../src/kernels/planning.ts'
 import { promptbuildKernel } from '../src/kernels/promptbuild.ts'
+import { actteKernel } from '../src/kernels/actte.ts'
 import { lfucacheKernel } from '../src/kernels/lfucache.ts'
 import { trieKernel } from '../src/kernels/trie.ts'
 import { quickselectKernel } from '../src/kernels/quickselect.ts'
@@ -1893,6 +1894,41 @@ export const CATALOG: CatalogEntry[] = [
         ask: 'Claude Code 为什么把 CLAUDE.md 当独立 user 消息放系统提示之后、而不塞进 system?', kind: 'choice',
         compute: () => ({ answer: '为了不动那段可缓存前缀(system+tools)——把可能变的项目指令放后面，系统提示前缀保持稳定、持续命中缓存。DeepSeek 把运行时快照当单独消息注入同理', step: 5, evidence: '护可缓存前缀，和 KV 缓存/上下文压缩(重放系统提示保前缀)同源' }),
         distractors: () => ['因为 system 放不下', '因为 user 消息模型更重视', '纯粹是历史遗留、没原因'],
+      },
+    ],
+  },
+  {
+    id: 'actte', title: 'ACT · 动作分块 + 时序集成', kernel: actteKernel as Kernel<unknown>, doc: trivialDoc('actte'),
+    facts: [
+      {
+        id: 'at_chunk', label: 'ACT 为什么一次预测一块动作',
+        ask: 'ACT 为什么一次预测未来一"块"(K 个)动作，而不是每步一个?', kind: 'choice',
+        compute: t => { const f = t as unknown as { K: number }[]; const k = f.find(x => x.K != null)?.K ?? 4; return ({ answer: `把有效时域从 T 缩到 T/K——需要自主决策的次数少 K 倍、复合误差(滚雪球)的机会砍到 1/K。这是 ACT 打赢单步 BC 的核心`, step: 1, evidence: `本例 K=${k}(LeRobot 真值 chunk_size=100)` }) },
+        distractors: () => ['为了让模型跑得更快', '因为机械臂一次只能动一下', '为了省显存'],
+      },
+      {
+        id: 'at_ensemble', label: '时序集成怎么算执行动作',
+        ask: 'ACT 的时序集成(temporal ensembling)怎么算出每一步真正执行的动作?', kind: 'choice',
+        compute: () => ({ answer: '每步都重预测一整块 → 同一个动作会被好几块预测到(重叠、互相不一致) → 把这些重叠预测加权平均：a_t = Σ w_i·P_i / Σ w_i，抹掉抖动', step: 3, evidence: '权重 w_i=exp(-m·i)、i=0 是最旧那条' }),
+        distractors: () => ['只用最新那一块的预测', '取所有预测的最大值', '随机选一条预测'],
+      },
+      {
+        id: 'at_weight', label: '时序集成的权重公式',
+        ask: 'ACT 时序集成的权重 w_i = exp(-m·i)，其中 i=0 对应哪条预测，m 默认多少?', kind: 'choice',
+        compute: t => { const f = t as unknown as { m: number }[]; const m = f.find(x => x.m != null && x.m > 0)?.m ?? 0.01; return ({ answer: `i=0 是**最旧**那条预测(LeRobot 代码 exp(-m·arange))；m 默认 ${m} → 权重近似均匀、还略偏旧(别过度信最新那条抖的，代码注释:激进上调新动作会削弱分块好处)`, step: 3, evidence: 'm 大→更信旧;m<0→更信新' }) },
+        distractors: () => ['i=0 是最新那条、m 默认 1.0', 'i=0 是最旧、权重全相等(m 恒为 0)', 'i=0 是最重要那条、m 由模型学出'],
+      },
+      {
+        id: 'at_default_off', label: 'LeRobot 默认开时序集成吗',
+        ask: 'ACT 论文重点讲时序集成，那 LeRobot 里默认开启它吗?', kind: 'choice',
+        compute: () => ({ answer: '默认不开！默认 n_action_steps=100、走队列(receding-horizon 执行完一块再预测)；要开集成得设 n_action_steps=1、每步重预测。经典"读配置别只读论文"陷阱', step: 5, evidence: 'temporal_ensemble_coeff 默认 None(关闭)' }),
+        distractors: () => ['默认开启、不用配置', '论文和代码里都默认开', '默认开、但只在仿真里'],
+      },
+      {
+        id: 'at_chunksize', label: 'LeRobot ACT 的动作块长',
+        ask: 'LeRobot 里 ACT 的动作块长 chunk_size 默认是多少?', kind: 'number',
+        compute: () => ({ answer: '100', step: 1, evidence: '本实验演示用 K=4 便于手算；LeRobot 真值 chunk_size=100、n_action_steps=100' }),
+        distractors: numDistractors,
       },
     ],
   },

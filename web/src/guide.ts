@@ -789,6 +789,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { stage: string; prefixTok: number; turn2Cached: number; turn2Full: number }; return st.stage === 'done' || st.stage === 'turn2' ? `省 ${Math.round((1 - st.turn2Cached / st.turn2Full) * 100)}%` : st.stage === 'turn1' ? '写缓存' : st.stage === 'assemble' ? `前缀 ${st.prefixTok}t` : '待排序' },
     try: [{ act: '切「乱序」', watch: '把逐轮变的"运行时快照"塞进 system(靠前)→缓存从这断，只剩工具 40t 能缓存，省得少(21% vs 44%)。' }, { act: '想想为什么静态排前', watch: '前缀缓存要"最长相同前缀"——静态的排前面、前缀才又长又稳，命中的 token 才多。' }], terms: [],
   },
+  actte: {
+    question: '机械臂按模仿学到的策略动，怎么不抖、不越走越偏（复合误差）？',
+    read: [{ at: '重叠预测', is: '同一动作被好几块预测到 + 各自权重。', anchor: '.at-votes' }, { at: '轨迹', is: '真值 / 只用最新(抖) / 时序集成(平滑)。', anchor: '.at-traj' }, { at: '读数', is: '块长、权重、集成 vs 最新。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { stage: string; K: number; detailT: number; votes: { val: number }[]; ensembled: number; newest: number; trajTrue: number[]; m: number }; return [
+      { k: '本步输入', v: st.stage === 'intro' ? `模仿策略 + 权重 m=${st.m}` : st.stage === 'chunk' ? `一次观测预测 K=${st.K} 个动作` : st.stage === 'overlap' ? `动作 a${st.detailT} 的 ${st.votes.length} 条重叠预测` : st.stage === 'ensemble' ? '加权集成这些重叠预测' : st.stage === 'traj' ? '整条轨迹' : '收尾' },
+      { k: '判定规则', v: `动作分块:一次预测 K 个、有效时域 T→T/K(治复合误差)。时序集成:每步重预测→同一动作多块重叠→加权平均，权重 w_i=exp(-m·i)、i=0 最旧，a_t=Σw·P/Σw。` },
+      { k: '本步结果', v: st.stage === 'intro' ? '待分块、集成' : st.stage === 'chunk' ? `预测出一整块、有效时域砍到 1/${st.K}` : st.stage === 'overlap' ? `${st.votes.length} 条不一致(${Math.min(...st.votes.map(v => v.val))}~${Math.max(...st.votes.map(v => v.val))})、只看最新会抖` : st.stage === 'ensemble' ? `a${st.detailT} 集成=${st.ensembled}(只用最新=${st.newest}、真值≈${st.trajTrue[st.detailT]})` : st.stage === 'traj' ? '集成轨迹更平滑、更贴真值' : '分块砍时域、集成抹抖动' },
+    ] },
+    verdict: (s: never) => { const st = s as { stage: string; ensembled: number; votes: unknown[] }; return st.stage === 'done' ? '分块+集成' : st.stage === 'traj' ? '集成平滑' : st.stage === 'ensemble' ? `集成=${st.ensembled}` : st.stage === 'overlap' ? `${st.votes.length}块重叠` : st.stage === 'chunk' ? '分块预测' : '待跑' },
+    try: [{ act: '切「重旧」权重', watch: 'm=0.7：最旧那条权重最大(1)、新的被压很低，集成明显偏向旧预测。' }, { act: '看集成 vs 最新', watch: '只用最新那条会抖([31,34,43,41,35,29])，集成把重叠预测平均、平滑贴真值。' }], terms: [],
+  },
   queryplan: {
     question: '同一个查询有好几条路可走，数据库优化器凭什么选其中一条？',
     read: [{ at: '候选路径', is: '每条访问路径的 type + 估扫描行数代价条。', anchor: '.qp-paths' }, { at: 'EXPLAIN', is: '末步选中路径的 type/key/rows。', anchor: '.qp-explain' }],
