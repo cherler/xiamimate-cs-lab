@@ -723,6 +723,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { stage: string; cur: string; internalTotal: number; returnTotal: number }; return st.stage === 'done' ? `省 ${st.internalTotal - st.returnTotal}t` : st.stage === 'blocked' ? '深度上限拦下' : st.cur ? `派 ${st.cur}` : '待派' },
     try: [{ act: '切「承接(fork)」', watch: '子起始从空白 10t 变成承接父前缀 120t——有上下文续得上，但更贵；只回传结果这条不变。' }, { act: '看深度守卫', watch: 'B1a 在深度 3 想再往下派 → spawn 工具被摘、拦下，防子生子指数爆炸。' }], terms: [],
   },
+  memretrieve: {
+    question: '记忆一大堆、上下文塞不下，查询来了该捞哪几条进上下文？凭什么排序？',
+    read: [{ at: '打分公式', is: '得分 = w·最近 + w·相关 + w·重要。', anchor: '.mr-formula' }, { at: '记忆表', is: '每条的三信号 + 得分，排序后 top-k 高亮捞回。', anchor: '.mr-table' }, { at: '读数', is: '权重、查询、捞回哪几条。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { stage: string; weights: string; wr: number; wl: number; wi: number; topK: number; mems: { id: string; retrieved: boolean; score: number }[] }; const top = st.mems.filter(m => m.retrieved).map(m => m.id); return [
+      { k: '本步输入', v: st.stage === 'intro' ? `${st.mems.length} 条记忆 + 一个查询` : st.stage === 'signals' ? '每条记忆算三个信号' : st.stage === 'score' ? `加权求分（权重 ${st.weights}）` : st.stage === 'rank' ? `按得分排序，取 top-${st.topK}` : '捞回的记忆集' },
+      { k: '判定规则', v: `得分 = w_rec·最近度(decay^龄) + w_rel·相关度(余弦) + w_imp·重要度(LLM 1~10)，排序取 top-${st.topK}。权重不同(论文 1·1·1 / GA 代码 0.5·3·2)排名就不同。` },
+      { k: '本步结果', v: st.stage === 'intro' ? `${st.mems.length} 条待打分` : st.stage === 'signals' ? '三信号各说各话：有的很新但不相关、有的很重要但不相关' : st.stage === 'score' ? `得分算出（权重 ${st.weights}：${st.wr}·${st.wl}·${st.wi}）` : st.stage === 'rank' ? `top-${st.topK}：${top.join(' / ')} 被捞回` : `捞回 ${top.length} 条进上下文（${top.join('/')}）` },
+    ] },
+    verdict: (s: never) => { const st = s as { stage: string; weights: string; mems: { retrieved: boolean; id: string }[] }; return st.stage === 'done' || st.stage === 'rank' ? `捞 ${st.mems.filter(m => m.retrieved).map(m => m.id).join('/')}` : st.stage === 'score' ? `加权·${st.weights}` : st.stage === 'signals' ? '三信号' : '查询来了' },
+    try: [{ act: '切「重相关」', watch: 'm3「用户是 VIP」相关度只 0.2，相关权重一大(0.5·3·2)就落榜，m2「JWT」顶上来。' }, { act: '切「重时新」', watch: '最近的记忆被拉上来，哪怕没那么相关——recency 权重大的代价。' }], terms: [],
+  },
   queryplan: {
     question: '同一个查询有好几条路可走，数据库优化器凭什么选其中一条？',
     read: [{ at: '候选路径', is: '每条访问路径的 type + 估扫描行数代价条。', anchor: '.qp-paths' }, { at: 'EXPLAIN', is: '末步选中路径的 type/key/rows。', anchor: '.qp-explain' }],

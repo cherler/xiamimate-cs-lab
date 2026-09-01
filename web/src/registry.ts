@@ -290,6 +290,8 @@ import { permguardKernel, type PermState } from '@engine/kernels/permguard.ts'
 import { PermGuardStage } from './stages/PermGuardStage.tsx'
 import { subagentKernel, type SubState } from '@engine/kernels/subagent.ts'
 import { SubAgentStage } from './stages/SubAgentStage.tsx'
+import { memretrieveKernel, type MRState } from '@engine/kernels/memretrieve.ts'
+import { MemRetrieveStage } from './stages/MemRetrieveStage.tsx'
 import { lfucacheKernel, type LFUState } from '@engine/kernels/lfucache.ts'
 import { LFUCacheStage } from './stages/LFUCacheStage.tsx'
 import { trieKernel, type TrieState } from '@engine/kernels/trie.ts'
@@ -5891,6 +5893,31 @@ const subagent: Experiment<SubState> = {
     { label: '省下', value: s.internalTotal > s.returnTotal ? `${s.internalTotal - s.returnTotal}t` : '—', tone: s.stage === 'done' ? 'good' : undefined },
   ],
 }
+const memretrieve: Experiment<MRState> = {
+  id: 'memretrieve', group: '大模型项目实战', title: '记忆检索打分', subtitle: '查询来了，从记忆流按 最近×重要×相关 打分、捞 top-k',
+  kernel: memretrieveKernel, defaultDoc: { kind: 'memretrieve', params: { weights: '均衡' }, entities: [], streams: [] },
+  params: [{ key: 'weights', label: '权重', kind: 'enum', options: ['均衡', '重相关', '重时新'] }],
+  paramsNote: 'Agent 记忆系统的算法心脏：长期记忆一大堆、上下文塞不下，查询来了要**只捞最该看的 top-k**。不是关键词匹配，是**打分检索**(Generative Agents 经典做法)：每条记忆算三信号——最近度(decay^龄，decay=0.995)、重要度(LLM 打的 1~10 分/10)、相关度(与查询的余弦)——加权求和 得分 = w_rec·最近 + w_rel·相关 + w_imp·重要，排序取 top-k。**权重翻则排名翻**：论文等权(1·1·1)、Generative Agents 代码是(0.5·3·2 相关最重)。切「权重」看「用户是 VIP」这条(重要但不相关)进/出。三信号+得分+排名全现算；GA 实际还会 min-max 归一化。详见讲解卡。',
+  bounds: [
+    '检索=打分不是关键词匹配：得分 = w_rec·最近度(decay^龄) + w_rel·相关度(余弦) + w_imp·重要度(LLM 1~10)，排序取 top-k',
+    '三信号各说各话：记忆可以很新但不相关、很重要但不相关——所以"重要但眼下不相关"要不要捞，全看权重',
+    '权重翻则排名翻：论文等权(1·1·1) vs Generative Agents 代码(0.5·3·2 相关最重)，捞回的 top-k 不同',
+    'GA 实际把三列各自 min-max 归一化再加权。延伸：向量检索(embed→余弦 top-k)/BM25/混合+rerank；检索不准=喂噪声污染上下文',
+  ],
+  tabs: [{ id: 'mr', label: '检索逐格算' }], Stage: MemRetrieveStage, whyInRail: true,
+  tone: s => (s.stage === 'done' || s.stage === 'rank' ? { key: 'good', label: `捞回 ${s.mems.filter(m => m.retrieved).map(m => m.id).join('/')}` }
+    : s.stage === 'score' ? { key: 'idle', label: `加权求分·${s.weights}` }
+    : s.stage === 'signals' ? { key: 'idle', label: '算三信号' }
+    : { key: 'idle', label: '查询来了' }),
+  metric: s => (s.stage === 'done' ? 1 : Math.max(0, (s.step + 1) / 5)),
+  tickLabel: s => ({ intro: '询', signals: '信', score: '分', rank: '排', done: '捞' }[s.stage] ?? '·'),
+  readouts: s => [
+    { label: '权重（最近·相关·重要）', value: `${s.weights}（${s.wr}·${s.wl}·${s.wi}）` },
+    { label: '查询', value: s.query },
+    { label: '最高分', value: (() => { const t = [...s.mems].sort((a, b) => b.score - a.score)[0]; return t ? `${t.text}（${t.score.toFixed(2)}）` : '—' })(), tone: 'good' },
+    { label: '捞回 top-k', value: (s.stage === 'rank' || s.stage === 'done') ? s.mems.filter(m => m.retrieved).map(m => m.text).join('、') : '—', tone: (s.stage === 'rank' || s.stage === 'done') ? 'good' : undefined },
+  ],
+}
 const lrucache: Experiment<LRUState> = {
   id: 'lrucache', group: '算法项目实战', title: '手写 LRU 缓存', subtitle: 'HashMap+双向链表，get/put 都 O(1)',
   kernel: lrucacheKernel, defaultDoc: { kind: 'lrucache', params: {}, entities: [], streams: [] }, params: [],
@@ -6560,7 +6587,7 @@ export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
   caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt, ecbcbc, birthday, aesround, hmac, totp,
-  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, bufferpool, queryplan, wildcard, regex, blockingqueue, rwlock, aba, happensbefore, lockstrategy, lrucache, lfucache, trie, quickselect, reactagent, ctxcompact, toolcall, permguard, subagent, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign, topk, feed, objectstore,
+  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, bufferpool, queryplan, wildcard, regex, blockingqueue, rwlock, aba, happensbefore, lockstrategy, lrucache, lfucache, trie, quickselect, reactagent, ctxcompact, toolcall, permguard, subagent, memretrieve, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign, topk, feed, objectstore,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,

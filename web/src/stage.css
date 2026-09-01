@@ -5135,3 +5135,28 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .sa-guards{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
 .sa-guards span{font:var(--t-meta) var(--mono);color:var(--faint);border:1px solid var(--line);border-radius:3px;padding:1px 6px}
 .sa-guards span.on{color:var(--miss);border-color:color-mix(in srgb,var(--miss) 45%,var(--line));background:color-mix(in srgb,var(--miss) 8%,transparent)}
+
+/* ── 记忆检索打分 memretrieve ─────────────────────────────────────── */
+.mr-q{margin:6px 0;font-size:var(--t-ui);color:var(--ink)}
+.mr-q b{font-weight:600}
+.mr-formula{margin:6px 0;padding:5px 9px;border:1px dashed var(--line);border-radius:5px;
+  font:var(--t-ui) var(--mono);color:var(--faint);background:var(--sunk-1)}
+.mr-formula.on{border-style:solid;border-color:color-mix(in srgb,var(--now) 40%,var(--line));color:var(--dim)}
+.mr-formula b{color:var(--now)}
+.mr-tablewrap{overflow-x:auto;margin-top:6px}
+.mr-table{border-collapse:collapse;width:100%;font-size:var(--t-ui);font-variant-numeric:tabular-nums}
+.mr-table th,.mr-table td{border:1px solid var(--line);padding:4px 8px;text-align:right;white-space:nowrap}
+.mr-table th.l,.mr-table td.l{text-align:left}
+.mr-table thead th{background:var(--panel-2);color:var(--dim);font-weight:600;font-size:var(--t-meta)}
+.mr-table th.off{color:var(--ghost)}
+.mr-table th.hot,.mr-table td.hot{background:color-mix(in srgb,var(--now) 8%,transparent)}
+.mr-table th.hot{color:var(--now)}
+.mr-table td.hot b{color:var(--now)}
+.mr-raw{font-style:normal;color:var(--faint);font-size:.85em}
+.mr-table tr.in{background:color-mix(in srgb,var(--hit) 9%,transparent)}
+.mr-table tr.in td{border-color:color-mix(in srgb,var(--hit) 30%,var(--line))}
+.mr-table tr.in td.l{color:var(--ink);font-weight:600}
+.mr-table tr.out{opacity:.5}
+.mr-rk{display:inline-block;min-width:2.2em;margin-right:6px;font:var(--t-meta) var(--mono);
+  color:var(--faint)}
+.mr-table tr.in .mr-rk{color:var(--hit);font-weight:700}

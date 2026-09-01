@@ -90,6 +90,7 @@ import { ctxcompactKernel } from '../src/kernels/ctxcompact.ts'
 import { toolcallKernel } from '../src/kernels/toolcall.ts'
 import { permguardKernel } from '../src/kernels/permguard.ts'
 import { subagentKernel } from '../src/kernels/subagent.ts'
+import { memretrieveKernel } from '../src/kernels/memretrieve.ts'
 import { lfucacheKernel } from '../src/kernels/lfucache.ts'
 import { trieKernel } from '../src/kernels/trie.ts'
 import { quickselectKernel } from '../src/kernels/quickselect.ts'
@@ -1676,6 +1677,41 @@ export const CATALOG: CatalogEntry[] = [
         id: 'sa_saved', label: '委派省下多少 token',
         ask: '本例子 agent 内部共花 230t、回传给父 36t，父一共省下多少 token?', kind: 'number',
         compute: t => { const f = t as unknown as { stage: string; internalTotal: number; returnTotal: number }[]; const d = f.find(x => x.stage === 'done'); const saved = (d?.internalTotal ?? 230) - (d?.returnTotal ?? 36); return ({ answer: String(saved), step: f.findIndex(x => x.stage === 'done'), evidence: `子内部 ${d?.internalTotal ?? 230}t − 回传 ${d?.returnTotal ?? 36}t = ${saved}t 的探索被关在子里、没进父上下文` }) },
+        distractors: numDistractors,
+      },
+    ],
+  },
+  {
+    id: 'memretrieve', title: '记忆检索打分', kernel: memretrieveKernel as Kernel<unknown>, doc: trivialDoc('memretrieve'),
+    facts: [
+      {
+        id: 'mr_scoring', label: 'agent 从记忆库捞哪几条进上下文靠什么',
+        ask: 'agent 长期记忆一大堆、上下文塞不下，查询来了靠什么决定捞哪几条?', kind: 'choice',
+        compute: () => ({ answer: '打分检索(Generative Agents 做法)：给每条记忆算三信号、加权求和、排序取 top-k——不是关键词匹配，也不是把全部历史倒进去', step: 3, evidence: '得分 = w·最近 + w·相关 + w·重要，排序取 top-k' }),
+        distractors: () => ['按存入的先后顺序，先存的先捞', '把所有记忆全塞进上下文', '随机抽几条'],
+      },
+      {
+        id: 'mr_signals', label: '记忆打分的三个信号',
+        ask: 'Generative Agents 给每条记忆打分，用哪三个信号?', kind: 'choice',
+        compute: () => ({ answer: '最近度 recency(=decay^龄，指数衰减，decay=0.995) + 重要度 importance(LLM 打的 1~10 分) + 相关度 relevance(与查询向量的余弦)', step: 1, evidence: '三者各说各话：记忆可以很新但不相关、很重要但不相关' }),
+        distractors: () => ['长度、语言、格式', '存入时间、作者、字数', '只看和查询的关键词重合数'],
+      },
+      {
+        id: 'mr_weights', label: '权重影响什么',
+        ask: '三个信号加权求和时，权重(w_rec/w_rel/w_imp)会影响什么?', kind: 'choice',
+        compute: () => ({ answer: '权重翻则排名翻、捞回的记忆就不同。论文说三者等权(1·1·1)，但 Generative Agents 代码里是 (0.5·3·2)[最近·相关·重要]、相关度最重', step: 2, evidence: '一条"VIP"(重要但不相关)：等权时被捞回，相关权重一大就落榜' }),
+        distractors: () => ['权重只影响速度、不影响排名', '权重必须相等否则算不出来', '权重越大越省 token'],
+      },
+      {
+        id: 'mr_vip', label: '重要但不相关的记忆会被捞回吗',
+        ask: '一条"用户是 VIP"(重要度 9、但跟"修登录 bug"相关度只 0.2)的记忆，会被捞进上下文吗?', kind: 'choice',
+        compute: t => { const f = t as unknown as { stage: string; weights: string; mems?: { id: string; retrieved: boolean }[] }[]; const d = f.find(x => x.stage === 'done'); const vip = d?.mems?.find(m => m.id === 'm3'); return ({ answer: `看权重。默认"${d?.weights ?? '均衡'}"下它${vip?.retrieved ? '被捞回(靠重要度+最近度挤进 top-k)' : '没被捞回'}；但切到"重相关"(相关度权重大)它就落榜——重要 vs 相关是真实取舍`, step: Math.max(0, f.findIndex(x => x.stage === 'done')), evidence: `均衡权重下 VIP 进 top-k、重相关权重下出局` }) },
+        distractors: () => ['一定会，因为它最重要', '一定不会，因为它不相关', '看它存了多久'],
+      },
+      {
+        id: 'mr_topk', label: '检索捞回几条',
+        ask: '本实验记忆流 6 条，一次检索捞回几条进上下文(top-k 的 k)?', kind: 'number',
+        compute: t => { const f = t as unknown as { topK: number; mems?: { retrieved: boolean }[] }[]; const k = f.find(x => x.topK != null)?.topK ?? 3; return ({ answer: String(k), step: 3, evidence: `按得分排序，只把前 ${k} 条捞进上下文，其余留库里(没删)` }) },
         distractors: numDistractors,
       },
     ],

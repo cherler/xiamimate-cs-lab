@@ -253,6 +253,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { i: 1, step: 1, stage: 'child', seed: '新开', cur: 'A', nodes: [{ id: 'A', name: '调研 auth.py 的调用方', depth: 1, parentId: '父', internalTok: 90, returnTok: 12, status: 'done', result: '3 处调用' }], parentCtx: 132, internalTotal: 90, returnTotal: 12, depthCap: 3, concCap: 20, childStart: 10, blocked: '', phase: 'run', focus: '派子 agent A', log: '' },
       b: { i: 6, step: 6, stage: 'done', seed: '新开', cur: '', nodes: [], parentCtx: 156, internalTotal: 230, returnTotal: 36, depthCap: 3, concCap: 20, childStart: 10, blocked: '', phase: 'done', focus: '汇总账本', log: '' },
     },
+    memretrieve: {
+      doc: { kind: 'memretrieve', params: { weights: '均衡' }, entities: [], streams: [] },
+      a: { i: 3, step: 3, stage: 'rank', weights: '均衡', wr: 1, wl: 1, wi: 1, query: '怎么修登录的 500 错误', topK: 3, decay: 0.995, mems: [{ id: 'm4', text: '刚查日志：auth.py:42 有 NPE', ageH: 0.5, importance: 5, relevance: 0.88, recency: 1, imp01: 0.5, rel01: 0.88, score: 2.38, rank: 1, retrieved: true }, { id: 'm3', text: '用户是付费 VIP', ageH: 24, importance: 9, relevance: 0.2, recency: 0.89, imp01: 0.9, rel01: 0.2, score: 1.99, rank: 2, retrieved: true }, { id: 'm1', text: '用户上周报登录偶尔 500', ageH: 168, importance: 6, relevance: 0.9, recency: 0.43, imp01: 0.6, rel01: 0.9, score: 1.93, rank: 3, retrieved: true }], phase: 'run', focus: '排序取 top-3', log: '' },
+      b: { i: 1, step: 1, stage: 'signals', weights: '均衡', wr: 1, wl: 1, wi: 1, query: '怎么修登录的 500 错误', topK: 3, decay: 0.995, mems: [], phase: 'run', focus: '算三信号', log: '' },
+    },
     queryplan: {
       doc: { kind: 'queryplan', params: {}, entities: [], streams: [] },
       a: { step: 1, op: 'path', query: 'q', revealed: 1, cur: 0, chosen: -1, paths: [{ name: '全表扫描', type: 'ALL', key: '—', rows: 10000, note: 'x' }, { name: '走 idx(city)', type: 'ref', key: 'idx_city', rows: 500, note: 'x' }, { name: '走 idx(age)', type: 'range', key: 'idx_age', rows: 6000, note: 'x' }], phase: 'run', focus: '候选路径：全表扫描（type=ALL，估扫 10000 行）' },
