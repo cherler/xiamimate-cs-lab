@@ -669,15 +669,15 @@ export const GUIDES: Record<string, Guide> = {
     try: [{ act: '看更新 a=9', watch: '不改旧值，追加新版本；SST1 里 a=1、SST2 里 a=9 同时存在。' }, { act: '看 get(a) 和压实', watch: 'get 从新到旧读到 a=9；压实把旧的 a=1 归并丢掉。' }], terms: [],
   },
   reactagent: {
-    question: '大模型答不了"要查实时信息/算数"的题，Agent 怎么靠调工具解出来？',
-    read: [{ at: '轨迹', is: 'Thought/Action/Observation 一行行累积。', anchor: '.ra-trace' }, { at: '读数', is: '轮次、本步类型、工具调用。', anchor: '.scdim' }],
-    step: (s: never) => { const st = s as { kind: string; round: number; text: string; tool: string; arg: string; obs: string; answer: string; phase: string }; return [
-      { k: '本步输入', v: st.phase === 'done' ? '轨迹够了，作答' : st.kind === 'intro' ? 'Agent=LLM+工具+循环' : st.kind === 'thought' ? `第 ${st.round} 轮 · 想：${st.text}` : st.kind === 'action' ? `第 ${st.round} 轮 · 调工具 ${st.tool}(${st.arg})` : `第 ${st.round} 轮 · 工具返回` },
-      { k: '判定规则', v: 'ReAct 循环：Thought(推理下一步)→Action(调工具给参数)→Observation(把真实返回喂回)，每步的想都基于前面全部轨迹；循环到能给 Final Answer 为止。' },
-      { k: '本步结果', v: st.phase === 'done' ? `Final Answer：${st.answer}` : st.kind === 'action' ? `执行 ${st.tool}(${st.arg})` : st.kind === 'observation' ? `观察到「${st.obs}」→ 进入下一轮想` : st.kind === 'thought' ? '决定下一步动作' : '开始解题' },
+    question: '想→做→看的循环好写，难在"什么时候、怎么停"——它会不会跑飞 / 烧钱 / 白跑？',
+    read: [{ at: '控制条', is: '步数预算 + stuck 窗口，循环拦不拦得住就看这俩。', anchor: '.ra-ctrl' }, { at: '轨迹', is: 'Thought/Action/Observation 一行行累积。', anchor: '.ra-trace' }, { at: '终止横幅', is: '停下来的原因（正常/重复/超预算/出错）。', anchor: '.ra-halt' }],
+    step: (s: never) => { const st = s as { scenario: string; kind: string; round: number; text: string; tool: string; arg: string; obs: string; stepCount: number; budget: number; halt: string }; return [
+      { k: '本步输入', v: st.kind === 'intro' ? `场景：${st.scenario}` : st.kind === 'thought' ? `第 ${st.round} 轮 · 想：${st.text}` : st.kind === 'action' ? `第 ${st.round} 轮 · 做：${st.tool}(${st.arg})` : st.kind === 'observation' ? `第 ${st.round} 轮 · 看：${st.obs || '（空）'}` : '终止判定' },
+      { k: '判定规则', v: '循环每步：模型想→调工具(一步，计数)→看结果。终止 = ①模型不再发工具(正常) ②最近 3 步动作相同(stuck 检测) ③步数到预算上限 ④出错 autosubmit 交一版。stuck 和步数都现算。' },
+      { k: '本步结果', v: st.halt === 'answer' ? `模型不再发工具 → 正常终止（用了 ${st.stepCount} 步）` : st.halt === 'stuck' ? `最近 3 步动作相同 → stuck 中止（第 ${st.stepCount} 步）` : st.halt === 'budget' ? `走满 ${st.budget} 步预算 → 超预算终止` : st.halt === 'error' ? '中途崩 → autosubmit 交一版' : st.kind === 'action' ? `第 ${st.stepCount}/${st.budget} 步，进 stuck 窗口` : st.kind === 'observation' ? `拿到「${st.obs || '空'}」→ 下一轮` : st.kind === 'thought' ? '决定下一步动作' : `场景 ${st.scenario}，看它怎么停` },
     ] },
-    verdict: (s: never) => { const st = s as { phase: string; kind: string; round: number }; return st.phase === 'done' ? '得到答案' : st.kind === 'action' ? '调工具' : st.kind === 'observation' ? '拿到结果' : st.kind === 'thought' ? `想·第${st.round}轮` : '开始' },
-    try: [{ act: '看想→做→看循环', watch: 'Thought 决定查气温 → Action search → Observation 30°C → 下一轮再想。' }, { act: '看工具给真数据', watch: 'calc(30-25) 返回 5，不是模型口算——Agent 用真结果，少幻觉。' }], terms: [],
+    verdict: (s: never) => { const st = s as { halt: string; kind: string; stepCount: number; scenario: string }; return st.halt === 'answer' ? '正常终止' : st.halt === 'stuck' ? 'stuck 中止' : st.halt === 'budget' ? '超预算停' : st.halt === 'error' ? 'autosubmit' : st.kind === 'action' ? `第 ${st.stepCount} 步` : st.kind === 'thought' ? '想' : st.kind === 'observation' ? '看' : `场景 ${st.scenario}` },
+    try: [{ act: '切「重复」场景', watch: '模型一直 search 同一个，最近 3 步动作全相同 → stuck 检测中止，没无限跑下去。' }, { act: '切「超预算」场景', watch: '一直不收敛，走满 6 步撞预算 → 停、交 best-effort，别烧爆算力。' }], terms: [],
   },
   ctxcompact: {
     question: 'Agent 会话越聊越长、上下文窗口迟早爆——怎么在不丢关键信息的前提下把它压回去？',

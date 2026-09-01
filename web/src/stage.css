@@ -5082,3 +5082,28 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .pg-hi.bad{border-left-color:var(--miss);background:color-mix(in srgb,var(--miss) 7%,transparent)}
 .pg-hi-c{flex:none;font:var(--t-meta) var(--mono);color:var(--dim);min-width:12em}
 .pg-hi-l{flex:1 1 auto;color:var(--ink)}
+
+/* ── Agent 主循环·防死循环：控制条 + 终止横幅（复用 .ra-trace/.ra-turn）── */
+.ra-ctrl{display:flex;gap:14px;flex-wrap:wrap;margin:8px 0;padding:8px 10px;
+  border:1px solid var(--line);border-radius:6px;background:var(--sunk-1)}
+.ra-budget,.ra-stuck{display:flex;align-items:center;gap:7px;font-size:var(--t-ui)}
+.ra-budget{flex:1 1 auto;min-width:180px} .ra-stuck{flex:2 1 auto;min-width:220px}
+.ra-cl{flex:none;font:var(--t-meta) var(--sans);color:var(--faint)}
+.ra-cv{flex:none;font:var(--t-ui) var(--mono);color:var(--ink)}
+.ra-bbar{flex:1 1 auto;height:9px;background:var(--panel);border:1px solid var(--line);border-radius:5px;overflow:hidden}
+.ra-bfill{height:100%;background:color-mix(in srgb,var(--hit) 60%,transparent);transition:width .25s}
+.ra-bfill.over{background:color-mix(in srgb,var(--miss) 66%,transparent)}
+.ra-swin{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.ra-swin code{font:var(--t-meta) var(--mono);color:var(--dim);background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:0 4px}
+.ra-swin.same code{color:var(--miss);border-color:color-mix(in srgb,var(--miss) 45%,var(--line));background:color-mix(in srgb,var(--miss) 8%,transparent)}
+.ra-swin b{color:var(--miss);font-size:var(--t-meta)}
+.ra-swin em{color:var(--faint);font-style:normal}
+/* 轨迹里没进展/异常的行 */
+.ra-turn.bad .ra-txt{color:var(--dim)}
+.ra-turn.error .ra-tag,.ra-turn.error .ra-txt{color:var(--miss)}
+.ra-turn.answer .ra-tag{color:var(--hit)}
+/* 终止横幅 */
+.ra-halt{margin-top:8px;padding:8px 11px;border-radius:6px;border:1px solid var(--line);
+  font-size:var(--t-ui);font-weight:600}
+.ra-halt.answer{color:var(--hit);border-color:color-mix(in srgb,var(--hit) 45%,var(--line));background:color-mix(in srgb,var(--hit) 8%,transparent)}
+.ra-halt.stuck,.ra-halt.budget,.ra-halt.error{color:var(--miss);border-color:color-mix(in srgb,var(--miss) 45%,var(--line));background:color-mix(in srgb,var(--miss) 8%,transparent)}

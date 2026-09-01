@@ -5757,19 +5757,32 @@ const lfucache: Experiment<LFUState> = {
   ],
 }
 const reactagent: Experiment<ReactState> = {
-  id: 'reactagent', group: '大模型项目实战', title: 'ReAct Agent 循环', subtitle: '想→做(调工具)→看(结果)→再想…→答',
-  kernel: reactagentKernel, defaultDoc: { kind: 'reactagent', params: {}, entities: [], streams: [] }, params: [],
-  paramsNote: '无可调参数。Agent=LLM+工具+循环。ReAct 把循环显式化:Thought(想)→Action(调工具)→Observation(看结果)→…→Final Answer。本例问北京比上海热多少度,依次 search 两地气温、calc 求差、作答。逐步可核。详见讲解卡。',
-  bounds: ['Agent=LLM+工具+循环;ReAct=Thought→Action→Observation→…→Answer', '每步的"想"基于前面全部轨迹(拼进prompt)→能一步步逼近', 'Action调工具(search/calc)=function calling;Observation喂回真实结果', '=LangChain/Copilot骨架;要点:工具schema/何时停/防跑飞'],
+  id: 'reactagent', group: '大模型项目实战', title: 'Agent 主循环 · 防死循环', subtitle: '想→做→看，难在正确地停：正常 / 重复 / 超预算 / 出错',
+  kernel: reactagentKernel, defaultDoc: { kind: 'reactagent', params: { scenario: '正常' }, entities: [], streams: [] },
+  params: [{ key: 'scenario', label: '场景', kind: 'enum', options: ['正常', '重复', '超预算', '出错'] }],
+  paramsNote: 'Agent=LLM+工具+循环(Thought→Action→Observation→…)。循环好写，**难的是让它正确地停**——这是 Agent 工程/面试的坑。四条终止路径(切「场景」看)：①正常(模型不再发工具→Final Answer) ②重复(一直发同一动作→**stuck 检测**中止，最近 3 步动作相同就判死循环) ③超预算(不收敛→撞 6 步预算上限→停、交 best-effort) ④出错(中途崩→**不硬崩、autosubmit 交一版**当前最好结果)。stuck 检测、步数计数都由引擎现算。术语：step=一次模型请求+工具，turn=零或多个 step。详见讲解卡。',
+  bounds: [
+    '循环难在正确地停：正常(无工具调用) / 重复(stuck 检测) / 超预算(步数·成本上限) / 出错(autosubmit)',
+    'stuck 检测：最近几步动作相同=原地打转→中止，防无限跑烧钱；或给步数上限兜底',
+    '超预算=硬上限(SWE-agent per_instance_cost_limit)，安全但可能截断正经活；软终止靠 stuck+压缩兜底',
+    'autosubmit-on-error：崩了也交一版 best-effort，别让整趟白跑。step vs turn。Codex/DeepSeek 无硬 turn 上限,SWE-agent/OpenHands 有 max_iterations',
+  ],
   tabs: [{ id: 'react', label: '循环逐步跑' }], Stage: ReactAgentStage, whyInRail: true,
-  tone: s => (s.phase === 'done' ? { key: 'good', label: '得到答案' } : s.kind === 'action' ? { key: 'idle', label: `调 ${s.tool}` } : s.kind === 'observation' ? { key: 'good', label: '拿到结果' } : s.kind === 'thought' ? { key: 'idle', label: `想·第${s.round}轮` } : { key: 'idle', label: '开始' }),
-  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 12)),
-  tickLabel: s => (s.phase === 'done' ? '答' : s.kind === 'thought' ? '想' : s.kind === 'action' ? '做' : s.kind === 'observation' ? '看' : '始'),
+  tone: s => (s.halt === 'answer' ? { key: 'good', label: '正常终止' }
+    : s.halt === 'stuck' ? { key: 'bad', label: 'stuck 中止' }
+    : s.halt === 'budget' ? { key: 'bad', label: '超预算停' }
+    : s.halt === 'error' ? { key: 'bad', label: 'autosubmit' }
+    : s.kind === 'action' ? { key: 'idle', label: `调 ${s.tool}·第${s.stepCount}步` }
+    : s.kind === 'observation' ? { key: 'idle', label: '看结果' }
+    : s.kind === 'thought' ? { key: 'idle', label: `想·第${s.round}轮` }
+    : { key: 'idle', label: `场景 ${s.scenario}` }),
+  metric: s => (s.halt ? 1 : Math.max(0, s.stepCount / s.budget)),
+  tickLabel: s => (s.kind === 'halt' ? (s.halt === 'stuck' ? '停' : s.halt === 'budget' ? '爆' : '崩') : s.kind === 'answer' ? '答' : s.kind === 'thought' ? '想' : s.kind === 'action' ? '做' : s.kind === 'observation' ? '看' : '始'),
   readouts: s => [
-    { label: '轮次', value: s.kind === 'intro' ? '—' : `第 ${s.round} 轮` },
-    { label: '本步', value: s.kind === 'intro' ? '开始' : s.kind === 'thought' ? '💭 Thought' : s.kind === 'action' ? '🔧 Action' : s.kind === 'observation' ? '👀 Observation' : '✅ Answer' },
-    { label: '工具调用', value: s.kind === 'action' ? `${s.tool}(${s.arg})` : s.kind === 'observation' ? `→ ${s.obs}` : '—' },
-    { label: '已走步数', value: `${s.history.length}`, tone: s.phase === 'done' ? 'good' : undefined },
+    { label: '场景', value: s.scenario },
+    { label: '步数 / 预算', value: `${s.stepCount} / ${s.budget}`, tone: s.stepCount >= s.budget ? 'bad' : undefined },
+    { label: 'stuck 窗口', value: s.recent.length ? s.recent.slice(-3).join(' · ') : '—', tone: (() => { const w = s.recent.slice(-3); return w.length === 3 && w.every(a => a === w[0]) ? 'bad' : undefined })() },
+    { label: '终止', value: s.halt ? ({ answer: '✅ 正常', stuck: '🛑 重复中止', budget: '🛑 超预算', error: '🛑 出错·交一版' }[s.halt] ?? '—') : '运行中', tone: s.halt === 'answer' ? 'good' : s.halt ? 'bad' : undefined },
   ],
 }
 const ctxcompact: Experiment<CompactState> = {

@@ -333,7 +333,7 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   happensbefore: {},
   lrucache: {},
   topk: {},
-  reactagent: {},
+  reactagent: { scenario: 'string' },
   ctxcompact: { strategy: 'string', thresholdRatio: 'number' },
   toolcall: {},
   permguard: { mode: 'string' },
@@ -401,6 +401,7 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
 /** 同名参数在不同 kind 下取值不同 —— 所以按 kind 分表，不能只按字段名 */
 const ENUMS: Record<string, Record<string, string[]>> = {
   cache:     { replacement: ['LRU', 'FIFO'] },
+  reactagent: { scenario: ['正常', '重复', '超预算', '出错'] },
   ctxcompact: { strategy: ['总结', '省略'] },
   permguard: { mode: ['默认', '接受编辑', '计划', '放行'] },
   iso:       { level: ['读未提交', '读已提交', '可重复读', '串行化'] },

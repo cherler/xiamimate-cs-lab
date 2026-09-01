@@ -229,9 +229,9 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       b: { step: 6, phase: 'done', op: 'summary', counter: 100000003, entries: [{ longUrl: 'https://x/a', id: 100000000, code: '6LAze' }, { longUrl: 'https://x/b', id: 100000001, code: '6LAzf' }, { longUrl: 'https://x/c', id: 100000002, code: '6LAzg' }], cur: -1, lookup: null, codeLen: 6, capacity: 56800235584, focus: '机制走完', log: 'x' },
     },
     reactagent: {
-      doc: { kind: 'reactagent', params: {}, entities: [], streams: [] },
-      a: { step: 8, kind: 'action', round: 3, text: '', tool: 'calc', arg: '30 - 25', obs: '', history: [{ kind: 'thought', text: '两地都有了：30 和 25。用计算器算差。' }], answer: '', phase: 'run', focus: '第 3 轮 · Action：calc(30 - 25)' },
-      b: { step: 11, kind: 'answer', round: 4, text: '北京今天最高 30°C，上海 25°C，北京比上海热 5°C。', tool: '', arg: '', obs: '', history: [{ kind: 'thought', text: 'x' }], answer: '北京今天最高 30°C，上海 25°C，北京比上海热 5°C。', phase: 'done', focus: 'Final Answer：够了，作答' },
+      doc: { kind: 'reactagent', params: { scenario: '正常' }, entities: [], streams: [] },
+      a: { i: 5, step: 5, scenario: '正常', kind: 'action', round: 2, text: '', tool: 'search', arg: '上海 气温', obs: '', history: [{ kind: 'thought', text: '再查上海' }], stepCount: 2, budget: 6, recent: ['search(北京 气温)', 'search(上海 气温)'], halt: '', answer: '', phase: 'run', focus: '第 2 轮 · 做：search(上海 气温)（第 2/6 步）', log: '' },
+      b: { i: 8, step: 8, scenario: '重复', kind: 'halt', round: 3, text: '', tool: 'search', arg: '北京 气温', obs: '', history: [{ kind: 'action', text: 'search(北京 气温)' }], stepCount: 3, budget: 6, recent: ['search(北京 气温)', 'search(北京 气温)', 'search(北京 气温)'], halt: 'stuck', answer: '', phase: 'done', focus: 'stuck 检测中止', log: '' },
     },
     ctxcompact: {
       doc: { kind: 'ctxcompact', params: { strategy: '总结', thresholdRatio: 0.8 }, entities: [], streams: [] },
