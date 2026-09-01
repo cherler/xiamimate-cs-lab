@@ -5497,3 +5497,22 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .fw-mat i{font-style:normal;font-size:1.8em;color:var(--faint);font-weight:200;line-height:.7}
 .fw-mt{display:inline-table;border-collapse:collapse;font-family:var(--mono);margin:0 2px}
 .fw-mt td{padding:1px 7px;text-align:right}
+
+/* computedtorque · 计算力矩控制 */
+.scdn.ct-hot{color:var(--now)}
+.scdn.ct-good{color:var(--hit)}
+.scdn.ct-bad{color:var(--miss)}
+.ct-flow{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.ct-blk{border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--panel-2);font-size:var(--t-ui);line-height:1.7;font-variant-numeric:tabular-nums}
+.ct-blk.ct-off{opacity:.4}
+.ct-n{font-family:var(--mono);color:var(--now);font-weight:700;margin-right:6px}
+.ct-sub{display:block;font:var(--t-meta) var(--sans);color:var(--faint);margin-top:2px;font-style:normal}
+.ct-on{color:var(--ink);font-weight:600}
+.ct-mute{color:var(--ghost);text-decoration:line-through}
+.ct-plus{color:var(--faint);padding:0 4px}
+.ct-pd{color:var(--dim)}
+.ct-eq{color:var(--dim)}
+.ct-tau{color:var(--now)}
+.ct-dyn{border-radius:8px;padding:8px 10px;font-size:var(--t-ui);line-height:1.55}
+.ct-dyn.ct-dgood{background:color-mix(in srgb,var(--hit) 8%,transparent);border:1px solid color-mix(in srgb,var(--hit) 35%,var(--line))}
+.ct-dyn.ct-dbad{background:color-mix(in srgb,var(--miss) 7%,transparent);border:1px solid color-mix(in srgb,var(--miss) 30%,var(--line))}

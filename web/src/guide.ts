@@ -888,6 +888,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { stage: string; qdd: number[] }; const z = (x: number) => (Object.is(x, -0) ? 0 : x); return st.stage === 'done' ? '仿真一步' : st.stage === 'integrate' ? '积分推进' : st.stage === 'solve' ? `q̈=[${z(st.qdd[0]!)},${z(st.qdd[1]!)}]` : st.stage === 'massinv' ? 'M⁻¹' : st.stage === 'bias' ? '偏置b' : '仿真' },
     try: [{ act: '切「偏小(τ=[10,2])」', watch: '力矩顶不住重力 → q̈=[−3.89,9.16]，关节1 往下掉(q̈₁<0)。' }, { act: '切「平衡(τ=Cq̇+G)」', watch: '力矩正好抵消偏置 → q̈≈0，关节匀速维持不加速。' }, { act: '切「发力(τ=[20,4])」', watch: '力矩大于偏置 → q̈=[2.24,2.52]，加速起摆。' }], terms: [],
   },
+  computedtorque: {
+    question: '机械臂非线性又耦合，固定增益 PID 只能保守整定。计算力矩控制怎么用模型把它"拉直"成线性的？',
+    read: [{ at: '误差块', is: 'e、ė、Kp/Kd。', anchor: '.ct-flow' }, { at: '伺服律块', is: 'v=q̈_d+Kd ė+Kp e。', anchor: '.ct-blk' }, { at: '误差动力学块', is: '线性 ë+Kd ė+Kp e=0 或残留。', anchor: '.ct-dyn' }],
+    step: (s: never) => { const st = s as { stage: string; modeLabel: string; e: number[]; ed: number[]; qddDes: number[]; Kp: number; Kd: number; innerV: number[]; Mv: number[]; Cqd: number[]; G: number[]; pdPart: number[]; tau: number[]; useM: boolean; useGrav: boolean; linear: boolean }; const z = (x: number) => (Object.is(x, -0) ? 0 : x); return [
+      { k: '本步输入', v: st.stage === 'intro' ? `模式 ${st.modeLabel}` : st.stage === 'error' ? `目标与实际之差` : st.stage === 'law' ? `q̈_d=[${st.qddDes}]、Kd=${st.Kd}、Kp=${st.Kp}` : st.stage === 'torque' ? `伺服律 v=[${st.innerV}]` : '把 τ 代回被控对象' },
+      { k: '判定规则', v: `v=q̈_d+Kd ė+Kp e；τ=M·v+Cq̇+G（计算力矩）；代回 M q̈+Cq̇+G=τ → Cq̇+G 抵消、M 约掉 → ë+Kd ė+Kp e=0。` },
+      { k: '本步结果', v: st.stage === 'intro' ? '用模型抵消非线性、拉直成线性' : st.stage === 'error' ? `e=[${st.e}]、ė=[${st.ed}]（Kd=2√Kp 临界阻尼）` : st.stage === 'law' ? `v=q̈_d+Kd ė+Kp e=[${st.innerV}]` : st.stage === 'torque' ? `τ=${st.useM ? `M·v+Cq̇+G` : st.useGrav ? 'Kp e+Kd ė+G' : 'Kp e+Kd ė'}=[${z(st.tau[0]!)},${z(st.tau[1]!)}]` : st.linear ? 'ë+Kd ė+Kp e=0（线性解耦、可配极点）' : '残留非线性（增益被M⁻¹缩放/科氏或重力没消）' },
+    ] },
+    verdict: (s: never) => { const st = s as { stage: string; linear: boolean; tau: number[] }; const z = (x: number) => (Object.is(x, -0) ? 0 : x); return st.stage === 'done' ? '模型抵消非线性' : st.stage === 'errordyn' ? (st.linear ? 'ë+Kd ė+Kp e=0' : '残留非线性') : st.stage === 'torque' ? `τ=[${z(st.tau[0]!)}]` : st.stage === 'law' ? '伺服律v' : st.stage === 'error' ? '误差e,ė' : '反馈线性化' },
+    try: [{ act: '切「计算力矩」', watch: 'τ=M·v+Cq̇+G=[21.7,3.08]，Cq̇+G抵消 → ë+Kd ė+Kp e=0 线性解耦。' }, { act: '切「只重力补偿」', watch: 'τ=Kp e+Kd ė+G=[20.01,−6.73]，消重力但科氏耦合没消、误差仍非线性。' }, { act: '切「纯 PID」', watch: 'τ=Kp e+Kd ė=[6,−8]，啥都不消、稳态下垂、要保守整定。' }], terms: [],
+  },
   queryplan: {
     question: '同一个查询有好几条路可走，数据库优化器凭什么选其中一条？',
     read: [{ at: '候选路径', is: '每条访问路径的 type + 估扫描行数代价条。', anchor: '.qp-paths' }, { at: 'EXPLAIN', is: '末步选中路径的 type/key/rows。', anchor: '.qp-explain' }],

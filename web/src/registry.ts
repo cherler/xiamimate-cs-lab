@@ -350,6 +350,7 @@ import { fkKernel, type FKState } from '@engine/kernels/fk.ts'
 import { dyneomKernel, type DynState } from '@engine/kernels/dyneom.ts'
 import { rneaKernel, type RneaState } from '@engine/kernels/rnea.ts'
 import { fwddynKernel, type FwdState } from '@engine/kernels/fwddyn.ts'
+import { computedtorqueKernel, type CtcState } from '@engine/kernels/computedtorque.ts'
 import { ikKernel, type IKState } from '@engine/kernels/ik.ts'
 import { jacobianKernel, type JacoState } from '@engine/kernels/jacobian.ts'
 import { kalmanKernel, type KalmanState } from '@engine/kernels/kalman.ts'
@@ -376,6 +377,7 @@ import { FKStage } from './stages/FKStage.tsx'
 import { DynEomStage } from './stages/DynEomStage.tsx'
 import { RneaStage } from './stages/RneaStage.tsx'
 import { FwdDynStage } from './stages/FwdDynStage.tsx'
+import { ComputedTorqueStage } from './stages/ComputedTorqueStage.tsx'
 import { IKStage } from './stages/IKStage.tsx'
 import { JacobianStage } from './stages/JacobianStage.tsx'
 import { KalmanStage } from './stages/KalmanStage.tsx'
@@ -6561,6 +6563,33 @@ const fwddyn: Experiment<FwdState> = {
     { label: '本步', value: ({ intro: '仿真=反问题', bias: '偏置 Cq̇+G', massinv: 'M 与逆(SPD)', solve: '解 q̈', integrate: '积分一步', done: '仿真一步' } as Record<string, string>)[s.stage] ?? '—' },
   ],
 }
+const computedtorque: Experiment<CtcState> = {
+  id: 'computedtorque', group: '刚体动力学', title: '计算力矩控制', subtitle: '反馈线性化：τ=M(q̈_d+Kd ė+Kp e)+Cq̇+G，用模型抵消非线性 → ë+Kd ė+Kp e=0',
+  kernel: computedtorqueKernel, defaultDoc: { kind: 'computedtorque', params: { mode: '计算力矩' }, entities: [], streams: [] },
+  params: [{ key: 'mode', label: '控制模式', kind: 'enum', options: ['计算力矩', '只重力补偿', '纯 PID'] }],
+  paramsNote: '机械臂是**非线性强耦合**的(重力随构型变、惯性耦合、科氏∝q̇²),固定增益 PID 只能保守整定、高速丢精度。**计算力矩控制(=逆动力学控制/反馈线性化)**用动力学模型主动抵消非线性:先把 PD 修正当"想要的加速度" **v=q̈_d+Kd ė+Kp e**,再 **τ=M·v+Cq̇+G**。代回被控对象 M q̈+Cq̇+G=τ,**Cq̇+G 抵消、M 约掉** → **解耦线性误差动力学 ë+Kd ė+Kp e=0**(每关节独立二阶、可配极点、一套增益全局用)。切「控制模式」看:计算力矩(全抵消、线性解耦)/只重力补偿(消重力留科氏耦合)/纯PID(啥都不消、稳态下垂)。研究对拍 τ=[21.70,3.08]、v=[6,−8]。全现算。连「机械臂运动方程/RNEA/PID」。详见讲解卡。',
+  bounds: [
+    '计算力矩控制 τ=M(q̈_d+Kd ė+Kp e)+Cq̇+G:用模型抵消非线性→误差动力学 ë+Kd ė+Kp e=0(线性、解耦、可配极点、一套增益全局用)',
+    'Kd=2√Kp 临界阻尼(ζ=1);M·v 给想要的加速度、Cq̇+G 前馈抵消科氏和重力;=反馈线性化',
+    '三档:计算力矩(全抵消最好)>只重力补偿(消重力留耦合、设定点够用)>纯PID(啥都不消、稳态下垂、要保守整定)',
+    '连:Cq̇+G 前馈=一次 RNEA(令 q̈=q̈_d+Kd ė+Kp e);是 PID 的模型升级版;要准确模型(误差→自适应/鲁棒计算力矩 Slotine-Li)。参考:Spong ch.8、《Modern Robotics》§11',
+  ],
+  tabs: [{ id: 'ct', label: '计算力矩逐步跑' }], Stage: ComputedTorqueStage, whyInRail: true,
+  tone: s => (s.stage === 'done' ? { key: 'good', label: '模型抵消非线性' }
+    : s.stage === 'errordyn' ? (s.linear ? { key: 'good', label: 'ë+Kd ė+Kp e=0' } : { key: 'bad', label: '残留非线性' })
+    : s.stage === 'torque' ? { key: 'good', label: `τ=[${Object.is(s.tau[0], -0) ? 0 : s.tau[0]}]` }
+    : s.stage === 'law' ? { key: 'idle', label: 'v=q̈_d+Kd ė+Kp e' }
+    : s.stage === 'error' ? { key: 'idle', label: '误差 e,ė' }
+    : { key: 'idle', label: '反馈线性化' }),
+  metric: s => (s.stage === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => ({ intro: '扛', error: 'e', law: 'v', torque: 'τ', errordyn: '线', done: '成' }[s.stage] ?? '·'),
+  readouts: s => [
+    { label: '控制模式', value: s.modeLabel },
+    { label: '伺服律 v', value: s.showLaw ? `[${s.innerV[0]}, ${s.innerV[1]}]` : '—' },
+    { label: '关节力矩 τ', value: s.showTau ? `[${Object.is(s.tau[0], -0) ? 0 : s.tau[0]}, ${Object.is(s.tau[1], -0) ? 0 : s.tau[1]}] N·m` : '—', tone: s.showTau ? 'good' : undefined },
+    { label: '误差动力学', value: s.showDyn ? (s.linear ? 'ë+Kd ė+Kp e=0（线性解耦）' : '残留非线性') : '—', tone: s.showDyn && !s.linear ? 'bad' : undefined },
+  ],
+}
 const ik: Experiment<IKState> = {
   id: 'ik', group: '机器人学基础', title: '逆运动学 IK', subtitle: '末端目标 → 关节角：多解(肘上/肘下)、可无解',
   kernel: ikKernel, defaultDoc: { kind: 'ik', params: {}, entities: [], streams: [] }, params: [],
@@ -6993,7 +7022,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, dyneom, rnea, fwddyn, ik, jacobian, quat, trajectory, kalman, icp, slam, impedance, mpc, pid, rrt, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
+  fk, dyneom, rnea, fwddyn, computedtorque, ik, jacobian, quat, trajectory, kalman, icp, slam, impedance, mpc, pid, rrt, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
 ] as unknown as AnyExperiment[]
 
 /**

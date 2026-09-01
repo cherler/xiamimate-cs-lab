@@ -112,6 +112,7 @@ import { fkKernel } from '../src/kernels/fk.ts'
 import { dyneomKernel } from '../src/kernels/dyneom.ts'
 import { rneaKernel } from '../src/kernels/rnea.ts'
 import { fwddynKernel } from '../src/kernels/fwddyn.ts'
+import { computedtorqueKernel } from '../src/kernels/computedtorque.ts'
 import { ikKernel } from '../src/kernels/ik.ts'
 import { jacobianKernel } from '../src/kernels/jacobian.ts'
 import { quatKernel } from '../src/kernels/quat.ts'
@@ -2214,6 +2215,41 @@ export const CATALOG: CatalogEntry[] = [
         ask: '大 V 有百万粉丝，推拉结合怎么避免他发帖时的写放大?', kind: 'choice',
         compute: () => ({ answer: '普通用户走推（读快）；大 V 走拉——发帖不推给百万粉丝、只存自己 outbox，粉丝刷时才现拉大 V 的帖、和收件箱归并。既避免写放大、普通场景又读快', step: 5, evidence: '本例大 V 100 万粉，2 帖走拉省下 2,000,000 次写' }),
         distractors: () => ['给大 V 更多服务器推', '禁止大 V 发帖太频繁', '大 V 也全量推、只是异步'],
+      },
+    ],
+  },
+  {
+    id: 'computedtorque', title: '计算力矩控制', kernel: computedtorqueKernel as Kernel<unknown>, doc: trivialDoc('computedtorque'),
+    facts: [
+      {
+        id: 'ct_errordyn', label: '代回后误差动力学变成什么',
+        ask: '计算力矩控制 τ=M(q̈_d+Kd ė+Kp e)+Cq̇+G 代回被控对象后，误差动力学变成什么?', kind: 'choice',
+        compute: () => ({ answer: 'ë + Kd·ė + Kp·e = 0：Cq̇+G 两边抵消、M 约掉,非线性耦合系统被线性化成每个关节独立、解耦的二阶线性系统。可任意配极点(Kp=ωₙ²、Kd=2ζωₙ)、一套增益全局适用(无需增益调度)', step: 5, evidence: '这就是"反馈线性化":用模型把非线性拉直' }),
+        distractors: () => ['仍是原来的非线性耦合系统', '变成一阶线性系统 ė+Kp e=0', '变成随构型变的时变系统'],
+      },
+      {
+        id: 'ct_vs_pid', label: '为什么比纯 PID 好',
+        ask: '计算力矩控制相比纯 PID 好在哪?为什么纯 PID 高速时跟踪差?', kind: 'choice',
+        compute: () => ({ answer: '纯 PID 用固定增益硬扛非线性(重力/惯性耦合/科氏∝q̇²),只能保守整定、高速大幅时误差长,重力还让它稳态下垂;计算力矩用模型 M/C/G 主动抵消这些非线性,误差动力学变线性解耦、增益可精确配、全局一致', step: 1, evidence: '模型based vs 纯调参;Cq̇+G 前馈抵消非线性' }),
+        distractors: () => ['计算力矩不需要传感器', '计算力矩增益可以设得无穷大', '纯 PID 无法控制机械臂'],
+      },
+      {
+        id: 'ct_gravcomp', label: '只重力补偿是什么档',
+        ask: '只重力补偿(τ=Kp e+Kd ė+G)和全计算力矩相比，是什么定位?', kind: 'choice',
+        compute: () => ({ answer: '"够用又省"的折中:只前馈掉重力 G(所以静止能定住、无稳态下垂),但没消掉惯性耦合和科氏 → 误差动力学仍非线性耦合。设定点调节(定位)够用、轨迹跟踪(高速)差', step: 4, evidence: '消重力=省下 M·v 和 Cq̇;设定点调节的最省档' }),
+        distractors: () => ['和全计算力矩完全等价', '比全计算力矩更精确', '完全没用、不如纯 PID'],
+      },
+      {
+        id: 'ct_rnea', label: '计算力矩里的前馈=什么',
+        ask: '计算力矩控制里的 Cq̇+G 前馈项，工程上怎么高效算?', kind: 'choice',
+        compute: () => ({ answer: '就是一次 RNEA(递归牛顿-欧拉)调用:令 q̈=q̈_d+Kd ė+Kp e(伺服律 v)、q̇=真实速度,RNEA 直接返回 τ=M·v+Cq̇+G。所以计算力矩控制复用了逆动力学 RNEA', step: 3, evidence: '整条 τ=M·v+Cq̇+G 就是 RNEA(q,q̇,v)' }),
+        distractors: () => ['要显式组 M、C、G 三个矩阵再相乘', '用一次正向动力学', '查预先标定的力矩表'],
+      },
+      {
+        id: 'ct_innerv', label: '伺服律算出的加速度指令',
+        ask: '计算力矩伺服律 v=q̈_d+Kd ė+Kp e，关节1(q̈_d=0,Kd=20,ė₁=−0.2,Kp=100,e₁=0.1)算出 v₁=?', kind: 'number',
+        compute: t => { const f = t as unknown as { innerV?: number[] }[]; const l = f.find(x => x.innerV); const v = l?.innerV ? Math.round(l.innerV[0]!) : 6; return ({ answer: String(v), step: 2, evidence: `v₁=0+20·(−0.2)+100·0.1=−4+10=${v}(PD 作用在加速度上、当"想要的 q̈")` }) },
+        distractors: numDistractors,
       },
     ],
   },

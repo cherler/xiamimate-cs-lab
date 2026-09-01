@@ -344,6 +344,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { i: 2, step: 2, stage: 'massinv', ...base, showBias: true, showMinv: true, showQdd: false, showInteg: false, phase: 'run' as const, focus: 'M 与逆' },
       b: { i: 3, step: 3, stage: 'solve', ...base, showBias: true, showMinv: true, showQdd: true, showInteg: false, phase: 'run' as const, focus: '解 q̈' },
     } })(),
+    computedtorque: (() => { const base = { mode: 'ctc', modeLabel: '计算力矩(全模型抵消)', e: [0.1, -0.1] as [number, number], ed: [-0.2, 0.1] as [number, number], qddDes: [0, 0] as [number, number], Kp: 100, Kd: 20, M: [[2.37, 0.69], [0.69, 0.33]] as [[number, number], [number, number]], Cqd: [-1.06, 0.35] as [number, number], G: [14.01, 1.27] as [number, number], innerV: [6, -8] as [number, number], Mv: [8.75, 1.46] as [number, number], pdPart: [6, -8] as [number, number], tau: [21.7, 3.08] as [number, number], useM: true, useCor: true, useGrav: true, linear: true, log: '' }; return {
+      doc: { kind: 'computedtorque', params: { mode: '计算力矩' }, entities: [], streams: [] },
+      a: { i: 2, step: 2, stage: 'law', ...base, showErr: true, showLaw: true, showTau: false, showDyn: false, phase: 'run' as const, focus: '伺服律' },
+      b: { i: 3, step: 3, stage: 'torque', ...base, showErr: true, showLaw: true, showTau: true, showDyn: false, phase: 'run' as const, focus: '组力矩' },
+    } })(),
     queryplan: {
       doc: { kind: 'queryplan', params: {}, entities: [], streams: [] },
       a: { step: 1, op: 'path', query: 'q', revealed: 1, cur: 0, chosen: -1, paths: [{ name: '全表扫描', type: 'ALL', key: '—', rows: 10000, note: 'x' }, { name: '走 idx(city)', type: 'ref', key: 'idx_city', rows: 500, note: 'x' }, { name: '走 idx(age)', type: 'range', key: 'idx_age', rows: 6000, note: 'x' }], phase: 'run', focus: '候选路径：全表扫描（type=ALL，估扫 10000 行）' },
