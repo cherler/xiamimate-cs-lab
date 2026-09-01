@@ -133,6 +133,7 @@ import { ukfKernel } from '../src/kernels/ukf.ts'
 import { complementaryKernel } from '../src/kernels/complementary.ts'
 import { pidKernel } from '../src/kernels/pid.ts'
 import { rrtKernel } from '../src/kernels/rrt.ts'
+import { rrtstarKernel } from '../src/kernels/rrtstar.ts'
 import { objectstoreKernel } from '../src/kernels/objectstore.ts'
 import { queryplanKernel } from '../src/kernels/queryplan.ts'
 import { wildcardKernel } from '../src/kernels/wildcard.ts'
@@ -2790,6 +2791,41 @@ export const CATALOG: CatalogEntry[] = [
         ask: 'PID 控制的 P、I、D 三项分别按什么量、起什么作用?', kind: 'choice',
         compute: () => ({ answer: 'P=Kp·e 按当前误差使劲(越远越使劲)；D=Kd·误差变化率提供阻尼(快到时反向刹车、防冲过头);I=Ki·误差累计消除稳态误差(顶掉重力等恒定扰动)。P管现在、I管过去累计、D管趋势', step: 14, evidence: '本例加 D=Kd·误差变化率(负=刹车)后，位置平稳收敛到目标不震荡' }),
         distractors: () => ['三项都按当前误差，只是系数不同', 'D 让响应更快、P 提供阻尼', 'I 提供阻尼、D 消除稳态误差'],
+      },
+    ],
+  },
+  {
+    id: 'rrtstar', title: 'RRT* · 渐近最优', kernel: rrtstarKernel as Kernel<unknown>, doc: trivialDoc('rrtstar'),
+    facts: [
+      {
+        id: 'rrts_two', label: 'RRT* 多做的两步',
+        ask: 'RRT* 相比 RRT，多做了哪两步来趋近最优?', kind: 'choice',
+        compute: () => ({ answer: '①选父(choose parent):新点在半径 r 邻域里选"起点→新点代价=cost[邻居]+dist"最小的邻居当父(不是几何最近的);②重连(rewire):加完新点后,把邻域里"经新点更省"的邻居改接到新点、降其代价', step: 1, evidence: '选父+重连让树随采样渐近最优' }),
+        distractors: () => ['增大步长+多采样几个点', '用 A* 的启发式代替随机采样', '每步回溯整棵树重新规划'],
+      },
+      {
+        id: 'rrts_complete', label: 'RRT 和 RRT* 的保证',
+        ask: 'RRT 和 RRT* 在"能找到什么样的路"上有什么本质区别?', kind: 'choice',
+        compute: () => ({ answer: 'RRT 只保证概率完备:样本够多必找到一条可行路,但不最优(接最近≠代价最小)、再多采样也不变好;RRT* 在此基础上还保证渐近最优:随采样数→∞ 收敛到最短路', step: 5, evidence: '概率完备(RRT)vs 渐近最优(RRT*)' }),
+        distractors: () => ['两者都保证最优、只是 RRT* 更快', '两者都不保证找到路', 'RRT 最优、RRT* 只是更快'],
+      },
+      {
+        id: 'rrts_radius', label: '邻域半径为何收缩',
+        ask: 'RRT* 的邻域半径 r 为什么不用固定值、而是随节点数收缩?', kind: 'choice',
+        compute: () => ({ answer: 'r 按 (γ·log n/n)^(1/d) 随节点数 n 收缩:节点越多、半径越小。这样既保证渐近最优的理论性质,又不至于节点多了每步要查一大堆邻居(平衡最优性和计算量)', step: 6, evidence: 'r∝(γ·log n/n)^(1/d);平衡最优与开销' }),
+        distractors: () => ['半径固定就够了、不用收缩', '半径应该随节点增多而增大', '半径和最优性无关、随便取'],
+      },
+      {
+        id: 'rrts_cost', label: 'RRT* 的代价',
+        ask: 'RRT* 相比 RRT 有什么代价?怎么加速?', kind: 'choice',
+        compute: () => ({ answer: '每步要查邻域、算多条代价、还可能重连,比 RRT 慢、每步开销大,而且收敛到最优较慢(初期解也绕)。加速:Informed RRT*(找到初解后只在包住起终点的椭球内采样)、RRT*-Connect、BIT* 等', step: 6, evidence: '慢+初解绕;Informed RRT* 加速收敛' }),
+        distractors: () => ['没有代价、RRT* 全面更快', '只是内存多一点、速度一样', 'RRT* 反而更省内存'],
+      },
+      {
+        id: 'rrts_num', label: 'RRT* 选父后的代价',
+        ask: '本例邻域 A(cost4,dist2)、B(cost8,dist1)，RRT* 选父后 x_new 的代价是多少?(选 cost[邻居]+dist 最小)', kind: 'number',
+        compute: t => { const f = t as unknown as { starCost?: number }[]; const l = f.find(x => x.starCost != null); const v = l?.starCost != null ? Math.round(l.starCost) : 6; return ({ answer: String(v), step: 3, evidence: `经 A=4+2=6、经 B=8+1=9,取最小=${v}(选 A、非最近的 B);RRT 接最近 B 则代价 9` }) },
+        distractors: numDistractors,
       },
     ],
   },

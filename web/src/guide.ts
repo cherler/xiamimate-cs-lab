@@ -954,6 +954,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { stage: string; fused: number }; return st.stage === 'done' ? '高通陀螺+低通加速度' : st.stage === 'behavior' ? 'α取舍' : st.stage === 'fuse' ? `融=${st.fused}°` : st.stage === 'accel' ? '加速度(抖)' : st.stage === 'gyro' ? '陀螺(漂)' : 'IMU融合' },
     try: [{ act: '切「偏信陀螺(α=0.98)」', watch: '融=30.24°≈陀螺30.2°：平滑抗抖，靠 2% 加速度慢慢纠漂。' }, { act: '切「均衡(α=0.5)」', watch: '融=31.1°：一半跟加速度、纠漂快但明显发抖。' }, { act: '想两个极端', watch: '只陀螺→bias 无限漂；只加速度→抖得没法用。互补两全。' }], terms: [],
   },
+  rrtstar: {
+    question: 'RRT 能找到一条避障路、但往往绕。RRT* 加了哪两步，让路径随采样越来越接近最优？',
+    read: [{ at: '树图', is: '节点+父边、x_new+邻域圈、选父边绿/重连边橙。', anchor: '.rs-svg' }, { at: '选父块', is: 'cost[邻居]+dist 取最小。', anchor: '.rs-hot2' }, { at: '重连块', is: '邻居经 x_new 更省则改接。', anchor: '.rs-rwchip' }],
+    step: (s: never) => { const st = s as { stage: string; algoLabel: string; xnew: { x: number; y: number }; radius: number; neighbors: { id: string; dist: number; viaCost: number }[]; nearestId: string; rrtCost: number; chosenParent: string; starCost: number; rewired: { id: string; oldCost: number; newCost: number }[] }; return [
+      { k: '本步输入', v: st.stage === 'intro' ? `算法 ${st.algoLabel}` : st.stage === 'sample' ? `采样 x_new=(${st.xnew.x},${st.xnew.y})、r=${st.radius}` : st.stage === 'chooseparent' ? '邻域各节点的 cost 与距离' : st.stage === 'rewire' ? `x_new(代价 ${st.starCost})` : 'RRT vs RRT* 结果' },
+      { k: '判定规则', v: `选父:父=argmin(cost[邻居]+dist(邻居,x_new))；重连:若 cost[x_new]+dist<cost[邻居] 则邻居改接 x_new；邻域半径随 n 收缩。` },
+      { k: '本步结果', v: st.stage === 'intro' ? 'RRT 找一条、RRT* 加两步趋最优' : st.stage === 'sample' ? `邻域=${st.neighbors.map(n => n.id).join('、')}、最近=${st.nearestId}` : st.stage === 'chooseparent' ? `选父=${st.chosenParent}、代价 ${st.starCost}（最近的 ${st.nearestId} 反而贵 ${st.rrtCost}）` : st.stage === 'rewire' ? (st.rewired.length ? `重连 ${st.rewired.map(r => `${r.id}:${r.oldCost}→${r.newCost}`).join('、')}` : '本例无重连') : `RRT 代价 ${st.rrtCost}、RRT* 代价 ${st.starCost}${st.rewired.length ? `+重连 ${st.rewired.map(r => r.id).join('、')}` : ''}` },
+    ] },
+    verdict: (s: never) => { const st = s as { stage: string; chosenParent: string; starCost: number; rewired: unknown[] }; return st.stage === 'done' ? '选父+重连' : st.stage === 'compare' ? `省到${st.starCost}` : st.stage === 'rewire' ? (st.rewired.length ? `重连${st.rewired.length}个` : '无重连') : st.stage === 'chooseparent' ? `父=${st.chosenParent}` : st.stage === 'sample' ? '采样+邻域' : '渐近最优' },
+    try: [{ act: '切「RRT*」', watch: '选父挑代价最小的 A(代价6，非最近 B 的9)、还重连 B 8→7 → 树更优。' }, { act: '切「RRT只接最近」', watch: 'x_new 直接接最近的 B、代价 9、不重连——找到一条但不最优。' }, { act: '看树图', watch: '绿边=选父的最优连接、橙虚线=重连；随采样增多不断抄近道逼近最优。' }], terms: [],
+  },
   queryplan: {
     question: '同一个查询有好几条路可走，数据库优化器凭什么选其中一条？',
     read: [{ at: '候选路径', is: '每条访问路径的 type + 估扫描行数代价条。', anchor: '.qp-paths' }, { at: 'EXPLAIN', is: '末步选中路径的 type/key/rows。', anchor: '.qp-explain' }],

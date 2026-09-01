@@ -374,6 +374,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { i: 2, step: 2, stage: 'accel', ...base, showGyro: true, showAccel: true, showFuse: false, showBehav: false, phase: 'run' as const, focus: '加速度' },
       b: { i: 3, step: 3, stage: 'fuse', ...base, showGyro: true, showAccel: true, showFuse: true, showBehav: false, phase: 'run' as const, focus: '融合' },
     } })(),
+    rrtstar: (() => { const nodes = [{ id: 'S', x: 0, y: 0, cost: 0, parent: null }, { id: 'A', x: 4, y: 0, cost: 4, parent: 'S' }, { id: 'B', x: 3, y: 2, cost: 8, parent: 'S' }, { id: 'N', x: 4, y: 2, cost: 6, parent: 'A' }]; const base = { algo: 'star', algoLabel: 'RRT*(选父+重连)', nodes, xnew: { x: 4, y: 2 }, radius: 3, neighbors: [{ id: 'A', dist: 2, viaCost: 6 }, { id: 'B', dist: 1, viaCost: 9 }], nearestId: 'B', rrtCost: 9, chosenParent: 'A', starCost: 6, rewired: [{ id: 'B', oldCost: 8, newCost: 7 }], log: '' }; return {
+      doc: { kind: 'rrtstar', params: { algo: 'RRT*' }, entities: [], streams: [] },
+      a: { i: 2, step: 2, stage: 'chooseparent', ...base, showSample: true, showParent: true, showRewire: false, showCompare: false, phase: 'run' as const, focus: '选父' },
+      b: { i: 3, step: 3, stage: 'rewire', ...base, showSample: true, showParent: true, showRewire: true, showCompare: false, phase: 'run' as const, focus: '重连' },
+    } })(),
     queryplan: {
       doc: { kind: 'queryplan', params: {}, entities: [], streams: [] },
       a: { step: 1, op: 'path', query: 'q', revealed: 1, cur: 0, chosen: -1, paths: [{ name: '全表扫描', type: 'ALL', key: '—', rows: 10000, note: 'x' }, { name: '走 idx(city)', type: 'ref', key: 'idx_city', rows: 500, note: 'x' }, { name: '走 idx(age)', type: 'range', key: 'idx_age', rows: 6000, note: 'x' }], phase: 'run', focus: '候选路径：全表扫描（type=ALL，估扫 10000 行）' },

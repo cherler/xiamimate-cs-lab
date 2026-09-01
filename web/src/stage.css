@@ -5626,3 +5626,31 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .co-hot2{color:var(--now)}
 .co-bad{color:var(--miss)}
 .co-behav{border:1px solid color-mix(in srgb,var(--now) 30%,var(--line));border-radius:8px;padding:8px 10px;background:color-mix(in srgb,var(--now) 5%,transparent);font-size:var(--t-ui);line-height:1.6}
+
+/* rrtstar · RRT* */
+.scdn.rs-hot{color:var(--now)}
+.scdn.rs-good{color:var(--hit)}
+.scdn.rs-cmp{color:var(--dim)}
+.rs-svg{margin:6px 0;max-width:340px;background:var(--sunk-1);border:1px solid var(--line);border-radius:8px}
+.rs-radius{fill:color-mix(in srgb,var(--now) 4%,transparent);stroke:color-mix(in srgb,var(--now) 25%,transparent);stroke-width:1;stroke-dasharray:3 3}
+.rs-edge{stroke:var(--faint);stroke-width:1.5}
+.rs-edge.rs-tree{stroke:var(--line);stroke-width:1.5}
+.rs-edge.rs-chosen{stroke:var(--hit);stroke-width:2.5}
+.rs-edge.rs-rewire{stroke:#c98a2b;stroke-width:2.5;stroke-dasharray:4 2}
+.rs-nearest{stroke:var(--faint);stroke-width:1.5;stroke-dasharray:3 3}
+.rs-node{fill:var(--dim)}
+.rs-start{fill:var(--now)}
+.rs-new{fill:var(--hit);stroke:var(--panel-2);stroke-width:1.5}
+.rs-rw{fill:#c98a2b}
+.rs-lbl{fill:var(--ink);font:10px var(--sans);text-anchor:middle;font-weight:600}
+.rs-cost{fill:var(--faint);font:9px var(--mono)}
+.rs-flow{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+.rs-blk{border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--panel-2);font-size:var(--t-ui);line-height:1.9;font-variant-numeric:tabular-nums}
+.rs-blk.rs-off{opacity:.4}
+.rs-n{font-family:var(--mono);color:var(--now);font-weight:700;margin-right:6px}
+.rs-chip{display:inline-block;background:var(--sunk-1);border:1px solid var(--line);border-radius:4px;padding:0 5px;margin:0 3px;font-family:var(--mono);font-size:.9em}
+.rs-rwchip{display:inline-block;background:color-mix(in srgb,#c98a2b 12%,transparent);border:1px solid color-mix(in srgb,#c98a2b 40%,var(--line));border-radius:4px;padding:0 5px;margin:0 3px;font-family:var(--mono);font-size:.9em;color:#a86f1f}
+.rs-hot2{color:var(--hit)}
+.rs-good2{color:var(--hit);font-weight:700}
+.rs-cmp2{color:var(--dim)}
+.rs-cmpbox{border:1px solid color-mix(in srgb,var(--hit) 30%,var(--line));border-radius:8px;padding:8px 10px;background:color-mix(in srgb,var(--hit) 5%,transparent);font-size:var(--t-ui);line-height:1.6}

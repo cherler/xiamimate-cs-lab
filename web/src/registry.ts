@@ -361,6 +361,7 @@ import { jacobianKernel, type JacoState } from '@engine/kernels/jacobian.ts'
 import { kalmanKernel, type KalmanState } from '@engine/kernels/kalman.ts'
 import { pidKernel, type PIDState } from '@engine/kernels/pid.ts'
 import { rrtKernel, type RRTState } from '@engine/kernels/rrt.ts'
+import { rrtstarKernel, type RRTSState } from '@engine/kernels/rrtstar.ts'
 import { quatKernel, type QuatState } from '@engine/kernels/quat.ts'
 import { trajectoryKernel, type TrajState } from '@engine/kernels/trajectory.ts'
 import { icpKernel, type ICPState } from '@engine/kernels/icp.ts'
@@ -393,6 +394,7 @@ import { JacobianStage } from './stages/JacobianStage.tsx'
 import { KalmanStage } from './stages/KalmanStage.tsx'
 import { PIDStage } from './stages/PIDStage.tsx'
 import { RRTStage } from './stages/RRTStage.tsx'
+import { RrtStarStage } from './stages/RrtStarStage.tsx'
 import { QuatStage } from './stages/QuatStage.tsx'
 import { TrajStage } from './stages/TrajStage.tsx'
 import { ICPStage } from './stages/ICPStage.tsx'
@@ -6875,6 +6877,33 @@ const pid: Experiment<PIDState> = {
 }
 
 // ── 具身智能 · 运动规划 ──
+const rrtstar: Experiment<RRTSState> = {
+  id: 'rrtstar', group: '运动规划', title: 'RRT* · 渐近最优', subtitle: '在 RRT 上加「选最优父 + 重连」两步，让树随采样收敛到最短路',
+  kernel: rrtstarKernel, defaultDoc: { kind: 'rrtstar', params: { algo: 'RRT*' }, entities: [], streams: [] },
+  params: [{ key: 'algo', label: '算法', kind: 'enum', options: ['RRT*', 'RRT只接最近'] }],
+  paramsNote: '「RRT」每步把新点接到**最近**的树节点——快速找到**一条**可行路,但**接最近≠代价最小**、不最优。**RRT\*** 加两步→随采样**渐近最优**:①**选父(choose parent)**:新点在半径 r 邻域里选"起点→新点代价=cost[邻居]+dist"**最小**的邻居当父(非几何最近)②**重连(rewire)**:加完新点后,把邻域里"经新点更省"的邻居**改接到新点**、降其代价。邻域半径按 (γ·log n/n)^(1/d) 收缩。本例 x_new 代价 RRT=9(接最近 B)、RRT\*=6(选父 A)、邻居 B 被重连 8→7。切「算法」对比。全现算。连「RRT/A* 寻路/轨迹规划」。详见讲解卡。',
+  bounds: [
+    'RRT*=RRT+选父+重连:选父(邻域里挑代价最小的父、非最近)+重连(经新点更省的邻居改接到新点)→随采样渐近收敛最优',
+    'RRT 只保证概率完备(找到一条可行路)、不最优(接最近≠代价最小);RRT* 还渐近最优',
+    '邻域半径 r 按 (γ·log n/n)^(1/d) 随节点数收缩:保证渐近最优又不至于每步查太多邻居;代价是比 RRT 慢、每步开销大',
+    '连:是 RRT 的最优化升级;和 A* 都求最优(A* 离散栅格/RRT* 连续采样);进阶 Informed RRT*/PRM*。参考:Karaman-Frazzoli 2011',
+  ],
+  tabs: [{ id: 'rs', label: 'RRT* 逐步跑' }], Stage: RrtStarStage, whyInRail: true,
+  tone: s => (s.stage === 'done' ? { key: 'good', label: '选父+重连' }
+    : s.stage === 'compare' ? { key: 'good', label: `RRT*省到${s.starCost}` }
+    : s.stage === 'rewire' ? (s.rewired.length ? { key: 'good', label: `重连${s.rewired.length}个` } : { key: 'idle', label: '无重连' })
+    : s.stage === 'chooseparent' ? { key: 'good', label: `父=${s.chosenParent}` }
+    : s.stage === 'sample' ? { key: 'idle', label: '采样+邻域' }
+    : { key: 'idle', label: '渐近最优' }),
+  metric: s => (s.stage === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => ({ intro: '优', sample: '采', chooseparent: '父', rewire: '连', compare: '比', done: '成' }[s.stage] ?? '·'),
+  readouts: s => [
+    { label: '算法', value: s.algoLabel },
+    { label: 'x_new 父 / 代价', value: s.showParent ? `${s.chosenParent} / ${s.starCost}` : '—', tone: s.showParent ? 'good' : undefined },
+    { label: '重连', value: s.showRewire ? (s.rewired.length ? s.rewired.map(r => `${r.id} ${r.oldCost}→${r.newCost}`).join('、') : '无') : '—' },
+    { label: '对比 RRT 代价', value: s.showCompare ? `${s.rrtCost}（接最近 ${s.nearestId}）` : '—' },
+  ],
+}
 const rrt: Experiment<RRTState> = {
   id: 'rrt', group: '运动规划', title: 'RRT 运动规划', subtitle: '采样式避障：随机长树绕障碍到终点',
   kernel: rrtKernel, defaultDoc: { kind: 'rrt', params: {}, entities: [], streams: [] }, params: [],
@@ -7167,7 +7196,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, icp, slam, impedance, mpc, pid, rrt, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
+  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, icp, slam, impedance, mpc, pid, rrt, rrtstar, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
 ] as unknown as AnyExperiment[]
 
 /**
