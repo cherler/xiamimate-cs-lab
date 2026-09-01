@@ -877,6 +877,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { stage: string; tau: number[] }; return st.stage === 'done' ? 'O(n)逆动力学' : st.stage === 'verify' ? '=Mq̈+Cq̇+G' : st.stage === 'inward' ? `τ=[${st.tau}]` : st.stage === 'outward' ? '外向传运动' : '逆动力学' },
     try: [{ act: '切「含重力」', watch: '基座假加速度 a₀=[0,9.81]，每连杆自动含自重 → τ=[13.8,1.8]。' }, { act: '切「无重力」', watch: 'a₀=[0,0] → τ=[−0.22,0.53]，正好比含重力少一个 G=[14.01,1.27]，验证重力技巧。' }, { act: '看对拍', watch: 'RNEA 的 τ 和 M q̈+C q̇+G 完全一致——同一套动力学、O(n) 递归。' }], terms: [],
   },
+  fwddyn: {
+    question: '物理仿真(MuJoCo/Bullet)每一步在算什么？给定关节力矩，怎么求出关节加速度、再推进到下一帧？',
+    read: [{ at: '偏置块', is: 'b=Cq̇+G（速度+重力项）。', anchor: '.fw-flow' }, { at: '质量矩阵块', is: 'M 与 det、M⁻¹。', anchor: '.fw-mat' }, { at: 'q̈ 块', is: 'q̈=M⁻¹(τ−b)。', anchor: '.fw-qdd' }],
+    step: (s: never) => { const st = s as { stage: string; tqLabel: string; tau: number[]; bias: number[]; detM: number; qdd: number[]; qdNext: number[]; qNext: number[]; dt: number }; const z = (x: number) => (Object.is(x, -0) ? 0 : x); return [
+      { k: '本步输入', v: st.stage === 'intro' ? `施加力矩 τ=[${st.tau}]（${st.tqLabel}）` : st.stage === 'bias' ? 'q,q̇（算速度+重力项）' : st.stage === 'massinv' ? '构型 q（组质量矩阵）' : st.stage === 'solve' ? `τ−b=[${z(Math.round((st.tau[0]! - st.bias[0]!) * 100) / 100)},${z(Math.round((st.tau[1]! - st.bias[1]!) * 100) / 100)}]` : `q̈=[${st.qdd}]、dt=${st.dt}` },
+      { k: '判定规则', v: `正向动力学 q̈=M⁻¹(τ−Cq̇−G)：①偏置 b=Cq̇+G ②M 对称正定→可逆 ③解 q̈ ④半隐式欧拉 q̇←q̇+q̈dt、q←q+q̇dt。` },
+      { k: '本步结果', v: st.stage === 'intro' ? '仿真=给力矩求运动、逆动力学的反问题' : st.stage === 'bias' ? `偏置 b=Cq̇+G=[${st.bias}]（=一次 q̈=0 的 RNEA）` : st.stage === 'massinv' ? `M 对称正定 det=${st.detM}≠0 可逆(实际 Cholesky 解、不真求逆)` : st.stage === 'solve' ? `q̈=M⁻¹(τ−b)=[${z(st.qdd[0]!)}, ${z(st.qdd[1]!)}] rad/s²` : st.stage === 'integrate' ? `积分一步:q̇→[${st.qdNext}]、q→[${st.qNext}]°` : '仿真一步=MuJoCo 循环一次' },
+    ] },
+    verdict: (s: never) => { const st = s as { stage: string; qdd: number[] }; const z = (x: number) => (Object.is(x, -0) ? 0 : x); return st.stage === 'done' ? '仿真一步' : st.stage === 'integrate' ? '积分推进' : st.stage === 'solve' ? `q̈=[${z(st.qdd[0]!)},${z(st.qdd[1]!)}]` : st.stage === 'massinv' ? 'M⁻¹' : st.stage === 'bias' ? '偏置b' : '仿真' },
+    try: [{ act: '切「偏小(τ=[10,2])」', watch: '力矩顶不住重力 → q̈=[−3.89,9.16]，关节1 往下掉(q̈₁<0)。' }, { act: '切「平衡(τ=Cq̇+G)」', watch: '力矩正好抵消偏置 → q̈≈0，关节匀速维持不加速。' }, { act: '切「发力(τ=[20,4])」', watch: '力矩大于偏置 → q̈=[2.24,2.52]，加速起摆。' }], terms: [],
+  },
   queryplan: {
     question: '同一个查询有好几条路可走，数据库优化器凭什么选其中一条？',
     read: [{ at: '候选路径', is: '每条访问路径的 type + 估扫描行数代价条。', anchor: '.qp-paths' }, { at: 'EXPLAIN', is: '末步选中路径的 type/key/rows。', anchor: '.qp-explain' }],

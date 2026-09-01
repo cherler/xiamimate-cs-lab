@@ -339,6 +339,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { i: 1, step: 1, stage: 'outward', ...base, showOut: true, showIn: false, showVerify: false, phase: 'run' as const, focus: '外向传运动' },
       b: { i: 2, step: 2, stage: 'inward', ...base, showOut: true, showIn: true, showVerify: false, phase: 'run' as const, focus: '内向传力' },
     } })(),
+    fwddyn: (() => { const base = { tq: 'small', tqLabel: '偏小(τ=[10,2])', q: [30, 45] as [number, number], qd: [1, 1] as [number, number], tau: [10, 2] as [number, number], Cqd: [-1.06, 0.35] as [number, number], G: [14.01, 1.27] as [number, number], bias: [12.95, 1.62] as [number, number], M: [[2.37, 0.69], [0.69, 0.33]] as [[number, number], [number, number]], detM: 0.32, Minv: [[1.04, -2.15], [-2.15, 7.44]] as [[number, number], [number, number]], qdd: [-3.89, 9.16] as [number, number], dt: 0.01, qdNext: [0.96, 1.09] as [number, number], qNext: [30.55, 45.63] as [number, number], log: '' }; return {
+      doc: { kind: 'fwddyn', params: { torque: '偏小' }, entities: [], streams: [] },
+      a: { i: 2, step: 2, stage: 'massinv', ...base, showBias: true, showMinv: true, showQdd: false, showInteg: false, phase: 'run' as const, focus: 'M 与逆' },
+      b: { i: 3, step: 3, stage: 'solve', ...base, showBias: true, showMinv: true, showQdd: true, showInteg: false, phase: 'run' as const, focus: '解 q̈' },
+    } })(),
     queryplan: {
       doc: { kind: 'queryplan', params: {}, entities: [], streams: [] },
       a: { step: 1, op: 'path', query: 'q', revealed: 1, cur: 0, chosen: -1, paths: [{ name: '全表扫描', type: 'ALL', key: '—', rows: 10000, note: 'x' }, { name: '走 idx(city)', type: 'ref', key: 'idx_city', rows: 500, note: 'x' }, { name: '走 idx(age)', type: 'range', key: 'idx_age', rows: 6000, note: 'x' }], phase: 'run', focus: '候选路径：全表扫描（type=ALL，估扫 10000 行）' },

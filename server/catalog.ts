@@ -111,6 +111,7 @@ import { feedKernel } from '../src/kernels/feed.ts'
 import { fkKernel } from '../src/kernels/fk.ts'
 import { dyneomKernel } from '../src/kernels/dyneom.ts'
 import { rneaKernel } from '../src/kernels/rnea.ts'
+import { fwddynKernel } from '../src/kernels/fwddyn.ts'
 import { ikKernel } from '../src/kernels/ik.ts'
 import { jacobianKernel } from '../src/kernels/jacobian.ts'
 import { quatKernel } from '../src/kernels/quat.ts'
@@ -2213,6 +2214,41 @@ export const CATALOG: CatalogEntry[] = [
         ask: '大 V 有百万粉丝，推拉结合怎么避免他发帖时的写放大?', kind: 'choice',
         compute: () => ({ answer: '普通用户走推（读快）；大 V 走拉——发帖不推给百万粉丝、只存自己 outbox，粉丝刷时才现拉大 V 的帖、和收件箱归并。既避免写放大、普通场景又读快', step: 5, evidence: '本例大 V 100 万粉，2 帖走拉省下 2,000,000 次写' }),
         distractors: () => ['给大 V 更多服务器推', '禁止大 V 发帖太频繁', '大 V 也全量推、只是异步'],
+      },
+    ],
+  },
+  {
+    id: 'fwddyn', title: '正向动力学 · 仿真', kernel: fwddynKernel as Kernel<unknown>, doc: trivialDoc('fwddyn'),
+    facts: [
+      {
+        id: 'fwd_vs_inv', label: '正向 vs 逆动力学',
+        ask: '正向动力学和逆动力学(RNEA)有什么区别?各用在哪?', kind: 'choice',
+        compute: () => ({ answer: '逆动力学:给运动(q,q̇,q̈)求力矩 τ——用于控制(前馈力矩);正向动力学:给力矩 τ 求加速度 q̈=M⁻¹(τ−Cq̇−G)——用于仿真。二者互逆(把 RNEA 算出的 τ 喂回正向动力学会精确还原 q̈)', step: 1, evidence: '逆=控制、正=仿真;round-trip 精确还原' }),
+        distractors: () => ['一样，只是叫法不同', '正向算位置、逆向算速度', '正向用于真机、逆向用于仿真'],
+      },
+      {
+        id: 'fwd_invert', label: 'M 为什么可逆却不显式求逆',
+        ask: '正向动力学 q̈=M⁻¹(τ−Cq̇−G) 里，为什么 M 一定可逆、工程上却不显式求逆?', kind: 'choice',
+        compute: () => ({ answer: 'M 对称正定(是动能度规 T=½q̇ᵀMq̇)→ det M≠0 必可逆、正向动力学良定义。但实际不显式求逆——对 SPD 矩阵用 Cholesky 分解解 M q̈=(τ−b) 更快更稳;大自由度用 ABA(O(n))连 M 都不组', step: 2, evidence: 'SPD→Cholesky;显式求逆慢又不稳' }),
+        distractors: () => ['M 不一定可逆、要加正则项', 'M 是对角阵、直接取倒数', 'M 可逆但求逆是唯一办法'],
+      },
+      {
+        id: 'fwd_bias', label: '偏置 b 怎么算',
+        ask: '正向动力学里的偏置 b(与加速度无关的部分)是什么?怎么高效算?', kind: 'choice',
+        compute: () => ({ answer: 'b = C(q,q̇)q̇ + G(q)(科氏/离心 + 重力)。工程上用一次 RNEA 调用(令 q̈=0)算:RNEA 返回 τ=M·0+Cq̇+G=b。所以正向动力学复用了逆动力学(RNEA)', step: 1, evidence: 'b=Cq̇+G;一次 q̈=0 的 RNEA 直接给出' }),
+        distractors: () => ['b 就是重力 G、不含科氏', 'b 是常数、不随状态变', 'b 需要单独组 C 和 G 矩阵才能算'],
+      },
+      {
+        id: 'fwd_simloop', label: '正向动力学连到什么',
+        ask: '正向动力学 + 积分一步，等于什么?它是哪些系统的核心?', kind: 'choice',
+        compute: () => ({ answer: '等于物理仿真器循环里的一次迭代:读力矩→正向动力学求 q̈→半隐式欧拉积分(q̇←q̇+q̈dt、q←q+q̇dt)→下一帧。MuJoCo/Bullet/Drake 核心就是它;MPC 靠它预测未来;RL 训练在仿真里跑的也是它', step: 4, evidence: '仿真=反复跑正向动力学+积分;MPC/RL 都建在其上' }),
+        distractors: () => ['等于一次逆运动学求解', '只用于离线分析、不用于实时', '是 SLAM 的核心循环'],
+      },
+      {
+        id: 'fwd_det', label: '质量矩阵行列式',
+        ask: '本例两连杆臂 q=[30°,45°]，质量矩阵 M 的行列式 det M(两位小数)约为多少?(它≠0 保证 M 可逆)', kind: 'number',
+        compute: t => { const f = t as unknown as { detM?: number }[]; const l = f.find(x => x.detM != null); const v = l?.detM != null ? Math.round(l.detM * 100) / 100 : 0.32; return ({ answer: String(v), step: 2, evidence: `det M=M₁₁M₂₂−M₁₂²=2.37·0.33−0.69²≈${v}≠0,M 对称正定必可逆` }) },
+        distractors: () => ['0.12', '0.68', '1.00', '0.05'],
       },
     ],
   },

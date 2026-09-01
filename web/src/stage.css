@@ -5484,3 +5484,16 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .rn-verify{margin-top:12px;border-radius:8px;padding:8px 10px;font-size:var(--t-ui);line-height:1.5}
 .rn-verify.rn-ok{background:color-mix(in srgb,var(--hit) 8%,transparent);border:1px solid color-mix(in srgb,var(--hit) 35%,var(--line))}
 .rn-verify.rn-bad{background:color-mix(in srgb,var(--miss) 8%,transparent);border:1px solid color-mix(in srgb,var(--miss) 35%,var(--line))}
+
+/* fwddyn · 正向动力学 */
+.scdn.fw-hot{color:var(--now)}
+.fw-flow{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.fw-blk{border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--panel-2);font-size:var(--t-ui);line-height:1.7;font-variant-numeric:tabular-nums}
+.fw-blk.fw-off{opacity:.4}
+.fw-n{font-family:var(--mono);color:var(--now);font-weight:700;margin-right:6px}
+.fw-sub{display:block;font:var(--t-meta) var(--sans);color:var(--faint);margin-top:2px;font-style:normal}
+.fw-qdd{color:var(--now)}
+.fw-mat{display:inline-flex;align-items:center;vertical-align:middle}
+.fw-mat i{font-style:normal;font-size:1.8em;color:var(--faint);font-weight:200;line-height:.7}
+.fw-mt{display:inline-table;border-collapse:collapse;font-family:var(--mono);margin:0 2px}
+.fw-mt td{padding:1px 7px;text-align:right}

@@ -349,6 +349,7 @@ import { feedKernel, type FeedState } from '@engine/kernels/feed.ts'
 import { fkKernel, type FKState } from '@engine/kernels/fk.ts'
 import { dyneomKernel, type DynState } from '@engine/kernels/dyneom.ts'
 import { rneaKernel, type RneaState } from '@engine/kernels/rnea.ts'
+import { fwddynKernel, type FwdState } from '@engine/kernels/fwddyn.ts'
 import { ikKernel, type IKState } from '@engine/kernels/ik.ts'
 import { jacobianKernel, type JacoState } from '@engine/kernels/jacobian.ts'
 import { kalmanKernel, type KalmanState } from '@engine/kernels/kalman.ts'
@@ -374,6 +375,7 @@ import { FeedStage } from './stages/FeedStage.tsx'
 import { FKStage } from './stages/FKStage.tsx'
 import { DynEomStage } from './stages/DynEomStage.tsx'
 import { RneaStage } from './stages/RneaStage.tsx'
+import { FwdDynStage } from './stages/FwdDynStage.tsx'
 import { IKStage } from './stages/IKStage.tsx'
 import { JacobianStage } from './stages/JacobianStage.tsx'
 import { KalmanStage } from './stages/KalmanStage.tsx'
@@ -6532,6 +6534,33 @@ const rnea: Experiment<RneaState> = {
     { label: '本步', value: ({ intro: '逆动力学', outward: '外向传运动', inward: '内向传力→τ', verify: '对拍运动方程', done: 'O(n) 逆动力学' } as Record<string, string>)[s.stage] ?? '—' },
   ],
 }
+const fwddyn: Experiment<FwdState> = {
+  id: 'fwddyn', group: '刚体动力学', title: '正向动力学 · 仿真', subtitle: '给力矩求加速度 q̈=M⁻¹(τ−Cq̇−G)：物理仿真每一步在做的事',
+  kernel: fwddynKernel, defaultDoc: { kind: 'fwddyn', params: { torque: '偏小' }, entities: [], streams: [] },
+  params: [{ key: 'torque', label: '施加力矩', kind: 'enum', options: ['偏小', '平衡', '发力'] }],
+  paramsNote: '**正向动力学**是逆动力学(RNEA)的反问题:逆动力学给运动求力矩(**控制**)、正向动力学**给力矩求运动(仿真)**。q̈=**M(q)⁻¹·(τ−C(q,q̇)q̇−G(q))**。四步:①偏置 b=Cq̇+G(=一次 q̈=0 的 RNEA)②质量矩阵 M **对称正定→一定可逆**(实际用 Cholesky 解、不真求逆;大自由度用 ABA O(n))③解 q̈=M⁻¹(τ−b)④**半隐式欧拉**积分一步 q̇←q̇+q̈dt、q←q+q̇dt——这就是仿真器循环一步。切「施加力矩」看偏小(往下掉)/平衡(不加速)/发力(起摆)。研究对拍 τ=[10,2]→q̈=[−3.89,9.16]、round-trip 精确还原。全现算。连「机械臂运动方程/RNEA/MPC/RL(都要仿真)」。详见讲解卡。',
+  bounds: [
+    '正向动力学 q̈=M⁻¹(τ−Cq̇−G):给力矩求运动=仿真;逆动力学 RNEA 给运动求力矩=控制;二者互逆(round-trip 精确还原)',
+    'M 对称正定→一定可逆、正向动力学良定义;实际用 Cholesky 解 M q̈=τ−b(不显式求逆)、大自由度用 ABA O(n) 连 M 都不组',
+    '偏置 b=Cq̇+G 用一次 q̈=0 的 RNEA 算;半隐式欧拉积分 q̇←q̇+q̈dt、q←q+q̇dt = 仿真器循环一步',
+    '连:MuJoCo/Bullet/Drake 核心就是这循环;MPC 靠它预测未来;RL 在仿真里跑的也是它。参考:Featherstone ABA、Pinocchio::aba',
+  ],
+  tabs: [{ id: 'fw', label: '正向动力学逐步跑' }], Stage: FwdDynStage, whyInRail: true,
+  tone: s => (s.stage === 'done' ? { key: 'good', label: '仿真一步' }
+    : s.stage === 'integrate' ? { key: 'good', label: '积分推进' }
+    : s.stage === 'solve' ? { key: 'good', label: `q̈=[${Object.is(s.qdd[0], -0) ? 0 : s.qdd[0]},${Object.is(s.qdd[1], -0) ? 0 : s.qdd[1]}]` }
+    : s.stage === 'massinv' ? { key: 'idle', label: 'M⁻¹' }
+    : s.stage === 'bias' ? { key: 'idle', label: '偏置 b' }
+    : { key: 'idle', label: '仿真' }),
+  metric: s => (s.stage === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => ({ intro: '仿', bias: 'b', massinv: 'M', solve: 'q̈', integrate: '积', done: '成' }[s.stage] ?? '·'),
+  readouts: s => [
+    { label: '施加力矩 τ', value: `[${s.tau[0]}, ${s.tau[1]}] N·m` },
+    { label: '偏置 Cq̇+G', value: s.showBias ? `[${s.bias[0]}, ${s.bias[1]}]` : '—' },
+    { label: '关节加速度 q̈', value: s.showQdd ? `[${Object.is(s.qdd[0], -0) ? 0 : s.qdd[0]}, ${Object.is(s.qdd[1], -0) ? 0 : s.qdd[1]}] rad/s²` : '—', tone: s.showQdd ? 'good' : undefined },
+    { label: '本步', value: ({ intro: '仿真=反问题', bias: '偏置 Cq̇+G', massinv: 'M 与逆(SPD)', solve: '解 q̈', integrate: '积分一步', done: '仿真一步' } as Record<string, string>)[s.stage] ?? '—' },
+  ],
+}
 const ik: Experiment<IKState> = {
   id: 'ik', group: '机器人学基础', title: '逆运动学 IK', subtitle: '末端目标 → 关节角：多解(肘上/肘下)、可无解',
   kernel: ikKernel, defaultDoc: { kind: 'ik', params: {}, entities: [], streams: [] }, params: [],
@@ -6964,7 +6993,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, dyneom, rnea, ik, jacobian, quat, trajectory, kalman, icp, slam, impedance, mpc, pid, rrt, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
+  fk, dyneom, rnea, fwddyn, ik, jacobian, quat, trajectory, kalman, icp, slam, impedance, mpc, pid, rrt, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
 ] as unknown as AnyExperiment[]
 
 /**
