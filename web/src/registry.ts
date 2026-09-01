@@ -292,6 +292,8 @@ import { subagentKernel, type SubState } from '@engine/kernels/subagent.ts'
 import { SubAgentStage } from './stages/SubAgentStage.tsx'
 import { memretrieveKernel, type MRState } from '@engine/kernels/memretrieve.ts'
 import { MemRetrieveStage } from './stages/MemRetrieveStage.tsx'
+import { mempagingKernel, type MemPState } from '@engine/kernels/mempaging.ts'
+import { MemPagingStage } from './stages/MemPagingStage.tsx'
 import { lfucacheKernel, type LFUState } from '@engine/kernels/lfucache.ts'
 import { LFUCacheStage } from './stages/LFUCacheStage.tsx'
 import { trieKernel, type TrieState } from '@engine/kernels/trie.ts'
@@ -5918,6 +5920,32 @@ const memretrieve: Experiment<MRState> = {
     { label: '捞回 top-k', value: (s.stage === 'rank' || s.stage === 'done') ? s.mems.filter(m => m.retrieved).map(m => m.text).join('、') : '—', tone: (s.stage === 'rank' || s.stage === 'done') ? 'good' : undefined },
   ],
 }
+const mempaging: Experiment<MemPState> = {
+  id: 'mempaging', group: '大模型项目实战', title: 'MemGPT 虚拟内存 · 分页', subtitle: '上下文=RAM、外部=磁盘：填满→内存压力→驱逐+递归摘要→缺页调回',
+  kernel: mempagingKernel, defaultDoc: { kind: 'mempaging', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: 'MemGPT 的核心洞察：把 LLM 上下文当"物理内存 RAM"、外部存储当"磁盘"，agent 用函数调用在两层间搬数据=给大模型做**虚拟内存**(和 408 页面置换/缺页同一思想)。RAM(进prompt)=系统指令+工作记忆(core)+FIFO队列(首槽=递归摘要)；磁盘(不进prompt)=recall(全消息库)+archival(可检索)。流水线：消息填 RAM→到窗口 **70%** 触发内存压力警告→队列管理器**驱逐**~50% 老消息到 recall 并写**递归摘要**回队首(换出)→需要旧信息时 conversation_search/archival_search 检索**调回队尾**(缺页换入)。数字来自 MemGPT 论文；水位/驱逐/调回全现算。详见讲解卡。',
+  bounds: [
+    '上下文=RAM(快·贵·小)、外部存储=磁盘(慢·便宜·大)，函数调用换页=给 LLM 做虚拟内存',
+    '内存压力：RAM 到窗口 70% 警告、100% flush；驱逐~50% 老消息到 recall + 写递归摘要回队首(有损换出)',
+    '缺页(page fault)：需要已驱逐的旧信息→conversation_search/archival_search 检索、追加到队尾调回',
+    'OS 对照：主上下文=物理内存、驱逐+摘要=页面置换、检索调回=缺页调入。和 408 页面置换同一算法；换页太频=抖动',
+  ],
+  tabs: [{ id: 'mp', label: '换页逐步跑' }], Stage: MemPagingStage, whyInRail: true,
+  tone: s => (s.stage === 'done' ? { key: 'good', label: '换页完成' }
+    : s.stage === 'pagein' ? { key: 'good', label: '缺页调回' }
+    : s.stage === 'evict' ? { key: 'idle', label: '驱逐换出' }
+    : s.stage === 'pressure' ? { key: 'bad', label: `内存压力 ${s.ramUsed}≥${s.warnAt}` }
+    : s.stage === 'fill' ? { key: 'idle', label: `填到 ${s.ramUsed}t` }
+    : { key: 'idle', label: 'RAM/磁盘' }),
+  metric: s => (s.stage === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => ({ intro: '始', fill: '填', pressure: '压', evict: '逐', pagein: '调', done: '成' }[s.stage] ?? '·'),
+  readouts: s => [
+    { label: 'RAM 水位', value: `${s.ramUsed} / ${s.N}`, tone: s.pressure ? 'bad' : 'good' },
+    { label: '内存状态', value: s.pressure ? '⚠ 压力(≥70%)' : '正常', tone: s.pressure ? 'bad' : undefined },
+    { label: 'recall(磁盘)', value: `${s.recall.length} 条`, tone: s.recall.length ? 'good' : undefined },
+    { label: '本步', value: s.op || (({ intro: 'RAM/磁盘分层', done: '换页完成' } as Record<string, string>)[s.stage] ?? '—') },
+  ],
+}
 const lrucache: Experiment<LRUState> = {
   id: 'lrucache', group: '算法项目实战', title: '手写 LRU 缓存', subtitle: 'HashMap+双向链表，get/put 都 O(1)',
   kernel: lrucacheKernel, defaultDoc: { kind: 'lrucache', params: {}, entities: [], streams: [] }, params: [],
@@ -6587,7 +6615,7 @@ export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
   caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt, ecbcbc, birthday, aesround, hmac, totp,
-  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, bufferpool, queryplan, wildcard, regex, blockingqueue, rwlock, aba, happensbefore, lockstrategy, lrucache, lfucache, trie, quickselect, reactagent, ctxcompact, toolcall, permguard, subagent, memretrieve, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign, topk, feed, objectstore,
+  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, bufferpool, queryplan, wildcard, regex, blockingqueue, rwlock, aba, happensbefore, lockstrategy, lrucache, lfucache, trie, quickselect, reactagent, ctxcompact, toolcall, permguard, subagent, memretrieve, mempaging, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign, topk, feed, objectstore,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,

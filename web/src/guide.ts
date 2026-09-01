@@ -734,6 +734,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { stage: string; weights: string; mems: { retrieved: boolean; id: string }[] }; return st.stage === 'done' || st.stage === 'rank' ? `捞 ${st.mems.filter(m => m.retrieved).map(m => m.id).join('/')}` : st.stage === 'score' ? `加权·${st.weights}` : st.stage === 'signals' ? '三信号' : '查询来了' },
     try: [{ act: '切「重相关」', watch: 'm3「用户是 VIP」相关度只 0.2，相关权重一大(0.5·3·2)就落榜，m2「JWT」顶上来。' }, { act: '切「重时新」', watch: '最近的记忆被拉上来，哪怕没那么相关——recency 权重大的代价。' }], terms: [],
   },
+  mempaging: {
+    question: '上下文窗口有限、装不下所有历史，MemGPT 怎么像操作系统那样管内存？',
+    read: [{ at: 'RAM 水位', is: '主上下文用量，越过 70% 触发内存压力。', anchor: '.mp-bar' }, { at: 'RAM/磁盘两栏', is: '左 RAM 的槽 + 右磁盘的 recall/archival。', anchor: '.mp-cols' }, { at: '换页操作', is: '换出(驱逐)/换入(调回)。', anchor: '.mp-op' }],
+    step: (s: never) => { const st = s as { stage: string; ramUsed: number; N: number; warnAt: number; recall: unknown[] }; return [
+      { k: '本步输入', v: st.stage === 'intro' ? 'RAM(系统+工作记忆) + 磁盘(recall/archival)' : st.stage === 'fill' ? '消息陆续进 FIFO 队列' : st.stage === 'pressure' ? `RAM ${st.ramUsed} vs 警告线 ${st.warnAt}` : st.stage === 'evict' ? '驱逐最老的消息' : st.stage === 'pagein' ? '需要一条已驱逐的旧信息' : '汇总' },
+      { k: '判定规则', v: `上下文=RAM、外部=磁盘。RAM 到窗口 70%(${st.warnAt}) 触发内存压力 → 驱逐 ~50% 老消息到 recall + 写递归摘要回队首(换出)；需要旧信息 → 检索追加到队尾(缺页换入)。就是页面置换/缺页。` },
+      { k: '本步结果', v: st.stage === 'intro' ? `RAM ${st.ramUsed}/${st.N}` : st.stage === 'fill' ? `RAM 涨到 ${st.ramUsed}，越过 ${st.warnAt} 警告线` : st.stage === 'pressure' ? `${st.ramUsed} ≥ ${st.warnAt}(70%)，插内存压力警告` : st.stage === 'evict' ? `驱逐 3 条→recall(磁盘)、写递归摘要，RAM 降到 ${st.ramUsed}` : st.stage === 'pagein' ? `从 recall 检索调回队尾，RAM ${st.ramUsed}` : `换页完成，RAM ${st.ramUsed}/${st.N}` },
+    ] },
+    verdict: (s: never) => { const st = s as { stage: string; ramUsed: number; warnAt: number }; return st.stage === 'done' ? '换页完成' : st.stage === 'pagein' ? '缺页调回' : st.stage === 'evict' ? '驱逐换出' : st.stage === 'pressure' ? `压力 ${st.ramUsed}≥${st.warnAt}` : st.stage === 'fill' ? `填到 ${st.ramUsed}` : 'RAM/磁盘' },
+    try: [{ act: '看驱逐那步', watch: 'RAM 从 77 降到 49：3 条老消息进 recall(磁盘)，队首多了一条递归摘要——就是页面换出。' }, { act: '对照 408 页面置换', watch: 'RAM=物理内存、recall=磁盘、驱逐=换出、检索调回=缺页调入——同一套算法，页换成了对话。' }], terms: [],
+  },
   queryplan: {
     question: '同一个查询有好几条路可走，数据库优化器凭什么选其中一条？',
     read: [{ at: '候选路径', is: '每条访问路径的 type + 估扫描行数代价条。', anchor: '.qp-paths' }, { at: 'EXPLAIN', is: '末步选中路径的 type/key/rows。', anchor: '.qp-explain' }],

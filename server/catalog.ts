@@ -91,6 +91,7 @@ import { toolcallKernel } from '../src/kernels/toolcall.ts'
 import { permguardKernel } from '../src/kernels/permguard.ts'
 import { subagentKernel } from '../src/kernels/subagent.ts'
 import { memretrieveKernel } from '../src/kernels/memretrieve.ts'
+import { mempagingKernel } from '../src/kernels/mempaging.ts'
 import { lfucacheKernel } from '../src/kernels/lfucache.ts'
 import { trieKernel } from '../src/kernels/trie.ts'
 import { quickselectKernel } from '../src/kernels/quickselect.ts'
@@ -1713,6 +1714,41 @@ export const CATALOG: CatalogEntry[] = [
         ask: '本实验记忆流 6 条，一次检索捞回几条进上下文(top-k 的 k)?', kind: 'number',
         compute: t => { const f = t as unknown as { topK: number; mems?: { retrieved: boolean }[] }[]; const k = f.find(x => x.topK != null)?.topK ?? 3; return ({ answer: String(k), step: 3, evidence: `按得分排序，只把前 ${k} 条捞进上下文，其余留库里(没删)` }) },
         distractors: numDistractors,
+      },
+    ],
+  },
+  {
+    id: 'mempaging', title: 'MemGPT 虚拟内存 · 分页', kernel: mempagingKernel as Kernel<unknown>, doc: trivialDoc('mempaging'),
+    facts: [
+      {
+        id: 'mp_analogy', label: 'MemGPT 怎么解决上下文装不下',
+        ask: '上下文窗口有限、装不下所有历史，MemGPT 的核心思路是什么?', kind: 'choice',
+        compute: () => ({ answer: '把上下文当"物理内存 RAM"、外部存储当"磁盘"，agent 用函数调用在两层间搬数据=给 LLM 做虚拟内存(和 OS 页面置换同一思想)', step: 0, evidence: 'RAM 快·贵·小，磁盘慢·便宜·大，靠数据搬运制造"内存无限大"的假象' }),
+        distractors: () => ['换一个上下文更大的模型', '把老消息直接删掉', '把所有历史压成一句话'],
+      },
+      {
+        id: 'mp_tiers', label: 'MemGPT 的两层内存',
+        ask: 'MemGPT 的主上下文(进 prompt)和外部存储(不进 prompt)各含什么?', kind: 'choice',
+        compute: () => ({ answer: '主上下文=系统指令 + 工作记忆(core) + FIFO 消息队列(首槽=递归摘要)；外部存储=recall(全消息库) + archival(可检索文本)', step: 0, evidence: 'RAM 里是当前要用的，磁盘里是全量历史+可检索库' }),
+        distractors: () => ['主上下文只有系统指令，其余全在外部', '两层都是向量数据库', '主上下文=用户消息、外部=助手消息'],
+      },
+      {
+        id: 'mp_pressure', label: '内存压力警告的阈值',
+        ask: 'MemGPT 里上下文窗口是 100 tokens，涨到多少 tokens 触发"内存压力"警告(70% 线)?', kind: 'number',
+        compute: t => { const f = t as unknown as { warnAt: number }[]; const w = f.find(x => x.warnAt != null)?.warnAt ?? 70; return ({ answer: String(w), step: 2, evidence: `警告线 = 窗口 100 × 70% = ${w}(MemGPT 论文值)；到 100% 强制 flush` }) },
+        distractors: numDistractors,
+      },
+      {
+        id: 'mp_evict', label: '内存压力到了怎么办',
+        ask: '上下文到了内存压力线，MemGPT 的队列管理器怎么腾空间?', kind: 'choice',
+        compute: () => ({ answer: '驱逐最老的约 50% 窗口的消息到 recall(磁盘)，并用"旧摘要+被驱逐消息"生成新的递归摘要放回队首——这就是页面置换(换出)，有损但腾出 RAM', step: 3, evidence: '本例驱逐 3 条老消息→recall、队首写递归摘要，RAM 从 77 降到 49' }),
+        distractors: () => ['把整个上下文清空重来', '停下来等用户手动删', '把最新的消息删掉'],
+      },
+      {
+        id: 'mp_pagefault', label: '需要已驱逐的旧信息怎么办',
+        ask: 'agent 需要一条已被驱逐到磁盘的旧消息(缺页)，怎么拿回来?', kind: 'choice',
+        compute: () => ({ answer: '函数调用 conversation_search(搜 recall) 或 archival_memory_search(搜 archival) 检索出来，追加到队尾、重新进上下文——这就是缺页调入(换入)', step: 4, evidence: '本例需要已驱逐的 NPE 那条→检索调回队尾，RAM 升回' }),
+        distractors: () => ['没办法，驱逐了就永远丢了', '让模型凭记忆重新编一条', '整个会话重启'],
       },
     ],
   },

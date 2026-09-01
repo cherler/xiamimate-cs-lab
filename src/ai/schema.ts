@@ -339,6 +339,7 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   permguard: { mode: 'string' },
   subagent: { seed: 'string' },
   memretrieve: { weights: 'string' },
+  mempaging: {},
   lfucache: {},
   trie: {},
   quickselect: {},
