@@ -278,6 +278,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { i: 1, step: 1, stage: 'planning', mode: '计划门', planMode: true, writeBlocked: true, todos: [{ id: 't1', text: '读 auth.py', status: 'pending' }, { id: 't2', text: '抽函数', status: 'pending' }, { id: 't3', text: '加测试', status: 'pending' }, { id: 't4', text: '跑测试', status: 'pending' }], recited: false, op: '拟计划', phase: 'run', focus: '计划模式拟 todo', log: '' },
       b: { i: 3, step: 3, stage: 'exec', mode: '计划门', planMode: false, writeBlocked: false, todos: [{ id: 't1', text: '读 auth.py', status: 'done' }, { id: 't2', text: '抽函数', status: 'active' }, { id: 't3', text: '加测试', status: 'pending' }, { id: 't4', text: '跑测试', status: 'pending' }], recited: true, op: '推进+复述', phase: 'run', focus: '执行推进', log: '' },
     },
+    promptbuild: {
+      doc: { kind: 'promptbuild', params: { ordering: '静态优先' }, entities: [], streams: [] },
+      a: { i: 1, step: 1, stage: 'assemble', ordering: '静态优先', secs: [], prefixTok: 85, tailTok: 87, turn2Cached: 95.5, turn2Full: 172, phase: 'run', focus: '排序定断点', log: '' },
+      b: { i: 3, step: 3, stage: 'turn2', ordering: '静态优先', secs: [], prefixTok: 85, tailTok: 87, turn2Cached: 95.5, turn2Full: 172, phase: 'run', focus: '读缓存', log: '' },
+    },
     queryplan: {
       doc: { kind: 'queryplan', params: {}, entities: [], streams: [] },
       a: { step: 1, op: 'path', query: 'q', revealed: 1, cur: 0, chosen: -1, paths: [{ name: '全表扫描', type: 'ALL', key: '—', rows: 10000, note: 'x' }, { name: '走 idx(city)', type: 'ref', key: 'idx_city', rows: 500, note: 'x' }, { name: '走 idx(age)', type: 'range', key: 'idx_age', rows: 6000, note: 'x' }], phase: 'run', focus: '候选路径：全表扫描（type=ALL，估扫 10000 行）' },

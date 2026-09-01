@@ -95,6 +95,7 @@ import { mempagingKernel } from '../src/kernels/mempaging.ts'
 import { reflectionKernel } from '../src/kernels/reflection.ts'
 import { memwriteKernel } from '../src/kernels/memwrite.ts'
 import { planningKernel } from '../src/kernels/planning.ts'
+import { promptbuildKernel } from '../src/kernels/promptbuild.ts'
 import { lfucacheKernel } from '../src/kernels/lfucache.ts'
 import { trieKernel } from '../src/kernels/trie.ts'
 import { quickselectKernel } from '../src/kernels/quickselect.ts'
@@ -1857,6 +1858,41 @@ export const CATALOG: CatalogEntry[] = [
         ask: '几种规划范式 ReAct、Plan-and-Solve、Tree-of-Thoughts 的核心区别?', kind: 'choice',
         compute: () => ({ answer: 'ReAct=边想边做(想一步做一步、看结果再想)；Plan-and-Solve=先把整个计划规划好再逐步执行；Tree-of-Thoughts=把多个候选计划展开成树、搜索/回溯选最优', step: 5, evidence: '交错 vs 先规划后执行 vs 树搜索' }),
         distractors: () => ['三者完全一样、只是名字不同', '都是先执行再规划', '都不需要工具调用'],
+      },
+    ],
+  },
+  {
+    id: 'promptbuild', title: '提示词组装 · 缓存友好排序', kernel: promptbuildKernel as Kernel<unknown>, doc: trivialDoc('promptbuild'),
+    facts: [
+      {
+        id: 'pb_prefix', label: 'prompt 缓存怎么匹配',
+        ask: 'prompt 缓存(prompt caching)是怎么匹配命中的?', kind: 'choice',
+        compute: () => ({ answer: '最长相同前缀匹配：缓存覆盖 tools→system→messages(固定顺序)到断点为止；断点及之前任何一处变了，前缀哈希就变、缓存全失效、后面全价重算', step: 1, evidence: '找不到命中还会往前回溯最多 20 个块' }),
+        distractors: () => ['按内容相似度模糊匹配', '整个 prompt 逐块独立缓存、互不影响', '只缓存最后一条消息'],
+      },
+      {
+        id: 'pb_order', label: '怎么排 prompt 省缓存钱',
+        ask: 'Agent 每轮重拼 prompt，怎么排序最能省缓存的钱?', kind: 'choice',
+        compute: t => { const f = t as unknown as { ordering: string; prefixTok: number }[]; const d = f.find(x => x.ordering); return ({ answer: '静态的排前面(工具schema/系统身份/项目指令)、动态的排后面(运行时快照/历史/本轮消息)、断点放"逐轮都不变的最后一块"——让可缓存前缀又长又稳', step: 1, evidence: `本例静态优先前缀 ${d?.prefixTok ?? 85}t 可缓存` }) },
+        distractors: () => ['每轮把最新消息放最前面', '随便排、内容一样就行', '把最大的块放最后'],
+      },
+      {
+        id: 'pb_readcost', label: '命中缓存花多少钱',
+        ask: 'prompt 缓存命中(读缓存)的部分，花基础输入价的多少?', kind: 'choice',
+        compute: () => ({ answer: '0.1× 基础价(只花 10%、省 90%)。对比缓存写是 1.25×(5分钟)/2×(1小时)', step: 3, evidence: '命中省 90%，所以要尽量让前缀稳定复用' }),
+        distractors: () => ['和全价一样、不省', '0.5× 基础价', '免费'],
+      },
+      {
+        id: 'pb_pitfall', label: '把动态内容放靠前会怎样',
+        ask: '把每轮都变的东西(时间戳/运行时快照)塞进 prompt 靠前的块，会怎样?', kind: 'choice',
+        compute: () => ({ answer: '前缀每轮都不同 → 缓存永远不命中、每轮全价重写——经典翻车。所以逐轮变的必须排到断点之后', step: 1, evidence: '本例"乱序"把运行时快照混进 system，只剩工具能缓存、省 21% vs 静态优先 44%' }),
+        distractors: () => ['没影响，缓存照样命中', '缓存会更快', '只是稍微慢一点'],
+      },
+      {
+        id: 'pb_frameworks', label: '为什么 CLAUDE.md 当独立 user 消息',
+        ask: 'Claude Code 为什么把 CLAUDE.md 当独立 user 消息放系统提示之后、而不塞进 system?', kind: 'choice',
+        compute: () => ({ answer: '为了不动那段可缓存前缀(system+tools)——把可能变的项目指令放后面，系统提示前缀保持稳定、持续命中缓存。DeepSeek 把运行时快照当单独消息注入同理', step: 5, evidence: '护可缓存前缀，和 KV 缓存/上下文压缩(重放系统提示保前缀)同源' }),
+        distractors: () => ['因为 system 放不下', '因为 user 消息模型更重视', '纯粹是历史遗留、没原因'],
       },
     ],
   },

@@ -300,6 +300,8 @@ import { memwriteKernel, type MemWState } from '@engine/kernels/memwrite.ts'
 import { MemWriteStage } from './stages/MemWriteStage.tsx'
 import { planningKernel, type PlanState } from '@engine/kernels/planning.ts'
 import { PlanningStage } from './stages/PlanningStage.tsx'
+import { promptbuildKernel, type PBState } from '@engine/kernels/promptbuild.ts'
+import { PromptBuildStage } from './stages/PromptBuildStage.tsx'
 import { lfucacheKernel, type LFUState } from '@engine/kernels/lfucache.ts'
 import { LFUCacheStage } from './stages/LFUCacheStage.tsx'
 import { trieKernel, type TrieState } from '@engine/kernels/trie.ts'
@@ -6032,6 +6034,31 @@ const planning: Experiment<PlanState> = {
     { label: '复述近端', value: s.recited ? '✓ 已贴回近端(防漂移)' : '—', tone: s.recited ? 'good' : undefined },
   ],
 }
+const promptbuild: Experiment<PBState> = {
+  id: 'promptbuild', group: '大模型项目实战', title: '提示词组装 · 缓存友好排序', subtitle: '静态前排、动态后排；前缀命中缓存省 90%',
+  kernel: promptbuildKernel, defaultDoc: { kind: 'promptbuild', params: { ordering: '静态优先' }, entities: [], streams: [] },
+  params: [{ key: 'ordering', label: '排序', kind: 'enum', options: ['静态优先', '乱序'] }],
+  paramsNote: 'Agent 每步都重拼 prompt。不是"拼字符串"，关键是**排序要缓存友好**(省钱算法核心)：前缀缓存是**最长相同前缀**匹配——覆盖 tools→system→messages 到断点为止，**断点及之前变一处、缓存全失效**、后面全价重算；**缓存读只 0.1× 基础价**(命中省 90%)。所以**静态排前、动态排后**、断点放"逐轮不变的最后一块"。经典翻车：把每轮变的(时间戳/运行时快照)塞进靠前的块→前缀每轮不同→永不命中。切「排序」看 静态优先(省44%) vs 乱序(省21%)。缓存命中/成本现算，和 KV 缓存同源。详见讲解卡。',
+  bounds: [
+    '前缀缓存=最长相同前缀匹配(tools→system→messages)；断点前变一处、后面全失效；缓存读只 0.1× 基础价',
+    '静态排前(工具/身份/项目指令)、动态排后(运行时快照/历史/本轮)、断点放逐轮不变的最后一块',
+    '经典翻车:把逐轮变的(时间戳/运行时快照)塞进靠前的块→前缀每轮不同→缓存永不命中、每轮全价',
+    'Claude Code 把 CLAUDE.md 当独立 user 消息放后、DeepSeek 运行时快照当单独消息注入=护可缓存前缀。和 KV 缓存/上下文压缩(重放系统提示保前缀)同源',
+  ],
+  tabs: [{ id: 'pb', label: '组装逐步跑' }], Stage: PromptBuildStage, whyInRail: true,
+  tone: s => (s.stage === 'done' || s.stage === 'turn2' ? { key: 'good', label: `省 ${Math.round((1 - s.turn2Cached / s.turn2Full) * 100)}%` }
+    : s.stage === 'turn1' ? { key: 'idle', label: '第1轮写缓存' }
+    : s.stage === 'assemble' ? { key: 'idle', label: `前缀 ${s.prefixTok}t 可缓存` }
+    : { key: 'idle', label: `${s.ordering}` }),
+  metric: s => (s.stage === 'done' ? 1 : Math.max(0, (s.step + 1) / 5)),
+  tickLabel: s => ({ intro: '始', assemble: '排', turn1: '写', turn2: '读', done: '成' }[s.stage] ?? '·'),
+  readouts: s => [
+    { label: '排序', value: s.ordering },
+    { label: '可缓存前缀 / 动态尾', value: `${s.prefixTok}t / ${s.tailTok}t`, tone: 'good' },
+    { label: '第2轮成本', value: (s.stage === 'turn2' || s.stage === 'done') ? `等效 ${s.turn2Cached}t（全价 ${s.turn2Full}t）` : '—', tone: (s.stage === 'turn2' || s.stage === 'done') ? 'good' : undefined },
+    { label: '省', value: (s.stage === 'turn2' || s.stage === 'done') ? `${Math.round((1 - s.turn2Cached / s.turn2Full) * 100)}%` : '—', tone: (s.stage === 'turn2' || s.stage === 'done') ? 'good' : undefined },
+  ],
+}
 const lrucache: Experiment<LRUState> = {
   id: 'lrucache', group: '算法项目实战', title: '手写 LRU 缓存', subtitle: 'HashMap+双向链表，get/put 都 O(1)',
   kernel: lrucacheKernel, defaultDoc: { kind: 'lrucache', params: {}, entities: [], streams: [] }, params: [],
@@ -6701,7 +6728,7 @@ export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
   caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt, ecbcbc, birthday, aesround, hmac, totp,
-  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, bufferpool, queryplan, wildcard, regex, blockingqueue, rwlock, aba, happensbefore, lockstrategy, lrucache, lfucache, trie, quickselect, reactagent, ctxcompact, toolcall, permguard, subagent, memretrieve, mempaging, reflection, memwrite, planning, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign, topk, feed, objectstore,
+  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, bufferpool, queryplan, wildcard, regex, blockingqueue, rwlock, aba, happensbefore, lockstrategy, lrucache, lfucache, trie, quickselect, reactagent, ctxcompact, toolcall, permguard, subagent, memretrieve, mempaging, reflection, memwrite, planning, promptbuild, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign, topk, feed, objectstore,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,

@@ -778,6 +778,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { stage: string; planMode: boolean; writeBlocked: boolean }; return st.stage === 'done' ? '计划走完' : st.stage === 'replan' ? '重规划' : st.stage === 'exec' ? '推进+复述' : st.stage === 'exit' ? '写解锁' : st.stage === 'planning' ? (st.writeBlocked ? '门禁挡写' : '计划中') : '进计划模式' },
     try: [{ act: '切「建议」模式', watch: '计划模式里想写不再被挡——软建议 vs Claude Code 的硬门禁(批准前权限层堵死写)。' }, { act: '看复述那步', watch: '每轮把整张 todo 贴回上下文近端——不是记账，是把计划推回近端注意力、对抗 lost-in-the-middle。' }], terms: [],
   },
+  promptbuild: {
+    question: 'Agent 每步都重拼 prompt，怎么排能让前缀命中缓存、省 90% 的钱？',
+    read: [{ at: '各段', is: '按 tools→system→messages 排，缓存断点分隔可缓存前缀(绿)与动态尾部(黄)。', anchor: '.pb-secs' }, { at: '成本', is: '第2轮：前缀命中缓存 vs 全价。', anchor: '.pb-cost' }, { at: '读数', is: '排序、前缀、省多少。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { stage: string; ordering: string; prefixTok: number; tailTok: number; turn2Cached: number; turn2Full: number }; const save = Math.round((1 - st.turn2Cached / st.turn2Full) * 100); return [
+      { k: '本步输入', v: st.stage === 'intro' ? `6 段 + 排序方式(${st.ordering})` : st.stage === 'assemble' ? '按 tools→system→messages 排、定断点' : st.stage === 'turn1' ? '第 1 轮（缓存空）' : st.stage === 'turn2' ? '第 2 轮（历史涨、来新消息）' : '汇总' },
+      { k: '判定规则', v: '前缀缓存是最长相同前缀匹配(tools→system→messages 到断点)；断点前变一处、缓存全废；缓存读只 0.1× 基础价。静态排前、动态排后、断点放逐轮不变的最后一块。' },
+      { k: '本步结果', v: st.stage === 'intro' ? '待排序' : st.stage === 'assemble' ? `可缓存前缀 ${st.prefixTok}t、动态尾部 ${st.tailTok}t` : st.stage === 'turn1' ? `前缀 ${st.prefixTok}t 写入缓存(1.25×)` : st.stage === 'turn2' ? `前缀命中缓存(0.1×)→等效 ${st.turn2Cached}t vs 全价 ${st.turn2Full}t、省 ${save}%` : `${st.ordering}：省 ${save}%` },
+    ] },
+    verdict: (s: never) => { const st = s as { stage: string; prefixTok: number; turn2Cached: number; turn2Full: number }; return st.stage === 'done' || st.stage === 'turn2' ? `省 ${Math.round((1 - st.turn2Cached / st.turn2Full) * 100)}%` : st.stage === 'turn1' ? '写缓存' : st.stage === 'assemble' ? `前缀 ${st.prefixTok}t` : '待排序' },
+    try: [{ act: '切「乱序」', watch: '把逐轮变的"运行时快照"塞进 system(靠前)→缓存从这断，只剩工具 40t 能缓存，省得少(21% vs 44%)。' }, { act: '想想为什么静态排前', watch: '前缀缓存要"最长相同前缀"——静态的排前面、前缀才又长又稳，命中的 token 才多。' }], terms: [],
+  },
   queryplan: {
     question: '同一个查询有好几条路可走，数据库优化器凭什么选其中一条？',
     read: [{ at: '候选路径', is: '每条访问路径的 type + 估扫描行数代价条。', anchor: '.qp-paths' }, { at: 'EXPLAIN', is: '末步选中路径的 type/key/rows。', anchor: '.qp-explain' }],

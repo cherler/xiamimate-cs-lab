@@ -5267,3 +5267,21 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .pl-recite{margin-top:8px;padding:7px 11px;border:1px solid color-mix(in srgb,#7466E6 40%,var(--line));border-radius:6px;
   background:color-mix(in srgb,#7466E6 7%,transparent);font:var(--t-ui)/1.5 var(--sans);color:var(--dim)}
 .pl-recite b{color:#7466E6}
+
+/* ── 提示词组装 promptbuild ─────────────────────────────────────── */
+.pb-secs{display:flex;flex-direction:column;gap:3px;margin:8px 0}
+.pb-sec{display:flex;align-items:baseline;gap:8px;padding:4px 8px;border-radius:4px;border-left:3px solid var(--line);background:var(--panel);font-size:var(--t-ui)}
+.pb-sec.cached{border-left-color:var(--hit);background:color-mix(in srgb,var(--hit) 8%,transparent)}
+.pb-sec.dyn{border-left-color:var(--now);background:color-mix(in srgb,var(--now) 7%,transparent)}
+.pb-tier{flex:none;font:var(--t-meta) var(--mono);color:var(--faint);width:5.2em;border:1px solid var(--line);border-radius:3px;padding:0 4px;text-align:center}
+.pb-name{flex:1 1 auto;color:var(--ink)}
+.pb-tag{flex:none;font:var(--t-meta) var(--mono)}
+.pb-sec.cached .pb-tag{color:var(--hit)} .pb-sec.dyn .pb-tag{color:var(--now)}
+.pb-tok{flex:none;font:var(--t-meta) var(--mono);color:var(--dim)}
+.pb-bp{margin:2px 0;text-align:center;font:var(--t-meta) var(--mono);color:var(--hit);letter-spacing:.05em}
+.pb-cost{margin-top:8px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--sunk-1)}
+.pb-cost-h{font:var(--t-meta) var(--sans);color:var(--faint);margin-bottom:5px}
+.pb-cbar{height:12px;background:color-mix(in srgb,var(--miss) 22%,var(--sunk-1));border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.pb-cfill.cached{height:100%;background:color-mix(in srgb,var(--hit) 60%,transparent)}
+.pb-cost-n{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:5px;font-size:var(--t-ui);color:var(--dim)}
+.pb-good b{color:var(--hit)} .pb-full b{color:var(--miss)} .pb-save b{color:var(--hit)}
