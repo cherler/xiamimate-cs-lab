@@ -5195,3 +5195,25 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .mp-st{flex:1 1 auto;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mp-stok{flex:none;font:var(--t-meta) var(--mono);color:var(--dim)}
 .mp-slot.pagedin .mp-stok{color:var(--now)}
+
+/* ── 反思/巩固 reflection ─────────────────────────────────────── */
+.rf-cum{display:flex;align-items:center;gap:8px;margin:8px 0}
+.rf-cl{flex:none;font:var(--t-meta) var(--sans);color:var(--faint)}
+.rf-cv{flex:none;font:var(--t-ui) var(--mono);color:var(--ink)}
+.rf-bar{position:relative;flex:1 1 auto;height:10px;background:var(--sunk-1);border:1px solid var(--line);border-radius:5px;overflow:hidden}
+.rf-fill{height:100%;background:color-mix(in srgb,var(--hit) 55%,transparent);transition:width .25s}
+.rf-fill.over{background:color-mix(in srgb,#7466E6 60%,transparent)}
+.rf-thr{position:absolute;top:-2px;bottom:-2px;right:0;width:2px;background:var(--miss)}
+.rf-h{font:var(--t-meta) var(--sans);color:var(--faint);margin:6px 0 4px;font-weight:600}
+.rf-obs{display:flex;flex-direction:column;gap:3px}
+.rf-o{display:flex;align-items:baseline;gap:8px;padding:3px 8px;border-radius:4px;border-left:3px solid var(--line);background:var(--panel);font-size:var(--t-ui)}
+.rf-o.used{border-left-color:#7466E6;background:color-mix(in srgb,#7466E6 8%,transparent)}
+.rf-oid{flex:none;font:var(--t-meta) var(--mono);color:var(--faint)}
+.rf-ot{flex:1 1 auto;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rf-oimp{flex:none;font:var(--t-meta) var(--mono);color:var(--dim)}
+.rf-insight{margin-top:8px;padding:9px 11px;border:1px solid color-mix(in srgb,#7466E6 40%,var(--line));
+  border-radius:6px;background:color-mix(in srgb,#7466E6 8%,transparent)}
+.rf-ih{font:var(--t-meta) var(--sans);color:#7466E6;font-weight:600}
+.rf-it{margin:5px 0;font-size:var(--t-body);color:var(--ink)}
+.rf-it b{color:#7466E6}
+.rf-iev{font:var(--t-meta) var(--sans);color:var(--faint)}

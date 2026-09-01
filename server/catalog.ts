@@ -92,6 +92,7 @@ import { permguardKernel } from '../src/kernels/permguard.ts'
 import { subagentKernel } from '../src/kernels/subagent.ts'
 import { memretrieveKernel } from '../src/kernels/memretrieve.ts'
 import { mempagingKernel } from '../src/kernels/mempaging.ts'
+import { reflectionKernel } from '../src/kernels/reflection.ts'
 import { lfucacheKernel } from '../src/kernels/lfucache.ts'
 import { trieKernel } from '../src/kernels/trie.ts'
 import { quickselectKernel } from '../src/kernels/quickselect.ts'
@@ -1749,6 +1750,41 @@ export const CATALOG: CatalogEntry[] = [
         ask: 'agent 需要一条已被驱逐到磁盘的旧消息(缺页)，怎么拿回来?', kind: 'choice',
         compute: () => ({ answer: '函数调用 conversation_search(搜 recall) 或 archival_memory_search(搜 archival) 检索出来，追加到队尾、重新进上下文——这就是缺页调入(换入)', step: 4, evidence: '本例需要已驱逐的 NPE 那条→检索调回队尾，RAM 升回' }),
         distractors: () => ['没办法，驱逐了就永远丢了', '让模型凭记忆重新编一条', '整个会话重启'],
+      },
+    ],
+  },
+  {
+    id: 'reflection', title: '反思 · 记忆巩固', kernel: reflectionKernel as Kernel<unknown>, doc: trivialDoc('reflection'),
+    facts: [
+      {
+        id: 'rf_why', label: '为什么 agent 要反思',
+        ask: '"用户是个后端工程师"这种高层判断，agent 从哪来?', kind: 'choice',
+        compute: () => ({ answer: '反思(reflection)：任何单条原始观察里都没有这种高层判断，得综合多条观察抽象出来——把零散观察巩固成高层洞察', step: 3, evidence: '检索只能捞已有条目；高层理解要靠反思综合出来' }),
+        distractors: () => ['直接从某一条原始观察里读出来', '每次现问用户', '模型天生就知道'],
+      },
+      {
+        id: 'rf_trigger', label: '反思的触发阈值(本例默认)',
+        ask: '本实验默认阈值下，最近观察的重要度之和累计到多少就触发一次反思?', kind: 'number',
+        compute: t => { const f = t as unknown as { threshold: number }[]; const th = f.find(x => x.threshold != null)?.threshold ?? 15; return ({ answer: String(th), step: 2, evidence: `累计重要度 ≥ ${th} 触发(论文里约 150)；重要度低的琐事攒得慢、重要的催得快` }) },
+        distractors: numDistractors,
+      },
+      {
+        id: 'rf_evidence', label: '反思的洞察怎么保证不是凭空',
+        ask: '反思提炼出的洞察，怎么保证它不是模型凭空断言?', kind: 'choice',
+        compute: () => ({ answer: '洞察要引用证据——记录它由哪几条观察支撑，可追溯回具体观察，因而可解释', step: 3, evidence: '本例洞察下写着"证据：o1/o2/o3/o4"' }),
+        distractors: () => ['不用保证，模型说的都对', '让用户逐条确认', '存下模型的置信度分数'],
+      },
+      {
+        id: 'rf_tree', label: '洞察产生之后',
+        ask: '反思产生一条洞察之后，它怎么处理，能再进化吗?', kind: 'choice',
+        compute: () => ({ answer: '洞察当成一条高重要度的新记忆入库(以后更容易被检索到)；而且洞察本身还能被更高层反思——观察→洞察→更高层洞察，长成反思树', step: 3, evidence: '观察是叶、洞察是往上长的节点' }),
+        distractors: () => ['洞察用完即弃、不入库', '洞察不能再被反思', '洞察会覆盖掉原始观察'],
+      },
+      {
+        id: 'rf_vs_compact', label: '反思和上下文压缩摘要的区别',
+        ask: '反思提炼洞察，和上下文压缩里的"摘要"，目的有什么不同?', kind: 'choice',
+        compute: () => ({ answer: '压缩摘要是为省 token、把最近的历史压掉(短期、就地删繁)；反思是为长期理解、把零散观察往上抽象成洞察(长期、增值升华)', step: 4, evidence: '一个删繁、一个升华' }),
+        distractors: () => ['两者完全一样', '反思是为省 token、压缩是为理解', '都是为了减少模型参数'],
       },
     ],
   },

@@ -294,6 +294,8 @@ import { memretrieveKernel, type MRState } from '@engine/kernels/memretrieve.ts'
 import { MemRetrieveStage } from './stages/MemRetrieveStage.tsx'
 import { mempagingKernel, type MemPState } from '@engine/kernels/mempaging.ts'
 import { MemPagingStage } from './stages/MemPagingStage.tsx'
+import { reflectionKernel, type ReflState } from '@engine/kernels/reflection.ts'
+import { ReflectionStage } from './stages/ReflectionStage.tsx'
 import { lfucacheKernel, type LFUState } from '@engine/kernels/lfucache.ts'
 import { LFUCacheStage } from './stages/LFUCacheStage.tsx'
 import { trieKernel, type TrieState } from '@engine/kernels/trie.ts'
@@ -5946,6 +5948,32 @@ const mempaging: Experiment<MemPState> = {
     { label: '本步', value: s.op || (({ intro: 'RAM/磁盘分层', done: '换页完成' } as Record<string, string>)[s.stage] ?? '—') },
   ],
 }
+const reflection: Experiment<ReflState> = {
+  id: 'reflection', group: '大模型项目实战', title: '反思 · 记忆巩固', subtitle: '零散观察攒够重要度→提炼高层洞察(带证据)→入库成新记忆',
+  kernel: reflectionKernel, defaultDoc: { kind: 'reflection', params: { threshold: '默认' }, entities: [], streams: [] },
+  params: [{ key: 'threshold', label: '反思阈值', kind: 'enum', options: ['敏感', '默认', '迟钝'] }],
+  paramsNote: 'Generative Agents 的洞察：光存原始观察不够(只见树木不见森林)，agent 得定期把零散观察**巩固成高层洞察**。触发=最近观察的**重要度之和**超阈值(论文约 150)就反思一次;反思=LLM 就最近观察提炼**洞察**并**引用证据**(哪几条观察支撑);洞察当**高重要度新记忆**入库、还能被更高层反思→**反思树**。切「阈值」(敏感10/默认15/迟钝20)看反思勤/懒、证据集怎么变。重要度累积、触发、证据引用全现算。详见讲解卡。',
+  bounds: [
+    '光存原始观察不够，要定期巩固：把零散观察消化成高层洞察(反思/reflection)',
+    '触发靠重要度累积过阈值(论文约150)：琐碎观察攒得慢、重要的催得快',
+    '提炼时 LLM 综合观察成洞察 + 引用证据(可追溯，不是凭空)；洞察=高重要度新记忆，能被更高层反思→反思树',
+    '和上下文压缩摘要不同:压缩为省token压最近的、反思为长期理解把零散的往上抽象。真实框架:Generative Agents',
+  ],
+  tabs: [{ id: 'rf', label: '反思逐步跑' }], Stage: ReflectionStage, whyInRail: true,
+  tone: s => (s.stage === 'done' ? { key: 'good', label: '洞察入库' }
+    : s.stage === 'reflect' ? { key: 'good', label: '提炼洞察' }
+    : s.stage === 'trigger' ? { key: 'bad', label: `触发 ${s.cum}≥${s.threshold}` }
+    : s.stage === 'observe' ? { key: 'idle', label: `累计 ${s.cum}` }
+    : { key: 'idle', label: `阈值 ${s.threshold}` }),
+  metric: s => (s.stage === 'done' ? 1 : Math.max(0, (s.step + 1) / 5)),
+  tickLabel: s => ({ intro: '始', observe: '攒', trigger: '触', reflect: '炼', done: '成' }[s.stage] ?? '·'),
+  readouts: s => [
+    { label: '反思阈值', value: `${s.threshold}（${s.thresholdKey}）` },
+    { label: '累计重要度', value: `${s.cum} / ${s.threshold}`, tone: s.cum >= s.threshold ? 'bad' : undefined },
+    { label: '洞察', value: s.insight ? s.insight.text.replace(/\*/g, '') : '—', tone: s.insight ? 'good' : undefined },
+    { label: '证据', value: s.insight ? s.insight.evidence.join('、') : '—' },
+  ],
+}
 const lrucache: Experiment<LRUState> = {
   id: 'lrucache', group: '算法项目实战', title: '手写 LRU 缓存', subtitle: 'HashMap+双向链表，get/put 都 O(1)',
   kernel: lrucacheKernel, defaultDoc: { kind: 'lrucache', params: {}, entities: [], streams: [] }, params: [],
@@ -6615,7 +6643,7 @@ export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
   caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt, ecbcbc, birthday, aesround, hmac, totp,
-  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, bufferpool, queryplan, wildcard, regex, blockingqueue, rwlock, aba, happensbefore, lockstrategy, lrucache, lfucache, trie, quickselect, reactagent, ctxcompact, toolcall, permguard, subagent, memretrieve, mempaging, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign, topk, feed, objectstore,
+  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, bufferpool, queryplan, wildcard, regex, blockingqueue, rwlock, aba, happensbefore, lockstrategy, lrucache, lfucache, trie, quickselect, reactagent, ctxcompact, toolcall, permguard, subagent, memretrieve, mempaging, reflection, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign, topk, feed, objectstore,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,

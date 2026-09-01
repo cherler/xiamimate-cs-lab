@@ -745,6 +745,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { stage: string; ramUsed: number; warnAt: number }; return st.stage === 'done' ? '换页完成' : st.stage === 'pagein' ? '缺页调回' : st.stage === 'evict' ? '驱逐换出' : st.stage === 'pressure' ? `压力 ${st.ramUsed}≥${st.warnAt}` : st.stage === 'fill' ? `填到 ${st.ramUsed}` : 'RAM/磁盘' },
     try: [{ act: '看驱逐那步', watch: 'RAM 从 77 降到 49：3 条老消息进 recall(磁盘)，队首多了一条递归摘要——就是页面换出。' }, { act: '对照 408 页面置换', watch: 'RAM=物理内存、recall=磁盘、驱逐=换出、检索调回=缺页调入——同一套算法，页换成了对话。' }], terms: [],
   },
+  reflection: {
+    question: '光存一堆零散观察不够——agent 怎么把它们消化成"用户是个后端工程师"这种高层理解？',
+    read: [{ at: '累计条', is: '最近观察的重要度之和，过阈值就反思。', anchor: '.rf-cum' }, { at: '观察流', is: '原始观察(带重要度)，被反思的高亮。', anchor: '.rf-obs' }, { at: '洞察', is: '提炼出的高层洞察 + 引用的证据。', anchor: '.rf-insight' }],
+    step: (s: never) => { const st = s as { stage: string; threshold: number; cum: number; insight: { text: string; evidence: string[] } | null }; return [
+      { k: '本步输入', v: st.stage === 'intro' ? '一串零散的原始观察' : st.stage === 'observe' ? '观察陆续进记忆流、重要度累积' : st.stage === 'trigger' ? `累计重要度 ${st.cum} vs 阈值 ${st.threshold}` : st.stage === 'reflect' ? '就最近观察提炼洞察' : '巩固完成' },
+      { k: '判定规则', v: `最近观察的重要度之和 ≥ 阈值(论文约 150、本例 ${st.threshold}) → 触发反思；LLM 综合观察成洞察并引用证据；洞察当高重要度新记忆入库、可再被更高层反思(反思树)。` },
+      { k: '本步结果', v: st.stage === 'intro' ? '待累积、消化' : st.stage === 'observe' ? `累计到 ${st.cum}` : st.stage === 'trigger' ? `${st.cum} ≥ ${st.threshold}，触发反思` : st.stage === 'reflect' && st.insight ? `提炼：「${st.insight.text.replace(/\*/g, '')}」，引用 ${st.insight.evidence.join('/')}` : st.insight ? `${st.insight.evidence.length} 条观察 → 1 条洞察` : '—' },
+    ] },
+    verdict: (s: never) => { const st = s as { stage: string; cum: number; threshold: number; insight: unknown }; return st.stage === 'done' ? '洞察入库' : st.stage === 'reflect' ? '提炼洞察' : st.stage === 'trigger' ? `触发 ${st.cum}≥${st.threshold}` : st.stage === 'observe' ? `累计 ${st.cum}` : '待反思' },
+    try: [{ act: '切「敏感」阈值', watch: '阈值 10，攒到第 3 条(累计 11)就触发反思——反思更勤、洞察更碎。' }, { act: '切「迟钝」阈值', watch: '阈值 20，攒到第 5 条才触发——攒够一大批才消化一次。' }], terms: [],
+  },
   queryplan: {
     question: '同一个查询有好几条路可走，数据库优化器凭什么选其中一条？',
     read: [{ at: '候选路径', is: '每条访问路径的 type + 估扫描行数代价条。', anchor: '.qp-paths' }, { at: 'EXPLAIN', is: '末步选中路径的 type/key/rows。', anchor: '.qp-explain' }],
