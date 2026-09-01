@@ -5039,3 +5039,46 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .tc-hi.ok .tc-hi-k{color:var(--hit)} .tc-hi.err .tc-hi-k{color:var(--miss)}
 .tc-hi-n{flex:none;font-family:var(--mono);font-size:var(--t-meta);color:var(--dim)}
 .tc-hi-t{flex:1 1 auto;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ── 沙箱/权限 permguard ─────────────────────────────────────── */
+.pg-pipe{display:flex;align-items:stretch;gap:0;margin:8px 0}
+.pg-st{flex:1;position:relative;display:flex;flex-direction:column;align-items:center;gap:1px;
+  padding:6px 4px;border:1px solid var(--line);border-radius:5px;background:var(--panel)}
+.pg-sic{font-weight:700;line-height:1}
+.pg-slb{font:var(--t-meta) var(--sans);color:var(--faint)}
+.pg-sv{font:var(--t-ui) var(--mono);color:var(--ink)}
+.pg-st.pass{border-color:color-mix(in srgb,var(--hit) 55%,var(--line));background:color-mix(in srgb,var(--hit) 9%,transparent)}
+.pg-st.pass .pg-sic,.pg-st.pass .pg-sv{color:var(--hit)}
+.pg-st.warn{border-color:color-mix(in srgb,var(--now) 55%,var(--line));background:color-mix(in srgb,var(--now) 10%,transparent)}
+.pg-st.warn .pg-sic,.pg-st.warn .pg-sv{color:var(--now)}
+.pg-st.fail{border-color:var(--miss);background:color-mix(in srgb,var(--miss) 10%,transparent)}
+.pg-st.fail .pg-sic,.pg-st.fail .pg-sv{color:var(--miss)}
+.pg-st.info .pg-sic{color:var(--faint)}
+.pg-st.skip{opacity:.5}
+.pg-arrow{position:absolute;right:-9px;top:50%;transform:translateY(-50%);z-index:1;color:var(--faint);font-size:12px;background:var(--void);padding:0 1px}
+/* intro */
+.pg-intro{margin:8px 0;padding:9px 11px;border:1px dashed var(--line);border-radius:6px;background:var(--sunk-1)}
+.pg-intro-h{font-size:var(--t-ui);color:var(--ink)}
+.pg-raw{margin:5px 0;font:var(--t-meta) var(--mono);color:var(--dim)}
+.pg-walls{font:var(--t-meta)/1.5 var(--sans);color:var(--faint)}
+.pg-walls b{color:var(--dim)}
+/* 当前操作 */
+.pg-cur{margin:8px 0;padding:9px 11px;border:1px solid var(--line);border-left-width:3px;border-radius:6px;background:var(--panel)}
+.pg-cur.ok{border-left-color:var(--hit)} .pg-cur.warn{border-left-color:var(--now)} .pg-cur.blocked{border-left-color:var(--miss)}
+.pg-cur-cmd{display:flex;align-items:center;gap:8px}
+.pg-cur-cmd code{font:var(--t-body) var(--mono);color:var(--ink)}
+.pg-eff{flex:none;font:var(--t-meta) var(--mono);color:var(--faint);border:1px solid var(--line);border-radius:3px;padding:0 5px}
+.pg-why{margin-top:5px;font:var(--t-ui)/1.5 var(--sans);color:var(--dim)}
+.pg-why b{color:var(--ink)}
+.pg-final{margin-top:6px;font-size:var(--t-ui);font-weight:650}
+.pg-final.good{color:var(--hit)} .pg-final.bad{color:var(--miss)}
+/* 历史 */
+.pg-hist{margin-top:8px}
+.pg-hist-h{font:var(--t-meta) var(--sans);color:var(--faint);margin-bottom:4px}
+.pg-empty{font-size:var(--t-meta);color:var(--faint);font-style:italic}
+.pg-hi{display:flex;align-items:baseline;gap:8px;padding:3px 8px;border-radius:4px;margin-bottom:3px;border-left:3px solid var(--line);font-size:var(--t-ui)}
+.pg-hi.ok{border-left-color:var(--hit);background:color-mix(in srgb,var(--hit) 6%,transparent)}
+.pg-hi.warn{border-left-color:var(--now);background:color-mix(in srgb,var(--now) 7%,transparent)}
+.pg-hi.bad{border-left-color:var(--miss);background:color-mix(in srgb,var(--miss) 7%,transparent)}
+.pg-hi-c{flex:none;font:var(--t-meta) var(--mono);color:var(--dim);min-width:12em}
+.pg-hi-l{flex:1 1 auto;color:var(--ink)}

@@ -336,6 +336,7 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   reactagent: {},
   ctxcompact: { strategy: 'string', thresholdRatio: 'number' },
   toolcall: {},
+  permguard: { mode: 'string' },
   lfucache: {},
   trie: {},
   quickselect: {},
@@ -401,6 +402,7 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
 const ENUMS: Record<string, Record<string, string[]>> = {
   cache:     { replacement: ['LRU', 'FIFO'] },
   ctxcompact: { strategy: ['总结', '省略'] },
+  permguard: { mode: ['默认', '接受编辑', '计划', '放行'] },
   iso:       { level: ['读未提交', '读已提交', '可重复读', '串行化'] },
   scheduler: { algorithm: ['FCFS', 'SJF', 'SRTF', 'RR'] },
   tcp:       { variant: ['Tahoe', 'Reno'] },

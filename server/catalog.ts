@@ -88,6 +88,7 @@ import { topkKernel } from '../src/kernels/topk.ts'
 import { reactagentKernel } from '../src/kernels/reactagent.ts'
 import { ctxcompactKernel } from '../src/kernels/ctxcompact.ts'
 import { toolcallKernel } from '../src/kernels/toolcall.ts'
+import { permguardKernel } from '../src/kernels/permguard.ts'
 import { lfucacheKernel } from '../src/kernels/lfucache.ts'
 import { trieKernel } from '../src/kernels/trie.ts'
 import { quickselectKernel } from '../src/kernels/quickselect.ts'
@@ -1587,6 +1588,41 @@ export const CATALOG: CatalogEntry[] = [
         ask: '一批工具调用里，哪些能并行跑、哪些必须独占排队?', kind: 'choice',
         compute: () => ({ answer: '只读/互不影响的调用(read_file、calc)可并行(DeepSeek 默认最多 10 个并发)；写文件/跑 shell 这种有副作用的必须独占排队，否则互相踩', step: 1, evidence: '按"有无副作用"分类：并行安全 vs 独占' }),
         distractors: () => ['所有调用都必须串行、一个一个来', '所有调用都能无脑并行', '按调用的字母顺序决定能否并行'],
+      },
+    ],
+  },
+  {
+    id: 'permguard', title: '沙箱 / 权限', kernel: permguardKernel as Kernel<unknown>, doc: trivialDoc('permguard'),
+    facts: [
+      {
+        id: 'pg_two_walls', label: 'Agent 靠什么决定放不放行模型的命令',
+        ask: 'Agent 要跑模型生成的命令，靠什么机制决定放不放行?', kind: 'choice',
+        compute: t => { const f = t as unknown as { stage: string; history?: { final: string }[] }[]; const d = f.find(x => x.stage === 'done'); const blk = d?.history?.filter(h => h.final === 'blocked').length ?? 2; const run = (d?.history?.length ?? 5) - blk; return ({ answer: '两道相互独立的墙：①规则/审批(deny→ask→allow，首次匹配即生效) ②沙箱(物理隔离、fail-closed，网络默认关、写只在工作区内)。两墙都过才真跑', step: f.findIndex(x => x.stage === 'done'), evidence: `本例默认模式：${run} 跑 / ${blk} 拦` }) },
+        distractors: () => ['全靠模型自己判断该不该跑', '所有命令都要用户逐条确认', '只看命令字符串长度'],
+      },
+      {
+        id: 'pg_precedence', label: 'allow/ask/deny 规则的优先级',
+        ask: '一条命令同时匹配到 allow 和 deny 规则，听谁的?', kind: 'choice',
+        compute: () => ({ answer: 'deny → ask → allow，首次匹配即生效——最危险的先拦。rm -rf 命中 deny 就直接拒，后面的 allow 规则看都不看', step: 3, evidence: '本例 rm -rf /tmp/* 第一条 deny 就拦下' }),
+        distractors: () => ['allow 优先，宽松的赢', '按规则写的先后、后写的覆盖', '随机选一条'],
+      },
+      {
+        id: 'pg_bypass_net', label: '放行模式还能被拦住联网吗',
+        ask: 'Agent 开了"放行"模式(--dangerously-skip-permissions，跳过所有审批)，它还能被拦住联网吗?', kind: 'choice',
+        compute: () => ({ answer: '能。沙箱是跟审批相互独立的第二道墙——网络默认关、fail-closed；跳过审批 ≠ 拆掉沙箱（纵深防御）', step: 4, evidence: '本例即便放行模式，curl 联网仍被沙箱拦住' }),
+        distractors: () => ['不能，放行模式跳过一切限制', '要看模型愿不愿意联网', '只有付费版才拦'],
+      },
+      {
+        id: 'pg_failclosed', label: '沙箱起不来了怎么办',
+        ask: '要跑命令时沙箱环境起不来（不可用），一个安全的 harness 怎么办?', kind: 'choice',
+        compute: () => ({ answer: 'fail-closed：报 SANDBOX_UNAVAILABLE、拒绝执行，宁可拦错不放过；而不是"没沙箱就裸奔"(fail-open)', step: 0, evidence: '安全默认永远是 fail-closed' }),
+        distractors: () => ['fail-open：没沙箱就直接在宿主机上跑', '静默跳过这条命令', '自动降权后照跑不误'],
+      },
+      {
+        id: 'pg_escalate', label: '越权操作怎么处理',
+        ask: '模型要写工作区外的文件(越出沙箱范围)，安全的处理是?', kind: 'choice',
+        compute: () => ({ answer: '一次性升级：模型带理由申请更宽范围 + 一次人工批准，而且只这一次(one-shot、不给 allow-always)——防"批一次以后全放行"的权限蔓延', step: 5, evidence: '本例 write /etc/hosts 越界 → 升级 → 一次批准 → 仅此一次运行' }),
+        distractors: () => ['直接拒绝，永远不给写工作区外', '批准一次后就永久放行(allow-always)', '模型自己提权、不用问人'],
       },
     ],
   },

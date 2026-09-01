@@ -286,6 +286,8 @@ import { ctxcompactKernel, type CompactState } from '@engine/kernels/ctxcompact.
 import { CtxCompactStage } from './stages/CtxCompactStage.tsx'
 import { toolcallKernel, type ToolCallState } from '@engine/kernels/toolcall.ts'
 import { ToolCallStage } from './stages/ToolCallStage.tsx'
+import { permguardKernel, type PermState } from '@engine/kernels/permguard.ts'
+import { PermGuardStage } from './stages/PermGuardStage.tsx'
 import { lfucacheKernel, type LFUState } from '@engine/kernels/lfucache.ts'
 import { LFUCacheStage } from './stages/LFUCacheStage.tsx'
 import { trieKernel, type TrieState } from '@engine/kernels/trie.ts'
@@ -5822,6 +5824,33 @@ const toolcall: Experiment<ToolCallState> = {
     { label: '已回灌', value: s.history.length ? `${s.history.filter(h => h.ok).length}✓ / ${s.history.filter(h => !h.ok).length}✗` : '0' },
   ],
 }
+const permguard: Experiment<PermState> = {
+  id: 'permguard', group: '大模型项目实战', title: '沙箱 / 权限', subtitle: '模型想跑命令，放不放行：规则(deny→ask→allow) + 沙箱(fail-closed)',
+  kernel: permguardKernel, defaultDoc: { kind: 'permguard', params: { mode: '默认' }, entities: [], streams: [] },
+  params: [{ key: 'mode', label: '权限模式', kind: 'enum', options: ['默认', '接受编辑', '计划', '放行'] }],
+  paramsNote: 'Agent 安全面试大点：模型生成的命令，怎么既让它干活、又不删库/联网偷数据。靠两道**相互独立**的墙：①规则/审批(deny→ask→allow，**首次匹配即生效**，危险的先拦)②沙箱(物理隔离，网络默认关、写只在工作区内，**fail-closed**)。两墙都过才真跑；越权是**一次性升级**(带理由+一次批准，不给 allow-always)。切「权限模式」(默认问/接受编辑不问/计划只读/放行全跳过)看结局怎么变——注意：连"放行"模式都过不了沙箱那道网络墙。详见讲解卡。',
+  bounds: [
+    '两道墙相互独立：规则放行 ≠ 沙箱放行；网络那条连"放行"模式都被沙箱 fail-closed 拦住',
+    'deny→ask→allow，首次匹配即生效——危险操作(rm -rf)第一条 deny 就拦下，不再往后看',
+    'fail-closed：沙箱宁可拦错不放过(网络默认关、写越界拦)；越权=一次性升级(带理由+一次人工批准，防权限蔓延)',
+    '模式=安全↔顺手滑杆(默认问/接受编辑不问/计划只读/放行危险)。对比 Aider 不做沙箱、靠 git+/undo 兜底(可回滚≠隔离)',
+  ],
+  tabs: [{ id: 'pg', label: '操作逐个决议' }], Stage: PermGuardStage, whyInRail: true,
+  tone: s => (s.stage === 'done' ? { key: 'good', label: `${s.history.filter(h => h.final !== 'blocked').length}跑/${s.history.filter(h => h.final === 'blocked').length}拦` }
+    : s.cur < 0 ? { key: 'idle', label: `${s.mode}·${s.total} 个待判` }
+    : s.res?.final === 'blocked' ? { key: 'bad', label: '拒绝' }
+    : s.res?.final === 'escalate-run' ? { key: 'idle', label: '升级放行' }
+    : s.res?.final === 'ask-run' ? { key: 'good', label: '问过放行' }
+    : { key: 'good', label: '放行' }),
+  metric: s => (s.stage === 'done' ? 1 : Math.max(0, (s.step + 1) / (s.total + 1))),
+  tickLabel: s => (s.cur < 0 ? '判' : s.res?.final === 'blocked' ? '拦' : s.res?.final === 'ask-run' ? '问' : s.res?.final === 'escalate-run' ? '升' : '放'),
+  readouts: s => [
+    { label: '权限模式', value: s.mode },
+    { label: '本操作', value: s.cur < 0 ? '—' : `${s.op?.cmd}`, tone: s.res?.final === 'blocked' ? 'bad' : s.res ? 'good' : undefined },
+    { label: '结局', value: s.cur < 0 ? '—' : (s.res?.fLabel ?? '—'), tone: s.res?.final === 'blocked' ? 'bad' : s.res ? 'good' : undefined },
+    { label: '已判', value: s.history.length ? `${s.history.filter(h => h.final !== 'blocked').length}跑 / ${s.history.filter(h => h.final === 'blocked').length}拦` : '0' },
+  ],
+}
 const lrucache: Experiment<LRUState> = {
   id: 'lrucache', group: '算法项目实战', title: '手写 LRU 缓存', subtitle: 'HashMap+双向链表，get/put 都 O(1)',
   kernel: lrucacheKernel, defaultDoc: { kind: 'lrucache', params: {}, entities: [], streams: [] }, params: [],
@@ -6491,7 +6520,7 @@ export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
   caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt, ecbcbc, birthday, aesround, hmac, totp,
-  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, bufferpool, queryplan, wildcard, regex, blockingqueue, rwlock, aba, happensbefore, lockstrategy, lrucache, lfucache, trie, quickselect, reactagent, ctxcompact, toolcall, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign, topk, feed, objectstore,
+  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, bufferpool, queryplan, wildcard, regex, blockingqueue, rwlock, aba, happensbefore, lockstrategy, lrucache, lfucache, trie, quickselect, reactagent, ctxcompact, toolcall, permguard, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign, topk, feed, objectstore,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,

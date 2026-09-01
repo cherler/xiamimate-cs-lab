@@ -701,6 +701,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { stage: string; cur: number; outcome: string; total: number; history: { ok: boolean }[] }; return st.stage === 'done' ? `${st.history.filter(h => h.ok).length}成/${st.history.filter(h => !h.ok).length}败·循环不断` : st.cur < 0 ? `发出 ${st.total} 个` : st.outcome === 'ok' ? '执行·回灌' : st.outcome === 'denied' ? '门禁拒绝' : st.outcome === 'unknown' ? '未知工具' : '解析失败' },
     try: [{ act: '看错误怎么处理', watch: '第 3/4/5 个调用失败（拒绝/未知/解析错），但都变成 error 结果喂回、循环没断——模型能重试。' }, { act: '看 calc 真执行', watch: '第 2 个 calc(1234*5678) 由引擎真算出 7006652，不是写死。' }], terms: [],
   },
+  permguard: {
+    question: '模型想跑 rm -rf 或联网，harness 凭什么决定放不放行，又不误伤正常操作？',
+    read: [{ at: '决议流水线', is: '定性→规则→沙箱→结局，当前操作走到哪、卡在哪。', anchor: '.pg-pipe' }, { at: '历史', is: '每个操作的判决，拒绝红/升级黄/放行绿。', anchor: '.pg-hist' }, { at: '读数', is: '模式、本操作结局、已判几个。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { stage: string; cur: number; mode: string; op?: { cmd: string; eLabel: string }; res?: { rule: string; sandbox: string; final: string; fLabel: string }; total: number }; return [
+      { k: '本步输入', v: st.cur < 0 ? `模型想跑的 ${st.total} 个操作（模式 ${st.mode}）` : `操作 ${st.cur + 1}/${st.total}：${st.op?.cmd}（${st.op?.eLabel}）` },
+      { k: '判定规则', v: '两道相互独立的墙：①规则/审批 deny→ask→allow，首次匹配即生效；②沙箱物理隔离、fail-closed(网络默认关、写只在工作区内)。两墙都过才真跑；越权=带理由申请+一次人工批准的一次性升级。模式决定"写"要不要问。' },
+      { k: '本步结果', v: st.cur < 0 ? `${st.total} 个待逐个判` : `${st.res?.fLabel}（${st.res?.rule === 'deny' ? 'deny 规则首次匹配即拦' : st.res?.sandbox === 'block' ? '沙箱 fail-closed 拦' : st.res?.sandbox === 'escalate' ? '越界→一次性升级' : '两墙都过'}）` },
+    ] },
+    verdict: (s: never) => { const st = s as { stage: string; cur: number; res?: { final: string }; mode: string; total: number; history: { final: string }[] }; return st.stage === 'done' ? `${st.history.filter(h => h.final !== 'blocked').length}跑/${st.history.filter(h => h.final === 'blocked').length}拦` : st.cur < 0 ? `${st.mode}·${st.total} 待判` : st.res?.final === 'blocked' ? '拒绝' : st.res?.final === 'escalate-run' ? '升级放行' : st.res?.final === 'ask-run' ? '问过放行' : '放行' },
+    try: [{ act: '把模式切成「放行」', watch: 'edit/rm 都放行了——但 curl 还是被沙箱拦住：两道墙相互独立，跳过审批也过不了沙箱。' }, { act: '把模式切成「计划」', watch: '所有写(edit/rm/写外)都拒，只有 read 能跑——计划=只读探查。' }], terms: [],
+  },
   queryplan: {
     question: '同一个查询有好几条路可走，数据库优化器凭什么选其中一条？',
     read: [{ at: '候选路径', is: '每条访问路径的 type + 估扫描行数代价条。', anchor: '.qp-paths' }, { at: 'EXPLAIN', is: '末步选中路径的 type/key/rows。', anchor: '.qp-explain' }],
