@@ -5107,3 +5107,31 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
   font-size:var(--t-ui);font-weight:600}
 .ra-halt.answer{color:var(--hit);border-color:color-mix(in srgb,var(--hit) 45%,var(--line));background:color-mix(in srgb,var(--hit) 8%,transparent)}
 .ra-halt.stuck,.ra-halt.budget,.ra-halt.error{color:var(--miss);border-color:color-mix(in srgb,var(--miss) 45%,var(--line));background:color-mix(in srgb,var(--miss) 8%,transparent)}
+
+/* ── 子 Agent/委派 subagent ─────────────────────────────────────── */
+/* token 账本 */
+.sa-ledger{margin:8px 0;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--sunk-1)}
+.sa-led-h{font:var(--t-meta) var(--sans);color:var(--faint);margin-bottom:5px}
+.sa-bar{display:flex;height:12px;border-radius:6px;overflow:hidden;border:1px solid var(--line)}
+.sa-ret{background:color-mix(in srgb,var(--hit) 62%,transparent);min-width:2px}
+.sa-save{background:color-mix(in srgb,#7466E6 55%,transparent)}
+.sa-led-n{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:5px;font-size:var(--t-ui);color:var(--dim)}
+.sa-led-n b{color:var(--ink)}
+.sa-ret-l b{color:var(--hit)} .sa-save-l b{color:#7466E6}
+/* 委派树 */
+.sa-tree{margin:8px 0;display:flex;flex-direction:column;gap:3px}
+.sa-node{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;padding:4px 8px;border-radius:4px;
+  border-left:3px solid var(--line);background:var(--panel);font-size:var(--t-ui)}
+.sa-node.root{border-left-color:var(--ink);background:var(--panel-2)}
+.sa-node.cur{border-left-color:var(--now);background:color-mix(in srgb,var(--now) 8%,transparent)}
+.sa-node.blocked{border-left:3px dashed var(--miss);background:color-mix(in srgb,var(--miss) 7%,transparent)}
+.sa-node.blocked .sa-nn,.sa-node.blocked .sa-nr{color:var(--miss)}
+.sa-nn{font-weight:600;color:var(--ink)}
+.sa-nd{flex:none;font:var(--t-meta) var(--mono);color:var(--faint);border:1px solid var(--line);border-radius:3px;padding:0 4px}
+.sa-nt{font:var(--t-meta) var(--mono);color:var(--faint)}
+.sa-nt b{color:var(--dim)} .sa-nt em{color:var(--hit);font-style:normal}
+.sa-nr{flex:1 1 100%;font-size:var(--t-meta);color:var(--dim);margin-left:20px}
+/* 守卫 chips */
+.sa-guards{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.sa-guards span{font:var(--t-meta) var(--mono);color:var(--faint);border:1px solid var(--line);border-radius:3px;padding:1px 6px}
+.sa-guards span.on{color:var(--miss);border-color:color-mix(in srgb,var(--miss) 45%,var(--line));background:color-mix(in srgb,var(--miss) 8%,transparent)}

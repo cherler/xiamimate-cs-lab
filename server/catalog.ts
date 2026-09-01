@@ -89,6 +89,7 @@ import { reactagentKernel } from '../src/kernels/reactagent.ts'
 import { ctxcompactKernel } from '../src/kernels/ctxcompact.ts'
 import { toolcallKernel } from '../src/kernels/toolcall.ts'
 import { permguardKernel } from '../src/kernels/permguard.ts'
+import { subagentKernel } from '../src/kernels/subagent.ts'
 import { lfucacheKernel } from '../src/kernels/lfucache.ts'
 import { trieKernel } from '../src/kernels/trie.ts'
 import { quickselectKernel } from '../src/kernels/quickselect.ts'
@@ -1641,6 +1642,41 @@ export const CATALOG: CatalogEntry[] = [
         ask: '模型要写工作区外的文件(越出沙箱范围)，安全的处理是?', kind: 'choice',
         compute: () => ({ answer: '一次性升级：模型带理由申请更宽范围 + 一次人工批准，而且只这一次(one-shot、不给 allow-always)——防"批一次以后全放行"的权限蔓延', step: 5, evidence: '本例 write /etc/hosts 越界 → 升级 → 一次批准 → 仅此一次运行' }),
         distractors: () => ['直接拒绝，永远不给写工作区外', '批准一次后就永久放行(allow-always)', '模型自己提权、不用问人'],
+      },
+    ],
+  },
+  {
+    id: 'subagent', title: '子 Agent · 委派', kernel: subagentKernel as Kernel<unknown>, doc: trivialDoc('subagent'),
+    facts: [
+      {
+        id: 'sa_why', label: '为什么要派独立子 agent',
+        ask: '复杂任务，父 agent 为什么要派独立子 agent 去干、而不是自己全包?', kind: 'choice',
+        compute: t => { const f = t as unknown as { stage: string; internalTotal: number; returnTotal: number }[]; const d = f.find(x => x.stage === 'done'); return ({ answer: '省上下文：子在自己独立的上下文里探索(读文件/试错，烧很多 token)，只把最终结论回传给父(几十 token)；大块探索关在子里、不污染父。也顺带聚焦(子不被父的历史干扰)', step: f.findIndex(x => x.stage === 'done'), evidence: d ? `本例子内部共 ${d.internalTotal}t，父只涨 ${d.returnTotal}t` : '子内部大、回传小' }) },
+        distractors: () => ['为了跑得更慢', '子 agent 更聪明、能力更强', '为了绕过父的权限限制'],
+      },
+      {
+        id: 'sa_return', label: '子 agent 回传给父的是什么',
+        ask: '子 agent 干完活，回传给父 agent 的是什么?', kind: 'choice',
+        compute: () => ({ answer: '只回传最终结论(几十 token)，不是子的整条对话轨迹。省 token，但父也看不到子的完整推理——要细节就让子写进结果里', step: 1, evidence: '子内部几百 t 的探索，只回传一句结论' }),
+        distractors: () => ['把子的完整对话轨迹全搬回父', '什么都不回传', '回传子用了多少 token'],
+      },
+      {
+        id: 'sa_forkbomb', label: '怎么防子生子指数爆炸',
+        ask: '子 agent 还能再派子 agent，怎么防止子生子、指数爆炸(fork 炸弹)?', kind: 'choice',
+        compute: t => { const f = t as unknown as { stage: string; depthCap: number; concCap: number }[]; const d = f.find(x => x.depthCap != null); return ({ answer: '深度上限(Claude Code maxDepth 3：到上限就把 spawn 工具摘掉、节点发不出委派) + 并发上限(≤20 同时跑)', step: f.findIndex(x => x.stage === 'blocked'), evidence: `本例深度上限 ${d?.depthCap ?? 3}、并发上限 ${d?.concCap ?? 20}；B1a 在深度 3 想再派 → 拦下` }) },
+        distractors: () => ['不用防，模型会自己收敛', '每次派子都问一次用户', '限制子 agent 的 token 长度'],
+      },
+      {
+        id: 'sa_spawn_fork', label: 'spawn 和 fork 的区别',
+        ask: '起子 agent 有 spawn(新开) 和 fork(承接) 两种，区别是?', kind: 'choice',
+        compute: () => ({ answer: 'spawn=子从空白上下文起(便宜、干净、但没父的历史)；fork=子承接父的前缀(续得上、还能复用 provider 的 KV 缓存，但起始更贵)。要连续性用 fork、要省事用 spawn', step: 0, evidence: '本例新开=子起 10t、承接=子起 120t(父前缀)' }),
+        distractors: () => ['spawn 和 fork 完全一样', 'fork 更快因为不用上下文', 'spawn 会把父 agent 也复制一份'],
+      },
+      {
+        id: 'sa_saved', label: '委派省下多少 token',
+        ask: '本例子 agent 内部共花 230t、回传给父 36t，父一共省下多少 token?', kind: 'number',
+        compute: t => { const f = t as unknown as { stage: string; internalTotal: number; returnTotal: number }[]; const d = f.find(x => x.stage === 'done'); const saved = (d?.internalTotal ?? 230) - (d?.returnTotal ?? 36); return ({ answer: String(saved), step: f.findIndex(x => x.stage === 'done'), evidence: `子内部 ${d?.internalTotal ?? 230}t − 回传 ${d?.returnTotal ?? 36}t = ${saved}t 的探索被关在子里、没进父上下文` }) },
+        distractors: numDistractors,
       },
     ],
   },

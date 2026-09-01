@@ -712,6 +712,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { stage: string; cur: number; res?: { final: string }; mode: string; total: number; history: { final: string }[] }; return st.stage === 'done' ? `${st.history.filter(h => h.final !== 'blocked').length}跑/${st.history.filter(h => h.final === 'blocked').length}拦` : st.cur < 0 ? `${st.mode}·${st.total} 待判` : st.res?.final === 'blocked' ? '拒绝' : st.res?.final === 'escalate-run' ? '升级放行' : st.res?.final === 'ask-run' ? '问过放行' : '放行' },
     try: [{ act: '把模式切成「放行」', watch: 'edit/rm 都放行了——但 curl 还是被沙箱拦住：两道墙相互独立，跳过审批也过不了沙箱。' }, { act: '把模式切成「计划」', watch: '所有写(edit/rm/写外)都拒，只有 read 能跑——计划=只读探查。' }], terms: [],
   },
+  subagent: {
+    question: '复杂任务派给子 agent，怎么既省父的上下文、又不让子生子把配额炸光？',
+    read: [{ at: 'token 账本', is: '子内部干的活 vs 回传给父，差=省下的。', anchor: '.sa-ledger' }, { at: '委派树', is: '父→子的树，按深度缩进。', anchor: '.sa-tree' }, { at: '守卫', is: '深度 / 并发上限。', anchor: '.sa-guards' }],
+    step: (s: never) => { const st = s as { stage: string; cur: string; nodes: { id: string; name: string; depth: number; internalTok: number; returnTok: number }[]; parentCtx: number; internalTotal: number; returnTotal: number; depthCap: number }; const n = st.nodes.find(x => x.id === st.cur); return [
+      { k: '本步输入', v: st.stage === 'intro' ? `父任务，起始上下文 ${st.parentCtx}t` : st.stage === 'blocked' ? '子想在深度上限处再派子 agent' : st.stage === 'done' ? '汇总账本' : n ? `派子 agent「${n.name}」(深度 ${n.depth})` : '派子 agent' },
+      { k: '判定规则', v: '子在独立上下文里探索、只把最终结论回传给父(省父的 token)；深度上限(maxDepth 3，到顶摘 spawn 工具)+并发上限防 fork 炸弹；只回传结果非整条轨迹；子权限不可自扩、崩了不连累父。' },
+      { k: '本步结果', v: st.stage === 'blocked' ? `深度已达 ${st.depthCap}，spawn 工具被摘 → 拦下（防 fork 炸弹）` : st.stage === 'done' ? `子内部共 ${st.internalTotal}t，父只涨 ${st.returnTotal}t，省 ${st.internalTotal - st.returnTotal}t` : n ? `内部花 ${n.internalTok}t、只回传 ${n.returnTok}t → 父省 ${n.internalTok - n.returnTok}t（父现 ${st.parentCtx}t）` : `父 ${st.parentCtx}t` },
+    ] },
+    verdict: (s: never) => { const st = s as { stage: string; cur: string; internalTotal: number; returnTotal: number }; return st.stage === 'done' ? `省 ${st.internalTotal - st.returnTotal}t` : st.stage === 'blocked' ? '深度上限拦下' : st.cur ? `派 ${st.cur}` : '待派' },
+    try: [{ act: '切「承接(fork)」', watch: '子起始从空白 10t 变成承接父前缀 120t——有上下文续得上，但更贵；只回传结果这条不变。' }, { act: '看深度守卫', watch: 'B1a 在深度 3 想再往下派 → spawn 工具被摘、拦下，防子生子指数爆炸。' }], terms: [],
+  },
   queryplan: {
     question: '同一个查询有好几条路可走，数据库优化器凭什么选其中一条？',
     read: [{ at: '候选路径', is: '每条访问路径的 type + 估扫描行数代价条。', anchor: '.qp-paths' }, { at: 'EXPLAIN', is: '末步选中路径的 type/key/rows。', anchor: '.qp-explain' }],

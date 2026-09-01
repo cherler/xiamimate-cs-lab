@@ -288,6 +288,8 @@ import { toolcallKernel, type ToolCallState } from '@engine/kernels/toolcall.ts'
 import { ToolCallStage } from './stages/ToolCallStage.tsx'
 import { permguardKernel, type PermState } from '@engine/kernels/permguard.ts'
 import { PermGuardStage } from './stages/PermGuardStage.tsx'
+import { subagentKernel, type SubState } from '@engine/kernels/subagent.ts'
+import { SubAgentStage } from './stages/SubAgentStage.tsx'
 import { lfucacheKernel, type LFUState } from '@engine/kernels/lfucache.ts'
 import { LFUCacheStage } from './stages/LFUCacheStage.tsx'
 import { trieKernel, type TrieState } from '@engine/kernels/trie.ts'
@@ -5864,6 +5866,31 @@ const permguard: Experiment<PermState> = {
     { label: '已判', value: s.history.length ? `${s.history.filter(h => h.final !== 'blocked').length}跑 / ${s.history.filter(h => h.final === 'blocked').length}拦` : '0' },
   ],
 }
+const subagent: Experiment<SubState> = {
+  id: 'subagent', group: '大模型项目实战', title: '子 Agent · 委派', subtitle: '派活给子 agent：独立上下文省 token、只回传结果、防 fork 炸弹',
+  kernel: subagentKernel, defaultDoc: { kind: 'subagent', params: { seed: '新开' }, entities: [], streams: [] },
+  params: [{ key: 'seed', label: '起始方式', kind: 'enum', options: ['新开', '承接'] }],
+  paramsNote: 'Agent 工程八股：复杂任务，父 agent 把子任务派给子 agent。为什么要独立子 agent？——**省上下文**：子在自己独立上下文里探索(读一堆文件、试一堆)，**只把结论回传**给父，大块探索不污染父。本例 4 个子内部共花 230t，父只涨 36t、省 194t。**起始方式**：新开(spawn)从空白起(便宜、无父历史)/承接(fork)带父前缀(KV 缓存友好但更贵)。**防 fork 炸弹**：深度上限(maxDepth 3，到顶摘 spawn 工具)、并发上限(≤20)。子只回传最终结果(非整条轨迹)、子权限不可自扩、子崩不连累父。详见讲解卡。',
+  bounds: [
+    '省上下文=头号理由：子在独立上下文探索、只回传结论，大块探索不污染父(本例子共 230t、父只涨 36t)',
+    '防 fork 炸弹：深度上限(maxDepth 3，到顶摘 spawn 工具)+并发上限(≤20)，不然子生子指数爆炸',
+    '只回传最终结果(不是整条轨迹，省 token)；子权限不可自扩(派出时定死，接沙箱/权限)；子崩不连累父',
+    '新开(spawn)从空白起省事 / 承接(fork)带父前缀续得上、KV 缓存友好。真实框架:Claude Code Task、DeepSeek ctx.subagents、OpenHands AgentDelegate',
+  ],
+  tabs: [{ id: 'sa', label: '委派逐个展开' }], Stage: SubAgentStage, whyInRail: true,
+  tone: s => (s.stage === 'done' ? { key: 'good', label: `省 ${s.internalTotal - s.returnTotal}t` }
+    : s.stage === 'blocked' ? { key: 'bad', label: '深度上限拦下' }
+    : s.cur ? { key: 'idle', label: `派 ${s.cur}·省${s.nodes.find(n => n.id === s.cur) ? (s.nodes.find(n => n.id === s.cur)!.internalTok - s.nodes.find(n => n.id === s.cur)!.returnTok) : 0}t` }
+    : { key: 'idle', label: `父 ${s.parentCtx}t` }),
+  metric: s => (s.stage === 'done' ? 1 : Math.min(0.95, (s.step + 1) / 7)),
+  tickLabel: s => ({ intro: '始', child: '派', blocked: '拦', done: '省' }[s.stage] ?? '·'),
+  readouts: s => [
+    { label: '起始方式', value: `${s.seed}（子起 ${s.childStart}t）` },
+    { label: '父上下文', value: `${s.parentCtx}t`, tone: 'good' },
+    { label: '子内部 / 回传', value: `${s.internalTotal}t / ${s.returnTotal}t` },
+    { label: '省下', value: s.internalTotal > s.returnTotal ? `${s.internalTotal - s.returnTotal}t` : '—', tone: s.stage === 'done' ? 'good' : undefined },
+  ],
+}
 const lrucache: Experiment<LRUState> = {
   id: 'lrucache', group: '算法项目实战', title: '手写 LRU 缓存', subtitle: 'HashMap+双向链表，get/put 都 O(1)',
   kernel: lrucacheKernel, defaultDoc: { kind: 'lrucache', params: {}, entities: [], streams: [] }, params: [],
@@ -6533,7 +6560,7 @@ export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
   caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt, ecbcbc, birthday, aesround, hmac, totp,
-  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, bufferpool, queryplan, wildcard, regex, blockingqueue, rwlock, aba, happensbefore, lockstrategy, lrucache, lfucache, trie, quickselect, reactagent, ctxcompact, toolcall, permguard, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign, topk, feed, objectstore,
+  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, bufferpool, queryplan, wildcard, regex, blockingqueue, rwlock, aba, happensbefore, lockstrategy, lrucache, lfucache, trie, quickselect, reactagent, ctxcompact, toolcall, permguard, subagent, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign, topk, feed, objectstore,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,
