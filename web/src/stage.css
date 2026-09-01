@@ -5516,3 +5516,23 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .ct-dyn{border-radius:8px;padding:8px 10px;font-size:var(--t-ui);line-height:1.55}
 .ct-dyn.ct-dgood{background:color-mix(in srgb,var(--hit) 8%,transparent);border:1px solid color-mix(in srgb,var(--hit) 35%,var(--line))}
 .ct-dyn.ct-dbad{background:color-mix(in srgb,var(--miss) 7%,transparent);border:1px solid color-mix(in srgb,var(--miss) 30%,var(--line))}
+
+/* contactlcp · 接触动力学 */
+.scdn.lc-stick{color:var(--hit)}
+.scdn.lc-slip{color:var(--miss)}
+.lc-line{font-size:var(--t-ui);line-height:1.7;margin-top:8px;font-variant-numeric:tabular-nums}
+.lc-n{font-family:var(--mono);color:var(--now);font-weight:700;margin-right:6px}
+.lc-conewrap{margin-top:10px}
+.lc-bar{position:relative;height:34px;margin:16px 0 6px;background:var(--sunk-1);border:1px solid var(--line);border-radius:6px}
+.lc-cone{position:absolute;top:0;bottom:0;left:0;background:color-mix(in srgb,var(--hit) 16%,transparent);border-right:2px solid var(--hit);border-radius:6px 0 0 6px;display:flex;align-items:center;justify-content:center}
+.lc-conelbl{font:var(--t-meta) var(--sans);color:var(--hit)}
+.lc-limit{position:absolute;top:-14px;bottom:-14px;width:0;border-left:2px dashed var(--hit)}
+.lc-limlbl{position:absolute;top:-2px;left:4px;font:var(--t-meta) var(--mono);color:var(--hit);white-space:nowrap}
+.lc-force{position:absolute;top:-6px;bottom:-6px;width:3px;border-radius:2px}
+.lc-force.lc-fstick{background:var(--hit)}
+.lc-force.lc-fslip{background:var(--miss)}
+.lc-flbl{position:absolute;bottom:-16px;left:50%;transform:translateX(-50%);font:var(--t-meta) var(--mono);white-space:nowrap;color:var(--ink)}
+.lc-verdict{margin-top:14px;border-radius:8px;padding:8px 10px;font-size:var(--t-ui);line-height:1.55}
+.lc-verdict.lc-vstick{background:color-mix(in srgb,var(--hit) 8%,transparent);border:1px solid color-mix(in srgb,var(--hit) 35%,var(--line))}
+.lc-verdict.lc-vslip{background:color-mix(in srgb,var(--miss) 8%,transparent);border:1px solid color-mix(in srgb,var(--miss) 35%,var(--line))}
+.lc-accel{border-top:1px solid var(--line);padding-top:8px}

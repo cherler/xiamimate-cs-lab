@@ -351,6 +351,7 @@ import { dyneomKernel, type DynState } from '@engine/kernels/dyneom.ts'
 import { rneaKernel, type RneaState } from '@engine/kernels/rnea.ts'
 import { fwddynKernel, type FwdState } from '@engine/kernels/fwddyn.ts'
 import { computedtorqueKernel, type CtcState } from '@engine/kernels/computedtorque.ts'
+import { contactlcpKernel, type LcpState } from '@engine/kernels/contactlcp.ts'
 import { ikKernel, type IKState } from '@engine/kernels/ik.ts'
 import { jacobianKernel, type JacoState } from '@engine/kernels/jacobian.ts'
 import { kalmanKernel, type KalmanState } from '@engine/kernels/kalman.ts'
@@ -378,6 +379,7 @@ import { DynEomStage } from './stages/DynEomStage.tsx'
 import { RneaStage } from './stages/RneaStage.tsx'
 import { FwdDynStage } from './stages/FwdDynStage.tsx'
 import { ComputedTorqueStage } from './stages/ComputedTorqueStage.tsx'
+import { ContactLcpStage } from './stages/ContactLcpStage.tsx'
 import { IKStage } from './stages/IKStage.tsx'
 import { JacobianStage } from './stages/JacobianStage.tsx'
 import { KalmanStage } from './stages/KalmanStage.tsx'
@@ -6590,6 +6592,33 @@ const computedtorque: Experiment<CtcState> = {
     { label: '误差动力学', value: s.showDyn ? (s.linear ? 'ë+Kd ė+Kp e=0（线性解耦）' : '残留非线性') : '—', tone: s.showDyn && !s.linear ? 'bad' : undefined },
   ],
 }
+const contactlcp: Experiment<LcpState> = {
+  id: 'contactlcp', group: '刚体动力学', title: '接触动力学 · 摩擦锥', subtitle: '物理引擎每步怎么解接触：法向互补 0≤f_n⊥φ≥0 + 库仑摩擦锥 |f_t|≤μf_n 的粘/滑开关',
+  kernel: contactlcpKernel, defaultDoc: { kind: 'contactlcp', params: { push: '重推' }, entities: [], streams: [] },
+  params: [{ key: 'push', label: '水平推力', kind: 'enum', options: ['轻推', '临界', '重推'] }],
+  paramsNote: '接触和自由运动不同——**非光滑、集值**:法向不能拉不能穿、切向有摩擦还分粘/滑,没法写成光滑 f(x),所以物理引擎(MuJoCo/Bullet)每步组成 **LCP/QP** 求解。最小例子:滑块(m=1)压水平面(μ=0.5)、水平推力 F。两条支柱:①**法向互补 0≤f_n⊥φ≥0**(分离 φ>0→f_n=0 / 接触 φ=0→f_n≥0、只推不拉),静止 f_n=mg=9.81 ②**库仑摩擦锥 |f_t|≤μf_n**=4.905(最大静摩擦)。**粘/滑=摩擦锥的 KKT 开关**:F≤μf_n→粘(a=0)、F>μf_n→滑(f_t饱和μf_n、a=(F−μf_n)/m)。切「推力」看轻推(粘)/临界(将滑)/重推(滑 a=1.095)。锥常线性化成金字塔。全现算。连「阻抗力控/正向动力学仿真」。详见讲解卡。',
+  bounds: [
+    '接触=非光滑集值:法向互补 0≤f_n⊥φ≥0(不能拉不能穿)+库仑摩擦锥 |f_t|≤μf_n;物理引擎每步组 LCP/QP 解',
+    '粘/滑=摩擦锥 KKT 开关:F≤μf_n 粘(f_t=F 在锥内、a=0)、F>μf_n 滑(f_t=μf_n 在锥边界反向、a=(F−μf_n)/m)',
+    '锥常线性化成金字塔(几个切向方向、β≥0、Σβ≤μf_n)供 LCP;碰撞要速度级/冲量级(Painlevé 佯谬),穿透用 Baumgarte/软约束修正',
+    '连:正向动力学/仿真每步在动力学外还要解接触 LCP;阻抗力控处理接触柔顺;抓取力闭合/腿足落脚建在摩擦锥上。参考:Stewart-Trinkle、MuJoCo 软凸锥、Tedrake《Underactuated》',
+  ],
+  tabs: [{ id: 'lc', label: '接触求解逐步跑' }], Stage: ContactLcpStage, whyInRail: true,
+  tone: s => (s.stage === 'done' ? { key: 'good', label: '互补+摩擦锥' }
+    : s.stage === 'accel' ? (s.stick ? { key: 'good', label: 'a=0 粘' } : { key: 'bad', label: `a=${s.accel} 滑` })
+    : s.stage === 'stickslip' ? (s.stick ? { key: 'good', label: '粘住' } : { key: 'bad', label: '滑动' })
+    : s.stage === 'cone' ? { key: 'idle', label: '摩擦锥' }
+    : s.stage === 'normal' ? { key: 'idle', label: '法向互补' }
+    : { key: 'idle', label: '接触' }),
+  metric: s => (s.stage === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => ({ intro: '触', normal: '法', cone: '锥', stickslip: '粘', accel: 'a', done: '成' }[s.stage] ?? '·'),
+  readouts: s => [
+    { label: '推力 F / μf_n', value: `${s.F} / ${s.maxStatic} N` },
+    { label: '法向力 f_n=mg', value: s.showNormal ? `${s.fn} N` : '—' },
+    { label: '粘/滑', value: s.showStick ? (s.stick ? '粘住(F≤μf_n)' : '滑动(F>μf_n)') : '—', tone: s.showStick ? (s.stick ? 'good' : 'bad') : undefined },
+    { label: '加速度 a', value: s.showAccel ? `${s.accel} m/s²` : '—', tone: s.showAccel && s.accel > 0 ? 'bad' : undefined },
+  ],
+}
 const ik: Experiment<IKState> = {
   id: 'ik', group: '机器人学基础', title: '逆运动学 IK', subtitle: '末端目标 → 关节角：多解(肘上/肘下)、可无解',
   kernel: ikKernel, defaultDoc: { kind: 'ik', params: {}, entities: [], streams: [] }, params: [],
@@ -7022,7 +7051,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, dyneom, rnea, fwddyn, computedtorque, ik, jacobian, quat, trajectory, kalman, icp, slam, impedance, mpc, pid, rrt, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
+  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, icp, slam, impedance, mpc, pid, rrt, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
 ] as unknown as AnyExperiment[]
 
 /**

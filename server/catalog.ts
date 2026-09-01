@@ -113,6 +113,7 @@ import { dyneomKernel } from '../src/kernels/dyneom.ts'
 import { rneaKernel } from '../src/kernels/rnea.ts'
 import { fwddynKernel } from '../src/kernels/fwddyn.ts'
 import { computedtorqueKernel } from '../src/kernels/computedtorque.ts'
+import { contactlcpKernel } from '../src/kernels/contactlcp.ts'
 import { ikKernel } from '../src/kernels/ik.ts'
 import { jacobianKernel } from '../src/kernels/jacobian.ts'
 import { quatKernel } from '../src/kernels/quat.ts'
@@ -2215,6 +2216,41 @@ export const CATALOG: CatalogEntry[] = [
         ask: '大 V 有百万粉丝，推拉结合怎么避免他发帖时的写放大?', kind: 'choice',
         compute: () => ({ answer: '普通用户走推（读快）；大 V 走拉——发帖不推给百万粉丝、只存自己 outbox，粉丝刷时才现拉大 V 的帖、和收件箱归并。既避免写放大、普通场景又读快', step: 5, evidence: '本例大 V 100 万粉，2 帖走拉省下 2,000,000 次写' }),
         distractors: () => ['给大 V 更多服务器推', '禁止大 V 发帖太频繁', '大 V 也全量推、只是异步'],
+      },
+    ],
+  },
+  {
+    id: 'contactlcp', title: '接触动力学 · 摩擦锥', kernel: contactlcpKernel as Kernel<unknown>, doc: trivialDoc('contactlcp'),
+    facts: [
+      {
+        id: 'lcp_normal', label: '法向接触为什么是互补',
+        ask: '物理引擎里法向接触为什么写成互补条件 0≤f_n⊥φ≥0、而不是一个普通函数?', kind: 'choice',
+        compute: () => ({ answer: '因为接触非光滑/集值:要么分离(间隙 φ>0→支持力 f_n=0)、要么接触(φ=0→f_n≥0),二者必居其一且乘积为0;而且法向力只能推不能拉(面不会吸住物体)。没法写成一个光滑的 f_n(φ),只能用互补/LCP', step: 2, evidence: '互补=非光滑的来源;f_n≥0 只推不拉' }),
+        distractors: () => ['因为接触力是常数、直接查表', '因为要节省计算、近似成互补', '因为法向力可以拉也可以推'],
+      },
+      {
+        id: 'lcp_cone', label: '库仑摩擦锥是什么',
+        ask: '库仑摩擦锥 |f_t|≤μf_n 里，粘(stick)和滑(slip)分别对应锥的什么位置?', kind: 'choice',
+        compute: () => ({ answer: '粘(v_t=0):f_t 在锥内部(可取任意平衡外力的反作用力);滑:f_t 落在锥边界(=μf_n)、方向反着滑动阻滑。所以粘/滑就是摩擦锥的 KKT 开关:锥内→粘、锥边界→滑', step: 3, evidence: '最大静摩擦=μf_n;滑时摩擦饱和在边界' }),
+        distractors: () => ['粘在边界、滑在内部', '粘和滑都在锥心', '摩擦力和法向力无关'],
+      },
+      {
+        id: 'lcp_stickslip', label: '粘/滑怎么判定',
+        ask: '滑块受水平推力 F、最大静摩擦 μf_n，怎么判定粘还是滑?加速度多少?', kind: 'choice',
+        compute: () => ({ answer: '比 F 和 μf_n:F≤μf_n→粘(摩擦力 f_t=F 在锥内、净力 0、a=0);F>μf_n→滑(摩擦力饱和在 μf_n、a=(F−μf_n)/m)。本例重推 F=6>4.905→滑、a=(6−4.905)/1=1.095', step: 4, evidence: '粘 a=0、滑 a=(F−μf_n)/m' }),
+        distractors: () => ['一直滑动、a=F/m', 'F 越大摩擦越大、永远粘住', '摩擦力总等于 F、a 恒为 0'],
+      },
+      {
+        id: 'lcp_engine', label: '引擎每步怎么解接触',
+        ask: '物理引擎(MuJoCo/Bullet)每步是怎么处理所有接触的?圆锥怎么进 LCP?', kind: 'choice',
+        compute: () => ({ answer: '每步把所有接触组成一个线性互补问题(LCP)或凸 QP,变量是接触冲量(f_n、切向 β、滑动松弛 λ),用 PGS/Lemke/内点法解;圆锥常线性化成金字塔(几个切向方向 β≥0、Σβ≤μf_n)变成线性 LCP,面越多越准越慢', step: 5, evidence: '金字塔=圆锥的线性化;冲量级处理碰撞(Painlevé)' }),
+        distractors: () => ['逐个接触独立用 ODE 积分', '忽略摩擦、只算法向', '用一次逆运动学求解'],
+      },
+      {
+        id: 'lcp_accel', label: '重推时滑块加速度',
+        ask: '重推 F=6N、滑动摩擦饱和在 μf_n≈4.9N、m=1kg，滑块加速度 a=(F−μf_n)/m 约多少?(m/s²，一位小数)', kind: 'number',
+        compute: t => { const f = t as unknown as { accel?: number }[]; const l = f.find(x => x.accel != null && x.accel > 0); const v = l?.accel != null ? Math.round(l.accel * 10) / 10 : 1.1; return ({ answer: String(v), step: 4, evidence: `a=(6−4.905)/1=1.095≈${v} m/s²;粘住时则 a=0` }) },
+        distractors: () => ['0', '0.5', '2.2', '6.0'],
       },
     ],
   },

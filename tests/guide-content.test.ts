@@ -349,6 +349,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { i: 2, step: 2, stage: 'law', ...base, showErr: true, showLaw: true, showTau: false, showDyn: false, phase: 'run' as const, focus: '伺服律' },
       b: { i: 3, step: 3, stage: 'torque', ...base, showErr: true, showLaw: true, showTau: true, showDyn: false, phase: 'run' as const, focus: '组力矩' },
     } })(),
+    contactlcp: (() => { const base = { push: 'heavy', pushLabel: '重推 F=6N', m: 1, g: 9.81, mu: 0.5, F: 6, fn: 9.81, maxStatic: 4.905, stick: false, ft: 4.905, accel: 1.095, log: '' }; return {
+      doc: { kind: 'contactlcp', params: { push: '重推' }, entities: [], streams: [] },
+      a: { i: 2, step: 2, stage: 'cone', ...base, showNormal: true, showCone: true, showStick: false, showAccel: false, phase: 'run' as const, focus: '摩擦锥' },
+      b: { i: 3, step: 3, stage: 'stickslip', ...base, showNormal: true, showCone: true, showStick: true, showAccel: false, phase: 'run' as const, focus: '粘/滑判定' },
+    } })(),
     queryplan: {
       doc: { kind: 'queryplan', params: {}, entities: [], streams: [] },
       a: { step: 1, op: 'path', query: 'q', revealed: 1, cur: 0, chosen: -1, paths: [{ name: '全表扫描', type: 'ALL', key: '—', rows: 10000, note: 'x' }, { name: '走 idx(city)', type: 'ref', key: 'idx_city', rows: 500, note: 'x' }, { name: '走 idx(age)', type: 'range', key: 'idx_age', rows: 6000, note: 'x' }], phase: 'run', focus: '候选路径：全表扫描（type=ALL，估扫 10000 行）' },

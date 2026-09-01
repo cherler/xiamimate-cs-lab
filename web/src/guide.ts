@@ -899,6 +899,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { stage: string; linear: boolean; tau: number[] }; const z = (x: number) => (Object.is(x, -0) ? 0 : x); return st.stage === 'done' ? '模型抵消非线性' : st.stage === 'errordyn' ? (st.linear ? 'ë+Kd ė+Kp e=0' : '残留非线性') : st.stage === 'torque' ? `τ=[${z(st.tau[0]!)}]` : st.stage === 'law' ? '伺服律v' : st.stage === 'error' ? '误差e,ė' : '反馈线性化' },
     try: [{ act: '切「计算力矩」', watch: 'τ=M·v+Cq̇+G=[21.7,3.08]，Cq̇+G抵消 → ë+Kd ė+Kp e=0 线性解耦。' }, { act: '切「只重力补偿」', watch: 'τ=Kp e+Kd ė+G=[20.01,−6.73]，消重力但科氏耦合没消、误差仍非线性。' }, { act: '切「纯 PID」', watch: 'τ=Kp e+Kd ė=[6,−8]，啥都不消、稳态下垂、要保守整定。' }], terms: [],
   },
+  contactlcp: {
+    question: '物理引擎(MuJoCo/Bullet)每一步怎么解接触力？为什么接触不是普通的 ODE，而要解一个互补问题？',
+    read: [{ at: '法向行', is: '法向互补 f_n=mg。', anchor: '.lc-line' }, { at: '摩擦锥条', is: 'μf_n 边界 vs 推力 F。', anchor: '.lc-bar' }, { at: '粘/滑条', is: 'F vs μf_n → 粘或滑。', anchor: '.lc-verdict' }],
+    step: (s: never) => { const st = s as { stage: string; pushLabel: string; m: number; g: number; mu: number; F: number; fn: number; maxStatic: number; stick: boolean; ft: number; accel: number }; return [
+      { k: '本步输入', v: st.stage === 'intro' ? `${st.pushLabel}、μ=${st.mu}` : st.stage === 'normal' ? '竖直平衡（求法向力）' : st.stage === 'cone' ? `f_n=${st.fn}、μ=${st.mu}` : st.stage === 'stickslip' ? `F=${st.F} 与 μf_n=${st.maxStatic}` : `F=${st.F}、f_t=${st.ft}、m=${st.m}` },
+      { k: '判定规则', v: `法向互补 0≤f_n⊥φ≥0（不能拉不能穿）；摩擦锥 |f_t|≤μf_n；粘/滑=KKT 开关：F≤μf_n 粘(a=0)、否则滑(f_t=μf_n、a=(F−μf_n)/m)。` },
+      { k: '本步结果', v: st.stage === 'intro' ? '接触非光滑、每步解 LCP' : st.stage === 'normal' ? `法向互补 f_n=m·g=${st.fn}N（只推不拉）` : st.stage === 'cone' ? `摩擦锥 |f_t|≤μf_n=${st.maxStatic}N（最大静摩擦）` : st.stage === 'stickslip' ? `F=${st.F}${st.stick ? '≤' : '>'}μf_n=${st.maxStatic} → ${st.stick ? '粘住' : '滑动'}、f_t=${st.ft}` : `a=(F−f_t)/m=${st.accel} m/s²${st.stick ? '（粘→0）' : ''}` },
+    ] },
+    verdict: (s: never) => { const st = s as { stage: string; stick: boolean; accel: number }; return st.stage === 'done' ? '互补+摩擦锥' : st.stage === 'accel' ? (st.stick ? 'a=0粘' : `a=${st.accel}滑`) : st.stage === 'stickslip' ? (st.stick ? '粘住' : '滑动') : st.stage === 'cone' ? '摩擦锥' : st.stage === 'normal' ? '法向互补' : '接触' },
+    try: [{ act: '切「轻推 F=3」', watch: 'F=3≤μf_n=4.905 → 粘住，f_t=3(锥内)、a=0。' }, { act: '切「重推 F=6」', watch: 'F=6>μf_n=4.905 → 滑动，f_t 饱和 4.905、a=(6−4.905)/1=1.095 m/s²。' }, { act: '切「临界 F=4.9」', watch: '4.9<4.905 刚好粘住(将滑未滑)、a=0——摩擦锥边界的开关。' }], terms: [],
+  },
   queryplan: {
     question: '同一个查询有好几条路可走，数据库优化器凭什么选其中一条？',
     read: [{ at: '候选路径', is: '每条访问路径的 type + 估扫描行数代价条。', anchor: '.qp-paths' }, { at: 'EXPLAIN', is: '末步选中路径的 type/key/rows。', anchor: '.qp-explain' }],
