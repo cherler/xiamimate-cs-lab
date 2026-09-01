@@ -1531,7 +1531,7 @@ export const CATALOG: CatalogEntry[] = [
       {
         id: 'cc_trigger', label: '压缩的触发阈值怎么算',
         ask: '上下文窗口 120 tokens、thresholdRatio=0.8，累计到多少 tokens 触发压缩?', kind: 'number',
-        compute: t => { const f = t as unknown as { threshold: number; stage: string }[]; const thr = f.find(x => x.threshold != null)?.threshold ?? 96; return ({ answer: String(thr), step: f.findIndex(x => x.stage === 'pressure'), evidence: `阈值 = 窗口 120 × thresholdRatio 0.8 = ${thr}（DeepSeek Harness/Goose 默认 0.8，Codex ~0.9）` }) },
+        compute: t => { const f = t as unknown as { threshold: number; stage: string }[]; const thr = f.find(x => x.threshold != null)?.threshold ?? 96; return ({ answer: String(thr), step: Math.max(0, f.findIndex(x => x.stage === 'full')), evidence: `阈值 = 窗口 120 × thresholdRatio 0.8 = ${thr}（DeepSeek Harness/Goose 默认 0.8，Codex ~0.9）` }) },
         distractors: numDistractors,
       },
       {
@@ -1543,7 +1543,7 @@ export const CATALOG: CatalogEntry[] = [
       {
         id: 'cc_sum_vs_elide', label: '总结 vs 省略的取舍',
         ask: '压中间那段，用"总结成摘要"还是"直接省略"，两者怎么取舍?', kind: 'choice',
-        compute: t => { const f = t as unknown as { stage: string }[]; return ({ answer: '总结(summarize)：换成结构化摘要，有损、要花一次模型调用，但信息密度高、Agent 记得住来龙去脉；省略(elide)：换成一行标记，免费、确定、可回放，但中间全丢、Agent 失忆', step: Math.max(0, f.findIndex(x => x.stage === 'compress')), evidence: 'DeepSeek/Claude Code/Codex 用 8 段式摘要模板；SWE-agent 用「N 行已省略」的确定性省略' }) },
+        compute: t => { const f = t as unknown as { stage: string }[]; return ({ answer: '总结(summarize)：换成结构化摘要，有损、要花一次模型调用，但信息密度高、Agent 记得住来龙去脉；省略(elide)：换成一行标记，免费、确定、可回放，但中间全丢、Agent 失忆', step: Math.max(0, f.findIndex(x => x.stage === 'rebuild')), evidence: 'DeepSeek/Claude Code/Codex 用 8 段式摘要模板；SWE-agent 用「N 行已省略」的确定性省略' }) },
         distractors: () => ['总结和省略没区别，随便用', '省略更好因为信息全保留', '总结免费所以永远用总结'],
       },
       {

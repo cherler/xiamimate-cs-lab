@@ -1,18 +1,13 @@
 /**
  * 内核：上下文压缩 Context Compaction —— Agent 长会话「记不住怎么办」（大模型 · 项目实战 / 求职八股）
- * 轴：step —— 一次真实的压缩流水线，逐段跑给你看
+ * 轴：step —— 一条会话被压缩的全过程，**每一步都真的改动那份消息列表**：满了 → 分区 → 剪 → 压 → 成。
  *
- * 这是大模型应用/Agent 工程师面试最高频的一道题:**「上下文窗口爆了怎么办?」**
- * 每个真实的编码 Agent(Codex / Claude Code / Aider / OpenHands / SWE-agent / DeepSeek Harness)都得解决它。
- * 做法收敛成一套流水线,本实验把它**真跑一遍、每个 token 数都算出来**:
- *   ① 量 token(常见坑:~4字/token 的估算会**低估中文**,压缩触发晚了);
- *   ② 压力检查:累计 ≥ 窗口×阈值(DeepSeek Harness thresholdRatio=0.8)就触发;
- *   ③ 分区:**留头**(系统提示+第一条任务,钉住) + **留最近**(retainRatio=0.16 的尾巴,原样保留) + **压中间**;
- *      —— 分界处不能拆散 工具调用/结果 这一对(call 没了 result、或 result 没了 call,模型会看懵);
- *   ④ 先剪超大工具结果(最便宜的一招:头4096 + [中间略] + 尾1024),够了就不总结;
- *   ⑤ 还超 → 压中间:**总结**(换成一段 8 段式摘要,省 token 但有损、要花一次模型调用) 或 **省略**(直接[N条已略],免费但全丢);
- *   ⑥ 重建视图 = 头 + 摘要 + 尾;**原始日志一条不删**(append-only,可回放可审计)。
- * 数据来自真实开源框架(见 brief 的引用);token 成本是固定输入(像 reactagent 的剧本),分区/累计/剪枝/前后对比全**现算**。
+ * 这是大模型应用/Agent 工程师面试最高频的一题：**上下文窗口爆了怎么办？**
+ * Agent 每一步都要把整段历史塞进 prompt 再问模型，会话一长就撞上窗口上限。做法收敛成三步操作：
+ *   ① 分区：留头（系统+首任务，钉住）+ 留最近（原样）+ 压中间；分界不拆「工具调用↔结果」对；
+ *   ② 先剪超大工具输出（最便宜的一招，够了就停）；
+ *   ③ 还超 → 压中间：总结（8段摘要，有损·花模型调用·记得住）或 省略（一行标记，免费·失忆）。
+ * 每个 token 都现算；素材来自真实开源框架（Codex / Claude Code / OpenHands / SWE-agent / DeepSeek Harness，见 brief）。
  */
 import { type SimDocument } from '../core/document.ts'
 import type { Kernel, CompiledModel } from '../core/kernel.ts'
@@ -25,7 +20,7 @@ export type ViewMsg = Msg & { region: Region; shownTok: number; note?: string }
 export type CompactState = {
   i: number
   step: number
-  stage: 'intro' | 'meter' | 'pressure' | 'partition' | 'prune' | 'compress' | 'rebuild'
+  stage: 'full' | 'partition' | 'prune' | 'rebuild'
   strategy: '总结' | '省略'
   N: number
   thresholdRatio: number
@@ -34,8 +29,8 @@ export type CompactState = {
   retain: number
   msgs: ViewMsg[]        // 当前帧每条消息的区域/显示 token
   running: number        // 当前保留的 token 合计
-  before: number         // 压缩前合计（首帧算出，后面帧带着）
-  meter?: { sample: string; chars: number; est: number; real: number }
+  before: number         // 压缩前合计
+  meter?: { sample: string; chars: number; est: number; real: number }  // 只在「满了」这步给 CJK 陷阱用
   relievedByPrune: boolean
   phase: 'run' | 'done'
   focus: string
@@ -96,40 +91,13 @@ export const ctxcompactKernel: Kernel<CompactState> = {
 
     const before = CONV.reduce((a, m) => a + m.tok, 0)
     const frames: Frame[] = []
-    const base = { strategy, N, thresholdRatio, retainRatio, threshold, retain, before, phase: 'run' as const }
-    const push = (f: Omit<Frame, 'step' | keyof typeof base> & Partial<Frame>) =>
-      frames.push({ ...base, step: frames.length, ...f } as Frame)
+    const b0 = { strategy, N, thresholdRatio, retainRatio, threshold, retain, before, phase: 'run' as const }
+    const push = (f: Omit<Frame, keyof typeof b0 | 'step'> & Partial<Frame>) =>
+      frames.push({ ...b0, step: frames.length, ...f } as Frame)
 
-    // ── ① intro：整段会话铺开，token 一路涨 ──
-    const all = CONV.map(m => view(m, 'middle'))
-    push({
-      stage: 'intro', msgs: all, running: before, relievedByPrune: false,
-      focus: `一次「修登录 500」的调试会话，越调越长：${CONV.length} 条消息、合计 ${before} tokens`,
-      log: `**上下文压缩：Agent 长会话「记不住怎么办」**\nAgent 每一步都要把**整段历史**塞进 prompt 再问模型。会话一长，就撞上**上下文窗口**上限（本例窗口 N=${N} tokens）。\n这是大模型应用/Agent 工程面试最高频的一题。看真实框架怎么处理：一次「修登录 500」的调试，${CONV.length} 条消息、合计 **${before} tokens**。`,
-    })
-
-    // ── ② 量 token：中文被低估的坑 ──
-    const sample = '第 42 行 user 对象没判空，session 可能已过期'
-    const est = estTok(sample), real = realTok(sample)
-    push({
-      stage: 'meter', msgs: all, running: before, relievedByPrune: false,
-      meter: { sample, chars: [...sample].length, est, real },
-      focus: `量 token 的坑：一段中文「${sample}」估算 ${est} tokens，实际约 ${real} tokens——低估 ${(real / est).toFixed(1)}×`,
-      log: `**① 量 token —— 别被估算骗了**\n很多框架用「**~4 字/token**」快速估 token（DeepSeek Harness 明说它「低估中文和 JSON schema」）。\n拿本会话里一句中文「${sample}」：${[...sample].length} 字 → 估算 **${est}** tokens，但正经数是 **${real}** tokens，**低估 ${(real / est).toFixed(1)}×**。\n后果：按估算你以为离满还早，其实早该压缩了——**中文场景压缩触发得偏晚**。本实验下面用的是真实 token 数。`,
-    })
-
-    // ── ③ 压力检查：≥ 阈值就触发 ──
-    push({
-      stage: 'pressure', msgs: all, running: before, relievedByPrune: false,
-      focus: `压力检查：累计 ${before} ≥ 阈值 ${threshold}（=窗口 ${N}×${thresholdRatio}）→ 触发压缩`,
-      log: `**② 压力检查**\n触发线 = 窗口 × thresholdRatio = ${N} × ${thresholdRatio} = **${threshold}** tokens（DeepSeek Harness 默认 0.8；Goose 0.8；Codex ~0.9）。\n当前累计 **${before}** ${before >= threshold ? '≥' : '<'} ${threshold} → ${before >= threshold ? '**触发压缩**。' : '还没到，先不动。'}\n（第二个触发点:真撞上「上下文超限」报错时,兜底再压一次。）`,
-    })
-
-    // ── ④ 分区：留头 + 留尾（不拆 call/result 对）+ 压中间 ──
-    //  头 = 到「第一条 user 任务」为止（系统提示 + 任务，钉住不动）
+    // 分区：头（到第一条 user 任务为止）+ 尾（最新往回收，≤retain，不拆 call/result 对）+ 中间
     const firstUser = CONV.findIndex(m => m.role === 'user')
     const headIds = new Set(CONV.slice(0, firstUser + 1).map(m => m.id))
-    //  尾 = 从最新往回收，累计 ≤ retain；遇到「结果」就把它的「调用」一起收，别拆对
     const tailIds = new Set<number>()
     let tailTok = 0
     for (let k = CONV.length - 1; k > firstUser; k--) {
@@ -137,74 +105,71 @@ export const ctxcompactKernel: Kernel<CompactState> = {
       if (headIds.has(m.id)) break
       const next = tailTok + m.tok
       if (next > retain && tailIds.size > 0) {
-        //  预算到顶。但若正卡在一对 call/result 中间，则把这一对补全再停。
         if (m.role === 'tool_call' && m.pair && tailIds.has(m.pair)) { tailIds.add(m.id); tailTok = next }
         break
       }
       tailIds.add(m.id); tailTok = next
     }
     const regionOf = (m: Msg): Region => headIds.has(m.id) ? 'head' : tailIds.has(m.id) ? 'tail' : 'middle'
+    const all = CONV.map(m => view(m, 'middle'))
     const parted = CONV.map(m => view(m, regionOf(m)))
     const headTok = sum(parted.filter(m => m.region === 'head'))
     const midCount = parted.filter(m => m.region === 'middle').length
-    push({
-      stage: 'partition', msgs: parted, running: before, relievedByPrune: false,
-      focus: `分区：头 ${headTok}t（钉住）· 中间 ${midCount} 条（待压）· 尾 ${tailTok}t（原样留，retain=${retain}）`,
-      log: `**③ 分区：留头 + 留最近 + 压中间**\n- **头**（蓝）：系统提示 + 第一条任务，**钉住不动**——丢了它 Agent 会忘了自己在干嘛（keep_first）。共 ${headTok}t。\n- **尾**（绿）：最新的对话，**原样保留**——正在做的事最重要。预算 retainRatio×N = 0.16×${N} = **${retain}t**，收了 ${tailTok}t。\n- **中间**（灰）：${midCount} 条，**要压的就是这里**。\n⚠️ 分界处**不拆散 工具调用↔结果**这一对：结果留下、调用被压走，模型就看不懂这结果哪来的。所以尾巴宁可略超预算也把成对的补齐。`,
-    })
-
-    // ── ⑤ 先剪超大工具结果（最便宜的一招）──
-    const pruned = parted.map(m =>
-      m.region === 'middle' && m.big
-        ? view(m, 'pruned', PRUNED_TOK, `${m.tok}t→${PRUNED_TOK}t`)
-        : m)
+    const pruned = parted.map(m => m.region === 'middle' && m.big ? view(m, 'pruned', PRUNED_TOK, `${m.tok}t→${PRUNED_TOK}t`) : m)
     const afterPrune = sum(pruned)
     const relievedByPrune = afterPrune < threshold
     const bigInMid = parted.filter(m => m.region === 'middle' && m.big).length
+    const midToks = sum(pruned.filter(m => m.region === 'middle'))
+
+    // 压中间后的重建视图（若剪枝已够则不压）
+    const checkpoint: ViewMsg = strategy === '总结'
+      ? { id: 1000, role: 'user', tok: SUMMARY_TOK, region: 'summary', shownTok: SUMMARY_TOK, label: '[压缩摘要·8段] 意图/关键概念/文件与代码/错误与修复/待办/当前进展/下一步/关键上下文' }
+      : { id: 1000, role: 'user', tok: ELIDE_TOK, region: 'elide', shownTok: ELIDE_TOK, label: `[中间 ${midCount} 条消息已省略，共 ${midToks}t]` }
+    const rebuilt = relievedByPrune ? pruned
+      : [...pruned.filter(m => m.region === 'head'), checkpoint, ...pruned.filter(m => m.region === 'tail')]
+    const afterCompress = sum(rebuilt)
+
+    // ── 满了：会话铺开 + 超阈值 + CJK 陷阱（就地一个提示，不再单开步）──
+    const sample = '第 42 行 user 对象没判空，session 可能已过期'
+    const est = estTok(sample), real = realTok(sample)
+    push({
+      stage: 'full', msgs: all, running: before, relievedByPrune,
+      meter: { sample, chars: [...sample].length, est, real },
+      focus: `会话 ${CONV.length} 条、合计 ${before} tokens，超过阈值 ${threshold}（窗口 ${N}×${thresholdRatio}）→ 得压缩`,
+      log: `**会话满了，该压缩了**\nAgent 每一步都要把**整段历史**塞进 prompt。这段「修登录 500」的调试已经 ${CONV.length} 条、**${before} tokens**，超过阈值 **${threshold}**（=窗口 ${N} × ${thresholdRatio}）。\n⚠️ 顺带一个坑：很多框架用「4字/token」估 token，它**低估中文**——一句「${sample}」估 ${est}、实际 ${real}（低估 ${(real / est).toFixed(1)}×）；你以为没满、其实早超了。下面按真实 token 压。`,
+    })
+
+    // ── ① 分区 ──
+    push({
+      stage: 'partition', msgs: parted, running: before, relievedByPrune,
+      focus: `切三段：留头 ${headTok}t（钉住）· 压中间 ${midCount} 条 · 留尾 ${tailTok}t（原样）`,
+      log: `**① 切三段：留头 + 留最近 + 压中间**\n**留头**（蓝，系统提示+第一条任务，${headTok}t，钉住——丢了它 Agent 忘了在干嘛）；**留尾**（绿，最新对话 ${tailTok}t，原样保留，预算 retainRatio ${retainRatio}×${N}≈${retain}t）；**中间**（灰，${midCount} 条）就是要压的。\n⚠️ 分界处不拆「工具调用↔结果」这一对：结果留着、调用被压走，模型看不懂结果哪来的。`,
+    })
+
+    // ── ② 先剪超大工具输出（中间还在，只是大块被剪短）──
     push({
       stage: 'prune', msgs: pruned, running: afterPrune, relievedByPrune,
-      focus: `先剪 ${bigInMid} 个超大工具结果：合计 ${before} → ${afterPrune}${relievedByPrune ? `（< ${threshold}，压力解除，免总结）` : `（仍 ≥ ${threshold}，继续压）`}`,
-      log: `**④ 先剪超大工具结果（cheapest lever first）**\n中间那些**整屏的工具输出**最占地方又最没信息密度。先把它们剪成「头 4096 字 + [中间略] + 尾 1024 字」（DeepSeek 的 tool-result pruner，不花模型调用）。\n本例剪了 **${bigInMid}** 个：合计 ${before} → **${afterPrune}** tokens。\n${relievedByPrune ? `已 < 阈值 ${threshold} → **压力解除，这一步就够了，不必总结**。（这就是"先上最便宜的一招"。）` : `仍 ≥ 阈值 ${threshold} → 光剪不够，进入下一步压中间。`}`,
+      focus: `先剪 ${bigInMid} 个超大工具输出：${before} → ${afterPrune} tokens`,
+      log: `**② 先剪超大工具输出**（最便宜的一招）\n中间那些**整屏的日志/文件输出**（黄色那几条）最占地方又最没密度，先剪成「头4096 + [中间略] + 尾1024 字」——不花模型调用。剪了 ${bigInMid} 个：**${before} → ${afterPrune}**。\n${relievedByPrune ? `已 < 阈值 ${threshold} → **够了，不用总结**。下一步就是最终视图。` : `仍 ≥ 阈值 ${threshold} → 光剪不够，下一步把整个中间压掉。`}`,
     })
 
-    // ── ⑥ 还超 → 压中间：总结 or 省略 ──
-    let rebuilt: ViewMsg[]
-    let afterCompress = afterPrune
-    if (relievedByPrune) {
-      rebuilt = pruned
-    } else {
-      const kept = pruned.filter(m => m.region !== 'middle')
-      const midToks = sum(pruned.filter(m => m.region === 'middle'))
-      const checkpoint: ViewMsg = strategy === '总结'
-        ? { id: 1000, role: 'user', tok: SUMMARY_TOK, region: 'summary', shownTok: SUMMARY_TOK,
-            label: `[压缩摘要·8段] 意图/关键概念/文件与代码/错误与修复/待办/当前进展/下一步/关键上下文` }
-        : { id: 1000, role: 'user', tok: ELIDE_TOK, region: 'elide', shownTok: ELIDE_TOK,
-            label: `[中间 ${midCount} 条消息已省略，共 ${midToks}t]` }
-      //  重建视图：头 + 检查点 + 尾（保持原顺序）
-      const headPart = kept.filter(m => m.region === 'head')
-      const tailPart = kept.filter(m => m.region === 'tail')
-      rebuilt = [...headPart, checkpoint, ...tailPart]
-      afterCompress = sum(rebuilt)
-      push({
-        stage: 'compress', msgs: rebuilt, running: afterCompress, relievedByPrune,
-        focus: `压中间【${strategy}】：中间 ${midToks}t → ${checkpoint.shownTok}t，合计 → ${afterCompress}`,
-        log: strategy === '总结'
-          ? `**⑤ 压中间 —— 总结（summarize）**\n把中间那段换成**一段结构化摘要**（DeepSeek/Claude Code/Codex 都用固定模板，8 段：意图·关键概念·文件与代码·错误与修复·待办·当前进展·下一步·关键上下文）。\n中间 ${midToks}t → 摘要 **${SUMMARY_TOK}t**，合计 → **${afterCompress}**。\n**代价**：要**花一次模型调用**、且**有损**（细节没了）。**好处**：信息密度高，Agent 还记得来龙去脉。切到「省略」看另一种。`
-          : `**⑤ 压中间 —— 省略（elide / truncate）**\n最省事:中间直接换成一行「[${midCount} 条已省略]」（SWE-agent 的做法，不花模型调用）。\n中间 ${midToks}t → **${ELIDE_TOK}t**，合计 → **${afterCompress}**。\n**好处**:免费、确定性、可回放。**代价**:**全丢**——Agent 忘了中间发生过什么。切到「总结」对比:总结贵但记得住,省略便宜但失忆。`,
-      })
-    }
-
-    // ── ⑦ 重建 + 原始日志不动 ──
+    // ── ③ 成：压中间（若还超）+ 重建视图，一步到位、列表明显收缩 ──
     push({
       stage: 'rebuild', msgs: rebuilt, running: afterCompress, relievedByPrune, phase: 'done',
-      focus: `压缩完成：${before} → ${afterCompress} tokens（省 ${before - afterCompress}），回到阈值 ${threshold} 之下`,
-      log: `**⑥ 重建视图 —— 喂给模型的是「头 + ${relievedByPrune ? '剪枝后的中间' : strategy === '总结' ? '摘要' : '省略标记'} + 尾」**\n**${before} → ${afterCompress} tokens**（省 ${before - afterCompress}），落回阈值 ${threshold} 之下,会话能继续。\n🔑 **原始日志一条没删**:压缩改的是「喂给模型的视图」,底层是 **append-only** 事件日志——可回放、可审计(DeepSeek/OpenHands 都这样)。而且重建时**系统提示和工具原样在最前面**,保住了服务商的 **KV/前缀缓存**(不然整段重算,又慢又贵)。\n\n**面试落点**:上下文爆了→①量 token(注意中文被低估)②到阈值触发③留头+留尾(别拆 call/result 对)④先剪超大工具输出⑤还超就总结(有损·花钱·记得住)或省略(免费·确定·失忆)⑥原始日志留底可回放。总结 vs 省略、剪枝 vs 总结的取舍、怎么保 KV 缓存——都是高频追问。`,
+      focus: relievedByPrune
+        ? `剪枝已够：${before} → ${afterCompress} tokens，回到阈值 ${threshold} 之下`
+        : `压中间【${strategy}】+ 重建：中间 ${midToks}t → ${strategy === '总结' ? SUMMARY_TOK : ELIDE_TOK}t，${before} → ${afterCompress}（省 ${before - afterCompress}）`,
+      log: relievedByPrune
+        ? `**成：剪枝已够，${before} → ${afterCompress}**\n光剪超大工具输出就落回阈值 ${threshold} 之下了，**不用总结**。喂给模型 = 头 + 剪过的中间 + 尾。\n🔑 原始日志一条没删（append-only、可回放）；系统提示在最前，保住 KV 缓存。`
+        : `**③ 压中间 → 成：${before} → ${afterCompress}**\n中间那 ${midCount} 条${strategy === '总结'
+            ? `收成**一段 8 段式摘要**（紫色那行：意图·关键概念·文件与代码·错误与修复·待办·当前进展·下一步·关键上下文）——有损、花一次模型调用，但记得住`
+            : `收成一行「[${midCount} 条已省略]」——免费、确定，但**全丢**、Agent 失忆`}：${afterPrune} → **${afterCompress}**。（切换「压中间」参数看另一种。）\n喂给模型 = **头 + ${strategy === '总结' ? '摘要' : '省略标记'} + 尾**，回到阈值 ${threshold} 之下。🔑 原始日志没删（可回放）、系统提示在最前保 KV 缓存。`,
     })
 
-    const base0: Frame = { ...base, stage: 'intro', step: -1, msgs: all, running: before, relievedByPrune: false, focus: '', log: '' }
+    const base0: Frame = { ...b0, stage: 'full', step: -1, msgs: all, running: before, relievedByPrune, phase: 'run', focus: '', log: '' }
     return {
       axis: { kind: 'step', label: '压缩步' },
-      initial: () => ({ i: -1, ...base0 }),
+      initial: () => ({ i: -1, ...base0, phase: 'run' }),
       describe: s => s.log,
       step(p) { const b = p ?? this.initial(); const idx = b.i + 1; if (idx >= frames.length) return null; return { state: { i: idx, ...frames[idx]! }, done: idx === frames.length - 1 } },
     }

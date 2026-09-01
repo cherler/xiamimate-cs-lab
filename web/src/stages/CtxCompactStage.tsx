@@ -48,8 +48,8 @@ export function CtxCompactStage({ state }: StageProps<CompactState>) {
 
         <Gauge N={N} running={running} threshold={threshold} before={before} />
 
-        {/* 量 token 的坑：中文被估算低估 */}
-        {stage === 'meter' && meter && (
+        {/* 量 token 的坑：中文被估算低估（就地提示，贴在「满了」这步）*/}
+        {stage === 'full' && meter && (
           <div className="cc-meter">
             <div className="cc-meter-s">「{meter.sample}」<em>{meter.chars} 字</em></div>
             <div className="cc-meter-r">

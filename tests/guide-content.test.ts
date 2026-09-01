@@ -235,8 +235,8 @@ console.log('\n【「这一步为什么」真的在跟着走】')
     },
     ctxcompact: {
       doc: { kind: 'ctxcompact', params: { strategy: '总结', thresholdRatio: 0.8 }, entities: [], streams: [] },
-      a: { i: 2, step: 2, stage: 'pressure', strategy: '总结', N: 120, thresholdRatio: 0.8, retainRatio: 0.16, threshold: 96, retain: 20, msgs: [], running: 139, before: 139, relievedByPrune: false, phase: 'run', focus: '压力检查：累计 139 ≥ 阈值 96', log: '' },
-      b: { i: 6, step: 6, stage: 'rebuild', strategy: '总结', N: 120, thresholdRatio: 0.8, retainRatio: 0.16, threshold: 96, retain: 20, msgs: [], running: 50, before: 139, relievedByPrune: false, phase: 'done', focus: '压缩完成：139 → 50', log: '' },
+      a: { i: 0, step: 0, stage: 'full', strategy: '总结', N: 120, thresholdRatio: 0.8, retainRatio: 0.16, threshold: 96, retain: 20, msgs: [], running: 139, before: 139, relievedByPrune: false, phase: 'run', focus: '会话满了：139 ≥ 阈值 96', log: '' },
+      b: { i: 4, step: 4, stage: 'rebuild', strategy: '总结', N: 120, thresholdRatio: 0.8, retainRatio: 0.16, threshold: 96, retain: 20, msgs: [], running: 50, before: 139, relievedByPrune: false, phase: 'done', focus: '压缩完成：139 → 50', log: '' },
     },
     queryplan: {
       doc: { kind: 'queryplan', params: {}, entities: [], streams: [] },

@@ -5783,19 +5783,16 @@ const ctxcompact: Experiment<CompactState> = {
     '原始日志append-only一条不删(可回放审计);系统提示+工具原样在最前→保住KV/前缀缓存。真实框架:Codex/Claude Code/OpenHands/SWE-agent/DeepSeek Harness',
   ],
   tabs: [{ id: 'cc', label: '压缩流水线' }], Stage: CtxCompactStage, whyInRail: true,
-  tone: s => (s.stage === 'rebuild' ? { key: 'good', label: `压缩完成 ${s.running}t` }
-    : s.stage === 'compress' ? { key: 'idle', label: `压中间·${s.strategy}` }
-    : s.stage === 'prune' ? (s.relievedByPrune ? { key: 'good', label: '剪枝已够' } : { key: 'idle', label: '先剪工具输出' })
+  tone: s => (s.stage === 'rebuild' ? (s.relievedByPrune ? { key: 'good', label: `剪够了 ${s.running}t` } : { key: 'good', label: `压缩完成 ${s.running}t` })
+    : s.stage === 'prune' ? { key: 'idle', label: `剪超大输出 →${s.running}t` }
     : s.stage === 'partition' ? { key: 'idle', label: '分区:头/中/尾' }
-    : s.stage === 'pressure' ? { key: 'bad', label: `超阈值 ${s.running}≥${s.threshold}` }
-    : s.stage === 'meter' ? { key: 'bad', label: '中文被低估' }
-    : { key: 'idle', label: '会话渐长' }),
-  metric: s => (s.stage === 'rebuild' ? 1 : Math.max(0, (s.step + 1) / 7)),
-  tickLabel: s => ({ intro: '始', meter: '量', pressure: '压', partition: '分', prune: '剪', compress: '缩', rebuild: '成' }[s.stage] ?? '·'),
+    : { key: 'bad', label: `满了 ${s.running}t ≥ ${s.threshold}` }),
+  metric: s => (s.stage === 'rebuild' ? 1 : Math.max(0, (s.step + 1) / 4)),
+  tickLabel: s => ({ full: '满', partition: '分', prune: '剪', rebuild: '成' }[s.stage] ?? '·'),
   readouts: s => [
     { label: '累计 token', value: `${s.running} / ${s.N}`, tone: s.running >= s.threshold ? 'bad' : 'good' },
     { label: '压缩阈值', value: `${s.threshold}（${s.thresholdRatio}×窗口）` },
-    { label: '本步', value: { intro: '会话渐长', meter: '量 token·中文陷阱', pressure: '压力检查', partition: '分区', prune: '剪超大工具输出', compress: `压中间·${s.strategy}`, rebuild: '重建视图' }[s.stage] ?? '—' },
+    { label: '本步', value: { full: '会话满了·超阈值', partition: '① 分区', prune: '② 先剪超大工具输出', rebuild: s.relievedByPrune ? '成·剪枝已够' : `③ 压中间·${s.strategy} → 成` }[s.stage] ?? '—' },
     { label: '省下', value: s.stage === 'rebuild' ? `${s.before - s.running} tokens（${s.before}→${s.running}）` : '—', tone: s.stage === 'rebuild' ? 'good' : undefined },
   ],
 }
