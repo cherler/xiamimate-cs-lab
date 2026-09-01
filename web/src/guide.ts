@@ -943,6 +943,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { stage: string; xPost: number; zPred: number }; return st.stage === 'done' ? 'sigma+卡尔曼' : st.stage === 'update' ? `x̂=${st.xPost}` : st.stage === 'recombine' ? `ẑ=${st.zPred}` : st.stage === 'transform' ? '过真非线性' : st.stage === 'sigma' ? 'sigma点' : '无迹变换' },
     try: [{ act: '切「不确定大(P=5)」', watch: 'sigma 点铺得开(±3.87)、UKF 捕捉曲率 → x=4.02，和 EKF 的 3.81 分道。' }, { act: '切「不确定小(P=1)」', watch: 'sigma 点靠得近(±1.73)、这段 h 近似线性 → UKF x=4.16≈EKF x=4.12。' }, { act: '看 h(x) 曲线', watch: 'sigma 点撒在真曲线上(EKF 用切线)，所以 UKF 带上了曲率。' }], terms: [],
   },
+  complementary: {
+    question: '陀螺仪短期准但会漂、加速度计不漂但抖——怎么把这两个传感器融成一个好用的倾角？',
+    read: [{ at: '倾角刻度尺', is: '陀螺/加速度/融合三个标记。', anchor: '.co-scale' }, { at: '融合块', is: 'θ=α·陀螺+(1−α)·加速度。', anchor: '.co-hot2' }, { at: '取舍块', is: 'α 大平滑纠漂慢/小压漂快但抖。', anchor: '.co-behav' }],
+    step: (s: never) => { const st = s as { stage: string; blendLabel: string; thetaPrev: number; omega: number; dt: number; thetaAcc: number; alpha: number; gyroPred: number; fused: number; driftPerSec: number; blend: string }; return [
+      { k: '本步输入', v: st.stage === 'intro' ? `混合 ${st.blendLabel}` : st.stage === 'gyro' ? `上一角 ${st.thetaPrev}°、角速度 ω=${st.omega}°/s` : st.stage === 'accel' ? '重力方向' : st.stage === 'fuse' ? `陀螺 ${st.gyroPred}°、加速度 ${st.thetaAcc}°` : '两个极端 vs 互补' },
+      { k: '判定规则', v: `陀螺 θ_gyro=θ_prev+ω·dt（短期准长期漂）；加速度 θ_acc 绝对（不漂但抖）；互补 θ=α·θ_gyro+(1−α)·θ_acc（高通陀螺+低通加速度）。` },
+      { k: '本步结果', v: st.stage === 'intro' ? '两传感器互补长短板' : st.stage === 'gyro' ? `θ_gyro=${st.thetaPrev}+${st.omega}×${st.dt}=${st.gyroPred}°（bias 逐秒漂 ${st.driftPerSec}°）` : st.stage === 'accel' ? `θ_acc=atan2(重力)=${st.thetaAcc}°（绝对不漂、但抖）` : st.stage === 'fuse' ? `θ=α·陀螺+(1−α)·加速度=${st.alpha}×${st.gyroPred}+${Math.round((1 - st.alpha) * 100) / 100}×${st.thetaAcc}=${st.fused}°` : `只陀螺→漂、只加速度→抖；α=${st.alpha}(${st.blend === 'gyro' ? '平滑纠漂稳' : st.blend === 'accel' ? '纠漂快略抖' : '发抖'})` },
+    ] },
+    verdict: (s: never) => { const st = s as { stage: string; fused: number }; return st.stage === 'done' ? '高通陀螺+低通加速度' : st.stage === 'behavior' ? 'α取舍' : st.stage === 'fuse' ? `融=${st.fused}°` : st.stage === 'accel' ? '加速度(抖)' : st.stage === 'gyro' ? '陀螺(漂)' : 'IMU融合' },
+    try: [{ act: '切「偏信陀螺(α=0.98)」', watch: '融=30.24°≈陀螺30.2°：平滑抗抖，靠 2% 加速度慢慢纠漂。' }, { act: '切「均衡(α=0.5)」', watch: '融=31.1°：一半跟加速度、纠漂快但明显发抖。' }, { act: '想两个极端', watch: '只陀螺→bias 无限漂；只加速度→抖得没法用。互补两全。' }], terms: [],
+  },
   queryplan: {
     question: '同一个查询有好几条路可走，数据库优化器凭什么选其中一条？',
     read: [{ at: '候选路径', is: '每条访问路径的 type + 估扫描行数代价条。', anchor: '.qp-paths' }, { at: 'EXPLAIN', is: '末步选中路径的 type/key/rows。', anchor: '.qp-explain' }],

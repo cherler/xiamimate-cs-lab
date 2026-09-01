@@ -355,6 +355,7 @@ import { contactlcpKernel, type LcpState } from '@engine/kernels/contactlcp.ts'
 import { ekfKernel, type EkfState } from '@engine/kernels/ekf.ts'
 import { particlefilterKernel, type PfState } from '@engine/kernels/particlefilter.ts'
 import { ukfKernel, type UkfState } from '@engine/kernels/ukf.ts'
+import { complementaryKernel, type CompState } from '@engine/kernels/complementary.ts'
 import { ikKernel, type IKState } from '@engine/kernels/ik.ts'
 import { jacobianKernel, type JacoState } from '@engine/kernels/jacobian.ts'
 import { kalmanKernel, type KalmanState } from '@engine/kernels/kalman.ts'
@@ -386,6 +387,7 @@ import { ContactLcpStage } from './stages/ContactLcpStage.tsx'
 import { EkfStage } from './stages/EkfStage.tsx'
 import { PfStage } from './stages/PfStage.tsx'
 import { UkfStage } from './stages/UkfStage.tsx'
+import { CompStage } from './stages/CompStage.tsx'
 import { IKStage } from './stages/IKStage.tsx'
 import { JacobianStage } from './stages/JacobianStage.tsx'
 import { KalmanStage } from './stages/KalmanStage.tsx'
@@ -6775,6 +6777,33 @@ const ukf: Experiment<UkfState> = {
     { label: '本步', value: ({ intro: '不线性化', sigma: '取 sigma 点', transform: '过真非线性', recombine: '重组高斯', update: '更新+对比EKF', done: 'sigma+卡尔曼' } as Record<string, string>)[s.stage] ?? '—' },
   ],
 }
+const complementary: Experiment<CompState> = {
+  id: 'complementary', group: '机器人感知', title: '互补滤波 · IMU 姿态', subtitle: '陀螺(短期准·长期漂)+加速度(绝对·抖)融倾角：θ=α·陀螺+(1−α)·加速度',
+  kernel: complementaryKernel, defaultDoc: { kind: 'complementary', params: { alpha: '偏信陀螺' }, entities: [], streams: [] },
+  params: [{ key: 'alpha', label: '混合权重', kind: 'enum', options: ['偏信陀螺', '偏信加速度', '均衡'] }],
+  paramsNote: 'IMU 测姿态(倾角)两个传感器各有死穴:**陀螺仪**积分角速度→短期准、平滑,但 bias **积分累积漂移**(无绝对参考);**加速度计**由重力算**绝对倾角**→不漂,但**噪声大、抖**、运动时线加速度污染。**互补滤波**把长短板互补:**θ=α·(θ_prev+ω·dt)+(1−α)·θ_acc**——α·陀螺=高通(信短期)、(1−α)·加速度=低通(纠漂)。α 大(≈0.98)平滑抗抖但纠漂慢、α 小跟加速度紧压漂快但抖。只陀螺→无限漂、只加速度→抖得没法用。切「混合权重」看 α 取舍。全现算。它是**定增益的简化卡尔曼**;进阶 Mahony/Madgwick。连「卡尔曼滤波/位姿与四元数」。详见讲解卡。',
+  bounds: [
+    '互补滤波 θ=α·(θ_prev+ω·dt)+(1−α)·θ_acc:高通陀螺(短期准长期漂)+低通加速度(绝对不漂但抖)',
+    '陀螺积分短期准但 bias 累积无限漂;加速度由重力算绝对倾角不漂但噪声大抖、运动时污染;两个极端都不能单用',
+    'α 定增益权衡:大(≈0.98)平滑抗抖纠漂慢、小跟加速度紧压漂快但抖;采样越快 α 越接近 1',
+    '互补滤波=定增益的简化卡尔曼(卡尔曼增益随不确定度自适应、这里固定 1−α);进阶 Mahony/Madgwick(3D 四元数+在线估 bias)或 EKF。参考:姿态估计经典',
+  ],
+  tabs: [{ id: 'co', label: '互补滤波逐步跑' }], Stage: CompStage, whyInRail: true,
+  tone: s => (s.stage === 'done' ? { key: 'good', label: '高通陀螺+低通加速度' }
+    : s.stage === 'behavior' ? { key: 'idle', label: 'α 取舍' }
+    : s.stage === 'fuse' ? { key: 'good', label: `融=${s.fused}°` }
+    : s.stage === 'accel' ? { key: 'idle', label: '加速度(抖)' }
+    : s.stage === 'gyro' ? { key: 'idle', label: '陀螺(漂)' }
+    : { key: 'idle', label: 'IMU 融合' }),
+  metric: s => (s.stage === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => ({ intro: '融', gyro: '陀', accel: '加', fuse: '合', behavior: 'α', done: '成' }[s.stage] ?? '·'),
+  readouts: s => [
+    { label: '混合权重 α', value: `${s.alpha}` },
+    { label: '陀螺 / 加速度', value: s.showAccel ? `${s.gyroPred}° / ${s.thetaAcc}°` : (s.showGyro ? `${s.gyroPred}° / —` : '—') },
+    { label: '融合倾角', value: s.showFuse ? `${s.fused}°` : '—', tone: s.showFuse ? 'good' : undefined },
+    { label: '本步', value: ({ intro: 'IMU 两毛病', gyro: '陀螺积分(漂)', accel: '加速度绝对(抖)', fuse: '互补融合', behavior: 'α 取舍', done: '高通陀螺+低通加速度' } as Record<string, string>)[s.stage] ?? '—' },
+  ],
+}
 const kalman: Experiment<KalmanState> = {
   id: 'kalman', group: '机器人感知', title: '卡尔曼滤波', subtitle: '预测+观测按方差融合：机器人定位的地基',
   kernel: kalmanKernel, defaultDoc: { kind: 'kalman', params: {}, entities: [], streams: [] }, params: [],
@@ -7138,7 +7167,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, icp, slam, impedance, mpc, pid, rrt, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
+  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, icp, slam, impedance, mpc, pid, rrt, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
 ] as unknown as AnyExperiment[]
 
 /**

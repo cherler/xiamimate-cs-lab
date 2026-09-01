@@ -369,6 +369,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { i: 2, step: 2, stage: 'transform', ...base, showSigma: true, showTrans: true, showRecomb: false, showUpd: false, phase: 'run' as const, focus: '过真非线性' },
       b: { i: 4, step: 4, stage: 'update', ...base, showSigma: true, showTrans: true, showRecomb: true, showUpd: true, phase: 'run' as const, focus: '更新' },
     } })(),
+    complementary: (() => { const base = { blend: 'gyro', blendLabel: '偏信陀螺(α=0.98)', thetaPrev: 30, omega: 20, dt: 0.01, thetaAcc: 32, alpha: 0.98, gyroPred: 30.2, fused: 30.24, driftPerSec: 0.5, log: '' }; return {
+      doc: { kind: 'complementary', params: { alpha: '偏信陀螺' }, entities: [], streams: [] },
+      a: { i: 2, step: 2, stage: 'accel', ...base, showGyro: true, showAccel: true, showFuse: false, showBehav: false, phase: 'run' as const, focus: '加速度' },
+      b: { i: 3, step: 3, stage: 'fuse', ...base, showGyro: true, showAccel: true, showFuse: true, showBehav: false, phase: 'run' as const, focus: '融合' },
+    } })(),
     queryplan: {
       doc: { kind: 'queryplan', params: {}, entities: [], streams: [] },
       a: { step: 1, op: 'path', query: 'q', revealed: 1, cur: 0, chosen: -1, paths: [{ name: '全表扫描', type: 'ALL', key: '—', rows: 10000, note: 'x' }, { name: '走 idx(city)', type: 'ref', key: 'idx_city', rows: 500, note: 'x' }, { name: '走 idx(age)', type: 'range', key: 'idx_age', rows: 6000, note: 'x' }], phase: 'run', focus: '候选路径：全表扫描（type=ALL，估扫 10000 行）' },

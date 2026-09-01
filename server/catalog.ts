@@ -130,6 +130,7 @@ import { kalmanKernel } from '../src/kernels/kalman.ts'
 import { ekfKernel } from '../src/kernels/ekf.ts'
 import { particlefilterKernel } from '../src/kernels/particlefilter.ts'
 import { ukfKernel } from '../src/kernels/ukf.ts'
+import { complementaryKernel } from '../src/kernels/complementary.ts'
 import { pidKernel } from '../src/kernels/pid.ts'
 import { rrtKernel } from '../src/kernels/rrt.ts'
 import { objectstoreKernel } from '../src/kernels/objectstore.ts'
@@ -2513,6 +2514,41 @@ export const CATALOG: CatalogEntry[] = [
         ask: 'ICP 有个著名的局限：依赖初值。为什么初始差太多会失败?', kind: 'choice',
         compute: () => ({ answer: '初始差太大时，欧氏最近点算出的对应会系统性地错(点连到错误的目标点)，基于错对应求出的变换把点云带向错误方向 → 陷入局部最优。所以实际先用粗配准(特征匹配/IMU 里程计)给个好初值再上 ICP 精配', step: 4, evidence: '本例初始 25° 尚可收敛；若初始偏差过大对应全错就收不回来' }),
         distractors: () => ['ICP 从不失败、总能全局最优', '初值只影响速度、不影响结果', 'ICP 需要初值是因为要设旋转角'],
+      },
+    ],
+  },
+  {
+    id: 'complementary', title: '互补滤波 · IMU 姿态', kernel: complementaryKernel as Kernel<unknown>, doc: trivialDoc('complementary'),
+    facts: [
+      {
+        id: 'comp_gyro', label: '为什么不能只用陀螺',
+        ask: '为什么不能只用陀螺仪(积分角速度)来测倾角?', kind: 'choice',
+        compute: () => ({ answer: '陀螺测角速度、积分得角度,短期很准很平滑,但它有 bias,积分会把 bias 累积成漂移(逐秒偏、且没有绝对参考、回不来)。几十秒就漂出好几度', step: 2, evidence: '积分累积 bias→无限漂;无绝对参考' }),
+        distractors: () => ['陀螺测不了角度、只能测加速度', '陀螺太贵、只用加速度更省', '陀螺噪声太大、抖得没法用'],
+      },
+      {
+        id: 'comp_accel', label: '加速度计的长短板',
+        ask: '加速度计测倾角有什么优点和缺点?', kind: 'choice',
+        compute: () => ({ answer: '优点:静止时测重力方向→算出绝对倾角、不会漂(重力是天然绝对参考)。缺点:噪声大、抖动厉害,机器人一运动线加速度混进来污染读数。所以只用加速度计角度跳个不停', step: 3, evidence: '绝对不漂 vs 噪声大抖、运动污染' }),
+        distractors: () => ['优点是平滑、缺点是会漂', '优点缺点都和陀螺一样', '加速度计不能测倾角'],
+      },
+      {
+        id: 'comp_fuse', label: '互补滤波怎么融',
+        ask: '互补滤波 θ=α·(θ_prev+ω·dt)+(1−α)·θ_acc 是怎么融合两个传感器的?', kind: 'choice',
+        compute: () => ({ answer: 'α·陀螺项=高通(短期信陀螺、平滑不抖)、(1−α)·加速度项=低通(长期用加速度的绝对参考慢慢纠陀螺的漂移)。两信号频段互补(gyro 管高频、accel 管低频)、合起来既平滑又不漂', step: 4, evidence: '高通陀螺+低通加速度、频段互补' }),
+        distractors: () => ['取两者平均、各占一半', '谁噪声小用谁、二选一', '把两者相乘'],
+      },
+      {
+        id: 'comp_alpha', label: 'α 怎么取舍',
+        ask: '互补滤波的 α 该取大还是小?有什么取舍?', kind: 'choice',
+        compute: () => ({ answer: 'α 大(≈0.98)偏信陀螺→平滑抗抖,但靠很小的加速度权重纠漂、纠得慢;α 小偏信加速度→压漂快但跟着抖。工程常取 α≈0.98(采样越快 α 越接近 1)。它是定增益,和卡尔曼自适应增益不同', step: 4, evidence: 'α 大平滑纠漂慢、小压漂快但抖' }),
+        distractors: () => ['α 越大越好、取 1 最优', 'α 越小越好、取 0 最优', 'α 必须精确等于 0.5'],
+      },
+      {
+        id: 'comp_num', label: '融合倾角',
+        ask: '陀螺积分得 30.2°、加速度得 32°、α=0.98，互补融合 θ=α·30.2+(1−α)·32 约为多少?(一位小数)', kind: 'number',
+        compute: t => { const f = t as unknown as { fused?: number }[]; const l = f.find(x => x.fused != null); const v = l?.fused != null ? Math.round(l.fused * 10) / 10 : 30.2; return ({ answer: String(v), step: 4, evidence: `θ=0.98×30.2+0.02×32=29.596+0.64≈${v}°(几乎跟陀螺、只被加速度拉一点点)` }) },
+        distractors: () => ['32.0', '31.1', '30.0', '29.0'],
       },
     ],
   },

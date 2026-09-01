@@ -5602,3 +5602,27 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .uk-cmpbox{margin-top:10px;border-radius:8px;padding:8px 10px;font-size:var(--t-ui);line-height:1.55}
 .uk-cmpbox.uk-diverge{background:color-mix(in srgb,var(--now) 8%,transparent);border:1px solid color-mix(in srgb,var(--now) 35%,var(--line))}
 .uk-cmpbox.uk-agree{background:var(--panel-2);border:1px solid var(--line)}
+
+/* complementary · 互补滤波 */
+.scdn.co-hot{color:var(--now)}
+.co-scale{position:relative;height:54px;margin:14px 0 8px}
+.co-track{position:absolute;left:0;right:0;top:26px;height:4px;background:var(--sunk-1);border:1px solid var(--line);border-radius:2px}
+.co-gtick{position:absolute;top:32px;transform:translateX(-50%);font:var(--t-meta) var(--mono);color:var(--faint)}
+.co-mark{position:absolute;top:20px;transform:translateX(-50%);width:0}
+.co-mark::before{content:'';position:absolute;left:-1px;top:0;width:2px;height:16px;background:currentColor}
+.co-mark span{position:absolute;transform:translateX(-50%);white-space:nowrap;font:var(--t-meta) var(--mono)}
+.co-gyro{color:#c98a2b}
+.co-gyro span{top:-16px}
+.co-accel{color:var(--faint)}
+.co-accel span{top:-16px}
+.co-fused{color:var(--now)}
+.co-fused::before{height:22px;top:-3px}
+.co-fused span{top:20px;font-weight:700}
+.co-flow{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+.co-blk{border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--panel-2);font-size:var(--t-ui);line-height:1.7;font-variant-numeric:tabular-nums}
+.co-blk.co-off{opacity:.4}
+.co-n{font-family:var(--mono);color:var(--now);font-weight:700;margin-right:6px}
+.co-sub{display:block;font:var(--t-meta) var(--sans);color:var(--faint);margin-top:2px;font-style:normal}
+.co-hot2{color:var(--now)}
+.co-bad{color:var(--miss)}
+.co-behav{border:1px solid color-mix(in srgb,var(--now) 30%,var(--line));border-radius:8px;padding:8px 10px;background:color-mix(in srgb,var(--now) 5%,transparent);font-size:var(--t-ui);line-height:1.6}
