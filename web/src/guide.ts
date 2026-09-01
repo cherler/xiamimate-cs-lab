@@ -822,6 +822,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { stage: string }; return st.stage === 'done' ? '两端归一化' : st.stage === 'unnorm' ? '反归一化' : st.stage === 'minmax' ? '离群敏感' : st.stage === 'meanstd' ? 'MEAN_STD' : st.stage === 'stats' ? '算统计量' : '量纲差异' },
     try: [{ act: '切「给 ACT」', watch: 'MEAN_STD 高亮：关节角 (x−μ)/σ 拉成 ~0 均值；反归一化 1.0→1.63 rad。' }, { act: '切「给 Diffusion」', watch: 'MIN_MAX 高亮：映射 [-1,1] 配加噪 schedule；反归一化夹爪 0.6→0.8。' }], terms: [],
   },
+  teleop: {
+    question: '人拧一只机械臂、另一只实时跟随，中间到底做了什么？为什么不用逆运动学？',
+    read: [{ at: '关节表', is: '6 关节：leader 原始码→标定角→跳变Δ→安全钳后目标。', anchor: '.tp-table' }, { at: '安全钳说明', is: '抖动关节被钳(开)还是直通急跳(关)。', anchor: '.tp-note' }, { at: '读数', is: '安全钳、阈值、被钳关节数。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { stage: string; safety: string; maxRel: number; joints: { name: string; leaderTick: number; leaderDeg: number; present: number; delta: number; goal: number; clamped: boolean }[]; clampedN: number }; const g = st.joints[4]!; return [
+      { k: '本步输入', v: st.stage === 'intro' ? '一对同构臂：人拧 leader' : st.stage === 'readraw' ? '6 个舵机原始码(0~4095)' : st.stage === 'calib' ? '原始码 + homing_offset' : st.stage === 'safety' ? `目标角 vs follower 当前角` : '跟随完成的一步' },
+      { k: '判定规则', v: `标定 角=(码−homing_offset)×360/4096；安全钳 goal=present+clamp(Δ, ±${st.maxRel}°)；同构臂直接抄关节角、不用 IK。当前安全钳=${st.safety === 'on' ? '开' : '关'}。` },
+      { k: '本步结果', v: st.stage === 'intro' ? '同构→抄关节角即复现末端位姿' : st.stage === 'readraw' ? `如腕转码=${g.leaderTick}(还不是角度)` : st.stage === 'calib' ? `腕转标定角=${g.leaderDeg}°` : st.stage === 'safety' ? (st.safety === 'on' ? `腕转 Δ=${g.delta}° 超阈值→钳到目标 ${g.goal}°；共 ${st.clampedN} 个被钳` : `安全钳关：腕转直通、急跳 ${g.delta}°(危险)`) : '录下 (obs,action)=示教数据集' },
+    ] },
+    verdict: (s: never) => { const st = s as { stage: string; safety: string; clampedN: number }; return st.stage === 'done' ? '跟随+录数据' : st.stage === 'safety' ? (st.safety === 'on' ? `钳${st.clampedN}关节` : '直通急跳') : st.stage === 'calib' ? '标定成角' : st.stage === 'readraw' ? '读原始码' : '同构免IK' },
+    try: [{ act: '切「开 max_relative_target」', watch: '腕转抖动 Δ≈90° 被钳到 ±15° → 目标只挪到 13°，follower 平稳(1 个被钳)。' }, { act: '切「关（直通）」', watch: '腕转目标直接 87.89°、急跳 90°——真机上一次危险甩臂、可能撞坏。' }], terms: [],
+  },
   queryplan: {
     question: '同一个查询有好几条路可走，数据库优化器凭什么选其中一条？',
     read: [{ at: '候选路径', is: '每条访问路径的 type + 估扫描行数代价条。', anchor: '.qp-paths' }, { at: 'EXPLAIN', is: '末步选中路径的 type/key/rows。', anchor: '.qp-explain' }],

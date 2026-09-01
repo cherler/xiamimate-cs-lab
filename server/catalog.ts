@@ -99,6 +99,7 @@ import { promptbuildKernel } from '../src/kernels/promptbuild.ts'
 import { actteKernel } from '../src/kernels/actte.ts'
 import { deltatsKernel } from '../src/kernels/deltats.ts'
 import { normstatsKernel } from '../src/kernels/normstats.ts'
+import { teleopKernel } from '../src/kernels/teleop.ts'
 import { lfucacheKernel } from '../src/kernels/lfucache.ts'
 import { trieKernel } from '../src/kernels/trie.ts'
 import { quickselectKernel } from '../src/kernels/quickselect.ts'
@@ -1930,6 +1931,41 @@ export const CATALOG: CatalogEntry[] = [
         id: 'at_chunksize', label: 'LeRobot ACT 的动作块长',
         ask: 'LeRobot 里 ACT 的动作块长 chunk_size 默认是多少?', kind: 'number',
         compute: () => ({ answer: '100', step: 1, evidence: '本实验演示用 K=4 便于手算；LeRobot 真值 chunk_size=100、n_action_steps=100' }),
+        distractors: numDistractors,
+      },
+    ],
+  },
+  {
+    id: 'teleop', title: 'LeRobot · 主从遥操作', kernel: teleopKernel as Kernel<unknown>, doc: trivialDoc('teleop'),
+    facts: [
+      {
+        id: 'tp_noik', label: 'follower 跟随为什么不用 IK',
+        ask: 'SO-101 主从遥操作里 follower 跟随 leader，为什么通常不用逆运动学(IK)?', kind: 'choice',
+        compute: () => ({ answer: '两臂同构(连杆尺寸完全相同)——直接把 leader 的关节角当 follower 目标，就复现同一末端位姿，无需 IK。只有两臂结构不同(如遥操作人形手)才要逆解/重定向(retargeting)', step: 1, evidence: '同构→关节空间直接复制；异构才需要 IK/retarget' }),
+        distractors: () => ['IK 太慢，改用查表近似', 'follower 有专门的 IK 芯片代劳', 'follower 只是回放录像、不算 IK'],
+      },
+      {
+        id: 'tp_calib', label: '原始舵机码怎么变成角度',
+        ask: '舵机回报 0~4095 的原始码，怎么标定成关节角度?为什么需要 homing_offset?', kind: 'choice',
+        compute: () => ({ answer: '角 = (码 − homing_offset) × (360/4096)。每个舵机装配时零位随机(舵盘花键任意插)，homing_offset 记录"这个电机 0°对应哪个码"；360/4096 是 12 位分辨率。标定还含 range/符号，把不同装配统一到同一角度约定', step: 2, evidence: '0~4095=12 位；homing_offset 消除装配零位差异' }),
+        distractors: () => ['码直接就是角度(码/4096×360)、不用 homing', '按码的奇偶判正负', '每次上电现测、不存标定'],
+      },
+      {
+        id: 'tp_maxrel', label: 'max_relative_target 防什么',
+        ask: 'max_relative_target 每步把 follower 的移动限幅在 ±阈值内，防的是什么?', kind: 'choice',
+        compute: () => ({ answer: '防通信抖动/丢包/leader 被碰导致目标角瞬间大跳变时，follower 一次危险急跳(甩臂撞坏)。goal=present+clamp(Δ,±阈值)，每步只挪一小段', step: 3, evidence: '本例腕转抖动 Δ≈90°；开钳→挪 15°平稳，关→急跳 90°危险' }),
+        distractors: () => ['防舵机过热', '防关节角超出 0~360 范围', '让 follower 动得更快'],
+      },
+      {
+        id: 'tp_data', label: '遥操作和示教数据的关系',
+        ask: '主从遥操作和 ACT/Diffusion/BC 训练用的示教数据，是什么关系?', kind: 'choice',
+        compute: () => ({ answer: '遥操作时同步录下 follower 的 (observation.state, observation.images, action)——这一串就是模仿学习(ACT/Diffusion/BC)训练用的示教数据集。遥操作是采集示教数据的核心入口', step: 4, evidence: '配合 delta_timestamps 取时序窗口、归一化统计量，喂进策略' }),
+        distractors: () => ['没关系，示教数据是仿真里生成的', '遥操作只是调试、不产生训练数据', '示教数据靠强化学习自己探索出来'],
+      },
+      {
+        id: 'tp_move', label: '被钳关节这一步挪多少度',
+        ask: 'max_relative_target 阈值 15°，腕转一步要跳 Δ≈90° 被钳；follower 当前 -2°，这一步实际挪了多少度?', kind: 'number',
+        compute: t => { const f = t as unknown as { joints?: { present: number; goal: number; clamped: boolean }[] }[]; const j = f.find(x => x.joints)?.joints?.find(x => x.clamped); const mv = j ? Math.round(Math.abs(j.goal - j.present)) : 15; return ({ answer: String(mv), step: 3, evidence: `Δ=89.89°>15° → 钳到 +15°；当前 -2°→目标 13°，实际只挪 |13−(−2)|=${mv}°(=阈值)` }) },
         distractors: numDistractors,
       },
     ],

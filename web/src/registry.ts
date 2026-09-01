@@ -308,6 +308,8 @@ import { deltatsKernel, type DTState } from '@engine/kernels/deltats.ts'
 import { DeltaTsStage } from './stages/DeltaTsStage.tsx'
 import { normstatsKernel, type NSState } from '@engine/kernels/normstats.ts'
 import { NormStatsStage } from './stages/NormStatsStage.tsx'
+import { teleopKernel, type TeleState } from '@engine/kernels/teleop.ts'
+import { TeleopStage } from './stages/TeleopStage.tsx'
 import { lfucacheKernel, type LFUState } from '@engine/kernels/lfucache.ts'
 import { LFUCacheStage } from './stages/LFUCacheStage.tsx'
 import { trieKernel, type TrieState } from '@engine/kernels/trie.ts'
@@ -6739,6 +6741,32 @@ const deltats: Experiment<DTState> = {
     { label: '本步', value: ({ intro: '要时序窗口', sec2idx: '秒→帧偏移', clamp: '定位+边界钳', pad: 'pad 掩码', done: '窗口取出' } as Record<string, string>)[s.stage] ?? '—' },
   ],
 }
+const teleop: Experiment<TeleState> = {
+  id: 'teleop', group: '具身项目实战', title: 'LeRobot · 主从遥操作', subtitle: 'SO-101 一对同构臂：读 leader 原始码→标定角→max_relative_target 安全钳→写 follower；采集示教数据的入口',
+  kernel: teleopKernel, defaultDoc: { kind: 'teleop', params: { safety: '开 max_relative_target' }, entities: [], streams: [] },
+  params: [{ key: 'safety', label: '安全钳', kind: 'enum', options: ['开 max_relative_target', '关（直通）'] }],
+  paramsNote: 'SO-101 是**一对同构机械臂**(连杆尺寸一样):**leader** 可反驱、人手拧;**follower** 复制关节角。关键:两臂同构→**直接抄关节角就复现同一末端位姿、不用 IK**(结构不同才要重定向)。一步四件事:①读 leader 原始舵机码(0~4095,12位、装配零位随机)②标定 角=(码−homing_offset)×360/4096 ③**max_relative_target** 安全钳 goal=present+clamp(Δ,±15°) ④写 follower、舵机**内部 PID** 执行。切「安全钳」看抖动关节(腕转 Δ≈90°)被钳(开)还是直通急跳(关、危险)。遥操作录下的 (obs,action)=ACT/BC 示教数据集。标定/钳/跳变现算。连「FK/PID/ACT·BC」。详见讲解卡。',
+  bounds: [
+    '主从遥操作:leader 反驱人手拧、follower 复制;**同构臂直接抄关节角、不用 IK**(结构不同才要重定向/retarget)',
+    '原始舵机码 0~4095(12位、装配零位随机)要标定:角=(码−homing_offset)×360/4096;标定还含 range/符号',
+    'max_relative_target 每步限幅 goal=present+clamp(Δ,±15°):防通信抖动/leader 跳变时急跳撞坏;写目标后舵机 PID 内环执行',
+    '闭环:遥操作同步录 (observation.state, action)=ACT/Diffusion/BC 的示教数据集;FK 画末端轨迹。真实框架:LeRobot(so101_follower/leader、teleoperate.py)',
+  ],
+  tabs: [{ id: 'tp', label: '遥操作逐步跑' }], Stage: TeleopStage, whyInRail: true,
+  tone: s => (s.stage === 'done' ? { key: 'good', label: '跟随+录数据' }
+    : s.stage === 'safety' ? (s.safety === 'on' ? { key: 'bad', label: `钳 ${s.clampedN} 关节` } : { key: 'bad', label: '直通急跳' })
+    : s.stage === 'calib' ? { key: 'idle', label: '标定成角' }
+    : s.stage === 'readraw' ? { key: 'idle', label: '读原始码' }
+    : { key: 'idle', label: '同构·免IK' }),
+  metric: s => (s.stage === 'done' ? 1 : Math.max(0, (s.step + 1) / 5)),
+  tickLabel: s => ({ intro: '构', readraw: '码', calib: '标', safety: '钳', done: '录' }[s.stage] ?? '·'),
+  readouts: s => [
+    { label: '安全钳', value: `${s.safety === 'on' ? '开' : '关（直通）'} · ±${s.maxRel}°` },
+    { label: '关节数', value: `${s.joints.length}（同构→免 IK）` },
+    { label: '被钳关节', value: s.showGoal ? `${s.clampedN}${s.clampedN ? '（腕转抖动）' : ''}` : '—', tone: s.showGoal && s.clampedN ? 'bad' : undefined },
+    { label: '本步', value: ({ intro: '同构·抄关节角', readraw: '读原始码', calib: '标定成角', safety: 'max_relative_target 钳', done: '跟随+录示教' } as Record<string, string>)[s.stage] ?? '—' },
+  ],
+}
 const normstats: Experiment<NSState> = {
   id: 'normstats', group: '具身项目实战', title: 'LeRobot · 数据集归一化', subtitle: '用整套数据集的统计量把特征拉到同一量级：MEAN_STD/MIN_MAX，输入归一化+输出反归一化',
   kernel: normstatsKernel, defaultDoc: { kind: 'normstats', params: { policy: '给 ACT' }, entities: [], streams: [] },
@@ -6821,7 +6849,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, ik, jacobian, quat, trajectory, kalman, icp, slam, impedance, mpc, pid, rrt, bc, diffpolicy, vla, lerobot, actte, deltats, normstats,
+  fk, ik, jacobian, quat, trajectory, kalman, icp, slam, impedance, mpc, pid, rrt, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop,
 ] as unknown as AnyExperiment[]
 
 /**

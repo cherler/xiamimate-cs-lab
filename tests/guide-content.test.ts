@@ -302,6 +302,18 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { i: 3, step: 3, stage: 'minmax', ...base, showStats: true, showMS: true, showMM: true, showUnnorm: false, focus: 'MIN_MAX 离群敏感' },
       b: { i: 4, step: 4, stage: 'unnorm', ...base, showStats: true, showMS: true, showMM: true, showUnnorm: true, focus: '反归一化' },
     } })(),
+    teleop: (() => { const joints = [
+      { name: '肩转 pan', homing: 2048, leaderTick: 2148, present: 8.0, leaderDeg: 8.79, delta: 0.79, goal: 8.79, clamped: false },
+      { name: '肩俯 lift', homing: 2048, leaderTick: 1820, present: -19.0, leaderDeg: -20.04, delta: -1.04, goal: -20.04, clamped: false },
+      { name: '肘 elbow', homing: 2048, leaderTick: 2560, present: 44.0, leaderDeg: 45, delta: 1, goal: 45, clamped: false },
+      { name: '腕俯 wrist_flex', homing: 2048, leaderTick: 2048, present: 0.5, leaderDeg: 0, delta: -0.5, goal: 0, clamped: false },
+      { name: '腕转 wrist_roll', homing: 2048, leaderTick: 3048, present: -2.0, leaderDeg: 87.89, delta: 89.89, goal: 13, clamped: true },
+      { name: '夹爪 gripper', homing: 2048, leaderTick: 2148, present: 8.5, leaderDeg: 8.79, delta: 0.29, goal: 8.79, clamped: false },
+    ]; const base = { safety: 'on', maxRel: 15, joints, clampedN: 1, showTick: true, showAngle: true, showGoal: true, log: '' }; return {
+      doc: { kind: 'teleop', params: { safety: '开 max_relative_target' }, entities: [], streams: [] },
+      a: { i: 3, step: 3, stage: 'safety', ...base, phase: 'run' as const, focus: '安全钳' },
+      b: { i: 4, step: 4, stage: 'done', ...base, phase: 'done' as const, focus: '录数据' },
+    } })(),
     queryplan: {
       doc: { kind: 'queryplan', params: {}, entities: [], streams: [] },
       a: { step: 1, op: 'path', query: 'q', revealed: 1, cur: 0, chosen: -1, paths: [{ name: '全表扫描', type: 'ALL', key: '—', rows: 10000, note: 'x' }, { name: '走 idx(city)', type: 'ref', key: 'idx_city', rows: 500, note: 'x' }, { name: '走 idx(age)', type: 'range', key: 'idx_age', rows: 6000, note: 'x' }], phase: 'run', focus: '候选路径：全表扫描（type=ALL，估扫 10000 行）' },
