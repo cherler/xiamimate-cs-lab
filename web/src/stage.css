@@ -5312,3 +5312,24 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .at-rows b{color:var(--ink)}
 .at-r-new{color:var(--now)} .at-r-new b{color:var(--now)}
 .at-r-ens{color:var(--hit)} .at-r-ens b{color:var(--hit)}
+
+/* ── delta_timestamps deltats ─────────────────────────────────────── */
+.dt-ep{margin:8px 0}
+.dt-epbar{position:relative;height:12px;background:color-mix(in srgb,var(--hit) 14%,var(--sunk-1));border:1px solid var(--line);border-radius:6px}
+.dt-cur{position:absolute;top:-3px;bottom:-3px;width:3px;background:var(--now);border-radius:2px}
+.dt-epscale{position:relative;display:flex;justify-content:space-between;font:var(--t-meta) var(--mono);color:var(--faint);margin-top:3px}
+.dt-curl{position:absolute;transform:translateX(-50%);color:var(--now);white-space:nowrap}
+.dt-win{margin-top:8px}
+.dt-h{font:var(--t-meta) var(--sans);color:var(--faint);font-weight:600;margin-bottom:4px}
+.dt-tablewrap{overflow-x:auto}
+.dt-table{border-collapse:collapse;width:100%;font-size:var(--t-ui);font-variant-numeric:tabular-nums}
+.dt-table th,.dt-table td{border:1px solid var(--line);padding:3px 8px;text-align:right;white-space:nowrap}
+.dt-table th.l,.dt-table td.l{text-align:left}
+.dt-table thead th{background:var(--panel-2);color:var(--dim);font-weight:600;font-size:var(--t-meta)}
+.dt-table th.off{color:var(--ghost)}
+.dt-table th.hot,.dt-table td.hot{background:color-mix(in srgb,var(--now) 8%,transparent)}
+.dt-table th.hot{color:var(--now)}
+.dt-table tr.padded{background:color-mix(in srgb,var(--miss) 8%,transparent)}
+.dt-table tr.padded td{border-color:color-mix(in srgb,var(--miss) 30%,var(--line))}
+.dt-clamped{font-style:normal;color:var(--now);font-size:.85em}
+.dt-pad{color:var(--miss)}

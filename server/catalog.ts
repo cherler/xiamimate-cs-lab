@@ -97,6 +97,7 @@ import { memwriteKernel } from '../src/kernels/memwrite.ts'
 import { planningKernel } from '../src/kernels/planning.ts'
 import { promptbuildKernel } from '../src/kernels/promptbuild.ts'
 import { actteKernel } from '../src/kernels/actte.ts'
+import { deltatsKernel } from '../src/kernels/deltats.ts'
 import { lfucacheKernel } from '../src/kernels/lfucache.ts'
 import { trieKernel } from '../src/kernels/trie.ts'
 import { quickselectKernel } from '../src/kernels/quickselect.ts'
@@ -1928,6 +1929,41 @@ export const CATALOG: CatalogEntry[] = [
         id: 'at_chunksize', label: 'LeRobot ACT 的动作块长',
         ask: 'LeRobot 里 ACT 的动作块长 chunk_size 默认是多少?', kind: 'number',
         compute: () => ({ answer: '100', step: 1, evidence: '本实验演示用 K=4 便于手算；LeRobot 真值 chunk_size=100、n_action_steps=100' }),
+        distractors: numDistractors,
+      },
+    ],
+  },
+  {
+    id: 'deltats', title: 'LeRobotDataset · 时序窗口', kernel: deltatsKernel as Kernel<unknown>, doc: trivialDoc('deltats'),
+    facts: [
+      {
+        id: 'dt_window', label: 'delta_timestamps 怎么把秒翻成帧',
+        ask: '策略要一段时序窗口(如未来 0~0.08 秒的动作)，delta_timestamps 怎么把"秒"翻成"取哪些帧"?', kind: 'choice',
+        compute: t => { const f = t as unknown as { fps: number }[]; const fps = f.find(x => x.fps != null)?.fps ?? 50; return ({ answer: `delta_idx = round(偏移 × fps)——fps=${fps} 时 -0.06s→-3 帧；再定位到"当前帧+偏移"。用 fps 换算让不同采集频率的数据集通用`, step: 1, evidence: '合法性 |偏移·fps−round|/fps ≤ 容差，保证偏移正好落在某帧' }) },
+        distractors: () => ['直接按秒数当帧号用', '固定取前后各 3 帧、不管 fps', '按文件字节偏移取'],
+      },
+      {
+        id: 'dt_boundary', label: '取的帧超出本轨迹末尾怎么办',
+        ask: '取"未来动作块"时，有些帧超出了当前这条 episode 的末尾，怎么办?', kind: 'choice',
+        compute: () => ({ answer: 'clamp 到本 episode 的边界帧(不跨到别条 episode、否则把两段无关轨迹拼一起)，并把这些越界帧标 is_pad=True', step: 2, evidence: '越界钳边界 + pad 掩码，两手都要' }),
+        distractors: () => ['去借下一条 episode 开头的帧凑数', '报错、这个样本作废', '直接用零填充、不做标记'],
+      },
+      {
+        id: 'dt_pad', label: 'pad 掩码干什么用',
+        ask: 'delta_timestamps 给出的 is_pad 布尔掩码，训练时有什么用?', kind: 'choice',
+        compute: () => ({ answer: '喂给 loss：把 padding(边界处钳出来的重复)帧排除，不让它们污染训练梯度。ACT/Diffusion 都用它', step: 3, evidence: '被钳的帧是"借来的"、不是真数据，必须从 loss 里剔掉' }),
+        distractors: () => ['没什么用、只是记录', '用来给数据打分', '决定学习率'],
+      },
+      {
+        id: 'dt_storage', label: 'LeRobotDataset 为什么图像走 mp4',
+        ask: 'LeRobotDataset 为什么低维信号(state/action)存 parquet、而相机图像存 mp4?', kind: 'choice',
+        compute: () => ({ answer: '图像占绝大多数体积，用视频编码(mp4)压得狠、解码也快；低维高频信号用列存 parquet(一个文件放很多 episode)高效读取', step: 4, evidence: '按数据特性分开存:图像走视频、低维走列存表' }),
+        distractors: () => ['mp4 是唯一能存机器人数据的格式', '图像不重要所以随便存', 'parquet 存不了数字'],
+      },
+      {
+        id: 'dt_padcount', label: '靠结尾采样动作块几个越界',
+        ask: '本例当前帧 158、episode 到 160、动作块偏移未来 5 帧(0~4)，有几个帧越界被标 pad?', kind: 'number',
+        compute: t => { const f = t as unknown as { act?: { pad: boolean }[] }[]; const d = f.find(x => x.act && x.act.some(c => 'pad' in c)); const n = d?.act?.filter(c => c.pad).length ?? 3; return ({ answer: String(n), step: 3, evidence: `158+2=160、+3=161、+4=162 都 ≥160(episode 末) → 钳到 159、标 pad，共 ${n} 个` }) },
         distractors: numDistractors,
       },
     ],

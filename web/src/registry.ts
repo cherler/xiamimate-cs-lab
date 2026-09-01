@@ -304,6 +304,8 @@ import { promptbuildKernel, type PBState } from '@engine/kernels/promptbuild.ts'
 import { PromptBuildStage } from './stages/PromptBuildStage.tsx'
 import { actteKernel, type ActState } from '@engine/kernels/actte.ts'
 import { ActTeStage } from './stages/ActTeStage.tsx'
+import { deltatsKernel, type DTState } from '@engine/kernels/deltats.ts'
+import { DeltaTsStage } from './stages/DeltaTsStage.tsx'
 import { lfucacheKernel, type LFUState } from '@engine/kernels/lfucache.ts'
 import { LFUCacheStage } from './stages/LFUCacheStage.tsx'
 import { trieKernel, type TrieState } from '@engine/kernels/trie.ts'
@@ -6709,6 +6711,32 @@ const vla: Experiment<VLAState> = {
 }
 
 // ── 具身智能 · 具身项目实战 ──
+const deltats: Experiment<DTState> = {
+  id: 'deltats', group: '具身项目实战', title: 'LeRobotDataset · 时序窗口', subtitle: 'delta_timestamps：秒→帧→episode 边界钳→pad 掩码，取一段历史观测/未来动作块',
+  kernel: deltatsKernel, defaultDoc: { kind: 'deltats', params: { pos: '靠结尾' }, entities: [], streams: [] },
+  params: [{ key: 'pos', label: '采样位置', kind: 'enum', options: ['靠开头', '靠结尾'] }],
+  paramsNote: 'LeRobotDataset 把机器人数据标准化存(低维进 parquet、图像进 mp4、fps/统计量进 meta)。但策略要的不是单帧、是一段**时序窗口**(ACT 要未来动作块、Diffusion 要历史观测)。**delta_timestamps** 是桥:①秒→帧 **delta_idx=round(偏移·fps)**(fps 换算让不同频率数据集通用)②定位+**clamp 进本 episode**[start,end)、越界钳到边界帧③**pad 掩码** is_pad=越界、喂 loss 排除不污染训练。ACT 的动作块=action_delta_indices=range(chunk_size)=[0..K-1]。切「采样位置」看开头(观测窗越界)/结尾(动作块越界)。偏移/钳/掩码现算。连「ACT 动作分块」。详见讲解卡。',
+  bounds: [
+    'delta_timestamps=从"要时序窗口"到"取哪些帧"的桥:秒→帧(round(偏移·fps))→episode边界钳→pad掩码',
+    '秒→帧用 fps 换算(不同采集频率数据集通用);越界钳到边界帧、不跨 episode(不借别条轨迹的帧)',
+    'pad 掩码 is_pad 越界标 True、喂给 loss 排除——padding 帧不污染训练梯度',
+    'ACT 动作块=action_delta_indices=range(chunk_size)=[0..K-1];parquet 存低维/mp4 存图像(图占体积大)。真实框架:LeRobot(dataset_reader.py)',
+  ],
+  tabs: [{ id: 'dt', label: '取帧逐步跑' }], Stage: DeltaTsStage, whyInRail: true,
+  tone: s => (s.stage === 'done' ? { key: 'good', label: '窗口取出' }
+    : s.stage === 'pad' ? { key: 'bad', label: `${s.obs.filter(c => c.pad).length + s.act.filter(c => c.pad).length} 个 pad` }
+    : s.stage === 'clamp' ? { key: 'idle', label: '边界钳' }
+    : s.stage === 'sec2idx' ? { key: 'idle', label: '秒→帧' }
+    : { key: 'idle', label: `帧 ${s.absIdx}` }),
+  metric: s => (s.stage === 'done' ? 1 : Math.max(0, (s.step + 1) / 5)),
+  tickLabel: s => ({ intro: '始', sec2idx: '换', clamp: '钳', pad: '掩', done: '成' }[s.stage] ?? '·'),
+  readouts: s => [
+    { label: '采集频率', value: `${s.fps} fps` },
+    { label: 'episode / 当前帧', value: `[${s.epStart},${s.epEnd}) / ${s.absIdx}` },
+    { label: 'pad 数', value: s.showPad ? `观测 ${s.obs.filter(c => c.pad).length} · 动作块 ${s.act.filter(c => c.pad).length}` : '—', tone: s.showPad && (s.obs.some(c => c.pad) || s.act.some(c => c.pad)) ? 'bad' : undefined },
+    { label: '本步', value: ({ intro: '要时序窗口', sec2idx: '秒→帧偏移', clamp: '定位+边界钳', pad: 'pad 掩码', done: '窗口取出' } as Record<string, string>)[s.stage] ?? '—' },
+  ],
+}
 const actte: Experiment<ActState> = {
   id: 'actte', group: '具身项目实战', title: 'ACT · 动作分块 + 时序集成', subtitle: 'LeRobot 旗舰策略：预测一整块动作、把重叠预测加权平均，治抖动与复合误差',
   kernel: actteKernel, defaultDoc: { kind: 'actte', params: { m: '默认' }, entities: [], streams: [] },
@@ -6764,7 +6792,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, ik, jacobian, quat, trajectory, kalman, icp, slam, impedance, mpc, pid, rrt, bc, diffpolicy, vla, lerobot, actte,
+  fk, ik, jacobian, quat, trajectory, kalman, icp, slam, impedance, mpc, pid, rrt, bc, diffpolicy, vla, lerobot, actte, deltats,
 ] as unknown as AnyExperiment[]
 
 /**

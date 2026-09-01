@@ -800,6 +800,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { stage: string; ensembled: number; votes: unknown[] }; return st.stage === 'done' ? '分块+集成' : st.stage === 'traj' ? '集成平滑' : st.stage === 'ensemble' ? `集成=${st.ensembled}` : st.stage === 'overlap' ? `${st.votes.length}块重叠` : st.stage === 'chunk' ? '分块预测' : '待跑' },
     try: [{ act: '切「重旧」权重', watch: 'm=0.7：最旧那条权重最大(1)、新的被压很低，集成明显偏向旧预测。' }, { act: '看集成 vs 最新', watch: '只用最新那条会抖([31,34,43,41,35,29])，集成把重叠预测平均、平滑贴真值。' }], terms: [],
   },
+  deltats: {
+    question: '策略要的不是单帧、是一段"历史观测/未来动作块"，怎么从扁平表里把这些帧取出来、还不越到别条轨迹？',
+    read: [{ at: 'episode 条', is: '本轨迹的帧范围 + 当前采样帧。', anchor: '.dt-ep' }, { at: '两窗口表', is: '观测/动作块，每行 秒→帧偏移→目标帧→取到帧→pad。', anchor: '.dt-table' }, { at: '读数', is: 'fps、episode、pad 数。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { stage: string; fps: number; absIdx: number; epStart: number; epEnd: number; obs: { pad: boolean }[]; act: { pad: boolean }[] }; const pads = st.obs.filter(c => c.pad).length + st.act.filter(c => c.pad).length; return [
+      { k: '本步输入', v: st.stage === 'intro' ? `当前帧 ${st.absIdx}、episode [${st.epStart},${st.epEnd})、fps=${st.fps}` : st.stage === 'sec2idx' ? '各偏移(秒)' : st.stage === 'clamp' ? '目标帧 = 当前帧 + 帧偏移' : st.stage === 'pad' ? '哪些帧落在 episode 外' : '取出的窗口' },
+      { k: '判定规则', v: `delta_idx=round(偏移·fps=${st.fps})；目标帧=当前帧+delta；query=clamp(目标帧, ${st.epStart}, ${st.epEnd - 1})；is_pad=(目标帧落在[${st.epStart},${st.epEnd})外)、喂 loss 排除。` },
+      { k: '本步结果', v: st.stage === 'intro' ? '待取一段时序窗口' : st.stage === 'sec2idx' ? `秒×fps 取整成帧偏移(如 -0.06s→-3 帧)` : st.stage === 'clamp' ? '越出本 episode 的钳到边界帧' : st.stage === 'pad' ? `${pads} 个越界帧标 pad=True(喂 loss 排除)` : 'ACT 动作块=range(K)，就这么取' },
+    ] },
+    verdict: (s: never) => { const st = s as { stage: string; obs: { pad: boolean }[]; act: { pad: boolean }[] }; return st.stage === 'done' ? '窗口取出' : st.stage === 'pad' ? `${st.obs.filter(c => c.pad).length + st.act.filter(c => c.pad).length}个pad` : st.stage === 'clamp' ? '边界钳' : st.stage === 'sec2idx' ? '秒→帧' : '待取' },
+    try: [{ act: '切「靠开头」', watch: '当前帧 102 靠 episode 起点：历史观测往回 -3 帧 = 99 越界 → 钳到 100、标 pad。' }, { act: '切「靠结尾」', watch: '当前帧 158 靠终点：未来动作块 +2/+3/+4 帧越过 160 → 钳到 159、标 pad(3 个)。' }], terms: [],
+  },
   queryplan: {
     question: '同一个查询有好几条路可走，数据库优化器凭什么选其中一条？',
     read: [{ at: '候选路径', is: '每条访问路径的 type + 估扫描行数代价条。', anchor: '.qp-paths' }, { at: 'EXPLAIN', is: '末步选中路径的 type/key/rows。', anchor: '.qp-explain' }],
