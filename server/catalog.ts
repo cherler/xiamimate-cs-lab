@@ -87,6 +87,7 @@ import { lrucacheKernel } from '../src/kernels/lrucache.ts'
 import { topkKernel } from '../src/kernels/topk.ts'
 import { reactagentKernel } from '../src/kernels/reactagent.ts'
 import { ctxcompactKernel } from '../src/kernels/ctxcompact.ts'
+import { toolcallKernel } from '../src/kernels/toolcall.ts'
 import { lfucacheKernel } from '../src/kernels/lfucache.ts'
 import { trieKernel } from '../src/kernels/trie.ts'
 import { quickselectKernel } from '../src/kernels/quickselect.ts'
@@ -1551,6 +1552,41 @@ export const CATALOG: CatalogEntry[] = [
         ask: '很多框架用"~4 字/token"快速估 token，这对中文场景有什么坑?', kind: 'choice',
         compute: t => { const f = t as unknown as { stage: string; meter?: { est: number; real: number } }[]; const m = f.find(x => x.meter)?.meter; return ({ answer: `低估中文(和 JSON)：中文约 1 字≈1 token，用 4字/token 会算少好几倍，导致压缩触发得偏晚——你以为没满、其实早超了`, step: f.findIndex(x => x.meter), evidence: m ? `本例一句中文估 ${m.est}、实际约 ${m.real}，低估 ${(m.real / m.est).toFixed(1)} 倍` : '中文被严重低估' }) },
         distractors: () => ['高估中文，导致压缩触发太早', '对中文刚好准确', '只影响英文不影响中文'],
+      },
+    ],
+  },
+  {
+    id: 'toolcall', title: '工具调用', kernel: toolcallKernel as Kernel<unknown>, doc: trivialDoc('toolcall'),
+    facts: [
+      {
+        id: 'tc_pipeline', label: 'harness 处理工具调用的流水线',
+        ask: '模型发出一个工具调用后，harness 用什么样的流水线来处理它?', kind: 'choice',
+        compute: t => { const f = t as unknown as { stage: string }[]; return ({ answer: '解析(取 name/参数，不合法→PARSE_ERROR)→门禁(未知工具→UNKNOWN_TOOL；危险操作→DENY)→执行(带超时)→回灌(结果或错误当 tool_result 配对喂回)。模型只决定发哪个工具，怎么接是确定性流水线', step: 1, evidence: '本例 5 个调用各走这条流水线，卡在不同阶段' }) },
+        distractors: () => ['模型直接执行工具、harness 不参与', '把工具名当普通文本拼进回复里', '每个调用都要用户手动确认才能跑'],
+      },
+      {
+        id: 'tc_error', label: '工具调用失败了怎么办',
+        ask: '一个工具调用解析失败 / 工具不存在 / 被权限拒绝，好的 harness 怎么处理?', kind: 'choice',
+        compute: t => { const f = t as unknown as { stage: string; history?: { ok: boolean }[] }[]; const d = f.find(x => x.stage === 'done'); const fails = d?.history?.filter(h => !h.ok).length ?? 3; return ({ answer: '把错误本身当成一条 tool_result 喂回给模型，循环不中断——模型看到错误能重试/改名/换招；不抛异常终止整个 Agent', step: f.findIndex(x => x.stage === 'done'), evidence: `本例 5 个调用里 ${fails} 个失败（拒绝/未知/解析错），全变成 error 结果回灌、循环没断` }) },
+        distractors: () => ['直接抛异常，整个 Agent 停掉', '静默忽略这个调用，当无事发生', '自动用最相近的工具替换后执行'],
+      },
+      {
+        id: 'tc_encoding', label: '工具调用一定是 JSON 吗',
+        ask: '模型发的工具调用，一定是 JSON（function-calling）格式吗?', kind: 'choice',
+        compute: () => ({ answer: '不一定。原生 function-calling 用 JSON schema(稳但绑供应商)；但 Codex 的 apply_patch 是自由文本、Aider 用文本 diff、gptme 把工具名当代码块语言标签——为了模型无关(本地/不支持 function-calling 的也能用)+避开在 JSON 里塞代码的转义地狱', step: 0, evidence: '编码方式是工具调用的一个关键设计取舍：function-calling vs 文本/XML' }),
+        distractors: () => ['必须是 JSON，否则解析不了', '必须是 XML 标签', '必须是 Python 代码'],
+      },
+      {
+        id: 'tc_execute', label: 'calc 工具真执行的结果',
+        ask: '本实验里 calc 工具收到 1234*5678，执行后返回多少（引擎真算，不是写死）?', kind: 'number',
+        compute: t => { const f = t as unknown as { call?: { name: string; result: string }; outcome: string }[]; const c = f.find(x => x.call?.name === 'calc' && x.outcome === 'ok'); return ({ answer: c?.call?.result ?? '7006652', step: 2, evidence: 'calc 工具解析 "1234*5678" 并求值——execute 这步由引擎真算' }) },
+        distractors: numDistractors,
+      },
+      {
+        id: 'tc_parallel', label: '哪些工具调用能并行',
+        ask: '一批工具调用里，哪些能并行跑、哪些必须独占排队?', kind: 'choice',
+        compute: () => ({ answer: '只读/互不影响的调用(read_file、calc)可并行(DeepSeek 默认最多 10 个并发)；写文件/跑 shell 这种有副作用的必须独占排队，否则互相踩', step: 1, evidence: '按"有无副作用"分类：并行安全 vs 独占' }),
+        distractors: () => ['所有调用都必须串行、一个一个来', '所有调用都能无脑并行', '按调用的字母顺序决定能否并行'],
       },
     ],
   },

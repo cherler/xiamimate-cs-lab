@@ -4995,3 +4995,47 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .cc-sum-drop li{margin:1px 0;text-decoration:line-through;text-decoration-color:color-mix(in srgb,var(--faint) 60%,transparent)}
 .cc-sum-rule{margin-top:7px;font:var(--t-meta)/1.5 var(--sans);color:var(--dim)}
 .cc-sum-rule b{color:var(--ink)}
+
+/* ── 工具调用 toolcall ─────────────────────────────────────── */
+/* 4 段流水线 */
+.tc-pipe{display:flex;align-items:stretch;gap:0;margin:8px 0}
+.tc-st{flex:1;display:flex;align-items:center;justify-content:center;gap:5px;position:relative;
+  padding:7px 4px;border:1px solid var(--line);border-radius:5px;background:var(--panel);
+  font-size:var(--t-ui);color:var(--faint)}
+.tc-st .tc-sic{font-weight:700}
+.tc-st.pass{border-color:color-mix(in srgb,var(--hit) 55%,var(--line));background:color-mix(in srgb,var(--hit) 9%,transparent);color:var(--hit)}
+.tc-st.pass .tc-slb{color:var(--ink)}
+.tc-st.fail{border-color:var(--miss);background:color-mix(in srgb,var(--miss) 10%,transparent);color:var(--miss)}
+.tc-st.fail .tc-slb{color:var(--miss);font-weight:650}
+.tc-st.skip{opacity:.5}
+.tc-arrow{position:absolute;right:-9px;z-index:1;color:var(--faint);font-size:12px;background:var(--void);padding:0 1px}
+/* 发出批次 */
+.tc-batch{margin:8px 0;padding:9px 11px;border:1px dashed var(--line);border-radius:6px;background:var(--sunk-1)}
+.tc-batch-h{font-size:var(--t-ui);color:var(--ink)}
+.tc-raw{margin:5px 0;font:var(--t-meta) var(--mono);color:var(--dim)}
+.tc-enc{font:var(--t-meta)/1.5 var(--sans);color:var(--faint)}
+.tc-enc b{color:var(--dim)} .tc-enc code{font-family:var(--mono);color:var(--now)}
+/* 当前调用 */
+.tc-cur{margin:8px 0;padding:9px 11px;border:1px solid var(--line);border-left-width:3px;border-radius:6px;background:var(--panel)}
+.tc-cur.ok{border-left-color:var(--hit)}
+.tc-cur.denied,.tc-cur.unknown,.tc-cur.malformed{border-left-color:var(--miss)}
+.tc-cur-raw{display:flex;align-items:center;gap:7px;font:var(--t-ui) var(--mono);color:var(--ink);word-break:break-all}
+.tc-cur-raw code{font-family:var(--mono)}
+.tc-enc-tag{flex:none;font:var(--t-meta) var(--mono);color:var(--faint);border:1px solid var(--line);border-radius:3px;padding:0 4px}
+.tc-cur-parsed{margin-top:6px;font-size:var(--t-ui);color:var(--dim)}
+.tc-cur-parsed b{color:var(--ink)} .tc-bad{color:var(--miss)}
+.tc-badge{font-size:var(--t-meta);padding:0 5px;border-radius:3px}
+.tc-badge.ok{color:var(--hit);background:color-mix(in srgb,var(--hit) 12%,transparent)}
+.tc-badge.denied,.tc-badge.unknown,.tc-badge.malformed{color:var(--miss);background:color-mix(in srgb,var(--miss) 12%,transparent)}
+/* 历史（配对累积）*/
+.tc-hist{margin-top:8px}
+.tc-hist-h{font:var(--t-meta) var(--sans);color:var(--faint);margin-bottom:4px}
+.tc-empty{font-size:var(--t-meta);color:var(--faint);font-style:italic}
+.tc-hi{display:flex;align-items:baseline;gap:7px;padding:3px 8px;border-radius:4px;margin-bottom:3px;
+  border-left:3px solid var(--line);font-size:var(--t-ui)}
+.tc-hi.ok{border-left-color:var(--hit);background:color-mix(in srgb,var(--hit) 6%,transparent)}
+.tc-hi.err{border-left-color:var(--miss);background:color-mix(in srgb,var(--miss) 7%,transparent)}
+.tc-hi-k{flex:none;font:var(--t-meta) var(--mono)}
+.tc-hi.ok .tc-hi-k{color:var(--hit)} .tc-hi.err .tc-hi-k{color:var(--miss)}
+.tc-hi-n{flex:none;font-family:var(--mono);font-size:var(--t-meta);color:var(--dim)}
+.tc-hi-t{flex:1 1 auto;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

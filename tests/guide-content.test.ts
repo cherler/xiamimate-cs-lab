@@ -238,6 +238,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { i: 0, step: 0, stage: 'full', strategy: '总结', N: 120, thresholdRatio: 0.8, retainRatio: 0.16, threshold: 96, retain: 20, msgs: [], running: 139, before: 139, relievedByPrune: false, phase: 'run', focus: '会话满了：139 ≥ 阈值 96', log: '' },
       b: { i: 4, step: 4, stage: 'rebuild', strategy: '总结', N: 120, thresholdRatio: 0.8, retainRatio: 0.16, threshold: 96, retain: 20, msgs: [], running: 50, before: 139, relievedByPrune: false, phase: 'done', focus: '压缩完成：139 → 50', log: '' },
     },
+    toolcall: {
+      doc: { kind: 'toolcall', params: {}, entities: [], streams: [] },
+      a: { i: 2, step: 2, stage: 'call', cur: 1, call: { id: 2, enc: 'JSON', raw: '{"name":"calc","args":{"expr":"1234*5678"}}', name: 'calc', args: 'expr=1234*5678', safe: true, status: 'ok', result: '7006652', err: '' }, pipe: { parse: 'pass', guard: 'pass', exec: 'pass', inject: 'pass' }, outcome: 'ok', history: [{ name: 'read_file', ok: true, text: '…' }, { name: 'calc', ok: true, text: '7006652' }], total: 5, phase: 'run', focus: '调用 2/5：calc', log: '' },
+      b: { i: 3, step: 3, stage: 'call', cur: 2, call: { id: 3, enc: 'JSON', raw: '{"name":"run_shell","args":{"cmd":"rm -rf /tmp/*"}}', name: 'run_shell', args: 'cmd=rm -rf /tmp/*', safe: false, status: 'denied', result: '', err: 'ABORTED' }, pipe: { parse: 'pass', guard: 'fail', exec: 'skip', inject: 'pass' }, outcome: 'denied', history: [{ name: 'read_file', ok: true, text: '…' }, { name: 'calc', ok: true, text: '7006652' }, { name: 'run_shell', ok: false, text: 'ABORTED' }], total: 5, phase: 'run', focus: '调用 3/5：run_shell', log: '' },
+    },
     queryplan: {
       doc: { kind: 'queryplan', params: {}, entities: [], streams: [] },
       a: { step: 1, op: 'path', query: 'q', revealed: 1, cur: 0, chosen: -1, paths: [{ name: '全表扫描', type: 'ALL', key: '—', rows: 10000, note: 'x' }, { name: '走 idx(city)', type: 'ref', key: 'idx_city', rows: 500, note: 'x' }, { name: '走 idx(age)', type: 'range', key: 'idx_age', rows: 6000, note: 'x' }], phase: 'run', focus: '候选路径：全表扫描（type=ALL，估扫 10000 行）' },

@@ -284,6 +284,8 @@ import { reactagentKernel, type ReactState } from '@engine/kernels/reactagent.ts
 import { ReactAgentStage } from './stages/ReactAgentStage.tsx'
 import { ctxcompactKernel, type CompactState } from '@engine/kernels/ctxcompact.ts'
 import { CtxCompactStage } from './stages/CtxCompactStage.tsx'
+import { toolcallKernel, type ToolCallState } from '@engine/kernels/toolcall.ts'
+import { ToolCallStage } from './stages/ToolCallStage.tsx'
 import { lfucacheKernel, type LFUState } from '@engine/kernels/lfucache.ts'
 import { LFUCacheStage } from './stages/LFUCacheStage.tsx'
 import { trieKernel, type TrieState } from '@engine/kernels/trie.ts'
@@ -5796,6 +5798,30 @@ const ctxcompact: Experiment<CompactState> = {
     { label: '省下', value: s.stage === 'rebuild' ? `${s.before - s.running} tokens（${s.before}→${s.running}）` : '—', tone: s.stage === 'rebuild' ? 'good' : undefined },
   ],
 }
+const toolcall: Experiment<ToolCallState> = {
+  id: 'toolcall', group: '大模型项目实战', title: '工具调用', subtitle: '模型发的调用怎么解析→分发→执行→回灌；错了不崩循环',
+  kernel: toolcallKernel, defaultDoc: { kind: 'toolcall', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: 'Agent 工程面试高频题：模型发的工具调用，harness 怎么处理。模型只管"发哪个工具"（模型的事）；"怎么接"是确定性流水线：①解析(取 name/参数，不合法→PARSE_ERROR) ②门禁(未知工具→UNKNOWN_TOOL；危险操作→DENY) ③执行(calc 引擎真算，带超时) ④回灌(结果/错误当 tool_result 配对喂回)。本例 5 个调用覆盖 成功/权限拒绝/未知工具/解析失败。关键：**出错不抛异常终止循环，错误当结果喂回**，模型能重试。详见讲解卡。',
+  bounds: [
+    '流水线(确定性)：解析→门禁→执行→回灌；模型只决定"发哪个"，"怎么接"是 harness 的功夫',
+    '出错不崩循环：拒绝/未知工具/解析失败都变成一条 error 结果喂回，模型看到能重试/换招',
+    '编码不只 JSON：Codex apply_patch 是自由文本、Aider 用文本 diff——为模型无关+避 JSON 转义地狱',
+    '配对(结果带 call_id 喂回别拆) + 并行vs独占(只读可并行、写/shell 独占)。真实框架:Codex/OpenHands/DeepSeek Harness',
+  ],
+  tabs: [{ id: 'tc', label: '调用逐个处理' }], Stage: ToolCallStage, whyInRail: true,
+  tone: s => (s.stage === 'done' ? { key: 'good', label: `${s.history.filter(h => h.ok).length}成/${s.history.filter(h => !h.ok).length}败·循环不断` }
+    : s.cur < 0 ? { key: 'idle', label: `发出 ${s.total} 个调用` }
+    : s.outcome === 'ok' ? { key: 'good', label: `${s.call?.name} 已执行` }
+    : { key: 'bad', label: s.outcome === 'denied' ? '门禁拒绝' : s.outcome === 'unknown' ? '未知工具' : '解析失败' }),
+  metric: s => (s.stage === 'done' ? 1 : Math.max(0, (s.step + 1) / (s.total + 1))),
+  tickLabel: s => (s.cur < 0 ? '发' : s.outcome === 'ok' ? '✓' : s.outcome === 'denied' ? '挡' : s.outcome === 'unknown' ? '?' : '✗'),
+  readouts: s => [
+    { label: '处理进度', value: s.cur < 0 ? `发出 ${s.total} 个` : `第 ${s.cur + 1} / ${s.total}` },
+    { label: '本调用', value: s.cur < 0 ? '—' : `${s.call?.name || '(malformed)'}`, tone: s.outcome === 'ok' ? 'good' : s.outcome === '—' ? undefined : 'bad' },
+    { label: '结局', value: s.cur < 0 ? '—' : (({ ok: '✅ 执行·回灌', denied: '⛔ 拒绝·错误回灌', unknown: '❓ 未知·错误回灌', malformed: '💥 解析失败·错误回灌' } as Record<string, string>)[s.outcome] ?? '—'), tone: s.outcome === 'ok' ? 'good' : s.outcome === '—' ? undefined : 'bad' },
+    { label: '已回灌', value: s.history.length ? `${s.history.filter(h => h.ok).length}✓ / ${s.history.filter(h => !h.ok).length}✗` : '0' },
+  ],
+}
 const lrucache: Experiment<LRUState> = {
   id: 'lrucache', group: '算法项目实战', title: '手写 LRU 缓存', subtitle: 'HashMap+双向链表，get/put 都 O(1)',
   kernel: lrucacheKernel, defaultDoc: { kind: 'lrucache', params: {}, entities: [], streams: [] }, params: [],
@@ -6465,7 +6491,7 @@ export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
   caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt, ecbcbc, birthday, aesround, hmac, totp,
-  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, bufferpool, queryplan, wildcard, regex, blockingqueue, rwlock, aba, happensbefore, lockstrategy, lrucache, lfucache, trie, quickselect, reactagent, ctxcompact, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign, topk, feed, objectstore,
+  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, bufferpool, queryplan, wildcard, regex, blockingqueue, rwlock, aba, happensbefore, lockstrategy, lrucache, lfucache, trie, quickselect, reactagent, ctxcompact, toolcall, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign, topk, feed, objectstore,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,

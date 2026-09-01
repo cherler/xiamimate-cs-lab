@@ -690,6 +690,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { stage: string; running: number; threshold: number; strategy: string; relievedByPrune: boolean }; return st.stage === 'rebuild' ? `压缩完成 ${st.running}t` : st.stage === 'compress' ? `压中间·${st.strategy}` : st.stage === 'prune' ? (st.relievedByPrune ? '剪够了' : '剪超大输出') : st.stage === 'partition' ? '分区·头/中/尾' : `满了 ${st.running}≥${st.threshold}` },
     try: [{ act: '把「压中间」切成省略', watch: '总结换成一行 [已省略]：token 更少，但中间全丢了——省钱 vs 记得住的取舍。' }, { act: '把阈值调到 0.9', watch: '光剪超大工具输出就落回阈值下，免了总结那次模型调用——先上最便宜的一招。' }], terms: [],
   },
+  toolcall: {
+    question: '模型发的工具调用，harness 怎么把它变成真结果，还不被一个坏调用搞崩整个循环？',
+    read: [{ at: '流水线', is: '解析→门禁→执行→回灌，当前调用走到哪、卡在哪。', anchor: '.tc-pipe' }, { at: '历史', is: '回灌给模型的调用/结果配对，错误红色标出。', anchor: '.tc-hist' }, { at: '读数', is: '进度、本调用结局、已回灌几条。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { stage: string; cur: number; call?: { name: string; raw: string; result: string }; outcome: string; total: number }; return [
+      { k: '本步输入', v: st.cur < 0 ? `模型发的 ${st.total} 个工具调用` : `调用 ${st.cur + 1}/${st.total}：${st.call?.name || '(malformed)'} — ${st.call?.raw ?? ''}` },
+      { k: '判定规则', v: '解析(取 name/参数，不合法→PARSE_ERROR)→门禁(未知工具→UNKNOWN_TOOL；危险操作→DENY)→执行(带超时)→回灌(结果或错误，当 tool_result 配对喂回)。出错不抛异常终止循环。' },
+      { k: '本步结果', v: st.cur < 0 ? `${st.total} 个待逐个处理` : st.outcome === 'ok' ? `${st.call?.name} 执行✓${st.call?.result ? ' → ' + st.call.result : ''}，结果配对回灌` : st.outcome === 'denied' ? '门禁拒绝，错误当结果回灌（循环不中断）' : st.outcome === 'unknown' ? '未知工具，错误回灌（循环不中断）' : '解析失败，错误回灌（循环不中断）' },
+    ] },
+    verdict: (s: never) => { const st = s as { stage: string; cur: number; outcome: string; total: number; history: { ok: boolean }[] }; return st.stage === 'done' ? `${st.history.filter(h => h.ok).length}成/${st.history.filter(h => !h.ok).length}败·循环不断` : st.cur < 0 ? `发出 ${st.total} 个` : st.outcome === 'ok' ? '执行·回灌' : st.outcome === 'denied' ? '门禁拒绝' : st.outcome === 'unknown' ? '未知工具' : '解析失败' },
+    try: [{ act: '看错误怎么处理', watch: '第 3/4/5 个调用失败（拒绝/未知/解析错），但都变成 error 结果喂回、循环没断——模型能重试。' }, { act: '看 calc 真执行', watch: '第 2 个 calc(1234*5678) 由引擎真算出 7006652，不是写死。' }], terms: [],
+  },
   queryplan: {
     question: '同一个查询有好几条路可走，数据库优化器凭什么选其中一条？',
     read: [{ at: '候选路径', is: '每条访问路径的 type + 估扫描行数代价条。', anchor: '.qp-paths' }, { at: 'EXPLAIN', is: '末步选中路径的 type/key/rows。', anchor: '.qp-explain' }],

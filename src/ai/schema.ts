@@ -335,6 +335,7 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   topk: {},
   reactagent: {},
   ctxcompact: { strategy: 'string', thresholdRatio: 'number' },
+  toolcall: {},
   lfucache: {},
   trie: {},
   quickselect: {},
