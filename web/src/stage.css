@@ -4972,7 +4972,26 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .cc-tail .cc-tag{color:var(--hit)}
 .cc-pruned{border-left-color:var(--now);background:color-mix(in srgb,var(--now) 8%,transparent)}
 .cc-pruned .cc-label{color:var(--dim)}.cc-pruned .cc-tag{color:var(--now)}
-.cc-summary{border-left:3px solid var(--now);background:color-mix(in srgb,var(--now) 13%,transparent)}
-.cc-summary .cc-tag{color:var(--now)}.cc-summary .cc-label{color:var(--ink);white-space:normal}
+.cc-summary{border-left:3px solid #7466E6;background:color-mix(in srgb,#7466E6 13%,transparent)}
+.cc-summary .cc-tag{color:#7466E6}.cc-summary .cc-label{color:var(--ink);white-space:normal}
 .cc-elide{border-left:3px dashed var(--faint);background:transparent}
 .cc-elide .cc-label,.cc-elide .cc-tag{color:var(--faint);font-style:italic}
+
+/* 核心：中间被压成什么 —— 真实 8 段式摘要面板（紫，和琥珀的「已剪」区分开）*/
+.cc-sum{margin-top:10px;border:1px solid color-mix(in srgb,#7466E6 40%,var(--line));
+  border-radius:6px;background:color-mix(in srgb,#7466E6 6%,transparent);padding:9px 11px}
+.cc-sum-h{font-size:var(--t-ui);color:var(--ink);font-weight:650}
+.cc-sum-h em{display:block;margin-top:2px;font:var(--t-meta)/1.4 var(--sans);color:var(--faint);font-weight:400}
+.cc-sum-h em b{color:#7466E6;font-weight:650}
+.cc-sum-grid{display:grid;grid-template-columns:1fr 1fr;gap:3px 12px;margin:8px 0}
+@media (max-width:640px){.cc-sum-grid{grid-template-columns:1fr}}
+.cc-sum-row{display:flex;gap:7px;align-items:baseline;font-size:var(--t-ui);line-height:1.5}
+.cc-sum-sec{flex:none;color:#7466E6;font-family:var(--mono);font-size:var(--t-meta)}
+.cc-sum-txt{color:var(--ink)}
+.cc-sum-drop{margin-top:6px;padding-top:6px;border-top:1px dashed var(--line);
+  font-size:var(--t-meta);color:var(--faint)}
+.cc-sum-drop b{color:var(--dim)}
+.cc-sum-drop ul{margin:3px 0 0;padding-left:18px}
+.cc-sum-drop li{margin:1px 0;text-decoration:line-through;text-decoration-color:color-mix(in srgb,var(--faint) 60%,transparent)}
+.cc-sum-rule{margin-top:7px;font:var(--t-meta)/1.5 var(--sans);color:var(--dim)}
+.cc-sum-rule b{color:var(--ink)}

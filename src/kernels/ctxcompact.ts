@@ -31,6 +31,8 @@ export type CompactState = {
   running: number        // 当前保留的 token 合计
   before: number         // 压缩前合计
   meter?: { sample: string; chars: number; est: number; real: number }  // 只在「满了」这步给 CJK 陷阱用
+  summary?: { sec: string; text: string }[]   // 只在「成·总结」这步：真实的 8 段式摘要内容
+  dropped?: string[]                          // 总结时被丢弃的（整屏日志/文件/冗余）
   relievedByPrune: boolean
   phase: 'run' | 'done'
   focus: string
@@ -66,6 +68,27 @@ const CONV: Msg[] = [
 const PRUNED_TOK = 4     // 超大工具结果剪枝后：头4096 + [中间略] + 尾1024 ≈ 一小段
 const SUMMARY_TOK = 20   // 8 段式摘要的 token 成本（有损压缩，换一次模型调用）
 const ELIDE_TOK = 4      // 「[N 条消息已省略]」一行的成本（无损压缩不存在——这是全丢）
+
+//  「总结」到底把中间那段压成了什么 —— 这是本实验的核心，之前只给了个占位符。
+//  真实做法：把中间那段喂给大模型 + 一个固定模板（Claude Code/DeepSeek/Codex 的 8 段），
+//  模型**读完写出下面这份摘要**。它是一次大模型调用、有损——不是引擎算出来的，这里给你看真实产出。
+//  规律：**留决策/状态/文件/错误，丢冗长的输入输出**。下面是本例（修登录 500）真实会被压成的样子。
+const SUMMARY8: { sec: string; text: string }[] = [
+  { sec: '① 意图', text: '修复登录接口的 500 错误' },
+  { sec: '② 关键概念', text: '空指针(NPE)、session 过期' },
+  { sec: '③ 文件与代码', text: 'auth.py — login() 第 42 行' },
+  { sec: '④ 错误与修复', text: '500 根因=user 对象为 None 未判空 → 已加判空并 applied' },
+  { sec: '⑤ 待办', text: 'token 过期的测试用例仍 failed，未解决' },
+  { sec: '⑥ 当前进展', text: '判空修复已应用；pytest 结果 1 passed / 1 failed' },
+  { sec: '⑦ 下一步', text: '改 token 校验逻辑，重跑测试' },
+  { sec: '⑧ 关键上下文', text: 'session 超时配置 = 30 分钟' },
+]
+//  被丢掉的（不进摘要）——正是最占 token、最没长期价值的那些。
+const DROPPED: string[] = [
+  '整屏 NPE 堆栈日志（只留「NPE at auth:42」这一句）',
+  'auth.py 200 行文件内容（只留「login() 第 42 行」）',
+  '复现命令的完整输出、几条逐字的试探性推理',
+]
 
 //  ~4 字/token 的估算 heuristic（DeepSeek Harness 明说它「低估中文和 JSON」）。
 const estTok = (s: string) => Math.ceil([...s].length / 4)
@@ -154,8 +177,11 @@ export const ctxcompactKernel: Kernel<CompactState> = {
     })
 
     // ── ③ 成：压中间（若还超）+ 重建视图，一步到位、列表明显收缩 ──
+    const showSummary = !relievedByPrune && strategy === '总结'
     push({
       stage: 'rebuild', msgs: rebuilt, running: afterCompress, relievedByPrune, phase: 'done',
+      summary: showSummary ? SUMMARY8 : undefined,
+      dropped: showSummary ? DROPPED : undefined,
       focus: relievedByPrune
         ? `剪枝已够：${before} → ${afterCompress} tokens，回到阈值 ${threshold} 之下`
         : `压中间【${strategy}】+ 重建：中间 ${midToks}t → ${strategy === '总结' ? SUMMARY_TOK : ELIDE_TOK}t，${before} → ${afterCompress}（省 ${before - afterCompress}）`,

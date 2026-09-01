@@ -32,7 +32,7 @@ function Gauge({ N, running, threshold, before }: { N: number; running: number; 
 }
 
 export function CtxCompactStage({ state }: StageProps<CompactState>) {
-  const { stage, msgs, running, threshold, N, before, meter, strategy, relievedByPrune, focus } = state
+  const { stage, msgs, running, threshold, N, before, meter, strategy, relievedByPrune, focus, summary, dropped } = state
   const done = stage === 'rebuild'
   const over = running >= threshold
 
@@ -73,6 +73,31 @@ export function CtxCompactStage({ state }: StageProps<CompactState>) {
             </div>
           ))}
         </div>
+
+        {/* 核心：中间到底被压成了什么 —— 真实的 8 段式摘要 + 丢了什么 + 诚实说明这是一次大模型调用 */}
+        {summary && (
+          <div className="cc-sum">
+            <div className="cc-sum-h">
+              中间那段 → 一段 8 段式摘要
+              <em>⚠️ 这一步是<b>一次大模型调用</b>：读中间那段、按固定模板写出下面这份，不是引擎算的——有损</em>
+            </div>
+            <div className="cc-sum-grid">
+              {summary.map(s => (
+                <div key={s.sec} className="cc-sum-row">
+                  <span className="cc-sum-sec">{s.sec}</span>
+                  <span className="cc-sum-txt">{s.text}</span>
+                </div>
+              ))}
+            </div>
+            {dropped && (
+              <div className="cc-sum-drop">
+                <b>丢弃（不进摘要，正是最占 token 的）：</b>
+                <ul>{dropped.map((d, i) => <li key={i}>{d}</li>)}</ul>
+              </div>
+            )}
+            <div className="cc-sum-rule">规律：<b>留决策 / 状态 / 文件 / 错误，丢冗长的输入输出</b>。模板保证「换个会话也不漏关键」；有损是代价，所以 Claude Code 会在压完后<b>把最近改过的文件重新读一遍</b>，把摘要抹平的细节取回来。</div>
+          </div>
+        )}
 
         {done
           ? <p className="scnote"><b>压缩完成</b>：{before} → {running} tokens。喂给模型的是「头 + {relievedByPrune ? '剪枝后的中间' : strategy === '总结' ? '摘要' : '省略标记'} + 尾」，落回阈值之下、会话能继续。🔑 <b>原始日志一条没删</b>（append-only，可回放可审计）；系统提示+工具原样在最前，保住 KV/前缀缓存。面试落点：量token(中文被低估)→到阈值触发→留头+留尾(别拆 call/result 对)→先剪超大工具输出→还超就总结(有损·花钱·记得住)或省略(免费·确定·失忆)。</p>
