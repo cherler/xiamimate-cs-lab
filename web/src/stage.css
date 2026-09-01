@@ -5536,3 +5536,26 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .lc-verdict.lc-vstick{background:color-mix(in srgb,var(--hit) 8%,transparent);border:1px solid color-mix(in srgb,var(--hit) 35%,var(--line))}
 .lc-verdict.lc-vslip{background:color-mix(in srgb,var(--miss) 8%,transparent);border:1px solid color-mix(in srgb,var(--miss) 35%,var(--line))}
 .lc-accel{border-top:1px solid var(--line);padding-top:8px}
+
+/* ekf · 扩展卡尔曼滤波 */
+.scdn.ek-hot{color:var(--now)}
+.scdn.ek-good{color:var(--hit)}
+.ek-svg{margin:6px 0 2px;max-width:340px}
+.ek-axis{stroke:var(--line);stroke-width:1.5}
+.ek-tick{fill:var(--faint);font:10px var(--mono);text-anchor:middle}
+.ek-lm{fill:var(--now)}
+.ek-lmt{fill:var(--now);font:10px var(--sans)}
+.ek-range{stroke:color-mix(in srgb,var(--now) 55%,transparent);stroke-width:1;stroke-dasharray:3 2}
+.ek-ranget{fill:var(--now);font:10px var(--mono)}
+.ek-prior{fill:var(--ghost)}
+.ek-pred{fill:var(--dim)}
+.ek-post{fill:var(--hit)}
+.ek-lbl{fill:var(--faint);font:9px var(--sans);text-anchor:middle}
+.ek-lbl2{fill:var(--dim);font:9px var(--sans);text-anchor:middle}
+.ek-lbl3{fill:var(--hit);font:9px var(--sans);text-anchor:middle}
+.ek-flow{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+.ek-blk{border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--panel-2);font-size:var(--t-ui);line-height:1.7;font-variant-numeric:tabular-nums}
+.ek-blk.ek-off{opacity:.4}
+.ek-n{font-family:var(--mono);color:var(--now);font-weight:700;margin-right:6px}
+.ek-sub{display:block;font:var(--t-meta) var(--sans);color:var(--faint);margin-top:2px;font-style:normal}
+.ek-jt{color:var(--now)}

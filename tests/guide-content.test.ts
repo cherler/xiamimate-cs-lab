@@ -354,6 +354,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { i: 2, step: 2, stage: 'cone', ...base, showNormal: true, showCone: true, showStick: false, showAccel: false, phase: 'run' as const, focus: '摩擦锥' },
       b: { i: 3, step: 3, stage: 'stickslip', ...base, showNormal: true, showCone: true, showStick: true, showAccel: false, phase: 'run' as const, focus: '粘/滑判定' },
     } })(),
+    ekf: (() => { const base = { trust: 'tight', trustLabel: '测量准(R=0.25)', xPrior: 3, PPrior: 4, u: 2, Q: 1, R: 0.25, L: 10, d: 5, xPred: 5, PPred: 5, hPred: 7.07, z: 8, innov: 0.93, H: -0.707, S: 2.75, K: -1.286, xPost: 3.81, PPost: 0.45, log: '' }; return {
+      doc: { kind: 'ekf', params: { trust: '测量准' }, entities: [], streams: [] },
+      a: { i: 3, step: 3, stage: 'jacobian', ...base, showPred: true, showMeas: true, showJac: true, showUpd: false, phase: 'run' as const, focus: '雅可比' },
+      b: { i: 4, step: 4, stage: 'update', ...base, showPred: true, showMeas: true, showJac: true, showUpd: true, phase: 'run' as const, focus: '更新' },
+    } })(),
     queryplan: {
       doc: { kind: 'queryplan', params: {}, entities: [], streams: [] },
       a: { step: 1, op: 'path', query: 'q', revealed: 1, cur: 0, chosen: -1, paths: [{ name: '全表扫描', type: 'ALL', key: '—', rows: 10000, note: 'x' }, { name: '走 idx(city)', type: 'ref', key: 'idx_city', rows: 500, note: 'x' }, { name: '走 idx(age)', type: 'range', key: 'idx_age', rows: 6000, note: 'x' }], phase: 'run', focus: '候选路径：全表扫描（type=ALL，估扫 10000 行）' },

@@ -352,6 +352,7 @@ import { rneaKernel, type RneaState } from '@engine/kernels/rnea.ts'
 import { fwddynKernel, type FwdState } from '@engine/kernels/fwddyn.ts'
 import { computedtorqueKernel, type CtcState } from '@engine/kernels/computedtorque.ts'
 import { contactlcpKernel, type LcpState } from '@engine/kernels/contactlcp.ts'
+import { ekfKernel, type EkfState } from '@engine/kernels/ekf.ts'
 import { ikKernel, type IKState } from '@engine/kernels/ik.ts'
 import { jacobianKernel, type JacoState } from '@engine/kernels/jacobian.ts'
 import { kalmanKernel, type KalmanState } from '@engine/kernels/kalman.ts'
@@ -380,6 +381,7 @@ import { RneaStage } from './stages/RneaStage.tsx'
 import { FwdDynStage } from './stages/FwdDynStage.tsx'
 import { ComputedTorqueStage } from './stages/ComputedTorqueStage.tsx'
 import { ContactLcpStage } from './stages/ContactLcpStage.tsx'
+import { EkfStage } from './stages/EkfStage.tsx'
 import { IKStage } from './stages/IKStage.tsx'
 import { JacobianStage } from './stages/JacobianStage.tsx'
 import { KalmanStage } from './stages/KalmanStage.tsx'
@@ -6688,6 +6690,33 @@ const trajectory: Experiment<TrajState> = {
 }
 
 // ── 具身智能 · 机器人感知 ──
+const ekf: Experiment<EkfState> = {
+  id: 'ekf', group: '机器人感知', title: '扩展卡尔曼滤波 EKF', subtitle: '卡尔曼的非线性扩展：在估计点用雅可比 H=∂h/∂x 把非线性观测就地线性化',
+  kernel: ekfKernel, defaultDoc: { kind: 'ekf', params: { trust: '测量准' }, entities: [], streams: [] },
+  params: [{ key: 'trust', label: '测量信任', kind: 'enum', options: ['测量准', '测量糙'] }],
+  paramsNote: '「卡尔曼滤波」要求运动/观测**线性**;但机器人常遇非线性(状态是位置 x、传感器测的是到地标的**距离** z=√((L−x)²+d²)、对 x 非线性)。**EKF 的招**:在**当前估计点**把非线性 f/h 用一阶泰勒(**雅可比**)线性化,再套原卡尔曼公式。本例地标(10,5)偏离轴。①预测 x̂←x̂+u、P←P+Q ②非线性观测 h(x̂)、创新 y=z−h ③**雅可比 H=∂h/∂x=−(L−x̂)/h(EKF 精髓、就地线性化)** ④更新 S=H²P+R、K=PH/S、x←x̂+Ky、P←(1−KH)P。切「信任」看 R 小(信测量、K 大)vs R 大(信预测)。**失效**:强非线性/估计点差→发散→UKF/粒子滤波。全现算。连「卡尔曼滤波/雅可比矩阵」。详见讲解卡。',
+  bounds: [
+    'EKF=卡尔曼的非线性扩展:唯一不同是在估计点对非线性 f/h 求雅可比(F/H)就地线性化,其余预测-更新公式照旧',
+    '观测雅可比 H=∂h/∂x 把非线性距离测量翻译成局部线性灵敏度(H 符号=往哪动会让测量怎么变);运动非线性则对 f 求 F、P←F P Fᵀ+Q',
+    '更新:创新 y=z−h(x̂)、S=HPHᵀ+R、K=PHᵀS⁻¹、x←x̂+Ky、P←(I−KH)P;R 小信测量 K 大、R 大信预测 K 小',
+    '失效:只做一阶线性化,强非线性/估计点离真值远→协方差失真甚至发散→UKF(sigma 点不求雅可比)或粒子滤波(多峰非高斯)。是机器人定位/EKF-SLAM 主力',
+  ],
+  tabs: [{ id: 'ek', label: 'EKF 逐步跑' }], Stage: EkfStage, whyInRail: true,
+  tone: s => (s.stage === 'done' ? { key: 'good', label: '雅可比+卡尔曼' }
+    : s.stage === 'update' ? { key: 'good', label: `x̂=${s.xPost}` }
+    : s.stage === 'jacobian' ? { key: 'idle', label: `H=${s.H}` }
+    : s.stage === 'measmodel' ? { key: 'idle', label: '非线性观测' }
+    : s.stage === 'predict' ? { key: 'idle', label: '预测' }
+    : { key: 'idle', label: '非线性' }),
+  metric: s => (s.stage === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => ({ intro: '非', predict: '测', measmodel: 'h', jacobian: 'H', update: '融', done: '成' }[s.stage] ?? '·'),
+  readouts: s => [
+    { label: '测量信任', value: s.trustLabel },
+    { label: '雅可比 H=∂h/∂x', value: s.showJac ? `${s.H}` : '—' },
+    { label: '位置估计 x̂', value: s.showUpd ? `${s.xPost}` : `${s.xPred}` },
+    { label: '方差 P', value: s.showUpd ? `${s.PPost}（收敛）` : `${s.PPred}`, tone: s.showUpd ? 'good' : undefined },
+  ],
+}
 const kalman: Experiment<KalmanState> = {
   id: 'kalman', group: '机器人感知', title: '卡尔曼滤波', subtitle: '预测+观测按方差融合：机器人定位的地基',
   kernel: kalmanKernel, defaultDoc: { kind: 'kalman', params: {}, entities: [], streams: [] }, params: [],
@@ -7051,7 +7080,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, icp, slam, impedance, mpc, pid, rrt, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
+  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, icp, slam, impedance, mpc, pid, rrt, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
 ] as unknown as AnyExperiment[]
 
 /**

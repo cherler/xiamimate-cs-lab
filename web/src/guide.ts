@@ -910,6 +910,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { stage: string; stick: boolean; accel: number }; return st.stage === 'done' ? '互补+摩擦锥' : st.stage === 'accel' ? (st.stick ? 'a=0粘' : `a=${st.accel}滑`) : st.stage === 'stickslip' ? (st.stick ? '粘住' : '滑动') : st.stage === 'cone' ? '摩擦锥' : st.stage === 'normal' ? '法向互补' : '接触' },
     try: [{ act: '切「轻推 F=3」', watch: 'F=3≤μf_n=4.905 → 粘住，f_t=3(锥内)、a=0。' }, { act: '切「重推 F=6」', watch: 'F=6>μf_n=4.905 → 滑动，f_t 饱和 4.905、a=(6−4.905)/1=1.095 m/s²。' }, { act: '切「临界 F=4.9」', watch: '4.9<4.905 刚好粘住(将滑未滑)、a=0——摩擦锥边界的开关。' }], terms: [],
   },
+  ekf: {
+    question: '卡尔曼滤波要求线性，可机器人测的是「到地标的距离」这种非线性量——EKF 怎么办？',
+    read: [{ at: '数轴图', is: '地标(10,5)、机器人先验/预测/后验位置。', anchor: '.ek-svg' }, { at: '雅可比块', is: 'H=∂h/∂x 就地线性化(EKF 精髓)。', anchor: '.ek-jt' }, { at: '读数', is: '信任、H、x̂、方差 P。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { stage: string; trustLabel: string; xPrior: number; u: number; PPrior: number; Q: number; L: number; xPred: number; PPred: number; hPred: number; z: number; innov: number; H: number; R: number; S: number; K: number; xPost: number; PPost: number }; return [
+      { k: '本步输入', v: st.stage === 'intro' ? `信任 ${st.trustLabel}、非线性观测` : st.stage === 'predict' ? `先验 x̂=${st.xPrior}、运动 u=${st.u}` : st.stage === 'measmodel' ? `预测位置 x̂=${st.xPred}、地标 L=${st.L}` : st.stage === 'jacobian' ? `在估计点 x̂=${st.xPred} 求偏导` : `创新 y=${st.innov}、H=${st.H}、R=${st.R}` },
+      { k: '判定规则', v: `预测 x̂←x̂+u、P←P+Q；观测 h(x̂)=√((L−x̂)²+d²)非线性；雅可比 H=∂h/∂x=−(L−x̂)/h 就地线性化；更新 S=H²P+R、K=PH/S、x←x̂+Ky、P←(1−KH)P。` },
+      { k: '本步结果', v: st.stage === 'intro' ? 'EKF=在估计点雅可比线性化+卡尔曼' : st.stage === 'predict' ? `预测 x̂=${st.xPred}、P=${st.PPred}(不确定度涨)` : st.stage === 'measmodel' ? `h(x̂)=${st.hPred}、实测 ${st.z} → 创新 y=${st.innov}` : st.stage === 'jacobian' ? `H=−(L−x̂)/h=${st.H}（就地线性化、负=往右离地标更近）` : `x←x̂+Ky=${st.xPost}、P←(1−KH)P=${st.PPost}（收敛）` },
+    ] },
+    verdict: (s: never) => { const st = s as { stage: string; H: number; xPost: number }; return st.stage === 'done' ? '雅可比+卡尔曼' : st.stage === 'update' ? `x̂=${st.xPost}` : st.stage === 'jacobian' ? `H=${st.H}` : st.stage === 'measmodel' ? '非线性观测' : st.stage === 'predict' ? '预测' : '非线性' },
+    try: [{ act: '切「测量准(R=0.25)」', watch: '信测量 → K=−1.286 大、状态拉到 3.81、P 从 5 收到 0.45。' }, { act: '切「测量糙(R=9)」', watch: '信预测 → K=−0.307 小、状态几乎不动(4.71)、P 只收到 3.91。' }, { act: '看雅可比 H', watch: 'H=−0.707 把非线性距离测量翻译成局部线性斜率，卡尔曼公式才能用。' }], terms: [],
+  },
   queryplan: {
     question: '同一个查询有好几条路可走，数据库优化器凭什么选其中一条？',
     read: [{ at: '候选路径', is: '每条访问路径的 type + 估扫描行数代价条。', anchor: '.qp-paths' }, { at: 'EXPLAIN', is: '末步选中路径的 type/key/rows。', anchor: '.qp-explain' }],

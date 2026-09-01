@@ -127,6 +127,7 @@ import { diffpolicyKernel } from '../src/kernels/diffpolicy.ts'
 import { vlaKernel } from '../src/kernels/vla.ts'
 import { lerobotKernel } from '../src/kernels/lerobot.ts'
 import { kalmanKernel } from '../src/kernels/kalman.ts'
+import { ekfKernel } from '../src/kernels/ekf.ts'
 import { pidKernel } from '../src/kernels/pid.ts'
 import { rrtKernel } from '../src/kernels/rrt.ts'
 import { objectstoreKernel } from '../src/kernels/objectstore.ts'
@@ -2510,6 +2511,41 @@ export const CATALOG: CatalogEntry[] = [
         ask: 'ICP 有个著名的局限：依赖初值。为什么初始差太多会失败?', kind: 'choice',
         compute: () => ({ answer: '初始差太大时，欧氏最近点算出的对应会系统性地错(点连到错误的目标点)，基于错对应求出的变换把点云带向错误方向 → 陷入局部最优。所以实际先用粗配准(特征匹配/IMU 里程计)给个好初值再上 ICP 精配', step: 4, evidence: '本例初始 25° 尚可收敛；若初始偏差过大对应全错就收不回来' }),
         distractors: () => ['ICP 从不失败、总能全局最优', '初值只影响速度、不影响结果', 'ICP 需要初值是因为要设旋转角'],
+      },
+    ],
+  },
+  {
+    id: 'ekf', title: '扩展卡尔曼滤波 EKF', kernel: ekfKernel as Kernel<unknown>, doc: trivialDoc('ekf'),
+    facts: [
+      {
+        id: 'ekf_core', label: 'EKF 和线性卡尔曼的区别',
+        ask: 'EKF(扩展卡尔曼滤波)和线性卡尔曼滤波最本质的区别是什么?', kind: 'choice',
+        compute: () => ({ answer: 'EKF 在当前估计点对非线性的运动/观测函数 f/h 求雅可比(F/H)、用一阶泰勒就地线性化,再套原来的卡尔曼预测-更新公式。其余完全一样', step: 1, evidence: '唯一不同=雅可比线性化;非线性时能用卡尔曼' }),
+        distractors: () => ['EKF 用神经网络代替线性模型', 'EKF 不需要预测步、只有更新', 'EKF 用二阶导数、更精确'],
+      },
+      {
+        id: 'ekf_jacobian', label: '观测雅可比 H 是什么',
+        ask: 'EKF 里观测雅可比 H=∂h/∂x 的物理意义是什么?', kind: 'choice',
+        compute: t => { const f = t as unknown as { H?: number }[]; const l = f.find(x => x.H != null); const h = l?.H ?? -0.707; return ({ answer: `状态每变一点、测量随之变多少(测量对状态的局部线性灵敏度)。本例 H=${h}(负):机器人往右 x↑ 会离地标更近、距离↓,所以斜率为负。它把非线性距离测量翻译成局部线性关系、让卡尔曼公式能用`, step: 3, evidence: 'H=−(L−x̂)/h;符号=往哪动测量怎么变' }) },
+        distractors: () => ['测量噪声的大小', '机器人的速度', '卡尔曼增益本身'],
+      },
+      {
+        id: 'ekf_trust', label: '测量噪声 R 的作用',
+        ask: 'EKF 更新里,测量噪声 R 变大变小对卡尔曼增益 K 和结果有什么影响?', kind: 'choice',
+        compute: () => ({ answer: 'R 小(信测量)→ K 大、状态被测量拉得多、方差 P 收得狠;R 大(信测量糙)→ K 小、状态几乎不动、更信预测、P 收得少。这和线性卡尔曼一个道理', step: 4, evidence: 'K=PH/(H²P+R);R↑则 K↓' }),
+        distractors: () => ['R 只影响预测步、不影响更新', 'R 越大 K 越大、越信测量', 'R 和 K 无关'],
+      },
+      {
+        id: 'ekf_fail', label: 'EKF 什么时候失效',
+        ask: 'EKF 什么时候会失效?有哪些替代?', kind: 'choice',
+        compute: () => ({ answer: 'EKF 只做一阶线性化,若非线性很强、或估计点离真值远,线性化误差会让协方差失真甚至发散。替代:UKF(无迹卡尔曼,传 sigma 点过非线性、不求雅可比、对强非线性更准);粒子滤波(采样、能表多峰/非高斯,如全局定位绑架问题)', step: 5, evidence: '一阶线性化的局限;UKF/粒子滤波各补一块' }),
+        distractors: () => ['EKF 永不失效、总是最优', '只在测量噪声大时失效、加大 R 即可', '失效时改用线性卡尔曼'],
+      },
+      {
+        id: 'ekf_hpred', label: '预测测量距离',
+        ask: '机器人估计在 x=5、地标在(10,5)，EKF 算的预测测量 h(x̂)=√((10−5)²+5²) 约为多少?(取整)', kind: 'number',
+        compute: t => { const f = t as unknown as { hPred?: number }[]; const l = f.find(x => x.hPred != null); const v = l?.hPred != null ? Math.round(l.hPred) : 7; return ({ answer: String(v), step: 2, evidence: `h=√(25+25)=√50≈7.07≈${v};创新 y=z−h=8−7.07=0.93` }) },
+        distractors: numDistractors,
       },
     ],
   },
