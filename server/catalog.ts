@@ -110,6 +110,7 @@ import { bufferpoolKernel } from '../src/kernels/bufferpool.ts'
 import { feedKernel } from '../src/kernels/feed.ts'
 import { fkKernel } from '../src/kernels/fk.ts'
 import { dyneomKernel } from '../src/kernels/dyneom.ts'
+import { rneaKernel } from '../src/kernels/rnea.ts'
 import { ikKernel } from '../src/kernels/ik.ts'
 import { jacobianKernel } from '../src/kernels/jacobian.ts'
 import { quatKernel } from '../src/kernels/quat.ts'
@@ -2212,6 +2213,41 @@ export const CATALOG: CatalogEntry[] = [
         ask: '大 V 有百万粉丝，推拉结合怎么避免他发帖时的写放大?', kind: 'choice',
         compute: () => ({ answer: '普通用户走推（读快）；大 V 走拉——发帖不推给百万粉丝、只存自己 outbox，粉丝刷时才现拉大 V 的帖、和收件箱归并。既避免写放大、普通场景又读快', step: 5, evidence: '本例大 V 100 万粉，2 帖走拉省下 2,000,000 次写' }),
         distractors: () => ['给大 V 更多服务器推', '禁止大 V 发帖太频繁', '大 V 也全量推、只是异步'],
+      },
+    ],
+  },
+  {
+    id: 'rnea', title: '递归牛顿-欧拉 RNEA', kernel: rneaKernel as Kernel<unknown>, doc: trivialDoc('rnea'),
+    facts: [
+      {
+        id: 'rnea_what', label: 'RNEA 的两次扫描做什么',
+        ask: 'RNEA(递归牛顿-欧拉)的两次扫描分别在做什么?', kind: 'choice',
+        compute: () => ({ answer: '外向(基→梢)传运动:ω_i=ω_{i−1}+q̇_i、质心线加速度 a=a_prev+α×r−ω²r 逐连杆往外传;内向(梢→基)传力:牛顿 F=m·a_c、欧拉 N=I·α,力/力矩往里传、投影关节轴得 τ。O(n)、不显式组 M/C/G', step: 1, evidence: '外向传运动学、内向传静力学,把牛顿-欧拉沿链递归组织' }),
+        distractors: () => ['第一遍算 M、第二遍算 C 和 G', '第一遍前向、第二遍反向传播梯度', '两遍都从基座到梢、取平均'],
+      },
+      {
+        id: 'rnea_gravity', label: 'RNEA 怎么把重力算进去',
+        ask: 'RNEA 里重力是怎么算进去的?', kind: 'choice',
+        compute: () => ({ answer: '重力技巧:给基座一个假加速度 a₀=−g(向上 g)。于是外向扫描时每根连杆都自动感到一个等于自重的惯性力,整条链免去单列的重力项——一行代码搞定重力', step: 2, evidence: '切无重力(a₀=0)时 τ 正好少掉一个 G,验证这个技巧' }),
+        distractors: () => ['每根连杆单独加一项 m·g', '在最后的 τ 上统一加一个常数', '用一个单独的重力扫描'],
+      },
+      {
+        id: 'rnea_complexity', label: 'RNEA 为什么比显式组 M 快',
+        ask: 'RNEA 相比"显式组质量矩阵 M/C/G 再相乘"为什么更适合实时?', kind: 'choice',
+        compute: () => ({ answer: 'RNEA 两次扫描 O(n) 时间、O(n) 内存、不组任何矩阵;显式组 M 是 O(n²)、还要存矩阵再相乘。自由度越多 RNEA 优势越大,是实时前馈力矩的主力。两者结果完全一致', step: 4, evidence: 'RNEA 结果 = M q̈+C q̇+G,只是算法更高效' }),
+        distractors: () => ['RNEA 是近似算法、牺牲精度换速度', 'RNEA 用了 GPU 并行', 'RNEA 忽略了科氏项所以快'],
+      },
+      {
+        id: 'rnea_building', label: 'RNEA 是哪些算法的构件',
+        ask: 'RNEA 除了直接算逆动力学,还是哪些算法的构件?', kind: 'choice',
+        compute: () => ({ answer: '①计算力矩控制的 Cq̇+G 前馈=一次 RNEA(令 q̈=q̈_d+Kd ė+Kp e);②CRBA 组质量矩阵 M:对每关节 j 调 RNEA(q̈=eⱼ、q̇=0、g=0)读出 M 的第 j 列;③ABA 正向动力学也是同套空间递归的延伸', step: 5, evidence: 'RNEA 是逆动力学基元,被控制和正向动力学复用' }),
+        distractors: () => ['只能算逆动力学、别的用不上', '是 SLAM 的构件', '是路径规划的构件'],
+      },
+      {
+        id: 'rnea_tau1', label: '含重力关节1的力矩',
+        ask: '本例两连杆臂 q=[30°,45°]、q̇=[1,1]、q̈=[0.5,−0.5]、含重力，RNEA 算出关节1 力矩 τ₁(取整,N·m)?', kind: 'number',
+        compute: t => { const f = t as unknown as { tau?: number[] }[]; const l = f.find(x => x.tau && x.tau[0] !== 0); const v = l?.tau ? Math.round(l.tau[0]!) : 14; return ({ answer: String(v), step: 3, evidence: `RNEA τ₁=13.8≈${v} N·m,与 M q̈+C q̇+G 完全一致;无重力则 τ₁=−0.22(少一个 G₁=14.01)` }) },
+        distractors: numDistractors,
       },
     ],
   },

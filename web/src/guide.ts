@@ -866,6 +866,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { stage: string; tau: number[] }; const z = (x: number) => (Object.is(x, -0) ? 0 : x); return st.stage === 'done' ? 'τ=Mq̈+Cq̇+G' : st.stage === 'assemble' ? `τ₁=${z(st.tau[0]!)}` : st.stage === 'gravity' ? '重力G' : st.stage === 'coriolis' ? '科氏离心' : st.stage === 'mass' ? '质量矩阵M' : '强耦合' },
     try: [{ act: '切「静止保持」', watch: 'q̇=q̈=0 → 科氏、惯性项全为0，τ=重力 G=[14.01,1.27]，举着也要力矩。' }, { act: '切「匀速转动」', watch: 'q̇≠0 → 冒出科氏/离心 C·q̇=[−2.39,0.8]，τ=科氏+重力。' }, { act: '切「加速起摆」', watch: 'q̈≠0 → 三项都在，τ=[17.05,3.78]，这才是完整动力学。' }], terms: [],
   },
+  rnea: {
+    question: '逆动力学(给运动求力矩)怎么算得又快又不用组一大堆矩阵？RNEA 的两次扫描在做什么？',
+    read: [{ at: '外向表', is: '基→梢：每连杆 ω/α/质心加速度。', anchor: '.rn-flow' }, { at: '内向表', is: '梢→基：F=m·a_c、N=I·α → τ。', anchor: '.rn-table' }, { at: '对拍条', is: 'RNEA 的 τ = M q̈+C q̇+G。', anchor: '.rn-verify' }],
+    step: (s: never) => { const st = s as { stage: string; grav: string; q: number[]; qd: number[]; qdd: number[]; a0: number[]; out: { aCom: number[] }[]; tau: number[]; eomTau: number[] }; return [
+      { k: '本步输入', v: st.stage === 'intro' ? `q=[${st.q}]°、q̇=[${st.qd}]、q̈=[${st.qdd}]` : st.stage === 'outward' ? `基座假加速度 a₀=[${st.a0}]（重力技巧）` : st.stage === 'inward' ? '各连杆质心加速度 a_c' : st.stage === 'verify' ? 'RNEA 的 τ 与运动方程' : '完整两次扫描' },
+      { k: '判定规则', v: `外向 ω_i=ω_{i−1}+q̇_i、a=a_prev+α×r−ω²r；内向 F=m·a_c、N=I·α、τ_i=n_i 投影关节轴；重力当基座假加速度 a₀=−g。` },
+      { k: '本步结果', v: st.stage === 'intro' ? '逆动力学:给运动求力矩,O(n)两次扫描' : st.stage === 'outward' ? `连杆1 a_c=[${st.out[0]!.aCom}]、连杆2 a_c=[${st.out[1]!.aCom}]（往外传）` : st.stage === 'inward' ? `τ=[${st.tau[0]}, ${st.tau[1]}]（内向传力得到）` : st.stage === 'verify' ? `RNEA τ=[${st.tau}] = M q̈+C q̇${st.grav === 'on' ? '+G' : ''}=[${st.eomTau}] ✓一致` : '连计算力矩控制/CRBA/ABA' },
+    ] },
+    verdict: (s: never) => { const st = s as { stage: string; tau: number[] }; return st.stage === 'done' ? 'O(n)逆动力学' : st.stage === 'verify' ? '=Mq̈+Cq̇+G' : st.stage === 'inward' ? `τ=[${st.tau}]` : st.stage === 'outward' ? '外向传运动' : '逆动力学' },
+    try: [{ act: '切「含重力」', watch: '基座假加速度 a₀=[0,9.81]，每连杆自动含自重 → τ=[13.8,1.8]。' }, { act: '切「无重力」', watch: 'a₀=[0,0] → τ=[−0.22,0.53]，正好比含重力少一个 G=[14.01,1.27]，验证重力技巧。' }, { act: '看对拍', watch: 'RNEA 的 τ 和 M q̈+C q̇+G 完全一致——同一套动力学、O(n) 递归。' }], terms: [],
+  },
   queryplan: {
     question: '同一个查询有好几条路可走，数据库优化器凭什么选其中一条？',
     read: [{ at: '候选路径', is: '每条访问路径的 type + 估扫描行数代价条。', anchor: '.qp-paths' }, { at: 'EXPLAIN', is: '末步选中路径的 type/key/rows。', anchor: '.qp-explain' }],

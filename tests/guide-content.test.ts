@@ -334,6 +334,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { i: 3, step: 3, stage: 'gravity', ...base, showM: true, showC: true, showG: true, showTau: false, phase: 'run' as const, focus: '重力 G' },
       b: { i: 4, step: 4, stage: 'assemble', ...base, showM: true, showC: true, showG: true, showTau: true, phase: 'run' as const, focus: '合成 τ' },
     } })(),
+    rnea: (() => { const base = { grav: 'on', q: [30, 45] as [number, number], qd: [1, 1] as [number, number], qdd: [0.5, -0.5] as [number, number], a0: [0, 9.81] as [number, number], out: [{ link: 1, theta: 30, omega: 1, alpha: 0.5, aCom: [-0.56, 9.78] as [number, number] }, { link: 2, theta: 75, omega: 2, alpha: 0, aCom: [-1.63, 7.81] as [number, number] }], inw: [{ link: 2, F: [-1.63, 7.81] as [number, number], N: 0, tau: 1.8 }, { link: 1, F: [-0.56, 9.78] as [number, number], N: 0.04, tau: 13.8 }], tau: [13.8, 1.8] as [number, number], eomTau: [13.8, 1.8] as [number, number], log: '' }; return {
+      doc: { kind: 'rnea', params: { grav: '含重力' }, entities: [], streams: [] },
+      a: { i: 1, step: 1, stage: 'outward', ...base, showOut: true, showIn: false, showVerify: false, phase: 'run' as const, focus: '外向传运动' },
+      b: { i: 2, step: 2, stage: 'inward', ...base, showOut: true, showIn: true, showVerify: false, phase: 'run' as const, focus: '内向传力' },
+    } })(),
     queryplan: {
       doc: { kind: 'queryplan', params: {}, entities: [], streams: [] },
       a: { step: 1, op: 'path', query: 'q', revealed: 1, cur: 0, chosen: -1, paths: [{ name: '全表扫描', type: 'ALL', key: '—', rows: 10000, note: 'x' }, { name: '走 idx(city)', type: 'ref', key: 'idx_city', rows: 500, note: 'x' }, { name: '走 idx(age)', type: 'range', key: 'idx_age', rows: 6000, note: 'x' }], phase: 'run', focus: '候选路径：全表扫描（type=ALL，估扫 10000 行）' },

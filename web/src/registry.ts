@@ -348,6 +348,7 @@ import { topkKernel, type TopkState } from '@engine/kernels/topk.ts'
 import { feedKernel, type FeedState } from '@engine/kernels/feed.ts'
 import { fkKernel, type FKState } from '@engine/kernels/fk.ts'
 import { dyneomKernel, type DynState } from '@engine/kernels/dyneom.ts'
+import { rneaKernel, type RneaState } from '@engine/kernels/rnea.ts'
 import { ikKernel, type IKState } from '@engine/kernels/ik.ts'
 import { jacobianKernel, type JacoState } from '@engine/kernels/jacobian.ts'
 import { kalmanKernel, type KalmanState } from '@engine/kernels/kalman.ts'
@@ -372,6 +373,7 @@ import { MqStage } from './stages/MqStage.tsx'
 import { FeedStage } from './stages/FeedStage.tsx'
 import { FKStage } from './stages/FKStage.tsx'
 import { DynEomStage } from './stages/DynEomStage.tsx'
+import { RneaStage } from './stages/RneaStage.tsx'
 import { IKStage } from './stages/IKStage.tsx'
 import { JacobianStage } from './stages/JacobianStage.tsx'
 import { KalmanStage } from './stages/KalmanStage.tsx'
@@ -6504,6 +6506,32 @@ const dyneom: Experiment<DynState> = {
     { label: '关节力矩 τ', value: s.showTau ? `[${Object.is(s.tau[0], -0) ? 0 : s.tau[0]}, ${Object.is(s.tau[1], -0) ? 0 : s.tau[1]}] N·m` : '—' },
   ],
 }
+const rnea: Experiment<RneaState> = {
+  id: 'rnea', group: '刚体动力学', title: '递归牛顿-欧拉 RNEA', subtitle: '逆动力学：给定 q,q̇,q̈ 两次扫描 O(n) 算关节力矩 τ，不显式组 M/C/G',
+  kernel: rneaKernel, defaultDoc: { kind: 'rnea', params: { grav: '含重力' }, entities: [], streams: [] },
+  params: [{ key: 'grav', label: '重力', kind: 'enum', options: ['含重力', '无重力'] }],
+  paramsNote: '**逆动力学**:给定"想让臂怎么动"(q,q̇,q̈)、反求每个关节该出多大力矩 τ(控制的核心)。上一课显式组 M/C/G 再相乘(O(n²~n³));**RNEA 换算法**——沿连杆链**两次扫描、O(n)、不显式组任何矩阵**(Featherstone《RBDA》ch.5 / 《Modern Robotics》§8.3):①**外向(基→梢)** ω_i=ω_{i−1}+q̇_i、α 累加、线加速度 a=a_prev+α×r−ω²r 往外传;**重力技巧**给基座假加速度 a₀=−g,每连杆自动含自重、免单列重力项 ②**内向(梢→基)** 牛顿 F=m a_c、欧拉 N=I α,力/力矩往里传、投影关节轴得 τ。结果与「机械臂运动方程」M q̈+C q̇+G **完全一致**。切「重力」看基座假加速度技巧。全现算。连「机械臂运动方程/计算力矩控制」。详见讲解卡。',
+  bounds: [
+    'RNEA 逆动力学:两次扫描算 τ——外向(基→梢)传运动 ω/α/a、内向(梢→基)传力 F/N/τ;O(n)、不显式组 M/C/G',
+    '重力技巧:基座假加速度 a₀=−g,每连杆自动感到自重(免单列重力项);切无重力 τ 正好少一个 G',
+    'RNEA 结果 = M(q)q̈+C(q,q̇)q̇+G(q) 完全一致——同一套动力学、O(n) 递归 vs O(n²~n³) 显式组矩阵',
+    '连:计算力矩控制的 Cq̇+G 前馈=一次 RNEA(令 q̈=q̈_d+Kd ė+Kp e);也是 CRBA(读 M 列)与 ABA(正向动力学)的构件。参考:Featherstone《RBDA》、Pinocchio::rnea',
+  ],
+  tabs: [{ id: 'rn', label: 'RNEA 逐步跑' }], Stage: RneaStage, whyInRail: true,
+  tone: s => (s.stage === 'done' ? { key: 'good', label: 'O(n) 逆动力学' }
+    : s.stage === 'verify' ? { key: 'good', label: '=Mq̈+Cq̇+G' }
+    : s.stage === 'inward' ? { key: 'good', label: `τ=[${s.tau[0]},${s.tau[1]}]` }
+    : s.stage === 'outward' ? { key: 'idle', label: '外向传运动' }
+    : { key: 'idle', label: '逆动力学' }),
+  metric: s => (s.stage === 'done' ? 1 : Math.max(0, (s.step + 1) / 5)),
+  tickLabel: s => ({ intro: '逆', outward: '外', inward: '内', verify: '对', done: '成' }[s.stage] ?? '·'),
+  readouts: s => [
+    { label: '重力', value: s.grav === 'on' ? `含(a₀=−g)` : '无(a₀=0)' },
+    { label: '关节力矩 τ', value: s.showIn ? `[${s.tau[0]}, ${s.tau[1]}] N·m` : '—', tone: s.showIn ? 'good' : undefined },
+    { label: '对拍 Mq̈+Cq̇+G', value: s.showVerify ? `[${s.eomTau[0]}, ${s.eomTau[1]}]${s.tau[0] === s.eomTau[0] && s.tau[1] === s.eomTau[1] ? ' ✓' : ''}` : '—' },
+    { label: '本步', value: ({ intro: '逆动力学', outward: '外向传运动', inward: '内向传力→τ', verify: '对拍运动方程', done: 'O(n) 逆动力学' } as Record<string, string>)[s.stage] ?? '—' },
+  ],
+}
 const ik: Experiment<IKState> = {
   id: 'ik', group: '机器人学基础', title: '逆运动学 IK', subtitle: '末端目标 → 关节角：多解(肘上/肘下)、可无解',
   kernel: ikKernel, defaultDoc: { kind: 'ik', params: {}, entities: [], streams: [] }, params: [],
@@ -6936,7 +6964,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, dyneom, ik, jacobian, quat, trajectory, kalman, icp, slam, impedance, mpc, pid, rrt, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
+  fk, dyneom, rnea, ik, jacobian, quat, trajectory, kalman, icp, slam, impedance, mpc, pid, rrt, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
 ] as unknown as AnyExperiment[]
 
 /**

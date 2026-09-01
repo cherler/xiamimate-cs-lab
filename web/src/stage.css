@@ -5464,3 +5464,23 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .dy-terms .dy-grav{background:color-mix(in srgb,var(--hit) 6%,transparent)}
 .dy-terms td.dy-tau b{color:var(--now)}
 .dy-note{font:var(--t-meta) var(--sans);color:var(--faint);margin-top:5px;line-height:1.5}
+
+/* rnea · 递归牛顿-欧拉 */
+.scdn.rn-hot{color:var(--now)}
+.rn-flow{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.rn-blk{border:1px solid var(--line);border-radius:8px;padding:7px 10px;background:var(--panel-2)}
+.rn-blk.rn-off{opacity:.4}
+.rn-bh{font:var(--t-ui) var(--sans);font-weight:600;color:var(--dim);margin-bottom:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.rn-dir{font-family:var(--mono);color:var(--now);font-weight:700}
+.rn-dir.rn-up{color:var(--hit)}
+.rn-trick{font-style:normal;font-size:.85em;color:var(--faint);border:1px solid var(--line);border-radius:4px;padding:0 5px}
+.rn-table{border-collapse:collapse;width:100%;font-size:var(--t-ui);font-variant-numeric:tabular-nums}
+.rn-table th,.rn-table td{border:1px solid var(--line);padding:3px 8px;text-align:right;white-space:nowrap}
+.rn-table th.l,.rn-table td.l{text-align:left}
+.rn-table thead th{background:var(--sunk-1);color:var(--dim);font-weight:600;font-size:var(--t-meta)}
+.rn-table th.rn-tauh{color:var(--now)}
+.rn-table td.rn-tauc b{color:var(--now)}
+.rn-wait{color:var(--ghost);font-size:var(--t-ui)}
+.rn-verify{margin-top:12px;border-radius:8px;padding:8px 10px;font-size:var(--t-ui);line-height:1.5}
+.rn-verify.rn-ok{background:color-mix(in srgb,var(--hit) 8%,transparent);border:1px solid color-mix(in srgb,var(--hit) 35%,var(--line))}
+.rn-verify.rn-bad{background:color-mix(in srgb,var(--miss) 8%,transparent);border:1px solid color-mix(in srgb,var(--miss) 35%,var(--line))}
