@@ -5243,3 +5243,27 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .mw-badge{flex:none;font:var(--t-meta) var(--mono);padding:0 5px;border-radius:3px}
 .mw-badge.ADD{color:var(--hit)} .mw-badge.UPDATE{color:var(--now)} .mw-badge.NOOP{color:var(--faint)}
 .mw-badge.stale{color:var(--miss);background:color-mix(in srgb,var(--miss) 10%,transparent)}
+
+/* ── 规划 planning ─────────────────────────────────────── */
+.pl-gate{margin:8px 0;padding:7px 11px;border:1px solid var(--line);border-left-width:3px;border-radius:6px;font-size:var(--t-ui)}
+.pl-gate.locked{border-left-color:var(--miss);background:color-mix(in srgb,var(--miss) 9%,transparent);color:var(--miss)}
+.pl-gate.soft{border-left-color:var(--now);background:color-mix(in srgb,var(--now) 8%,transparent);color:var(--now)}
+.pl-gate.open{border-left-color:var(--hit);background:color-mix(in srgb,var(--hit) 8%,transparent);color:var(--hit)}
+.pl-h{font:var(--t-meta) var(--sans);color:var(--faint);margin:6px 0 4px;font-weight:600}
+.pl-warn{color:var(--miss);font-style:normal}
+.pl-empty{font:var(--t-meta) var(--sans);color:var(--ghost);font-style:italic;padding:2px 8px}
+.pl-todos{display:flex;flex-direction:column;gap:3px}
+.pl-t{display:flex;align-items:baseline;gap:8px;padding:4px 8px;border-radius:4px;border-left:3px solid var(--line);background:var(--panel);font-size:var(--t-ui)}
+.pl-t.pending{opacity:.7}
+.pl-t.active{border-left-color:var(--now);background:color-mix(in srgb,var(--now) 8%,transparent)}
+.pl-t.done{border-left-color:var(--hit)}
+.pl-t.added{border-left-style:dashed;border-left-color:#7466E6}
+.pl-tic{flex:none;font-family:var(--mono);font-weight:700}
+.pl-t.active .pl-tic{color:var(--now)} .pl-t.done .pl-tic{color:var(--hit)} .pl-t.pending .pl-tic{color:var(--faint)}
+.pl-tt{flex:1 1 auto;color:var(--ink)}
+.pl-t.done .pl-tt{color:var(--dim)}
+.pl-ts{flex:none;font:var(--t-meta) var(--mono);color:var(--faint)}
+.pl-t.added .pl-ts{color:#7466E6}
+.pl-recite{margin-top:8px;padding:7px 11px;border:1px solid color-mix(in srgb,#7466E6 40%,var(--line));border-radius:6px;
+  background:color-mix(in srgb,#7466E6 7%,transparent);font:var(--t-ui)/1.5 var(--sans);color:var(--dim)}
+.pl-recite b{color:#7466E6}

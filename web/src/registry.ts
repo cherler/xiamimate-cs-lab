@@ -298,6 +298,8 @@ import { reflectionKernel, type ReflState } from '@engine/kernels/reflection.ts'
 import { ReflectionStage } from './stages/ReflectionStage.tsx'
 import { memwriteKernel, type MemWState } from '@engine/kernels/memwrite.ts'
 import { MemWriteStage } from './stages/MemWriteStage.tsx'
+import { planningKernel, type PlanState } from '@engine/kernels/planning.ts'
+import { PlanningStage } from './stages/PlanningStage.tsx'
 import { lfucacheKernel, type LFUState } from '@engine/kernels/lfucache.ts'
 import { LFUCacheStage } from './stages/LFUCacheStage.tsx'
 import { trieKernel, type TrieState } from '@engine/kernels/trie.ts'
@@ -6003,6 +6005,33 @@ const memwrite: Experiment<MemWState> = {
     { label: '陈旧/矛盾', value: `${s.store.filter(m => m.stale).length} 条`, tone: s.store.some(m => m.stale) ? 'bad' : undefined },
   ],
 }
+const planning: Experiment<PlanState> = {
+  id: 'planning', group: '大模型项目实战', title: '规划 · 计划模式 + Todo', subtitle: '先想后做：只读门→批准→Todo 状态机→复述防漂移',
+  kernel: planningKernel, defaultDoc: { kind: 'planning', params: { mode: '计划门' }, entities: [], streams: [] },
+  params: [{ key: 'mode', label: '计划模式', kind: 'enum', options: ['计划门', '建议'] }],
+  paramsNote: '复杂任务先想后做，三个机制别只当"清单"：①**计划模式=硬门禁 vs 软建议**——Claude Code 在权限层把"写"堵死、批准计划前只能读(逼先看后动，bypass 才降级)，DeepSeek plan-mode 是纯建议、工具照调。②**Todo=状态机**——pending→in_progress→completed、**恰一个进行中**、整表替换(Opus4.8/Sonnet5+ 起换增量 TaskCreate/TaskUpdate+deleted)。③**复述=注意力操控**(最深)——每轮把整张 todo 贴回上下文近端、对抗长任务 lost-in-the-middle 漂移。现实岔开就**重规划**。切「模式」看 硬门禁 vs 软建议。门禁/状态机现算。详见讲解卡。',
+  bounds: [
+    '计划模式=硬门禁(权限层强制"批准前只读"，Claude Code) vs 软建议(工具照调，DeepSeek)——和沙箱/权限模式一脉',
+    'Todo 状态机：pending→in_progress→completed，恰一个进行中；整表替换 或 增量 TaskCreate/TaskUpdate(+deleted)',
+    '复述=注意力操控：每轮把整张 todo 贴回上下文近端，对抗长任务 lost-in-the-middle 漂移(不是记账、是摁住模型)',
+    '计划是随现实滚动的活文档→重规划。延伸:plan mode 为何只读优先、architect/editor 双模型、ReAct vs Plan-and-Solve vs ToT。真实框架:Claude Code/Codex/DeepSeek/Aider',
+  ],
+  tabs: [{ id: 'pl', label: '规划逐步跑' }], Stage: PlanningStage, whyInRail: true,
+  tone: s => (s.stage === 'done' ? { key: 'good', label: '计划走完' }
+    : s.stage === 'replan' ? { key: 'bad', label: '重规划·现实岔开' }
+    : s.stage === 'exec' ? { key: 'good', label: '推进+复述' }
+    : s.stage === 'exit' ? { key: 'good', label: '批准·写解锁' }
+    : s.stage === 'planning' ? (s.writeBlocked ? { key: 'bad', label: '门禁挡下写' } : { key: 'idle', label: '计划中·可写' })
+    : { key: 'idle', label: `${s.mode}` }),
+  metric: s => (s.stage === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => ({ intro: '始', planning: '拟', exit: '批', exec: '推', replan: '改', done: '成' }[s.stage] ?? '·'),
+  readouts: s => [
+    { label: '计划模式', value: `${s.mode}（${s.planMode ? '只读中' : '已解锁'}）`, tone: s.writeBlocked ? 'bad' : undefined },
+    { label: 'Todo', value: s.todos.length ? `${s.todos.filter(t => t.status === 'done').length}✓ / ${s.todos.filter(t => t.status === 'active').length}◐ / ${s.todos.length} 总` : '—' },
+    { label: '本步', value: s.op || (({ intro: '进入计划模式', done: '计划走完' } as Record<string, string>)[s.stage] ?? '—') },
+    { label: '复述近端', value: s.recited ? '✓ 已贴回近端(防漂移)' : '—', tone: s.recited ? 'good' : undefined },
+  ],
+}
 const lrucache: Experiment<LRUState> = {
   id: 'lrucache', group: '算法项目实战', title: '手写 LRU 缓存', subtitle: 'HashMap+双向链表，get/put 都 O(1)',
   kernel: lrucacheKernel, defaultDoc: { kind: 'lrucache', params: {}, entities: [], streams: [] }, params: [],
@@ -6672,7 +6701,7 @@ export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
   caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt, ecbcbc, birthday, aesround, hmac, totp,
-  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, bufferpool, queryplan, wildcard, regex, blockingqueue, rwlock, aba, happensbefore, lockstrategy, lrucache, lfucache, trie, quickselect, reactagent, ctxcompact, toolcall, permguard, subagent, memretrieve, mempaging, reflection, memwrite, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign, topk, feed, objectstore,
+  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, bufferpool, queryplan, wildcard, regex, blockingqueue, rwlock, aba, happensbefore, lockstrategy, lrucache, lfucache, trie, quickselect, reactagent, ctxcompact, toolcall, permguard, subagent, memretrieve, mempaging, reflection, memwrite, planning, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign, topk, feed, objectstore,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,

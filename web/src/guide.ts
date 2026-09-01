@@ -767,6 +767,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { stage: string; op: string; store: { stale?: boolean }[] }; const stale = st.store.filter(m => m.stale).length; return st.stage === 'done' ? (stale ? `${stale} 条陈旧矛盾` : '库自洽') : st.op ? `${st.op}` : '待写入' },
     try: [{ act: '看四步各操作', watch: '养猫=ADD、Python3.12=UPDATE 改旧、戒咖啡=DELETE 删旧、又提北京=NOOP——库始终自洽。' }, { act: '切「单遍」模式', watch: '全都 ADD、只加不改：美式咖啡 vs 戒咖啡、3.10 vs 3.12 并存，陈旧矛盾越积越多。' }], terms: [],
   },
+  planning: {
+    question: 'Agent 怎么"先想后做"、又不在长任务里跑偏？计划模式是真门禁还是走过场？',
+    read: [{ at: '计划模式门', is: '只读锁定 / 已解锁；写被门禁挡下会标红。', anchor: '.pl-gate' }, { at: 'Todo', is: '状态机，恰好一个进行中，新插入的虚线标出。', anchor: '.pl-todos' }, { at: '复述', is: '整张 todo 贴回近端(注意力操控)。', anchor: '.pl-recite' }],
+    step: (s: never) => { const st = s as { stage: string; mode: string; planMode: boolean; writeBlocked: boolean; todos: { status: string }[] }; const done = st.todos.filter(t => t.status === 'done').length; return [
+      { k: '本步输入', v: st.stage === 'intro' ? `复杂任务 + 计划模式(${st.mode})` : st.stage === 'planning' ? '只读探查、拟 todo，并试图写' : st.stage === 'exit' ? '人批准了计划' : st.stage === 'exec' ? '按 todo 推进' : st.stage === 'replan' ? '执行中发现计划没料到的依赖' : '收尾' },
+      { k: '判定规则', v: '计划模式=硬门禁(权限层强制"批准前只读"，Claude Code)或软建议(工具照调，DeepSeek)；Todo 状态机 pending→in_progress→completed、恰一个进行中；每轮复述整表到近端防漂移；现实岔开就重规划(整表替换)。' },
+      { k: '本步结果', v: st.stage === 'intro' ? '进入计划模式(只读)' : st.stage === 'planning' ? (st.writeBlocked ? '拟出 4 项 todo；想写 → 被硬门禁挡下' : '拟出 4 项 todo；想写 → 建议模式放行(不拦)') : st.stage === 'exit' ? '批准 → 退出计划模式、写解锁' : st.stage === 'exec' ? `t1✓、t2 进行中(恰一个)；整表复述到近端` : st.stage === 'replan' ? '发现 auth.py 依赖 session.py → 重规划、插一项(共 5)' : `${done}/${st.todos.length} 完成` },
+    ] },
+    verdict: (s: never) => { const st = s as { stage: string; planMode: boolean; writeBlocked: boolean }; return st.stage === 'done' ? '计划走完' : st.stage === 'replan' ? '重规划' : st.stage === 'exec' ? '推进+复述' : st.stage === 'exit' ? '写解锁' : st.stage === 'planning' ? (st.writeBlocked ? '门禁挡写' : '计划中') : '进计划模式' },
+    try: [{ act: '切「建议」模式', watch: '计划模式里想写不再被挡——软建议 vs Claude Code 的硬门禁(批准前权限层堵死写)。' }, { act: '看复述那步', watch: '每轮把整张 todo 贴回上下文近端——不是记账，是把计划推回近端注意力、对抗 lost-in-the-middle。' }], terms: [],
+  },
   queryplan: {
     question: '同一个查询有好几条路可走，数据库优化器凭什么选其中一条？',
     read: [{ at: '候选路径', is: '每条访问路径的 type + 估扫描行数代价条。', anchor: '.qp-paths' }, { at: 'EXPLAIN', is: '末步选中路径的 type/key/rows。', anchor: '.qp-explain' }],

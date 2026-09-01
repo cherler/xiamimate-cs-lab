@@ -94,6 +94,7 @@ import { memretrieveKernel } from '../src/kernels/memretrieve.ts'
 import { mempagingKernel } from '../src/kernels/mempaging.ts'
 import { reflectionKernel } from '../src/kernels/reflection.ts'
 import { memwriteKernel } from '../src/kernels/memwrite.ts'
+import { planningKernel } from '../src/kernels/planning.ts'
 import { lfucacheKernel } from '../src/kernels/lfucache.ts'
 import { trieKernel } from '../src/kernels/trie.ts'
 import { quickselectKernel } from '../src/kernels/quickselect.ts'
@@ -1821,6 +1822,41 @@ export const CATALOG: CatalogEntry[] = [
         ask: 'Zep/Graphiti 处理"过时的事实"用了什么不同思路?', kind: 'choice',
         compute: () => ({ answer: '双时间知识图：给旧事实打"失效时间(t_invalid)"而不真删——"住北京"标记为某时刻失效、"住上海"生效，还能查"某时刻用户住哪"', step: 4, evidence: 'bi-temporal：事件时间 + 系统时间两条轴，矛盾时把旧边设失效而非删除' }),
         distractors: () => ['直接物理删除旧事实', '把所有历史压成一句话', '从不更新、只读'],
+      },
+    ],
+  },
+  {
+    id: 'planning', title: '规划 · 计划模式 + Todo', kernel: planningKernel as Kernel<unknown>, doc: trivialDoc('planning'),
+    facts: [
+      {
+        id: 'pl_planmode', label: '计划模式是硬门禁还是走过场',
+        ask: 'Claude Code 的"计划模式"，在你批准计划前能不能直接改文件?', kind: 'choice',
+        compute: () => ({ answer: '不能——它是硬门禁：在权限层把"写"堵死，批准计划前只能读/探查(逼先看后动，只有 bypass 模式才降级成软提示)。对比 DeepSeek plan-mode 是纯建议、工具照调', step: 1, evidence: 'edits stay blocked until you approve the plan；强制 vs 建议的分叉' }),
+        distractors: () => ['能，计划模式只是个提醒', '看模型自己判断', '能，但只能改一个文件'],
+      },
+      {
+        id: 'pl_todo_sm', label: 'Todo 状态机的关键不变量',
+        ask: 'Agent 的 todo 列表作为状态机，有什么关键约束?', kind: 'choice',
+        compute: () => ({ answer: '每项 pending→in_progress→completed，且**恰好一个 in_progress**(逼串行、别并行摊大)；整表替换更新(或 Opus4.8/Sonnet5+ 的增量 TaskCreate/TaskUpdate + deleted 态)', step: 3, evidence: '本例 t1 done、t2 active，同时只一个进行中' }),
+        distractors: () => ['可以同时很多个进行中、并行推', 'todo 只能增不能改状态', '完成的要立刻从列表删掉'],
+      },
+      {
+        id: 'pl_recite', label: 'todo 每轮重贴回近端图什么',
+        ask: '把整张 todo 列表每轮重新贴回上下文近端("复述")，主要图什么?', kind: 'choice',
+        compute: () => ({ answer: '注意力操控：把全局计划推回模型的近端注意力，对抗长任务里的 lost-in-the-middle 漂移(计划只在开头说一次，跑几十步就被埋在中部被忽略)。不只是记账', step: 4, evidence: 'Manus："recitation 把全局计划推进近端注意力"' }),
+        distractors: () => ['只是为了让用户看到进度', '为了省 token', '没有用，纯装饰'],
+      },
+      {
+        id: 'pl_replan', label: '计划和现实岔开怎么办',
+        ask: '执行到一半发现计划没料到的依赖(现实和计划岔开)，怎么办?', kind: 'choice',
+        compute: () => ({ answer: '重规划：整表替换、插入新 todo。计划不是一次定死，是随现实滚动更新的活文档', step: 4, evidence: '本例抽函数时发现 auth.py 依赖 session.py → 插入「先解耦」一项' }),
+        distractors: () => ['硬按原计划走到底、忽略新情况', '直接放弃整个任务', '删掉所有 todo 从头再来'],
+      },
+      {
+        id: 'pl_paradigm', label: 'ReAct/Plan-and-Solve/ToT 的区别',
+        ask: '几种规划范式 ReAct、Plan-and-Solve、Tree-of-Thoughts 的核心区别?', kind: 'choice',
+        compute: () => ({ answer: 'ReAct=边想边做(想一步做一步、看结果再想)；Plan-and-Solve=先把整个计划规划好再逐步执行；Tree-of-Thoughts=把多个候选计划展开成树、搜索/回溯选最优', step: 5, evidence: '交错 vs 先规划后执行 vs 树搜索' }),
+        distractors: () => ['三者完全一样、只是名字不同', '都是先执行再规划', '都不需要工具调用'],
       },
     ],
   },
