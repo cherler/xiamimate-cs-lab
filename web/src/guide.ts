@@ -811,6 +811,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { stage: string; obs: { pad: boolean }[]; act: { pad: boolean }[] }; return st.stage === 'done' ? '窗口取出' : st.stage === 'pad' ? `${st.obs.filter(c => c.pad).length + st.act.filter(c => c.pad).length}个pad` : st.stage === 'clamp' ? '边界钳' : st.stage === 'sec2idx' ? '秒→帧' : '待取' },
     try: [{ act: '切「靠开头」', watch: '当前帧 102 靠 episode 起点：历史观测往回 -3 帧 = 99 越界 → 钳到 100、标 pad。' }, { act: '切「靠结尾」', watch: '当前帧 158 靠终点：未来动作块 +2/+3/+4 帧越过 160 → 钳到 159、标 pad(3 个)。' }], terms: [],
   },
+  normstats: {
+    question: '一条样本里关节角到 ±3、夹爪 0~1、还有个离群力矩，量纲天差地别——怎么把它们拉到同一量级，喂进策略又还能还原？',
+    read: [{ at: '原始表', is: '6 个样本 × 3 特征，后面亮出 μ/σ/min/max。', anchor: '.ns-table' }, { at: '两归一化表', is: 'MEAN_STD 与 MIN_MAX 两视图，当前策略用的那个高亮。', anchor: '.ns-tbl' }, { at: '反归一化框', is: '策略输出→还原真实动作；忘了会差一大截。', anchor: '.ns-unnorm' }],
+    step: (s: never) => { const st = s as { stage: string; policy: string; mode: string; cols: { name: string; mean: number; std: number; min: number; max: number; ms: number[]; mm: number[] }[]; unnormFeat: string; policyOut: number; unnormVal: number; forgotVal: number }; const th = st.cols[0]!, ta = st.cols[2]!; return [
+      { k: '本步输入', v: st.stage === 'intro' ? '三个特征量纲差异大' : st.stage === 'stats' ? '6 个样本、整套数据集' : st.stage === 'meanstd' ? `μ=${th.mean}、σ=${th.std}` : st.stage === 'minmax' ? `min=${ta.min}、max=${ta.max}` : st.stage === 'unnorm' ? `策略输出 ${st.policyOut}(归一化)` : '两端归一化' },
+      { k: '判定规则', v: `MEAN_STD x′=(x−μ)/(σ+eps)、拉成 ~0 均值；MIN_MAX x′=2(x−min)/(max−min)−1→固定 [-1,1]；σ=√(E[x²]−μ²)；反归一化用同一套统计量还原。当前 ${st.policy}→${st.mode}。` },
+      { k: '本步结果', v: st.stage === 'intro' ? '待把特征拉到同一量级' : st.stage === 'stats' ? `θ:μ=${th.mean}、σ=${th.std}(整套数据集算一遍存 meta)` : st.stage === 'meanstd' ? `θ 各样本→${th.ms.slice(0, 3).join('、')}…(μ=0 故保号)` : st.stage === 'minmax' ? `力矩离群 3.0→+1，正常样本挤到 ${ta.mm[0]}~${ta.mm[3]}(离群敏感)` : st.stage === 'unnorm' ? `真实 ${st.unnormFeat}=${st.unnormVal}(漏了反归一化只发 ${st.forgotVal})` : '输入归一化观测 + 输出反归一化动作' },
+    ] },
+    verdict: (s: never) => { const st = s as { stage: string }; return st.stage === 'done' ? '两端归一化' : st.stage === 'unnorm' ? '反归一化' : st.stage === 'minmax' ? '离群敏感' : st.stage === 'meanstd' ? 'MEAN_STD' : st.stage === 'stats' ? '算统计量' : '量纲差异' },
+    try: [{ act: '切「给 ACT」', watch: 'MEAN_STD 高亮：关节角 (x−μ)/σ 拉成 ~0 均值；反归一化 1.0→1.63 rad。' }, { act: '切「给 Diffusion」', watch: 'MIN_MAX 高亮：映射 [-1,1] 配加噪 schedule；反归一化夹爪 0.6→0.8。' }], terms: [],
+  },
   queryplan: {
     question: '同一个查询有好几条路可走，数据库优化器凭什么选其中一条？',
     read: [{ at: '候选路径', is: '每条访问路径的 type + 估扫描行数代价条。', anchor: '.qp-paths' }, { at: 'EXPLAIN', is: '末步选中路径的 type/key/rows。', anchor: '.qp-explain' }],

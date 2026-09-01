@@ -5333,3 +5333,30 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .dt-table tr.padded td{border-color:color-mix(in srgb,var(--miss) 30%,var(--line))}
 .dt-clamped{font-style:normal;color:var(--now);font-size:.85em}
 .dt-pad{color:var(--miss)}
+
+/* normstats · 数据集归一化 */
+.ns-tbl{margin-top:10px}
+.ns-tbl.ns-hot{background:color-mix(in srgb,var(--now) 5%,transparent);border-radius:8px;padding:6px 8px;margin-left:-8px;margin-right:-8px}
+.ns-th{font:var(--t-meta) var(--sans);color:var(--faint);font-weight:600;margin-bottom:4px;display:flex;align-items:center;gap:8px}
+.ns-badge{font-style:normal;font-size:.85em;color:var(--dim);border:1px solid var(--line);border-radius:4px;padding:0 5px}
+.ns-badge.on{color:var(--hit);border-color:color-mix(in srgb,var(--hit) 40%,var(--line))}
+.ns-hot .ns-badge{color:var(--now);border-color:color-mix(in srgb,var(--now) 45%,var(--line))}
+.ns-wrap{overflow-x:auto}
+.ns-table{border-collapse:collapse;width:100%;font-size:var(--t-ui);font-variant-numeric:tabular-nums}
+.ns-table th,.ns-table td{border:1px solid var(--line);padding:3px 8px;text-align:right;white-space:nowrap}
+.ns-table th.l,.ns-table td.l{text-align:left}
+.ns-table thead th{background:var(--panel-2);color:var(--dim);font-weight:600;font-size:var(--t-meta)}
+.ns-table th.off{color:var(--ghost)}
+.ns-table th.ns-stat{color:var(--hit)}
+.ns-table td.ns-stat{background:color-mix(in srgb,var(--hit) 7%,transparent);color:var(--hit);font-weight:600}
+.ns-feat{text-align:left;font-weight:600;color:var(--dim)}
+.ns-u{font-style:normal;color:var(--faint);font-weight:400;font-size:.85em}
+.ns-table td.ns-out,.ns-table td.ns-edge{color:var(--miss);font-weight:700}
+.ns-table tr.ns-outlier{background:color-mix(in srgb,var(--miss) 6%,transparent)}
+.ns-note{font:var(--t-meta) var(--sans);color:var(--faint);margin-top:4px;line-height:1.5}
+.ns-unnorm{margin-top:12px;border:1px solid color-mix(in srgb,var(--now) 30%,var(--line));border-radius:8px;padding:8px 10px;background:color-mix(in srgb,var(--now) 4%,transparent)}
+.ns-uh{font:var(--t-ui) var(--sans);font-weight:600;color:var(--dim);margin-bottom:6px}
+.ns-urow{display:flex;flex-direction:column;gap:4px;font-size:var(--t-ui)}
+.ns-ok{color:var(--hit)}
+.ns-ok i{font-style:normal;color:var(--faint)}
+.ns-bad{color:var(--miss)}

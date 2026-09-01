@@ -98,6 +98,7 @@ import { planningKernel } from '../src/kernels/planning.ts'
 import { promptbuildKernel } from '../src/kernels/promptbuild.ts'
 import { actteKernel } from '../src/kernels/actte.ts'
 import { deltatsKernel } from '../src/kernels/deltats.ts'
+import { normstatsKernel } from '../src/kernels/normstats.ts'
 import { lfucacheKernel } from '../src/kernels/lfucache.ts'
 import { trieKernel } from '../src/kernels/trie.ts'
 import { quickselectKernel } from '../src/kernels/quickselect.ts'
@@ -1929,6 +1930,41 @@ export const CATALOG: CatalogEntry[] = [
         id: 'at_chunksize', label: 'LeRobot ACT 的动作块长',
         ask: 'LeRobot 里 ACT 的动作块长 chunk_size 默认是多少?', kind: 'number',
         compute: () => ({ answer: '100', step: 1, evidence: '本实验演示用 K=4 便于手算；LeRobot 真值 chunk_size=100、n_action_steps=100' }),
+        distractors: numDistractors,
+      },
+    ],
+  },
+  {
+    id: 'normstats', title: 'LeRobot · 数据集归一化', kernel: normstatsKernel as Kernel<unknown>, doc: trivialDoc('normstats'),
+    facts: [
+      {
+        id: 'ns_when', label: '归一化统计量什么时候算',
+        ask: 'LeRobot 的归一化统计量(μ/σ/min/max)是什么时候、算几遍的?和 BatchNorm 有何不同?', kind: 'choice',
+        compute: () => ({ answer: '在整套数据集上离线算一遍、存进 meta/stats.json；归一化因此是固定、可逆的仿射变换，训练/部署完全一致。BatchNorm 是每个 batch 现算、训练和推理行为不同', step: 1, evidence: 'σ=√(E[x²]−μ²) 一遍聚合；换数据集要重算' }),
+        distractors: () => ['每个 batch 现算(和 BatchNorm 一样)', '每个 epoch 重算一次', '推理时按当前样本实时算'],
+      },
+      {
+        id: 'ns_meanstd', label: 'MEAN_STD 公式与适用',
+        ask: 'MEAN_STD 归一化的公式是什么?通常给哪个策略、有什么好处?', kind: 'choice',
+        compute: () => ({ answer: "x'=(x−μ)/(σ+eps)，拉成 ~0 均值、单位尺度；ACT 默认。对无界的关节角/力矩自然，对离群相对稳(离群只把 σ 拉大一点、不挤扁其它值)", step: 2, evidence: 'eps 防止除零；均值为 0 的特征归一化后保持符号' }),
+        distractors: () => ["x'=x/max，缩到 [0,1]", "x'=(x−min)/(max−min)，缩到 [0,1]", "x'=log(x)，取对数"],
+      },
+      {
+        id: 'ns_minmax', label: 'MIN_MAX 为什么给 Diffusion',
+        ask: 'MIN_MAX 归一化映射到哪个区间?为什么 Diffusion Policy 用它、代价是什么?', kind: 'choice',
+        compute: () => ({ answer: "x'=2(x−min)/(max−min)−1 映射到 [-1,1]；Diffusion 的加噪 schedule 假设数据在 [-1,1]。代价是离群敏感——一个离群值会把其它正常样本挤到紧贴边界、彼此难分", step: 3, evidence: '本例力矩离群 3.0→+1，正常样本 0.1~0.3 全挤到 -1 附近' }),
+        distractors: () => ['映射到 [0,1]，因为图像像素是 [0,1]', '映射到 [-π,π]，因为是关节角', '映射到 [0,∞)，因为力矩非负'],
+      },
+      {
+        id: 'ns_unnorm', label: '策略输出能不能直接发',
+        ask: '策略网络预测出一串动作，能直接发给机器人吗?', kind: 'choice',
+        compute: () => ({ answer: '不能。策略输出的是归一化空间的动作，必须用同一套存好的统计量反归一化(x=x′·σ+μ 或 x=(x′+1)/2·(max−min)+min)再发。漏了输出反归一化=动作幅度全错、像"没力气"，是部署最常见的静默 bug', step: 4, evidence: '两端各一次:输入归一化观测、输出反归一化动作，同一套统计量' }),
+        distractors: () => ['能，网络输出就是真实动作值', '能，机器人固件会自己换算', '能，只要输入端归一化过就行'],
+      },
+      {
+        id: 'ns_negcount', label: 'θ 归一化后几个负数',
+        ask: '关节角 θ=[-2.8,-1.2,0,0.4,1.6,2.0] 均值恰为 0，经 MEAN_STD(=除以 σ)归一化后，有几个样本是负数?', kind: 'number',
+        compute: t => { const f = t as unknown as { cols?: { name: string; ms: number[] }[] }[]; const c = f.find(x => x.cols)?.cols?.[0]; const n = c ? c.ms.filter(v => v < 0).length : 2; return ({ answer: String(n), step: 2, evidence: `μ=0 → 归一化保持符号；原始 -2.8、-1.2 为负 → 归一化后仍为负，共 ${n} 个(0 归一化后仍是 0)` }) },
         distractors: numDistractors,
       },
     ],

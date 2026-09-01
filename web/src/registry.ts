@@ -306,6 +306,8 @@ import { actteKernel, type ActState } from '@engine/kernels/actte.ts'
 import { ActTeStage } from './stages/ActTeStage.tsx'
 import { deltatsKernel, type DTState } from '@engine/kernels/deltats.ts'
 import { DeltaTsStage } from './stages/DeltaTsStage.tsx'
+import { normstatsKernel, type NSState } from '@engine/kernels/normstats.ts'
+import { NormStatsStage } from './stages/NormStatsStage.tsx'
 import { lfucacheKernel, type LFUState } from '@engine/kernels/lfucache.ts'
 import { LFUCacheStage } from './stages/LFUCacheStage.tsx'
 import { trieKernel, type TrieState } from '@engine/kernels/trie.ts'
@@ -6737,6 +6739,33 @@ const deltats: Experiment<DTState> = {
     { label: '本步', value: ({ intro: '要时序窗口', sec2idx: '秒→帧偏移', clamp: '定位+边界钳', pad: 'pad 掩码', done: '窗口取出' } as Record<string, string>)[s.stage] ?? '—' },
   ],
 }
+const normstats: Experiment<NSState> = {
+  id: 'normstats', group: '具身项目实战', title: 'LeRobot · 数据集归一化', subtitle: '用整套数据集的统计量把特征拉到同一量级：MEAN_STD/MIN_MAX，输入归一化+输出反归一化',
+  kernel: normstatsKernel, defaultDoc: { kind: 'normstats', params: { policy: '给 ACT' }, entities: [], streams: [] },
+  params: [{ key: 'policy', label: '喂给哪个策略', kind: 'enum', options: ['给 ACT', '给 Diffusion'] }],
+  paramsNote: 'LeRobot 把 state/action 的统计量**在整套数据集上算一遍**存进 meta/stats(不是 BatchNorm 每批现算)→归一化是**固定、可逆的仿射变换**。两模式:**MEAN_STD** x′=(x−μ)/(σ+eps)(ACT 默认,对无界的关节角/力矩自然、离群较稳);**MIN_MAX** x′=2(x−min)/(max−min)−1 映射 **[-1,1]**(Diffusion 用,配加噪 schedule,但**离群敏感**——会把正常样本挤扁)。σ=√(E[x²]−μ²)。关键坑:策略**输出**的是归一化动作,必须用**同一套统计量反归一化**再发给机器人,漏了=动作全错的静默 bug。切「策略」看高亮哪条路+反归一化用哪个模式。统计量/归一化/反归一化现算。连下游 PID/遥操作吃的真实动作。详见讲解卡。',
+  bounds: [
+    '归一化统计量(μ/σ/min/max)在整套数据集上算一遍存 meta/stats→固定可逆仿射变换(非 BatchNorm 每批现算);σ=√(E[x²]−μ²)',
+    'MEAN_STD (x−μ)/(σ+eps):ACT 默认、对无界特征/离群较稳;MIN_MAX 2(x−min)/(max−min)−1 映射[-1,1]:Diffusion 用、离群敏感',
+    '两端各一次:输入端归一化观测、输出端**反归一化动作**(同一套统计量);漏了输出反归一化=动作幅度全错的静默 bug',
+    '为何不用 BatchNorm(部署要确定可逆);图像另走(/255 或 ImageNet 统计);离群多改分位数/robust。真实框架:LeRobot(normalize.py NormalizationMode)',
+  ],
+  tabs: [{ id: 'ns', label: '归一化逐步跑' }], Stage: NormStatsStage, whyInRail: true,
+  tone: s => (s.stage === 'done' ? { key: 'good', label: '两端归一化' }
+    : s.stage === 'unnorm' ? { key: 'bad', label: '反归一化' }
+    : s.stage === 'minmax' ? { key: 'idle', label: '离群敏感' }
+    : s.stage === 'meanstd' ? { key: 'idle', label: 'MEAN_STD' }
+    : s.stage === 'stats' ? { key: 'idle', label: '算统计量' }
+    : { key: 'idle', label: '量纲差异' }),
+  metric: s => (s.stage === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => ({ intro: '差', stats: '统', meanstd: '标', minmax: '缩', unnorm: '还', done: '成' }[s.stage] ?? '·'),
+  readouts: s => [
+    { label: '策略 / 模式', value: `${s.policy} · ${s.mode === 'MEAN_STD' ? '均值方差' : '最小最大'}` },
+    { label: '特征数', value: `${s.cols.length}(各存 μ/σ/min/max)` },
+    { label: '反归一化', value: s.showUnnorm ? `${s.policyOut}→${s.unnormVal}(漏则 ${s.forgotVal})` : '—', tone: s.showUnnorm ? 'bad' : undefined },
+    { label: '本步', value: ({ intro: '量纲差异', stats: '全数据集统计量', meanstd: 'MEAN_STD', minmax: 'MIN_MAX(离群敏感)', unnorm: '反归一化', done: '两端归一化' } as Record<string, string>)[s.stage] ?? '—' },
+  ],
+}
 const actte: Experiment<ActState> = {
   id: 'actte', group: '具身项目实战', title: 'ACT · 动作分块 + 时序集成', subtitle: 'LeRobot 旗舰策略：预测一整块动作、把重叠预测加权平均，治抖动与复合误差',
   kernel: actteKernel, defaultDoc: { kind: 'actte', params: { m: '默认' }, entities: [], streams: [] },
@@ -6792,7 +6821,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, ik, jacobian, quat, trajectory, kalman, icp, slam, impedance, mpc, pid, rrt, bc, diffpolicy, vla, lerobot, actte, deltats,
+  fk, ik, jacobian, quat, trajectory, kalman, icp, slam, impedance, mpc, pid, rrt, bc, diffpolicy, vla, lerobot, actte, deltats, normstats,
 ] as unknown as AnyExperiment[]
 
 /**

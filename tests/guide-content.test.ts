@@ -293,6 +293,15 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { i: 2, step: 2, stage: 'clamp', pos: '靠结尾', fps: 50, epStart: 100, epEnd: 160, absIdx: 158, obs, act, showIdx: true, showClamp: true, showPad: false, phase: 'run', focus: '边界钳', log: '' },
       b: { i: 3, step: 3, stage: 'pad', pos: '靠结尾', fps: 50, epStart: 100, epEnd: 160, absIdx: 158, obs, act, showIdx: true, showClamp: true, showPad: true, phase: 'run', focus: 'pad 掩码', log: '' },
     } })(),
+    normstats: (() => { const cols = [
+      { name: '关节角θ', unit: 'rad', vals: [-2.8, -1.2, 0, 0.4, 1.6, 2.0], mean: 0, std: 1.63, min: -2.8, max: 2, ms: [-1.71, -0.73, 0, 0.24, 0.98, 1.22], mm: [-1, -0.33, 0.17, 0.33, 0.83, 1] },
+      { name: '夹爪g', unit: '0~1', vals: [0, 0.2, 0.5, 0.8, 1, 0.5], mean: 0.5, std: 0.34, min: 0, max: 1, ms: [-1.49, -0.89, 0, 0.89, 1.49, 0], mm: [-1, -0.6, 0, 0.6, 1, 0] },
+      { name: '力矩τ', unit: 'N·m', vals: [0.1, 0.2, 0.15, 0.3, 0.25, 3], mean: 0.67, std: 1.05, min: 0.1, max: 3, ms: [-0.54, -0.45, -0.49, -0.35, -0.4, 2.23], mm: [-1, -0.93, -0.97, -0.86, -0.9, 1] },
+    ]; const base = { policy: 'ACT', mode: 'MEAN_STD', cols, unnormFeat: '关节角θ', policyOut: 1, unnormVal: 1.63, forgotVal: 1, phase: 'run' as const, log: '' }; return {
+      doc: { kind: 'normstats', params: { policy: '给 ACT' }, entities: [], streams: [] },
+      a: { i: 3, step: 3, stage: 'minmax', ...base, showStats: true, showMS: true, showMM: true, showUnnorm: false, focus: 'MIN_MAX 离群敏感' },
+      b: { i: 4, step: 4, stage: 'unnorm', ...base, showStats: true, showMS: true, showMM: true, showUnnorm: true, focus: '反归一化' },
+    } })(),
     queryplan: {
       doc: { kind: 'queryplan', params: {}, entities: [], streams: [] },
       a: { step: 1, op: 'path', query: 'q', revealed: 1, cur: 0, chosen: -1, paths: [{ name: '全表扫描', type: 'ALL', key: '—', rows: 10000, note: 'x' }, { name: '走 idx(city)', type: 'ref', key: 'idx_city', rows: 500, note: 'x' }, { name: '走 idx(age)', type: 'range', key: 'idx_age', rows: 6000, note: 'x' }], phase: 'run', focus: '候选路径：全表扫描（type=ALL，估扫 10000 行）' },
