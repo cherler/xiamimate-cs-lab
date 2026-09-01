@@ -364,6 +364,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { i: 3, step: 3, stage: 'neff', ...base, showWeight: true, showNeff: true, showResample: false, phase: 'run' as const, focus: 'N_eff' },
       b: { i: 4, step: 4, stage: 'resample', ...base, showWeight: true, showNeff: true, showResample: true, phase: 'run' as const, focus: '重采样' },
     } })(),
+    ukf: (() => { const base = { unc: 'big', uncLabel: '不确定大(P=5)', xPred: 5, P: 5, L: 10, d: 5, z: 8, R: 0.25, lambda: 2, sqrtTerm: 3.873, sigmas: [{ x: 5, h: 7.071, wm: 0.667, wc: 0.667 }, { x: 8.87, h: 5.125, wm: 0.167, wc: 0.167 }, { x: 1.13, h: 10.185, wm: 0.167, wc: 0.167 }], zPred: 7.266, S: 2.459, Pxz: -3.266, K: -1.328, xPost: 4.02, PPost: 0.66, xEkf: 3.81, PEkf: 0.45, log: '' }; return {
+      doc: { kind: 'ukf', params: { unc: '不确定大' }, entities: [], streams: [] },
+      a: { i: 2, step: 2, stage: 'transform', ...base, showSigma: true, showTrans: true, showRecomb: false, showUpd: false, phase: 'run' as const, focus: '过真非线性' },
+      b: { i: 4, step: 4, stage: 'update', ...base, showSigma: true, showTrans: true, showRecomb: true, showUpd: true, phase: 'run' as const, focus: '更新' },
+    } })(),
     queryplan: {
       doc: { kind: 'queryplan', params: {}, entities: [], streams: [] },
       a: { step: 1, op: 'path', query: 'q', revealed: 1, cur: 0, chosen: -1, paths: [{ name: '全表扫描', type: 'ALL', key: '—', rows: 10000, note: 'x' }, { name: '走 idx(city)', type: 'ref', key: 'idx_city', rows: 500, note: 'x' }, { name: '走 idx(age)', type: 'range', key: 'idx_age', rows: 6000, note: 'x' }], phase: 'run', focus: '候选路径：全表扫描（type=ALL，估扫 10000 行）' },

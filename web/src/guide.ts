@@ -932,6 +932,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { stage: string; neff: number; N: number; mode: string }; return st.stage === 'done' ? '样本表信念' : st.stage === 'resample' ? (st.mode === 'on' ? '重采样聚拢' : '退化') : st.stage === 'neff' ? `N_eff=${st.neff}` : st.stage === 'weight' ? '加权' : st.stage === 'predict' ? '预测散开' : '粒子' },
     try: [{ act: '切「重采样」', watch: 'N_eff=3.72、加权均值 5.4；系统重采样 → [4,5,5,6,6,8]，x=2/9 死、x=5/6 复制、聚拢。' }, { act: '切「不重采样」', watch: '权重继续退化：迭代几步后全集中到极少数粒子(N_eff→1)、粒子浪费——所以 PF 必须重采样。' }, { act: '想 vs EKF', watch: 'EKF 一个高斯、单峰；粒子滤波一堆样本、能表多峰/非高斯(全局定位)、但慢。' }], terms: [],
   },
+  ukf: {
+    question: 'EKF 要求雅可比、导数难算又只是一阶近似。UKF 怎么不求导就处理非线性？',
+    read: [{ at: 'h(x)曲线', is: 'sigma 点撒在真曲线上(不是切线)。', anchor: '.uk-svg' }, { at: 'sigma 块', is: '取点→过真非线性→重组。', anchor: '.uk-blk' }, { at: '对比框', is: 'UKF vs EKF 同题结果。', anchor: '.uk-cmpbox' }],
+    step: (s: never) => { const st = s as { stage: string; uncLabel: string; xPred: number; P: number; sqrtTerm: number; sigmas: { x: number; h: number }[]; zPred: number; S: number; Pxz: number; K: number; xPost: number; PPost: number; xEkf: number; unc: string }; return [
+      { k: '本步输入', v: st.stage === 'intro' ? `先验 ${st.uncLabel}、非线性观测` : st.stage === 'sigma' ? `均值 μ=${st.xPred}、协方差 P=${st.P}` : st.stage === 'transform' ? `3 个 sigma 点` : st.stage === 'recombine' ? '过 h 后的 3 个值' : `ẑ=${st.zPred}、S=${st.S}、Pxz=${st.Pxz}` },
+      { k: '判定规则', v: `sigma 点 X₀=μ、X₁,₂=μ±√((n+λ)P)；每点过真 h(不求导)；ẑ=ΣWm·h(Xᵢ)、S、Pxz；更新 K=Pxz/S、x←x̂+K(z−ẑ)、P←P−KSK。` },
+      { k: '本步结果', v: st.stage === 'intro' ? 'UKF:不线性化、用 sigma 点探非线性' : st.stage === 'sigma' ? `sigma 点=[${st.sigmas.map(g => g.x).join(',')}]（μ±${st.sqrtTerm}）` : st.stage === 'transform' ? `${st.sigmas.map(g => `h(${g.x})=${g.h}`).join('、')}（过真非线性、不求导）` : st.stage === 'recombine' ? `ẑ=ΣWm·h=${st.zPred}（≠EKF 的 7.07）、S=${st.S}、Pxz=${st.Pxz}` : `UKF x=${st.xPost}、P=${st.PPost}；EKF x=${st.xEkf}（${st.unc === 'big' ? '分道' : '≈UKF'}）` },
+    ] },
+    verdict: (s: never) => { const st = s as { stage: string; xPost: number; zPred: number }; return st.stage === 'done' ? 'sigma+卡尔曼' : st.stage === 'update' ? `x̂=${st.xPost}` : st.stage === 'recombine' ? `ẑ=${st.zPred}` : st.stage === 'transform' ? '过真非线性' : st.stage === 'sigma' ? 'sigma点' : '无迹变换' },
+    try: [{ act: '切「不确定大(P=5)」', watch: 'sigma 点铺得开(±3.87)、UKF 捕捉曲率 → x=4.02，和 EKF 的 3.81 分道。' }, { act: '切「不确定小(P=1)」', watch: 'sigma 点靠得近(±1.73)、这段 h 近似线性 → UKF x=4.16≈EKF x=4.12。' }, { act: '看 h(x) 曲线', watch: 'sigma 点撒在真曲线上(EKF 用切线)，所以 UKF 带上了曲率。' }], terms: [],
+  },
   queryplan: {
     question: '同一个查询有好几条路可走，数据库优化器凭什么选其中一条？',
     read: [{ at: '候选路径', is: '每条访问路径的 type + 估扫描行数代价条。', anchor: '.qp-paths' }, { at: 'EXPLAIN', is: '末步选中路径的 type/key/rows。', anchor: '.qp-explain' }],

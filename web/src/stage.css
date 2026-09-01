@@ -5578,3 +5578,27 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .pf-blk.pf-off{opacity:.4}
 .pf-n{font-family:var(--mono);color:var(--now);font-weight:700;margin-right:6px}
 .pf-wchip{display:inline-block;background:var(--sunk-1);border:1px solid var(--line);border-radius:4px;padding:0 5px;margin:0 3px;font-family:var(--mono);font-size:.9em}
+
+/* ukf · 无迹卡尔曼滤波 */
+.scdn.uk-hot{color:var(--now)}
+.scdn.uk-cmp{color:var(--dim)}
+.uk-svg{margin:6px 0 2px;max-width:360px}
+.uk-curve{stroke:var(--dim);stroke-width:1.5}
+.uk-curvel{fill:var(--dim);font:10px var(--mono)}
+.uk-axis{stroke:var(--line);stroke-width:1}
+.uk-tick{fill:var(--faint);font:10px var(--mono);text-anchor:middle}
+.uk-z{stroke:var(--now);stroke-width:1;stroke-dasharray:3 2}
+.uk-zt{fill:var(--now);font:10px var(--mono)}
+.uk-s0{fill:var(--now)}
+.uk-si{fill:color-mix(in srgb,var(--now) 60%,transparent);stroke:var(--now);stroke-width:.5}
+.uk-proj{stroke:color-mix(in srgb,var(--now) 40%,transparent);stroke-width:1;stroke-dasharray:2 2}
+.uk-flow{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+.uk-blk{border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--panel-2);font-size:var(--t-ui);line-height:1.8;font-variant-numeric:tabular-nums}
+.uk-blk.uk-off{opacity:.4}
+.uk-n{font-family:var(--mono);color:var(--now);font-weight:700;margin-right:6px}
+.uk-sub{display:block;font:var(--t-meta) var(--sans);color:var(--faint);margin-top:2px;font-style:normal}
+.uk-hchip{display:inline-block;background:var(--sunk-1);border:1px solid var(--line);border-radius:4px;padding:0 5px;margin:0 3px;font-family:var(--mono);font-size:.9em}
+.uk-hot2{color:var(--now)}
+.uk-cmpbox{margin-top:10px;border-radius:8px;padding:8px 10px;font-size:var(--t-ui);line-height:1.55}
+.uk-cmpbox.uk-diverge{background:color-mix(in srgb,var(--now) 8%,transparent);border:1px solid color-mix(in srgb,var(--now) 35%,var(--line))}
+.uk-cmpbox.uk-agree{background:var(--panel-2);border:1px solid var(--line)}

@@ -129,6 +129,7 @@ import { lerobotKernel } from '../src/kernels/lerobot.ts'
 import { kalmanKernel } from '../src/kernels/kalman.ts'
 import { ekfKernel } from '../src/kernels/ekf.ts'
 import { particlefilterKernel } from '../src/kernels/particlefilter.ts'
+import { ukfKernel } from '../src/kernels/ukf.ts'
 import { pidKernel } from '../src/kernels/pid.ts'
 import { rrtKernel } from '../src/kernels/rrt.ts'
 import { objectstoreKernel } from '../src/kernels/objectstore.ts'
@@ -2512,6 +2513,41 @@ export const CATALOG: CatalogEntry[] = [
         ask: 'ICP 有个著名的局限：依赖初值。为什么初始差太多会失败?', kind: 'choice',
         compute: () => ({ answer: '初始差太大时，欧氏最近点算出的对应会系统性地错(点连到错误的目标点)，基于错对应求出的变换把点云带向错误方向 → 陷入局部最优。所以实际先用粗配准(特征匹配/IMU 里程计)给个好初值再上 ICP 精配', step: 4, evidence: '本例初始 25° 尚可收敛；若初始偏差过大对应全错就收不回来' }),
         distractors: () => ['ICP 从不失败、总能全局最优', '初值只影响速度、不影响结果', 'ICP 需要初值是因为要设旋转角'],
+      },
+    ],
+  },
+  {
+    id: 'ukf', title: '无迹卡尔曼滤波 UKF', kernel: ukfKernel as Kernel<unknown>, doc: trivialDoc('ukf'),
+    facts: [
+      {
+        id: 'ukf_core', label: 'UKF 和 EKF 的区别',
+        ask: 'UKF 处理非线性和 EKF 最本质的区别是什么?', kind: 'choice',
+        compute: () => ({ answer: 'EKF 在估计点求雅可比、把非线性函数线性化(要求导、只一阶近似);UKF 挑一组确定性 sigma 点、让它们原样穿过真非线性函数、再从变换后的点重组均值/协方差。名言:近似分布比近似函数容易', step: 1, evidence: 'sigma 点过真非线性 vs 雅可比切线' }),
+        distractors: () => ['UKF 用二阶泰勒、要算 Hessian', 'UKF 用一堆随机粒子、和粒子滤波一样', 'UKF 只是 EKF 换了个名字'],
+      },
+      {
+        id: 'ukf_sigma', label: 'sigma 点怎么取',
+        ask: 'UKF 的 sigma 点是怎么取的?为什么是确定性的?', kind: 'choice',
+        compute: t => { const f = t as unknown as { sigmas?: unknown[] }[]; const l = f.find(x => x.sigmas); const n = l?.sigmas?.length ?? 3; return ({ answer: `n 维状态取 2n+1 个点(本例 n=1→${n} 个):X₀=μ、Xᵢ=μ±(√((n+λ)P))ᵢ,围绕均值、按协方差铺开。是算出来的确定性点(不是随机采样),能精确捕捉均值和协方差、过非线性后还能到高阶精度`, step: 2, evidence: `2n+1 个;X₀=μ、两侧 μ±√((n+λ)P)` }) },
+        distractors: () => ['随机采 N 个点、和粒子滤波一样', '只取均值一个点', '取协方差矩阵的特征向量'],
+      },
+      {
+        id: 'ukf_vs_ekf_when', label: 'UKF 何时比 EKF 强',
+        ask: 'UKF 在什么情况下明显比 EKF 好?什么情况下差不多?', kind: 'choice',
+        compute: () => ({ answer: '不确定大(协方差大)/非线性强时 UKF 明显更好:sigma 点铺得开、把函数曲率算进来,而 EKF 的一阶线性化误差大。不确定小/局部近似线性时两者几乎一样(sigma 点靠得近)。所以 UKF 的优势在强非线性/大不确定时才显现', step: 5, evidence: '本例 P 大时 UKF/EKF 分道、P 小时≈' }),
+        distractors: () => ['UKF 永远比 EKF 好几个数量级', 'UKF 只在测量噪声大时更好', '两者任何情况都完全相同'],
+      },
+      {
+        id: 'ukf_family', label: '滤波家族怎么选',
+        ask: 'KF/EKF/UKF/粒子滤波这个贝叶斯滤波家族，怎么选?', kind: 'choice',
+        compute: () => ({ answer: '线性→卡尔曼 KF;弱非线性/要快→EKF(雅可比);强非线性/难求导→UKF(sigma 点、免求导、捕捉曲率);多峰/非高斯(如全局定位)→粒子滤波(一堆样本)。KF/EKF/UKF 都是单高斯(单峰)、PF 能表任意分布', step: 6, evidence: '单峰高斯(KF/EKF/UKF)vs 多峰样本(PF)' }),
+        distractors: () => ['永远用粒子滤波最准', '永远用 EKF 最快最好', '它们完全等价、随便选'],
+      },
+      {
+        id: 'ukf_nsigma', label: 'sigma 点个数',
+        ask: '一维状态(n=1)的 UKF，需要取几个 sigma 点?(2n+1)', kind: 'number',
+        compute: t => { const f = t as unknown as { sigmas?: unknown[] }[]; const l = f.find(x => x.sigmas); const n = l?.sigmas?.length ?? 3; return ({ answer: String(n), step: 2, evidence: `2n+1=2·1+1=${n}:中心点 μ 加两侧 μ±√((n+λ)P)` }) },
+        distractors: numDistractors,
       },
     ],
   },

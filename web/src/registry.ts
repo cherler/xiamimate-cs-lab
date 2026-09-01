@@ -354,6 +354,7 @@ import { computedtorqueKernel, type CtcState } from '@engine/kernels/computedtor
 import { contactlcpKernel, type LcpState } from '@engine/kernels/contactlcp.ts'
 import { ekfKernel, type EkfState } from '@engine/kernels/ekf.ts'
 import { particlefilterKernel, type PfState } from '@engine/kernels/particlefilter.ts'
+import { ukfKernel, type UkfState } from '@engine/kernels/ukf.ts'
 import { ikKernel, type IKState } from '@engine/kernels/ik.ts'
 import { jacobianKernel, type JacoState } from '@engine/kernels/jacobian.ts'
 import { kalmanKernel, type KalmanState } from '@engine/kernels/kalman.ts'
@@ -384,6 +385,7 @@ import { ComputedTorqueStage } from './stages/ComputedTorqueStage.tsx'
 import { ContactLcpStage } from './stages/ContactLcpStage.tsx'
 import { EkfStage } from './stages/EkfStage.tsx'
 import { PfStage } from './stages/PfStage.tsx'
+import { UkfStage } from './stages/UkfStage.tsx'
 import { IKStage } from './stages/IKStage.tsx'
 import { JacobianStage } from './stages/JacobianStage.tsx'
 import { KalmanStage } from './stages/KalmanStage.tsx'
@@ -6746,6 +6748,33 @@ const particlefilter: Experiment<PfState> = {
     { label: '本步', value: ({ intro: '样本表信念', predict: '预测散开', weight: '加权(似然)', neff: 'N_eff 判据', resample: '重采样', done: '样本表信念' } as Record<string, string>)[s.stage] ?? '—' },
   ],
 }
+const ukf: Experiment<UkfState> = {
+  id: 'ukf', group: '机器人感知', title: '无迹卡尔曼滤波 UKF', subtitle: '不求雅可比：sigma 点过真非线性再拟合高斯；与 EKF 同题对比',
+  kernel: ukfKernel, defaultDoc: { kind: 'ukf', params: { unc: '不确定大' }, entities: [], streams: [] },
+  params: [{ key: 'unc', label: '先验不确定', kind: 'enum', options: ['不确定大', '不确定小'] }],
+  paramsNote: '「EKF」在估计点求**雅可比**线性化(要算导数);**UKF(无迹变换)**换思路——与其近似非线性函数,不如**近似分布**:①取 **2n+1 个 sigma 点**(X₀=μ、X₁,₂=μ±√((n+λ)P))②**每点过真非线性 h**(不求导!)③用权重 Wm/Wc 重组预测测量均值 ẑ、协方差 S、互协方差 Pxz ④更新 K=Pxz/S、x←x̂+K(z−ẑ)、P←P−KSK。和 EKF 同一个问题(地标(10,5)、非线性距离、z=8)好对比。切「先验不确定」:P 小→sigma 点靠近→UKF≈EKF;P 大→铺得开→捕捉曲率、和 EKF 分道。全现算+对拍 EKF。连「EKF/卡尔曼/粒子滤波」。详见讲解卡。',
+  bounds: [
+    'UKF=无迹变换+卡尔曼:取 2n+1 个 sigma 点、每点过真非线性 f/h(不求雅可比)、重组均值/协方差/互协方差、卡尔曼式更新 K=Pxz/S',
+    'vs EKF:EKF 用一条切线(雅可比一阶);UKF 让点真走一遍非线性、捕捉二阶曲率(对高斯到三阶精确)、且免推雅可比;代价每步过 2n+1 个点',
+    '先验 P 小→sigma 点靠近→UKF≈EKF(局部线性);P 大→铺得开→UKF 捕捉曲率、和 EKF 分道——优势在不确定大/非线性强时显现',
+    '滤波家族选型:线性→KF、弱非线性/要快→EKF、强非线性/难求导→UKF、多峰/非高斯→粒子滤波。参考:Julier-Uhlmann 无迹变换、Thrun《Probabilistic Robotics》',
+  ],
+  tabs: [{ id: 'uk', label: 'UKF 逐步跑' }], Stage: UkfStage, whyInRail: true,
+  tone: s => (s.stage === 'done' ? { key: 'good', label: 'sigma+卡尔曼' }
+    : s.stage === 'update' ? { key: 'good', label: `x̂=${s.xPost}` }
+    : s.stage === 'recombine' ? { key: 'idle', label: `ẑ=${s.zPred}` }
+    : s.stage === 'transform' ? { key: 'idle', label: '过真非线性' }
+    : s.stage === 'sigma' ? { key: 'idle', label: 'sigma 点' }
+    : { key: 'idle', label: '无迹变换' }),
+  metric: s => (s.stage === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => ({ intro: '迹', sigma: 'σ', transform: 'h', recombine: '组', update: '融', done: '成' }[s.stage] ?? '·'),
+  readouts: s => [
+    { label: '先验不确定 P', value: `${s.P}` },
+    { label: 'UKF 估计 x̂', value: s.showUpd ? `${s.xPost}` : '—', tone: s.showUpd ? 'good' : undefined },
+    { label: '对比 EKF x̂', value: s.showUpd ? `${s.xEkf}${s.unc === 'big' ? '（分道）' : '（≈UKF）'}` : '—' },
+    { label: '本步', value: ({ intro: '不线性化', sigma: '取 sigma 点', transform: '过真非线性', recombine: '重组高斯', update: '更新+对比EKF', done: 'sigma+卡尔曼' } as Record<string, string>)[s.stage] ?? '—' },
+  ],
+}
 const kalman: Experiment<KalmanState> = {
   id: 'kalman', group: '机器人感知', title: '卡尔曼滤波', subtitle: '预测+观测按方差融合：机器人定位的地基',
   kernel: kalmanKernel, defaultDoc: { kind: 'kalman', params: {}, entities: [], streams: [] }, params: [],
@@ -7109,7 +7138,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, icp, slam, impedance, mpc, pid, rrt, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
+  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, icp, slam, impedance, mpc, pid, rrt, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
 ] as unknown as AnyExperiment[]
 
 /**
