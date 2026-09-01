@@ -310,6 +310,8 @@ import { normstatsKernel, type NSState } from '@engine/kernels/normstats.ts'
 import { NormStatsStage } from './stages/NormStatsStage.tsx'
 import { teleopKernel, type TeleState } from '@engine/kernels/teleop.ts'
 import { TeleopStage } from './stages/TeleopStage.tsx'
+import { miniduckKernel, type DuckState } from '@engine/kernels/miniduck.ts'
+import { MiniDuckStage } from './stages/MiniDuckStage.tsx'
 import { lfucacheKernel, type LFUState } from '@engine/kernels/lfucache.ts'
 import { LFUCacheStage } from './stages/LFUCacheStage.tsx'
 import { trieKernel, type TrieState } from '@engine/kernels/trie.ts'
@@ -6741,6 +6743,33 @@ const deltats: Experiment<DTState> = {
     { label: '本步', value: ({ intro: '要时序窗口', sec2idx: '秒→帧偏移', clamp: '定位+边界钳', pad: 'pad 掩码', done: '窗口取出' } as Record<string, string>)[s.stage] ?? '—' },
   ],
 }
+const miniduck: Experiment<DuckState> = {
+  id: 'miniduck', group: '具身项目实战', title: 'Open Duck Mini · 学会走路', subtitle: 'BD-X 迷你复刻的腿式 RL：相位参考步态 + 「模仿奖励」(≠模仿学习)；LeRobot 线收官',
+  kernel: miniduckKernel, defaultDoc: { kind: 'miniduck', params: { mode: '带模仿奖励' }, entities: [], streams: [] },
+  params: [{ key: 'mode', label: '消融', kind: 'enum', options: ['带模仿奖励', '只 velocity', 'reference+PD 无策略'] }],
+  paramsNote: 'miniduck=**Open Duck Mini**(迪士尼 BD-X 开源迷你复刻，Pollen/HF，现商品化 Microduck)。它**不是** LeRobot 模仿学习(ACT/Diffusion)，而是**腿式 RL**:MuJoCo Playground 里 Brax PPO(沿用 Berkeley Humanoid)训练、50Hz 跑 Pi Zero 2W。**整条线最值钱的一句:「模仿奖励」≠「模仿学习」**——模仿学习(ACT/BC)监督克隆示教、累积误差、无恢复;模仿奖励(DeepMimic 家族)是 RL 里一个**奖励项**、奖励跟踪相位对齐的参考步态、会探索会恢复。确定性单步:①相位 t=(i mod N)/N→φ=(cos,sin) ②参考 q̂(Placo 生成、相位索引) ③策略残差 u=q_def+0.25a→PD τ=kp(u−q)−kd·q̇(PID 内环) ④奖励 r=2.5R_vel+1.0R_imit+20alive，R_imit 主导 −15‖q−q̂‖² ⑤摔判 projected_gravity_z<0。切「消融」看带模仿(直立)/只velocity(步态退化)/无策略(欠驱动摔倒)。相位/参考/奖励现算。连「PID/FK/BC」。详见讲解卡。',
+  bounds: [
+    '「模仿奖励」≠「模仿学习」:模仿学习(ACT/BC)监督克隆示教、累积误差、无恢复;模仿奖励(DeepMimic)=RL 奖励项、跟踪相位对齐参考步态、会探索会恢复',
+    '确定性单步:相位 t=(i mod N)/N→φ(cos,sin)、参考 q̂(相位索引、Placo 生成)、策略残差 u=q_def+0.25a、PD τ=kp(u−q)−kd·q̇、奖励主导项 −15‖q−q̂‖²',
+    '消融:带模仿→直立自然;只velocity(去模仿项)→步态退化(reward 看着差不多、步态却塌,证明模仿奖励买自然步态);无策略→开环 q=q̂ 也摔(欠驱动浮基未镇定)',
+    '非对称 actor-critic(critic 看真值、actor 只用 IMU+相位免特权量);sim2real 靠作动器辨识+域随机化+随机推搡。真实框架:Open_Duck_Playground(Brax PPO@MuJoCo Playground)',
+  ],
+  tabs: [{ id: 'mk', label: '单步逐步拆' }], Stage: MiniDuckStage, whyInRail: true,
+  tone: s => (s.stage === 'done' ? { key: 'good', label: '模仿奖励≠模仿学习' }
+    : s.stage === 'ablate' ? (s.mode === 'imit' ? { key: 'good', label: '直立自然' } : s.mode === 'velonly' ? { key: 'bad', label: '步态退化' } : { key: 'bad', label: '摔倒' })
+    : s.stage === 'reward' ? { key: 'idle', label: `r=${s.reward}` }
+    : s.stage === 'policy' ? { key: 'idle', label: '残差+PD' }
+    : s.stage === 'phase' ? { key: 'idle', label: '相位+参考' }
+    : { key: 'idle', label: '腿式RL' }),
+  metric: s => (s.stage === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => ({ intro: '鸭', phase: '相', policy: '策', reward: '奖', ablate: '消', done: '收' }[s.stage] ?? '·'),
+  readouts: s => [
+    { label: '模式', value: s.modeLabel },
+    { label: '相位 t / 结局', value: `${s.showPhase ? s.phaseT : '—'} / ${s.showOutcome ? (s.mode === 'imit' ? '直立' : s.mode === 'velonly' ? '退化步态' : '摔倒') : '—'}`, tone: s.showOutcome && s.mode !== 'imit' ? 'bad' : undefined },
+    { label: '本步奖励 r', value: s.showReward ? `${s.reward}` : '—' },
+    { label: '本步', value: ({ intro: '腿式RL≠模仿学习', phase: '相位+参考步态', policy: '残差动作+PD', reward: '奖励分解', ablate: '消融对照', done: '模仿奖励≠模仿学习' } as Record<string, string>)[s.stage] ?? '—' },
+  ],
+}
 const teleop: Experiment<TeleState> = {
   id: 'teleop', group: '具身项目实战', title: 'LeRobot · 主从遥操作', subtitle: 'SO-101 一对同构臂：读 leader 原始码→标定角→max_relative_target 安全钳→写 follower；采集示教数据的入口',
   kernel: teleopKernel, defaultDoc: { kind: 'teleop', params: { safety: '开 max_relative_target' }, entities: [], streams: [] },
@@ -6849,7 +6878,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, ik, jacobian, quat, trajectory, kalman, icp, slam, impedance, mpc, pid, rrt, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop,
+  fk, ik, jacobian, quat, trajectory, kalman, icp, slam, impedance, mpc, pid, rrt, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck,
 ] as unknown as AnyExperiment[]
 
 /**

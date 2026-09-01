@@ -314,6 +314,16 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { i: 3, step: 3, stage: 'safety', ...base, phase: 'run' as const, focus: '安全钳' },
       b: { i: 4, step: 4, stage: 'done', ...base, phase: 'done' as const, focus: '录数据' },
     } })(),
+    miniduck: (() => { const legs = [
+      { name: '髋 hip_pitch', qhat: 0.383, q: 0.393, u: 0.393, a: 1.17, tau: 5.86 },
+      { name: '膝 knee', qhat: -0.265, q: -0.275, u: -0.275, a: 0.9, tau: 4.5 },
+      { name: '踝 ankle_pitch', qhat: 0.033, q: 0.043, u: 0.043, a: -0.03, tau: -0.14 },
+      { name: '摆 hip_roll', qhat: -0.204, q: -0.214, u: -0.214, a: -0.46, tau: -2.28 },
+    ]; const base = { mode: 'imit', modeLabel: '带模仿奖励(参考步态)', gaitI: 7, N: 20, phaseT: 0.35, cosp: -0.588, sinp: 0.809, cmdV: 0.3, v: 0.29, legs, imitJoint: 0, rVel: 0.99, rImit: 0.999, alive: 20, reward: 23.47, fallen: false, imitOn: true, hasPolicy: true, outcome: '直立·自然步态(像 BD-X 那样摇摆)', log: '' }; return {
+      doc: { kind: 'miniduck', params: { mode: '带模仿奖励' }, entities: [], streams: [] },
+      a: { i: 3, step: 3, stage: 'reward', ...base, showPhase: true, showPolicy: true, showReward: true, showOutcome: false, phase: 'run' as const, focus: '奖励分解' },
+      b: { i: 4, step: 4, stage: 'ablate', ...base, showPhase: true, showPolicy: true, showReward: true, showOutcome: true, phase: 'run' as const, focus: '消融结果' },
+    } })(),
     queryplan: {
       doc: { kind: 'queryplan', params: {}, entities: [], streams: [] },
       a: { step: 1, op: 'path', query: 'q', revealed: 1, cur: 0, chosen: -1, paths: [{ name: '全表扫描', type: 'ALL', key: '—', rows: 10000, note: 'x' }, { name: '走 idx(city)', type: 'ref', key: 'idx_city', rows: 500, note: 'x' }, { name: '走 idx(age)', type: 'range', key: 'idx_age', rows: 6000, note: 'x' }], phase: 'run', focus: '候选路径：全表扫描（type=ALL，估扫 10000 行）' },

@@ -100,6 +100,7 @@ import { actteKernel } from '../src/kernels/actte.ts'
 import { deltatsKernel } from '../src/kernels/deltats.ts'
 import { normstatsKernel } from '../src/kernels/normstats.ts'
 import { teleopKernel } from '../src/kernels/teleop.ts'
+import { miniduckKernel } from '../src/kernels/miniduck.ts'
 import { lfucacheKernel } from '../src/kernels/lfucache.ts'
 import { trieKernel } from '../src/kernels/trie.ts'
 import { quickselectKernel } from '../src/kernels/quickselect.ts'
@@ -1931,6 +1932,41 @@ export const CATALOG: CatalogEntry[] = [
         id: 'at_chunksize', label: 'LeRobot ACT 的动作块长',
         ask: 'LeRobot 里 ACT 的动作块长 chunk_size 默认是多少?', kind: 'number',
         compute: () => ({ answer: '100', step: 1, evidence: '本实验演示用 K=4 便于手算；LeRobot 真值 chunk_size=100、n_action_steps=100' }),
+        distractors: numDistractors,
+      },
+    ],
+  },
+  {
+    id: 'miniduck', title: 'Open Duck Mini · 学会走路', kernel: miniduckKernel as Kernel<unknown>, doc: trivialDoc('miniduck'),
+    facts: [
+      {
+        id: 'mk_reward_vs_learn', label: '模仿奖励 vs 模仿学习',
+        ask: 'Open Duck Mini 的"模仿奖励"(imitation reward)和 ACT/BC 的"模仿学习"(imitation learning)是一回事吗?', kind: 'choice',
+        compute: () => ({ answer: '不是，同词反机制。模仿奖励=RL 里一个奖励项，奖励跟踪相位对齐的参考步态(会探索、能从扰动恢复);模仿学习=监督克隆人类示教动作(漂出分布就累积误差 covariate shift、不会自恢复)', step: 1, evidence: '鸭子用 DeepMimic 式逐帧相位跟踪奖励、非 AMP(无判别器);走路是 Brax PPO 强化学习出来的' }),
+        distractors: () => ['是，都是从示教数据克隆动作', '不是，模仿奖励更快但本质都是监督学习', '是，只是模仿奖励在仿真里、模仿学习在真机'],
+      },
+      {
+        id: 'mk_paradigm', label: '为什么 locomotion 用 RL 不用 BC',
+        ask: 'Open Duck Mini 的走路为什么用强化学习(PPO)训练，而不是像 ACT 那样行为克隆?', kind: 'choice',
+        compute: () => ({ answer: '新形态没有现成示教者;接触富、混杂(每次落脚/离地都切换)的动力学;而且需要扰动恢复——BC 没有恢复能力、只会累积误差。RL 能探索并沿奖励梯度找到鲁棒步态', step: 1, evidence: '在 MuJoCo Playground 里 Brax PPO 训练、随机推搡教会"推不倒"' }),
+        distractors: () => ['BC 太慢、RL 更快', '因为没有 GPU 只能用 RL', 'RL 不需要奖励函数、更省事'],
+      },
+      {
+        id: 'mk_actorcritic', label: '非对称 actor-critic',
+        ask: 'Open Duck Mini 的 actor(部署用)和 critic(只训练用)看到的观测为什么不一样?', kind: 'choice',
+        compute: () => ({ answer: 'critic 训练时能看真值特权量(base 线速度、全参考帧、接触力),学得更稳更快;actor 只用真机测得到的量(IMU 陀螺/加速度、指令、关节位/速、动作历史、相位)——所以部署时不依赖任何特权量。base 线速度真机测不到、故意不给 actor', step: 1, evidence: '非对称 actor-critic:critic 用 privileged_state、actor 用可部署观测' }),
+        distractors: () => ['actor 更聪明所以给它更多信息', '两者一样、只是网络大小不同', 'critic 看得少、防止过拟合'],
+      },
+      {
+        id: 'mk_imit_term', label: '模仿奖励的主导项',
+        ask: '模仿奖励里权重最大(主导)的是哪一项?它买来了什么?', kind: 'choice',
+        compute: () => ({ answer: '关节位置跟踪项 −15·‖q_leg − q̂_leg‖²(权重 15、最狠)。它把训练拉向那条物理可行的参考步态 → 得到自然、对称、像 BD-X 的步态;去掉它,只奖励速度,策略会退化成能量最省的"丑走"', step: 4, evidence: '本例只velocity 模式 ‖q−q̂‖²=0.365 却不扣分→步态退化，证明模仿项买自然步态' }),
+        distractors: () => ['存活奖励 alive、防止摔倒', '力矩惩罚、为了省电', '速度跟踪、为了走得快'],
+      },
+      {
+        id: 'mk_alive', label: '直立这一步的存活奖励',
+        ask: '带模仿奖励、机器人直立不倒时，这一步的存活(alive)奖励是多少?', kind: 'number',
+        compute: t => { const f = t as unknown as { alive?: number }[]; const l = f[f.length - 1]; const a = l?.alive ?? 20; return ({ answer: String(a), step: 3, evidence: `alive=+${a}(站着不倒);摔了则 0——站着本身就值 ${a} 分,是"别摔"的最强激励` }) },
         distractors: numDistractors,
       },
     ],

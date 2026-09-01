@@ -833,6 +833,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { stage: string; safety: string; clampedN: number }; return st.stage === 'done' ? '跟随+录数据' : st.stage === 'safety' ? (st.safety === 'on' ? `钳${st.clampedN}关节` : '直通急跳') : st.stage === 'calib' ? '标定成角' : st.stage === 'readraw' ? '读原始码' : '同构免IK' },
     try: [{ act: '切「开 max_relative_target」', watch: '腕转抖动 Δ≈90° 被钳到 ±15° → 目标只挪到 13°，follower 平稳(1 个被钳)。' }, { act: '切「关（直通）」', watch: '腕转目标直接 87.89°、急跳 90°——真机上一次危险甩臂、可能撞坏。' }], terms: [],
   },
+  miniduck: {
+    question: '一只 BD-X 小鸭机器人怎么"学"会走路？它的"模仿"和前面 ACT/BC 的"模仿"是一回事吗？',
+    read: [{ at: '相位条', is: '步态相位 t=(i mod N)/N → φ=(cos,sin)。', anchor: '.mk-phase' }, { at: '腿关节表', is: '参考 q̂ vs 实际 q、偏差、PD 力矩。', anchor: '.mk-table' }, { at: '奖励分解', is: 'R_vel + R_imit(主导 −15‖q−q̂‖²) + alive。', anchor: '.mk-reward' }, { at: '结局横幅', is: '消融后直立/退化/摔倒。', anchor: '.mk-out' }],
+    step: (s: never) => { const st = s as { stage: string; modeLabel: string; phaseT: number; cosp: number; sinp: number; v: number; cmdV: number; imitJoint: number; rVel: number; rImit: number; alive: number; reward: number; imitOn: boolean; fallen: boolean; outcome: string }; return [
+      { k: '本步输入', v: st.stage === 'intro' ? '腿式 RL(Brax PPO@MuJoCo)、非模仿学习' : st.stage === 'phase' ? `第 i 步 → 相位 t=${st.phaseT}` : st.stage === 'policy' ? '策略残差 a、默认姿势 q_def' : st.stage === 'reward' ? `v=${st.v}(指令 ${st.cmdV})、‖q−q̂‖²=${st.imitJoint}` : st.stage === 'ablate' ? '当前消融模式' : '整步跑完' },
+      { k: '判定规则', v: `相位 φ=(cos2πt,sin2πt)；策略 u=q_def+0.25a→PD τ=kp(u−q)−kd·q̇；奖励 r=2.5R_vel${st.imitOn ? '+1.0R_imit' : '+(模仿项消融)'}+alive，R_imit 主导项 −15·‖q−q̂‖²；摔判 projected_gravity_z<0。` },
+      { k: '本步结果', v: st.stage === 'intro' ? '模仿奖励≠模仿学习(同词反机制)' : st.stage === 'phase' ? `t=${st.phaseT}→φ=(${st.cosp},${st.sinp})，取出参考步态 q̂` : st.stage === 'policy' ? '残差绕默认姿势、PD 内环执行' : st.stage === 'reward' ? `R_vel=${st.rVel}、R_imit=${st.rImit}、alive=${st.alive} → r=${st.reward}` : st.stage === 'ablate' ? st.outcome : '模仿奖励(RL,能恢复)≠模仿学习(BC,累积误差)' },
+    ] },
+    verdict: (s: never) => { const st = s as { stage: string; mode: string; reward: number }; return st.stage === 'done' ? '模仿奖励≠模仿学习' : st.stage === 'ablate' ? (st.mode === 'imit' ? '直立自然' : st.mode === 'velonly' ? '步态退化' : '摔倒') : st.stage === 'reward' ? `r=${st.reward}` : st.stage === 'policy' ? '残差+PD' : st.stage === 'phase' ? '相位+参考' : '腿式RL' },
+    try: [{ act: '切「带模仿奖励」', watch: '−15‖q−q̂‖² 拉向参考步态 → q 紧跟 q̂、直立摇摆，r≈23.5。' }, { act: '切「只 velocity」', watch: '去掉模仿项 → q 偏离参考 ‖q−q̂‖²=0.365、reward 却只差一点点(22.5)、步态退化。' }, { act: '切「reference+PD 无策略」', watch: '开环 q=q̂ 精确对齐、照样摔——欠驱动浮基没被闭环镇定，回报崩到 0.5。' }], terms: [],
+  },
   queryplan: {
     question: '同一个查询有好几条路可走，数据库优化器凭什么选其中一条？',
     read: [{ at: '候选路径', is: '每条访问路径的 type + 估扫描行数代价条。', anchor: '.qp-paths' }, { at: 'EXPLAIN', is: '末步选中路径的 type/key/rows。', anchor: '.qp-explain' }],
