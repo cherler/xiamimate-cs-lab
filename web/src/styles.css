@@ -991,3 +991,28 @@ body[data-show][data-tour] *{cursor:none!important}
 .lgothername{font-weight:650;font-size:13px;color:var(--ink);display:flex;align-items:center;gap:6px}
 .lgothername i{font-style:normal;font-size:9px;color:var(--faint);font-family:var(--mono);border:1px solid var(--line);border-radius:4px;padding:0 4px}
 .lgotherto{font-size:11px;color:var(--faint)}
+
+/* ── 导览按钮上的「看过结论」✓（原来靠改名成「实验笔记·看结论」，太吵） ── */
+.chip.bchip{cursor:pointer}
+.chip.bchip .briefok{color:var(--hit);font-weight:700}
+
+/* ── 可视化/游戏占位钮：游戏还没做完，先摆一个「开发中」的灰钮，不给死链接 ── */
+.chip.vizsoon{cursor:not-allowed;opacity:.72;display:inline-flex;align-items:center;gap:5px}
+.chip.vizsoon .soon{font-style:normal;font-size:8.5px;letter-spacing:.08em;
+  color:var(--faint);border:1px solid var(--line);border-radius:2px;padding:0 3px}
+
+/* ── AI 学伴 独立全屏面板（从底部抽屉抽出来的新家；抽屉那格四种用法放不开） ── */
+.aipanel-back{position:fixed;inset:0;z-index:9998;background:var(--scrim);
+  display:flex;align-items:center;justify-content:center;padding:min(5vh,48px) min(4vw,40px)}
+.aipanel{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  box-shadow:0 18px 60px var(--shadow);width:min(880px,100%);height:min(86vh,860px);
+  display:flex;flex-direction:column;overflow:hidden}
+.aipanel-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;
+  padding:13px 16px;border-bottom:1px solid var(--line);background:var(--panel-2)}
+.aipanel-head b{font-size:14px;color:var(--ink)}
+.aipanel-sub{font-size:11px;color:var(--faint);flex:1 1 auto}
+.aipanel-x{margin-left:auto;background:none;border:1px solid var(--line);border-radius:4px;
+  color:var(--dim);cursor:pointer;font-size:13px;line-height:1;padding:3px 8px}
+.aipanel-x:hover{color:var(--ink);border-color:var(--faint);background:var(--panel)}
+.aipanel-body{flex:1 1 auto;overflow:auto;padding:16px 18px}
+.aipanel-body .aic{max-width:760px;margin:0 auto}

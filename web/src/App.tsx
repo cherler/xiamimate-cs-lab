@@ -33,6 +33,22 @@ import { cardsOf, GUIDES } from './guide.ts'
 import * as progress from './progress.ts'
 import * as sync from './sync.ts'
 
+/**
+ * 头部「可视化 / 游戏」位 —— 按当前职业(discipline key)换的一颗按钮。
+ * 原来是写死的「🔬 Transformer 图解」，但那是**大模型职业**的东西，在算法/408 页上看着不搭。
+ * 现在每个职业指向自己的可视化或配套游戏：
+ *   llm  → Transformer 图解（现成，/lab/explainer）
+ *   algo → 算法卡牌（xiamimate-algo-cards，还没配 /lab 同源部署，先占位）
+ *   base → 408 探索游戏（在 xiami-world 项目里做，另一条会话在推进，先占位）
+ * 没有 href 的就渲染成「开发中」的占位灰钮；没列进来的职业（后端/具身/安全）这颗按钮不显示。
+ * 游戏做完部署到 /lab/<x> 后，把 href 填上即可（照 llm 那样）。
+ */
+const VIZ_OF_DISC: Record<string, { icon: string; label: string; href?: string; tip: string }> = {
+  llm:  { icon: '🔬', label: 'Transformer 图解', href: '/lab/explainer', tip: '在浏览器里看 Qwen 怎么想：注意力 + 下一词预测（服务器推理，可切 0.5B/1.5B）' },
+  algo: { icon: '🎴', label: '算法卡牌', tip: '卡是算法、敌人是有性质的数据，血条是时间预算（游戏开发中，做完接上）' },
+  base: { icon: '🧩', label: '探索游戏', tip: '在游戏里吃透 408 四门（xiami-world，开发中，做完接上）' },
+}
+
 export default function App() {
   const [expId, setExpId] = useState(EXPERIMENTS[0].id)
   const [overrides, setOverrides] = useState<Record<string, Record<string, number | string>>>({})
@@ -214,7 +230,7 @@ export default function App() {
     { id: 'log', label: '逐步日志' },
     { id: 'prob', label: '真题', badge: problems.length },
     { id: 'bounds', label: '边界' },
-    { id: 'ai', label: 'AI学伴' },
+    //  AI学伴 不再是这里的一格 —— 它搬去头部按钮开的独立全屏面板了。
   ], [exp, problems.length])
   const dockActive = dockTabs.some(t => t.id === dock) ? dock : dockTabs[0].id
 
@@ -284,6 +300,9 @@ export default function App() {
     try { return JSON.parse(localStorage.getItem('cslab.brief') ?? '{}') } catch { return {} }
   })
   const [briefOpen, setBriefOpen] = useState(false)
+  //  AI 学伴：从底部「实验记录」抽屉里抽出来，改成头部一颗按钮开的**独立全屏面板**。
+  //  抽屉那格太挤（出题/答疑/复习/面试四种用法各要一块地方），全屏才放得开。
+  const [aiOpen, setAiOpen] = useState(false)
   //  只在**换实验**时决定要不要自动弹：第一次见才弹，之后靠页眉那颗按钮请回来
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { setBriefOpen(!!briefFor(expId) && !briefRecs[expId]) }, [expId])
@@ -300,6 +319,13 @@ export default function App() {
     document.body.toggleAttribute('data-brief-open', briefOpen)
     return () => document.body.removeAttribute('data-brief-open')
   }, [briefOpen])
+  //  AI 学伴全屏面板：Esc 关。挂在 window 上，只在开着时监听。
+  useEffect(() => {
+    if (!aiOpen) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setAiOpen(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [aiOpen])
 
   useEffect(() => {
     if (!show.on) return
@@ -556,9 +582,6 @@ export default function App() {
       <div className="dockpane" data-dock-tab="bounds" hidden={dockActive !== 'bounds'}>
         <Bounds items={exp.bounds} />
       </div>
-      <div className="dockpane" data-dock-tab="ai" hidden={dockActive !== 'ai'}>
-        <AiCompanion expId={exp.id} />
-      </div>
     </>
   )
   /** 舞台左边那一栏的形态 —— 推演没搬家的实验用它 */
@@ -678,36 +701,35 @@ export default function App() {
                出错那一档留着 —— 「配置不合法」在别处没有第二个出处。 */}
           {violations.length > 0 && <span className="chip warn">配置不合法</span>}
           {problem && <span className="chip on">{problem.source}</span>}
-          <span className="chip">{discCount} 个实验</span>
-          {/*
-            ⚠️ 这枚 chip 原来印的是「目标 · SSTF · 累计 236」——
-            读起来像"目标就是 SSTF、目标值 236"，而真实条件恰恰是**不用 SSTF**。
-            一个 chip 同时说"要做到什么"和"现在什么样"，必然读成一句话。
-            现在拆开：达成前只说**还差什么**，达成后才报数。完整条件在 tip 和实验单里。
-          */}
+          {/*  导览（原「实验笔记」）：教你走一遍这个实验的引导浮层。
+               名字固定不跳 —— 看过结论只在按钮上点一个 ✓，不再改成「实验笔记·看结论」。
+               改名是为了和底部「实验记录」区分开：一个教你走一遍、一个是操作时的日志/真题。 */}
           {brief && (
-            <button className="chip bchip" onClick={() => setBriefOpen(true)}>
-              实验笔记{briefRec.tried ? ' · 看结论' : ''}
+            <button className="chip bchip" onClick={() => setBriefOpen(true)}
+               data-tip="带我走一遍这个实验：问句 + 每步推演 + 任务 + 结论">
+              导览{briefRec.tried && <b className="briefok" title="已看过结论"> ✓</b>}
             </button>
           )}
-          <button className="chip mapchip" onClick={() => setGuideOpen(true)}
-             data-tip="打开本学科地图：从地基通到那件职业/造物，节点可点直接进实验">
-            🗺️ 地图
-          </button>
-          {/*  AI 学伴入口：本来只藏在底部「实验记录」抽屉的一个页签里，用户找不到。
-               这里给一个显眼的入口——点它就展开抽屉、切到 AI 学伴那格。 */}
-          <button className="chip aichip" onClick={() => { putDockFold(expId, false); setDock('ai') }}
-             data-tip="AI 学伴：就着这个实验，焊死引擎出题 / 答疑 / 当面试官（答案钉在真实步骤上、少幻觉）">
+          {/*  AI 学伴：头部唯一入口（原来还藏在底部抽屉一格里，已抽出）。
+               点开是**独立全屏面板**：出题 / 答疑 / 复习 / 面试四种用法，抽屉那格太挤放不开。 */}
+          <button className="chip aichip" onClick={() => setAiOpen(true)}
+             data-tip="AI 学伴：就着这个实验，焊死引擎出题 / 答疑 / 复习 / 当面试官（答案钉在真实步骤上、少幻觉）">
             🤖 AI 学伴
           </button>
-          <a className="chip livetoggle attn" href="/lab/explainer"
-             data-tip="在浏览器里看 Qwen 怎么想：注意力 + 下一词预测（服务器推理，可切 0.5B/1.5B）">
-            🔬 Transformer 图解
-          </a>
-          <a className="chip" href="?show=1&amp;tour=1&amp;ratio=16%3A9"
-             data-tip="录屏用：藏掉外壳、锁死画幅、自己走一遍。Esc 退出。">展示</a>
+          {/*  可视化 / 游戏位：跟着顶条职业换。大模型→Transformer 图解（现成）；
+               算法→算法卡牌、408→探索游戏（都还在开发，先占位，做完再接链接）；
+               其余职业暂不显示。映射见文件顶部 VIZ_OF_DISC。 */}
+          {(() => {
+            const v = VIZ_OF_DISC[activeDisc]
+            if (!v) return null
+            return v.href
+              ? <a className="chip livetoggle attn" href={v.href} data-tip={v.tip}>{v.icon} {v.label}</a>
+              : <button className="chip vizsoon" disabled data-tip={v.tip} title={v.tip}>{v.icon} {v.label}<em className="soon">开发中</em></button>
+          })()}
+          {/*  实验数 + 进度合并成一颗（都按当前职业统计，跟顶条走）。
+               没写真题的职业（如具身，totalQ=0）只印实验数，不印「掌握 0/0」。 */}
           <button className="chip act" onClick={() => setShowProgress(true)}>
-            进度 {mastered} / {totalQ}
+            {discCount} 实验{totalQ > 0 ? ` · 掌握 ${mastered}/${totalQ}` : ''}
             {reviewCount > 0 && <b className="dot">{reviewCount}</b>}
           </button>
         </div>
@@ -1033,6 +1055,22 @@ export default function App() {
     {guideOpen && (
       <LabGuide discKey={activeDisc} experiments={EXPERIMENTS}
         onPick={selectExp} onSwitch={setActiveDisc} onClose={() => setGuideOpen(false)} />
+    )}
+    {/*  AI 学伴 独立全屏面板 —— 从底部抽屉抽出来后的新家。点背景 / Esc / ✕ 都能关。 */}
+    {aiOpen && (
+      <div className="aipanel-back" onClick={() => setAiOpen(false)}>
+        <div className="aipanel" role="dialog" aria-label="AI 学伴"
+             onClick={e => e.stopPropagation()}>
+          <div className="aipanel-head">
+            <b>🤖 AI 学伴 · {exp.title}</b>
+            <span className="aipanel-sub">出题 / 答疑 / 复习 / 面试 —— 答案钉在这个实验真跑出来的步骤上</span>
+            <button className="aipanel-x" onClick={() => setAiOpen(false)} title="关闭（Esc）">✕</button>
+          </div>
+          <div className="aipanel-body">
+            <AiCompanion expId={exp.id} />
+          </div>
+        </div>
+      </div>
     )}
     <GuideOverlay
       cards={guideCards}
