@@ -93,6 +93,7 @@ import { subagentKernel } from '../src/kernels/subagent.ts'
 import { memretrieveKernel } from '../src/kernels/memretrieve.ts'
 import { mempagingKernel } from '../src/kernels/mempaging.ts'
 import { reflectionKernel } from '../src/kernels/reflection.ts'
+import { memwriteKernel } from '../src/kernels/memwrite.ts'
 import { lfucacheKernel } from '../src/kernels/lfucache.ts'
 import { trieKernel } from '../src/kernels/trie.ts'
 import { quickselectKernel } from '../src/kernels/quickselect.ts'
@@ -1785,6 +1786,41 @@ export const CATALOG: CatalogEntry[] = [
         ask: '反思提炼洞察，和上下文压缩里的"摘要"，目的有什么不同?', kind: 'choice',
         compute: () => ({ answer: '压缩摘要是为省 token、把最近的历史压掉(短期、就地删繁)；反思是为长期理解、把零散观察往上抽象成洞察(长期、增值升华)', step: 4, evidence: '一个删繁、一个升华' }),
         distractors: () => ['两者完全一样', '反思是为省 token、压缩是为理解', '都是为了减少模型参数'],
+      },
+    ],
+  },
+  {
+    id: 'memwrite', title: '记忆写入 · 冲突消解', kernel: memwriteKernel as Kernel<unknown>, doc: trivialDoc('memwrite'),
+    facts: [
+      {
+        id: 'mw_conflict', label: '记忆矛盾了怎么写',
+        ask: '用户上月说"住北京"、这周说"搬上海了"，好的记忆系统怎么写?', kind: 'choice',
+        compute: () => ({ answer: '检索到矛盾的旧记忆 → 用 UPDATE/DELETE 消解(改掉或删掉过时的)，别让两条并存；否则记忆自相矛盾、检索捞出哪条都不对', step: 3, evidence: '写记忆要比对已有、消解冲突，不是无脑追加' }),
+        distractors: () => ['两条都存进去，反正都是用户说的', '只信最早那条、忽略后面的', '每次都清空重存'],
+      },
+      {
+        id: 'mw_ops', label: 'mem0 的四个写入操作',
+        ask: 'mem0 往记忆库写新事实时，LLM 会挑哪四种操作之一?', kind: 'choice',
+        compute: () => ({ answer: 'ADD(无相似→新建) / UPDATE(补充修正已有) / DELETE(与已有矛盾→删旧) / NOOP(已知道→不动、去重)', step: 1, evidence: '本例：养猫=ADD、Python3.12=UPDATE、戒咖啡=DELETE、又提北京=NOOP' }),
+        distractors: () => ['只有 ADD 一种', 'CREATE/READ/UPDATE/DELETE(CRUD)', 'INSERT/SELECT/其余全靠模型'],
+      },
+      {
+        id: 'mw_similar', label: '决定 UPDATE 还是 ADD 靠什么',
+        ask: '一条新事实，怎么决定它是 ADD 新建、还是该 UPDATE/DELETE 某条旧记忆?', kind: 'choice',
+        compute: () => ({ answer: '先用向量相似度检索最相似的旧记忆：没有相似的就 ADD；有相似的才谈 UPDATE(修正)或 DELETE(矛盾)', step: 1, evidence: '不先找"该改哪条"，就只能无脑 ADD' }),
+        distractors: () => ['按新事实的长度决定', '随机选一种操作', '永远先 DELETE 再 ADD'],
+      },
+      {
+        id: 'mw_singlepass', label: 'mem0 现在 OSS 默认怎么写',
+        ask: 'mem0 论文是四操作(ADD/UPDATE/DELETE/NOOP)，但它现在开源版默认怎么做?', kind: 'choice',
+        compute: t => { const f = t as unknown as { store?: { stale?: boolean }[] }[]; const d = f[f.length - 1]; const stale = d?.store?.filter(m => m.stale).length ?? 0; return ({ answer: '单遍 ADD-only：只抽取只新增、不 UPDATE/DELETE。简单快，但矛盾/陈旧越积越多(要修正得显式调 update/delete)', step: Math.max(0, f.length - 1), evidence: `切单遍模式：${stale || 3} 条旧记忆变陈旧矛盾(美式咖啡 vs 戒咖啡等并存)` }) },
+        distractors: () => ['还是老老实实四操作', '改成只 DELETE 不 ADD', '完全不写记忆了'],
+      },
+      {
+        id: 'mw_zep', label: 'Zep 怎么处理过时事实',
+        ask: 'Zep/Graphiti 处理"过时的事实"用了什么不同思路?', kind: 'choice',
+        compute: () => ({ answer: '双时间知识图：给旧事实打"失效时间(t_invalid)"而不真删——"住北京"标记为某时刻失效、"住上海"生效，还能查"某时刻用户住哪"', step: 4, evidence: 'bi-temporal：事件时间 + 系统时间两条轴，矛盾时把旧边设失效而非删除' }),
+        distractors: () => ['直接物理删除旧事实', '把所有历史压成一句话', '从不更新、只读'],
       },
     ],
   },

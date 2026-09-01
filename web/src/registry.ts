@@ -296,6 +296,8 @@ import { mempagingKernel, type MemPState } from '@engine/kernels/mempaging.ts'
 import { MemPagingStage } from './stages/MemPagingStage.tsx'
 import { reflectionKernel, type ReflState } from '@engine/kernels/reflection.ts'
 import { ReflectionStage } from './stages/ReflectionStage.tsx'
+import { memwriteKernel, type MemWState } from '@engine/kernels/memwrite.ts'
+import { MemWriteStage } from './stages/MemWriteStage.tsx'
 import { lfucacheKernel, type LFUState } from '@engine/kernels/lfucache.ts'
 import { LFUCacheStage } from './stages/LFUCacheStage.tsx'
 import { trieKernel, type TrieState } from '@engine/kernels/trie.ts'
@@ -5974,6 +5976,33 @@ const reflection: Experiment<ReflState> = {
     { label: '证据', value: s.insight ? s.insight.evidence.join('、') : '—' },
   ],
 }
+const memwrite: Experiment<MemWState> = {
+  id: 'memwrite', group: '大模型项目实战', title: '记忆写入 · 冲突消解', subtitle: '新事实→检索相似旧记忆→ADD/UPDATE/DELETE/NOOP，别让记忆自相矛盾',
+  kernel: memwriteKernel, defaultDoc: { kind: 'memwrite', params: { mode: '四步' }, entities: [], streams: [] },
+  params: [{ key: 'mode', label: '写入模式', kind: 'enum', options: ['四步', '单遍'] }],
+  paramsNote: '检索是"读"、反思是"消化"，这一课是"写"——新信息来了记忆库怎么更新、又不自相矛盾。mem0 两阶段：抽取候选事实 → 每条**检索最相似旧记忆** → LLM 决定 **ADD(新建)/UPDATE(修正)/DELETE(删矛盾)/NOOP(去重)**。关键：不无脑追加，要**比对消解冲突**，否则"住北京"和"搬上海了"并存、记忆越用越脏。切「模式」：**四步**(mem0 论文，库始终自洽) vs **单遍 ADD-only**(现 OSS 默认，只加不改、简单但矛盾/陈旧越积越多)。冲突判定按相似度现算。详见讲解卡。',
+  bounds: [
+    '写记忆不是无脑追加：每条新事实先检索最相似旧记忆，再决定 ADD/UPDATE/DELETE/NOOP',
+    'ADD 新建(无相似) · UPDATE 修正(补充/改) · DELETE 删矛盾(与旧记忆冲突) · NOOP 去重(已知道)',
+    '四步(mem0 论文)库始终自洽;单遍 ADD-only(现 OSS 默认)只加不改、简单但矛盾陈旧越积越多(美式vs戒咖啡、3.10vs3.12 并存)',
+    '靠向量相似度找"该改哪条"。Zep/Graphiti 用双时间知识图给旧事实打"失效时间"而非真删。真实框架:mem0/Zep',
+  ],
+  tabs: [{ id: 'mw', label: '写入逐条处理' }], Stage: MemWriteStage, whyInRail: true,
+  tone: s => (s.stage === 'done' ? (s.store.some(m => m.stale) ? { key: 'bad', label: `${s.store.filter(m => m.stale).length} 条陈旧矛盾` } : { key: 'good', label: `库自洽 ${s.store.length} 条` })
+    : s.op === 'ADD' ? { key: 'good', label: 'ADD 新建' }
+    : s.op === 'UPDATE' ? { key: 'idle', label: 'UPDATE 修正' }
+    : s.op === 'DELETE' ? { key: 'bad', label: 'DELETE 删矛盾' }
+    : s.op === 'NOOP' ? { key: 'idle', label: 'NOOP 去重' }
+    : { key: 'idle', label: `模式 ${s.mode}` }),
+  metric: s => (s.stage === 'done' ? 1 : Math.max(0, (s.cur + 2) / 5)),
+  tickLabel: s => (s.cur < 0 ? '始' : s.op === 'ADD' ? '增' : s.op === 'UPDATE' ? '改' : s.op === 'DELETE' ? '删' : s.op === 'NOOP' ? '同' : '·'),
+  readouts: s => [
+    { label: '写入模式', value: s.mode },
+    { label: '库大小', value: `${s.store.length} 条`, tone: s.store.some(m => m.stale) ? 'bad' : undefined },
+    { label: '本步', value: s.cur < 0 ? '—' : `${s.fact ? `「${s.fact}」` : ''} → ${s.op}` },
+    { label: '陈旧/矛盾', value: `${s.store.filter(m => m.stale).length} 条`, tone: s.store.some(m => m.stale) ? 'bad' : undefined },
+  ],
+}
 const lrucache: Experiment<LRUState> = {
   id: 'lrucache', group: '算法项目实战', title: '手写 LRU 缓存', subtitle: 'HashMap+双向链表，get/put 都 O(1)',
   kernel: lrucacheKernel, defaultDoc: { kind: 'lrucache', params: {}, entities: [], streams: [] }, params: [],
@@ -6643,7 +6672,7 @@ export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
   caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt, ecbcbc, birthday, aesround, hmac, totp,
-  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, bufferpool, queryplan, wildcard, regex, blockingqueue, rwlock, aba, happensbefore, lockstrategy, lrucache, lfucache, trie, quickselect, reactagent, ctxcompact, toolcall, permguard, subagent, memretrieve, mempaging, reflection, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign, topk, feed, objectstore,
+  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, bufferpool, queryplan, wildcard, regex, blockingqueue, rwlock, aba, happensbefore, lockstrategy, lrucache, lfucache, trie, quickselect, reactagent, ctxcompact, toolcall, permguard, subagent, memretrieve, mempaging, reflection, memwrite, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign, topk, feed, objectstore,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,

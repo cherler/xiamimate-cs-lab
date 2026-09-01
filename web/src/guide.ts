@@ -756,6 +756,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { stage: string; cum: number; threshold: number; insight: unknown }; return st.stage === 'done' ? '洞察入库' : st.stage === 'reflect' ? '提炼洞察' : st.stage === 'trigger' ? `触发 ${st.cum}≥${st.threshold}` : st.stage === 'observe' ? `累计 ${st.cum}` : '待反思' },
     try: [{ act: '切「敏感」阈值', watch: '阈值 10，攒到第 3 条(累计 11)就触发反思——反思更勤、洞察更碎。' }, { act: '切「迟钝」阈值', watch: '阈值 20，攒到第 5 条才触发——攒够一大批才消化一次。' }], terms: [],
   },
+  memwrite: {
+    question: '新信息来了，往长期记忆里怎么写，才不会"住北京"和"搬上海了"自相矛盾？',
+    read: [{ at: '新事实', is: '本步进来的事实 + 检索到的相似旧记忆 + 决定的操作。', anchor: '.mw-fact' }, { at: '记忆库', is: '每条记忆，刚被操作的按 ADD/UPDATE/DELETE 变色，陈旧矛盾的划掉。', anchor: '.mw-store' }, { at: '读数', is: '模式、库大小、陈旧条数。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { stage: string; mode: string; fact: string; similar: string; op: string; store: { stale?: boolean }[] }; const stale = st.store.filter(m => m.stale).length; return [
+      { k: '本步输入', v: st.stage === 'intro' ? `已有记忆库 + ${st.mode} 模式` : `新事实「${st.fact}」，检索相似：${st.similar || '无'}` },
+      { k: '判定规则', v: '每条新事实先检索最相似旧记忆，再决定：ADD(无相似→新建)/UPDATE(补充修正)/DELETE(与旧矛盾→删旧)/NOOP(已知道→不动)。单遍模式一律 ADD、只加不改。' },
+      { k: '本步结果', v: st.stage === 'intro' ? '待逐条写入' : st.op === 'ADD' ? (st.mode === '单遍' && st.similar ? `单遍只 ADD：新增、和 ${st.similar} 并存(矛盾没消解)` : 'ADD 新建一条') : st.op === 'UPDATE' ? `UPDATE 修正 ${st.similar}` : st.op === 'DELETE' ? `DELETE 删掉矛盾的 ${st.similar}` : st.op === 'NOOP' ? `NOOP 不动(${st.similar} 已知道)` : `库 ${st.store.length} 条${stale ? `、${stale} 条陈旧` : ''}` },
+    ] },
+    verdict: (s: never) => { const st = s as { stage: string; op: string; store: { stale?: boolean }[] }; const stale = st.store.filter(m => m.stale).length; return st.stage === 'done' ? (stale ? `${stale} 条陈旧矛盾` : '库自洽') : st.op ? `${st.op}` : '待写入' },
+    try: [{ act: '看四步各操作', watch: '养猫=ADD、Python3.12=UPDATE 改旧、戒咖啡=DELETE 删旧、又提北京=NOOP——库始终自洽。' }, { act: '切「单遍」模式', watch: '全都 ADD、只加不改：美式咖啡 vs 戒咖啡、3.10 vs 3.12 并存，陈旧矛盾越积越多。' }], terms: [],
+  },
   queryplan: {
     question: '同一个查询有好几条路可走，数据库优化器凭什么选其中一条？',
     read: [{ at: '候选路径', is: '每条访问路径的 type + 估扫描行数代价条。', anchor: '.qp-paths' }, { at: 'EXPLAIN', is: '末步选中路径的 type/key/rows。', anchor: '.qp-explain' }],

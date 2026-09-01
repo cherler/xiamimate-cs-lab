@@ -268,6 +268,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { i: 3, step: 3, stage: 'reflect', thresholdKey: '默认', threshold: 15, obs: [], cum: 0, triggerAt: 3, insight: { text: '用户是**后端 Python 工程师**、不擅前端', evidence: ['o1', 'o2', 'o3', 'o4'], importance: 8 }, phase: 'run', focus: '提炼洞察', log: '' },
       b: { i: 2, step: 2, stage: 'trigger', thresholdKey: '默认', threshold: 15, obs: [], cum: 16, triggerAt: 3, insight: null, phase: 'run', focus: '触发反思', log: '' },
     },
+    memwrite: {
+      doc: { kind: 'memwrite', params: { mode: '四步' }, entities: [], streams: [] },
+      a: { i: 2, step: 2, stage: 'process', mode: '四步', store: [], cur: 1, fact: '用户升级到 Python 3.12 了', similar: 'M3', op: 'UPDATE', phase: 'run', focus: 'UPDATE 修正', log: '' },
+      b: { i: 1, step: 1, stage: 'process', mode: '四步', store: [], cur: 0, fact: '用户养了只叫咪咪的猫', similar: '', op: 'ADD', phase: 'run', focus: 'ADD 新建', log: '' },
+    },
     queryplan: {
       doc: { kind: 'queryplan', params: {}, entities: [], streams: [] },
       a: { step: 1, op: 'path', query: 'q', revealed: 1, cur: 0, chosen: -1, paths: [{ name: '全表扫描', type: 'ALL', key: '—', rows: 10000, note: 'x' }, { name: '走 idx(city)', type: 'ref', key: 'idx_city', rows: 500, note: 'x' }, { name: '走 idx(age)', type: 'range', key: 'idx_age', rows: 6000, note: 'x' }], phase: 'run', focus: '候选路径：全表扫描（type=ALL，估扫 10000 行）' },
