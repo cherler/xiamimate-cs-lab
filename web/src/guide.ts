@@ -965,6 +965,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { stage: string; chosenParent: string; starCost: number; rewired: unknown[] }; return st.stage === 'done' ? '选父+重连' : st.stage === 'compare' ? `省到${st.starCost}` : st.stage === 'rewire' ? (st.rewired.length ? `重连${st.rewired.length}个` : '无重连') : st.stage === 'chooseparent' ? `父=${st.chosenParent}` : st.stage === 'sample' ? '采样+邻域' : '渐近最优' },
     try: [{ act: '切「RRT*」', watch: '选父挑代价最小的 A(代价6，非最近 B 的9)、还重连 B 8→7 → 树更优。' }, { act: '切「RRT只接最近」', watch: 'x_new 直接接最近的 B、代价 9、不重连——找到一条但不最优。' }, { act: '看树图', watch: '绿边=选父的最优连接、橙虚线=重连；随采样增多不断抄近道逼近最优。' }], terms: [],
   },
+  potentialfield: {
+    question: '不采样不搜图，让目标"吸"机器人、障碍"推"机器人，顺合力走——这么简单的势场法栽在哪？',
+    read: [{ at: '2D 平面', is: '目标/障碍(+影响圈)/机器人 + 引力绿/斥力红/合力蓝箭头。', anchor: '.po-svg' }, { at: '合力块', is: 'F=F_att+F_rep。', anchor: '.po-t' }, { at: '结局横幅', is: '绕过 or 卡局部极小。', anchor: '.po-out' }],
+    step: (s: never) => { const st = s as { stage: string; scenLabel: string; robot: number[]; goal: number[]; rhoGoal: number; rhoObs: number; rho0: number; fAtt: number[]; fRep: number[]; fTotal: number[]; fMag: number; distToGoal: number; stuck: boolean; scen: string }; return [
+      { k: '本步输入', v: st.stage === 'intro' ? `场景 ${st.scenLabel}` : st.stage === 'attractive' ? `机器人 ${JSON.stringify(st.robot)}、目标 ${JSON.stringify(st.goal)}` : st.stage === 'repulsive' ? `到障碍 ρ=${st.rhoObs}、影响半径 ρ0=${st.rho0}` : st.stage === 'total' ? `引力 [${st.fAtt}]、斥力 [${st.fRep}]` : '合力与离目标距离' },
+      { k: '判定规则', v: `引力 F_att=k_att·(q_goal−q)；斥力 F_rep(仅 ρ≤ρ0)=k_rep·(1/ρ−1/ρ0)·(1/ρ²)·n̂；合力 F=F_att+F_rep 顺它下山；合力≈0 却离目标远=局部极小。` },
+      { k: '本步结果', v: st.stage === 'intro' ? '势场法:引力+斥力顺合力下山' : st.stage === 'attractive' ? `F_att=[${st.fAtt}]（指向目标、正比距离 ${st.rhoGoal}）` : st.stage === 'repulsive' ? (st.rhoObs <= st.rho0 ? `F_rep=[${st.fRep}]（ρ≤ρ0、越近越猛）` : `F_rep=0（ρ>ρ0 影响圈外）`) : st.stage === 'total' ? `合力=[${st.fTotal}]、大小 ${st.fMag}` : st.stuck ? `卡局部极小(合力≈${st.fMag}、离目标还有 ${st.distToGoal})` : `绕过到达(斥力横向分量把机器人带到障碍旁)` },
+    ] },
+    verdict: (s: never) => { const st = s as { stage: string; stuck: boolean; fMag: number }; return st.stage === 'done' ? '引力+斥力' : st.stage === 'outcome' ? (st.stuck ? '卡局部极小' : '绕过到达') : st.stage === 'total' ? `|F|=${st.fMag}` : st.stage === 'repulsive' ? '斥力' : st.stage === 'attractive' ? '引力' : '势场' },
+    try: [{ act: '切「障碍正中」', watch: '引力(+x 5.43)和斥力(−x 5.37)几乎抵消、合力仅 0.06≈0，机器人卡在离目标 5.43 的假谷——局部极小。' }, { act: '切「障碍偏侧」', watch: '斥力有横向分量(y −0.19)，合力 [5.74,−0.19] 把机器人往障碍旁带、绕过到达。' }, { act: '想怎么救', watch: '局部极小靠随机扰动/导航函数/配全局规划(RRT 出全局路、势场只做局部避障)解决。' }], terms: [],
+  },
   queryplan: {
     question: '同一个查询有好几条路可走，数据库优化器凭什么选其中一条？',
     read: [{ at: '候选路径', is: '每条访问路径的 type + 估扫描行数代价条。', anchor: '.qp-paths' }, { at: 'EXPLAIN', is: '末步选中路径的 type/key/rows。', anchor: '.qp-explain' }],

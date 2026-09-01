@@ -5654,3 +5654,32 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .rs-good2{color:var(--hit);font-weight:700}
 .rs-cmp2{color:var(--dim)}
 .rs-cmpbox{border:1px solid color-mix(in srgb,var(--hit) 30%,var(--line));border-radius:8px;padding:8px 10px;background:color-mix(in srgb,var(--hit) 5%,transparent);font-size:var(--t-ui);line-height:1.6}
+
+/* potentialfield · 人工势场法 */
+.scdn.po-good{color:var(--hit)}
+.scdn.po-bad{color:var(--miss)}
+.po-svg{margin:6px 0;max-width:360px;background:var(--sunk-1);border:1px solid var(--line);border-radius:8px}
+.po-infl{fill:color-mix(in srgb,var(--miss) 5%,transparent);stroke:color-mix(in srgb,var(--miss) 25%,transparent);stroke-width:1;stroke-dasharray:3 3}
+.po-obs{fill:var(--miss)}
+.po-obst{fill:var(--panel-2);font:9px var(--sans);text-anchor:middle;font-weight:700}
+.po-goal{fill:var(--hit)}
+.po-goalt{fill:var(--panel-2);font:9px var(--sans);text-anchor:middle;font-weight:700}
+.po-robot{fill:var(--now)}
+.po-robott{fill:var(--dim);font:9px var(--sans);text-anchor:middle}
+.po-att .po-arrline{stroke:var(--hit);stroke-width:1.8}
+.po-rep .po-arrline{stroke:var(--miss);stroke-width:1.8}
+.po-tot .po-arrline{stroke:var(--now);stroke-width:2.4}
+.po-arrlbl{font:9px var(--mono)}
+.po-att .po-arrlbl{fill:var(--hit)}
+.po-rep .po-arrlbl{fill:var(--miss)}
+.po-tot .po-arrlbl{fill:var(--now)}
+.po-flow{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+.po-blk{border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--panel-2);font-size:var(--t-ui);line-height:1.7;font-variant-numeric:tabular-nums}
+.po-blk.po-off{opacity:.4}
+.po-n{font-family:var(--mono);color:var(--now);font-weight:700;margin-right:6px}
+.po-g{color:var(--hit)}
+.po-r{color:var(--miss)}
+.po-t{color:var(--now)}
+.po-out{border-radius:8px;padding:8px 10px;font-size:var(--t-ui);line-height:1.6}
+.po-out.po-ostuck{background:color-mix(in srgb,var(--miss) 8%,transparent);border:1px solid color-mix(in srgb,var(--miss) 35%,var(--line))}
+.po-out.po-oreach{background:color-mix(in srgb,var(--hit) 8%,transparent);border:1px solid color-mix(in srgb,var(--hit) 35%,var(--line))}

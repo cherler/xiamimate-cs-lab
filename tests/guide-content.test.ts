@@ -379,6 +379,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { i: 2, step: 2, stage: 'chooseparent', ...base, showSample: true, showParent: true, showRewire: false, showCompare: false, phase: 'run' as const, focus: '选父' },
       b: { i: 3, step: 3, stage: 'rewire', ...base, showSample: true, showParent: true, showRewire: true, showCompare: false, phase: 'run' as const, focus: '重连' },
     } })(),
+    potentialfield: (() => { const base = { scen: 'center', scenLabel: '障碍正中(卡局部极小)', robot: [4.57, 2] as [number, number], goal: [10, 2] as [number, number], obs: [6, 2] as [number, number], rho0: 3, kAtt: 1, kRep: 30, rhoGoal: 5.43, rhoObs: 1.43, fAtt: [5.43, 0] as [number, number], fRep: [-5.37, 0] as [number, number], fTotal: [0.06, 0] as [number, number], fMag: 0.06, distToGoal: 5.43, stuck: true, log: '' }; return {
+      doc: { kind: 'potentialfield', params: { scenario: '障碍正中' }, entities: [], streams: [] },
+      a: { i: 3, step: 3, stage: 'total', ...base, showAtt: true, showRep: true, showTotal: true, showOut: false, phase: 'run' as const, focus: '合力' },
+      b: { i: 4, step: 4, stage: 'outcome', ...base, showAtt: true, showRep: true, showTotal: true, showOut: true, phase: 'run' as const, focus: '结局' },
+    } })(),
     queryplan: {
       doc: { kind: 'queryplan', params: {}, entities: [], streams: [] },
       a: { step: 1, op: 'path', query: 'q', revealed: 1, cur: 0, chosen: -1, paths: [{ name: '全表扫描', type: 'ALL', key: '—', rows: 10000, note: 'x' }, { name: '走 idx(city)', type: 'ref', key: 'idx_city', rows: 500, note: 'x' }, { name: '走 idx(age)', type: 'range', key: 'idx_age', rows: 6000, note: 'x' }], phase: 'run', focus: '候选路径：全表扫描（type=ALL，估扫 10000 行）' },

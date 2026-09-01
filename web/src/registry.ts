@@ -362,6 +362,7 @@ import { kalmanKernel, type KalmanState } from '@engine/kernels/kalman.ts'
 import { pidKernel, type PIDState } from '@engine/kernels/pid.ts'
 import { rrtKernel, type RRTState } from '@engine/kernels/rrt.ts'
 import { rrtstarKernel, type RRTSState } from '@engine/kernels/rrtstar.ts'
+import { potentialfieldKernel, type PotState } from '@engine/kernels/potentialfield.ts'
 import { quatKernel, type QuatState } from '@engine/kernels/quat.ts'
 import { trajectoryKernel, type TrajState } from '@engine/kernels/trajectory.ts'
 import { icpKernel, type ICPState } from '@engine/kernels/icp.ts'
@@ -395,6 +396,7 @@ import { KalmanStage } from './stages/KalmanStage.tsx'
 import { PIDStage } from './stages/PIDStage.tsx'
 import { RRTStage } from './stages/RRTStage.tsx'
 import { RrtStarStage } from './stages/RrtStarStage.tsx'
+import { PotentialFieldStage } from './stages/PotentialFieldStage.tsx'
 import { QuatStage } from './stages/QuatStage.tsx'
 import { TrajStage } from './stages/TrajStage.tsx'
 import { ICPStage } from './stages/ICPStage.tsx'
@@ -6904,6 +6906,33 @@ const rrtstar: Experiment<RRTSState> = {
     { label: '对比 RRT 代价', value: s.showCompare ? `${s.rrtCost}（接最近 ${s.nearestId}）` : '—' },
   ],
 }
+const potentialfield: Experiment<PotState> = {
+  id: 'potentialfield', group: '运动规划', title: '人工势场法', subtitle: '目标引力+障碍斥力，顺合力下山；快，但障碍正中会卡局部极小',
+  kernel: potentialfieldKernel, defaultDoc: { kind: 'potentialfield', params: { scenario: '障碍正中' }, entities: [], streams: [] },
+  params: [{ key: 'scenario', label: '障碍位置', kind: 'enum', options: ['障碍偏侧', '障碍正中'] }],
+  paramsNote: '**势场法**不采样不搜图:目标造一个"低谷"(**引力** F_att=k_att·(q_goal−q)、拉向目标)、障碍造"高山"(**斥力** F_rep 仅 ρ≤ρ0、=k_rep·(1/ρ−1/ρ0)·(1/ρ²)·n̂、推离障碍、越近越猛),机器人顺**合力** F=F_att+F_rep 梯度下降。极简、反应式、快、天然实时避障。**死穴=局部极小**:障碍**正中**挡路时引力(朝目标)和斥力(离障碍)共线相反、某处抵消→合力≈0→卡在离目标还远的"假谷"、到不了(本例卡在离目标 5.43);障碍**偏侧**时斥力有横向分量→绕过到达。切「障碍位置」对比。解法:随机扰动/导航函数/配全局规划。全现算。连「RRT(全局无局部极小)/力控」。详见讲解卡。',
+  bounds: [
+    '势场法:引力 F_att=k_att·(q_goal−q) 拉向目标 + 斥力 F_rep(仅 ρ≤ρ0、∝1/ρ²)推离障碍,顺合力梯度下降;反应式、快',
+    '死穴=局部极小:障碍正中时引力斥力共线相反、抵消→合力≈0→卡在离目标很远的假谷、到不了;窄通道还会震荡',
+    '障碍偏侧时斥力有横向分量→合力偏向侧面绕过障碍;局部极小是拓扑问题、不是调参能根治',
+    '解法:随机扰动跳出/导航函数(只有目标一个极小)/配全局规划(RRT/A* 出全局路、势场只做局部避障)。连 RRT(全局采样无局部极小)、力控虚拟弹簧同源',
+  ],
+  tabs: [{ id: 'po', label: '势场逐步跑' }], Stage: PotentialFieldStage, whyInRail: true,
+  tone: s => (s.stage === 'done' ? { key: 'good', label: '引力+斥力' }
+    : s.stage === 'outcome' ? (s.stuck ? { key: 'bad', label: '卡局部极小' } : { key: 'good', label: '绕过到达' })
+    : s.stage === 'total' ? { key: 'idle', label: `|F|=${s.fMag}` }
+    : s.stage === 'repulsive' ? { key: 'idle', label: '斥力' }
+    : s.stage === 'attractive' ? { key: 'idle', label: '引力' }
+    : { key: 'idle', label: '势场' }),
+  metric: s => (s.stage === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => ({ intro: '场', attractive: '引', repulsive: '斥', total: '合', outcome: '果', done: '成' }[s.stage] ?? '·'),
+  readouts: s => [
+    { label: '场景', value: s.scenLabel },
+    { label: '引力 / 斥力', value: s.showRep ? `[${s.fAtt.join(',')}] / [${s.fRep.join(',')}]` : (s.showAtt ? `[${s.fAtt.join(',')}] / —` : '—') },
+    { label: '合力 |F|', value: s.showTotal ? `${s.fMag}` : '—' },
+    { label: '结局', value: s.showOut ? (s.stuck ? `卡局部极小(离目标 ${s.distToGoal})` : '绕过到达') : '—', tone: s.showOut ? (s.stuck ? 'bad' : 'good') : undefined },
+  ],
+}
 const rrt: Experiment<RRTState> = {
   id: 'rrt', group: '运动规划', title: 'RRT 运动规划', subtitle: '采样式避障：随机长树绕障碍到终点',
   kernel: rrtKernel, defaultDoc: { kind: 'rrt', params: {}, entities: [], streams: [] }, params: [],
@@ -7196,7 +7225,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, icp, slam, impedance, mpc, pid, rrt, rrtstar, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
+  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, icp, slam, impedance, mpc, pid, rrt, rrtstar, potentialfield, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
 ] as unknown as AnyExperiment[]
 
 /**

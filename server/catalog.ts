@@ -134,6 +134,7 @@ import { complementaryKernel } from '../src/kernels/complementary.ts'
 import { pidKernel } from '../src/kernels/pid.ts'
 import { rrtKernel } from '../src/kernels/rrt.ts'
 import { rrtstarKernel } from '../src/kernels/rrtstar.ts'
+import { potentialfieldKernel } from '../src/kernels/potentialfield.ts'
 import { objectstoreKernel } from '../src/kernels/objectstore.ts'
 import { queryplanKernel } from '../src/kernels/queryplan.ts'
 import { wildcardKernel } from '../src/kernels/wildcard.ts'
@@ -2791,6 +2792,41 @@ export const CATALOG: CatalogEntry[] = [
         ask: 'PID 控制的 P、I、D 三项分别按什么量、起什么作用?', kind: 'choice',
         compute: () => ({ answer: 'P=Kp·e 按当前误差使劲(越远越使劲)；D=Kd·误差变化率提供阻尼(快到时反向刹车、防冲过头);I=Ki·误差累计消除稳态误差(顶掉重力等恒定扰动)。P管现在、I管过去累计、D管趋势', step: 14, evidence: '本例加 D=Kd·误差变化率(负=刹车)后，位置平稳收敛到目标不震荡' }),
         distractors: () => ['三项都按当前误差，只是系数不同', 'D 让响应更快、P 提供阻尼', 'I 提供阻尼、D 消除稳态误差'],
+      },
+    ],
+  },
+  {
+    id: 'potentialfield', title: '人工势场法', kernel: potentialfieldKernel as Kernel<unknown>, doc: trivialDoc('potentialfield'),
+    facts: [
+      {
+        id: 'pf_how', label: '势场法怎么工作',
+        ask: '人工势场法是怎么规划路径的?', kind: 'choice',
+        compute: () => ({ answer: '给空间造势能面:目标产生引力 F_att=k_att·(q_goal−q)(拉向目标)、障碍产生斥力 F_rep(仅影响半径 ρ0 内、∝1/ρ²、推离障碍),机器人顺合力 F=F_att+F_rep 梯度下降(往目标去、绕开障碍)。极简、反应式、快', step: 1, evidence: '引力+斥力顺合力下山;不采样不搜图' }),
+        distractors: () => ['随机采样长一棵树(那是 RRT)', '在栅格上用启发式搜索(那是 A*)', '枚举所有路径选最短'],
+      },
+      {
+        id: 'pf_localmin', label: '势场法的死穴',
+        ask: '人工势场法最有名的失败模式是什么?为什么?', kind: 'choice',
+        compute: () => ({ answer: '局部极小(local minimum):障碍正挡在机器人和目标之间时,引力(朝目标)和斥力(离障碍)共线相反、某处完全抵消→合力≈0→机器人卡在离目标还很远的"假谷"里、到不了。这是势场叠加的拓扑必然、调参救不了', step: 5, evidence: '引力斥力共线相反抵消;本例卡在离目标 5.43' }),
+        distractors: () => ['计算太慢、实时跑不动', '会撞上障碍物', '只能走直线'],
+      },
+      {
+        id: 'pf_repulsive', label: '斥力为什么用 1/ρ²',
+        ask: '势场斥力 F_rep 里为什么用 1/ρ²、还限定影响半径 ρ0?', kind: 'choice',
+        compute: () => ({ answer: '1/ρ² 让越靠近障碍斥力越猛(趋无穷),保证机器人撞不上;限定 ρ≤ρ0(影响半径)是让远处不受障碍影响、只在快撞上时才推,否则每个障碍都全局作用会乱', step: 2, evidence: '越近越猛防撞;超出 ρ0 斥力=0' }),
+        distractors: () => ['1/ρ² 只是好算', '影响半径是为了省内存', '斥力和距离无关、是常数'],
+      },
+      {
+        id: 'pf_fix', label: '局部极小怎么救',
+        ask: '势场法卡在局部极小，有哪些解法?', kind: 'choice',
+        compute: () => ({ answer: '①随机扰动:卡住时给个随机推力跳出;②导航函数:构造保证只有目标一个极小的势场(优雅但难构造);③和全局规划结合(最常用):RRT/A* 出无碰全局路、势场只在附近做局部平滑避障——全局管不卡住、势场管实时反应', step: 6, evidence: '扰动/导航函数/配全局规划(RRT)' }),
+        distractors: () => ['加大引力系数就行', '换个初始位置重试', '无解、只能放弃势场法'],
+      },
+      {
+        id: 'pf_num', label: '卡住时离目标多远',
+        ask: '障碍正中场景，机器人卡在局部极小(合力≈0)时，离目标大约还有多远?(取整)', kind: 'number',
+        compute: t => { const f = t as unknown as { distToGoal?: number; stuck?: boolean }[]; const l = f.find(x => x.stuck) ?? f[f.length - 1] as unknown as { distToGoal?: number }; const v = l?.distToGoal != null ? Math.round(l.distToGoal) : 5; return ({ answer: String(v), step: 5, evidence: `卡在 x≈4.57、目标 x=10,离目标 5.43≈${v}——合力≈0 却远没到目标,这就是局部极小` }) },
+        distractors: () => ['0', '1', '10', '3'],
       },
     ],
   },
