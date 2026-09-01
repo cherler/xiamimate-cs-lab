@@ -329,6 +329,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { i: 2, step: 2, stage: 'park', ...base, showClarke: true, showPark: true, showPI: false, showInv: false, phase: 'run' as const, focus: 'Park 交流→直流' },
       b: { i: 4, step: 4, stage: 'invsvpwm', ...base, showClarke: true, showPark: true, showPI: true, showInv: true, phase: 'run' as const, focus: '逆变换+SVPWM' },
     } })(),
+    dyneom: (() => { const base = { motion: 'accel', motionLabel: '加速起摆(q̇≠0,q̈≠0)', q1: 30, q2: 45, qd: [1.5, 1.5] as [number, number], qdd: [2, 1] as [number, number], alpha: 1.67, beta: 0.5, delta: 0.33, M: [[2.37, 0.69], [0.69, 0.33]] as [[number, number], [number, number]], Cqd: [-2.39, 0.8] as [number, number], G: [14.01, 1.27] as [number, number], Mqdd: [5.43, 1.71] as [number, number], tau: [17.05, 3.78] as [number, number], log: '' }; return {
+      doc: { kind: 'dyneom', params: { motion: '加速起摆' }, entities: [], streams: [] },
+      a: { i: 3, step: 3, stage: 'gravity', ...base, showM: true, showC: true, showG: true, showTau: false, phase: 'run' as const, focus: '重力 G' },
+      b: { i: 4, step: 4, stage: 'assemble', ...base, showM: true, showC: true, showG: true, showTau: true, phase: 'run' as const, focus: '合成 τ' },
+    } })(),
     queryplan: {
       doc: { kind: 'queryplan', params: {}, entities: [], streams: [] },
       a: { step: 1, op: 'path', query: 'q', revealed: 1, cur: 0, chosen: -1, paths: [{ name: '全表扫描', type: 'ALL', key: '—', rows: 10000, note: 'x' }, { name: '走 idx(city)', type: 'ref', key: 'idx_city', rows: 500, note: 'x' }, { name: '走 idx(age)', type: 'range', key: 'idx_age', rows: 6000, note: 'x' }], phase: 'run', focus: '候选路径：全表扫描（type=ALL，估扫 10000 行）' },

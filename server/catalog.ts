@@ -109,6 +109,7 @@ import { lockstrategyKernel } from '../src/kernels/lockstrategy.ts'
 import { bufferpoolKernel } from '../src/kernels/bufferpool.ts'
 import { feedKernel } from '../src/kernels/feed.ts'
 import { fkKernel } from '../src/kernels/fk.ts'
+import { dyneomKernel } from '../src/kernels/dyneom.ts'
 import { ikKernel } from '../src/kernels/ik.ts'
 import { jacobianKernel } from '../src/kernels/jacobian.ts'
 import { quatKernel } from '../src/kernels/quat.ts'
@@ -2211,6 +2212,41 @@ export const CATALOG: CatalogEntry[] = [
         ask: '大 V 有百万粉丝，推拉结合怎么避免他发帖时的写放大?', kind: 'choice',
         compute: () => ({ answer: '普通用户走推（读快）；大 V 走拉——发帖不推给百万粉丝、只存自己 outbox，粉丝刷时才现拉大 V 的帖、和收件箱归并。既避免写放大、普通场景又读快', step: 5, evidence: '本例大 V 100 万粉，2 帖走拉省下 2,000,000 次写' }),
         distractors: () => ['给大 V 更多服务器推', '禁止大 V 发帖太频繁', '大 V 也全量推、只是异步'],
+      },
+    ],
+  },
+  {
+    id: 'dyneom', title: '机械臂运动方程', kernel: dyneomKernel as Kernel<unknown>, doc: trivialDoc('dyneom'),
+    facts: [
+      {
+        id: 'dyn_notindep', label: '能不能每关节独立 PID',
+        ask: '机械臂能不能"一个电机管一个关节、各自独立 PID"就行?', kind: 'choice',
+        compute: () => ({ answer: '不能。各关节被惯性(质量矩阵非对角=耦合)、科氏/离心、重力强耦合,全写进一条运动方程 M(q)q̈+C(q,q̇)q̇+G(q)=τ。独立 PID 会被这些非线性耦合项拖累(尤其高速+重力)', step: 1, evidence: '动关节1 会通过 M₂₁ 在关节2 上生力矩;举在半空要 G;转得快有科氏' }),
+        distractors: () => ['能，关节之间互不影响', '能，只要 PID 增益调大', '能，加个前馈就等价了'],
+      },
+      {
+        id: 'dyn_mass', label: '质量矩阵非对角项是什么',
+        ask: '机械臂质量矩阵 M(q) 的非对角项代表什么?M 有什么性质?', kind: 'choice',
+        compute: t => { const f = t as unknown as { M?: number[][] }[]; const M = f.find(x => x.M)?.M; const off = M ? M[0]![1] : 0.69; return ({ answer: `非对角项(本例 M₁₂=${off})是**关节间的惯性耦合**——给一个关节加速度会在另一个关节上产生力矩;非对角≠0 就是耦合。M 还随构型变(cos q2)、且恒对称正定(是动能度规、故一定可逆)`, step: 2, evidence: 'M 对称正定→正向动力学良定义;非对角=耦合' }) },
+        distractors: () => ['非对角是测量噪声、应忽略', '非对角是重力项', 'M 是常数矩阵、与姿势无关'],
+      },
+      {
+        id: 'dyn_coriolis', label: '科氏离心项什么时候出现',
+        ask: '运动方程里的 C(q,q̇)q̇(科氏+离心)项什么时候出现?为什么静态标定测不到?', kind: 'choice',
+        compute: () => ({ answer: '只在运动时出现、与速度平方成正比(离心 q̇² + 科氏 q̇ᵢq̇ⱼ 交叉项);q̇=0 时全为 0。静态标定只能测到重力/摩擦、测不到这项,所以它是高速下丢精度/振动的元凶', step: 3, evidence: 'C·q̇=[−h(2q̇1q̇2+q̇2²), h q̇1²]、h=β sin q2;q̇=0→0' }),
+        distractors: () => ['一直存在、即使静止', '只在有外力时出现', '只和重力方向有关'],
+      },
+      {
+        id: 'dyn_gravcomp', label: '静止举着要不要力矩',
+        ask: '机械臂静止(q̇=q̈=0)地举在半空，关节要不要输出力矩?这引出什么控制手段?', kind: 'choice',
+        compute: () => ({ answer: '要,τ=G(q) 顶住重力(本例关节1 要 14.01 N·m)。这引出"重力补偿":把 G 项前馈掉,否则纯 PID 得靠积分硬扛、必然稳态下垂。更完整的是计算力矩控制 τ=M(q̈_d+Kd ė+Kp e)+Cq̇+G 抵消全部非线性', step: 4, evidence: '静止也要 τ=G;重力补偿=只前馈 G 的省档' }),
+        distractors: () => ['不要，不动就不费力', '要，但只需静摩擦力矩', '要，但和构型无关、是常数'],
+      },
+      {
+        id: 'dyn_gtorque', label: '静止举着关节1的重力力矩',
+        ask: '本例两连杆臂静止举在 q=[30°,45°]，关节1 需要多大重力力矩顶住(N·m,取整)?', kind: 'number',
+        compute: t => { const f = t as unknown as { G?: number[] }[]; const G = f.find(x => x.G)?.G; const v = G ? Math.round(G[0]!) : 14; return ({ answer: String(v), step: 4, evidence: `G₁=(m1 lc1+m2 l1)g cos q1+m2 lc2 g cos(q1+q2)=14.01≈${v} N·m;不补重力 PID 会稳态下垂` }) },
+        distractors: numDistractors,
       },
     ],
   },

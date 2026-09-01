@@ -5437,3 +5437,30 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .fc-torque.fc-tpos{background:color-mix(in srgb,var(--hit) 8%,transparent);border:1px solid color-mix(in srgb,var(--hit) 35%,var(--line))}
 .fc-torque.fc-tneg{background:color-mix(in srgb,var(--miss) 8%,transparent);border:1px solid color-mix(in srgb,var(--miss) 35%,var(--line))}
 .fc-torque.fc-tzero{background:var(--panel-2);border:1px solid var(--line)}
+
+/* dyneom · 机械臂运动方程 */
+.scdn.dy-hot{color:var(--now)}
+.dy-massblk{margin-top:10px}
+.dy-mh{font:var(--t-ui) var(--sans);font-weight:600;color:var(--dim);margin-bottom:6px}
+.dy-consts{font:var(--t-meta) var(--mono);color:var(--faint);font-weight:400}
+.dy-matrix{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.dy-mbr{font-size:2.2em;color:var(--faint);font-weight:200;line-height:.8}
+.dy-mtable{border-collapse:collapse;font-family:var(--mono);font-variant-numeric:tabular-nums}
+.dy-mtable td{padding:4px 12px;text-align:right;min-width:44px}
+.dy-mtable td.dy-coup{background:color-mix(in srgb,var(--now) 12%,transparent);color:var(--now);font-weight:700;border-radius:3px}
+.dy-mnote{font:var(--t-meta) var(--sans);color:var(--faint);flex:1;min-width:200px;line-height:1.5}
+.dy-coupt{color:var(--now)}
+.dy-eq{margin-top:12px}
+.dy-eqh{font:var(--t-ui) var(--mono);color:var(--dim);font-weight:600;margin-bottom:6px}
+.dy-op{color:var(--faint);padding:0 2px}
+.dy-terms{border-collapse:collapse;width:100%;font-size:var(--t-ui);font-variant-numeric:tabular-nums}
+.dy-terms th,.dy-terms td{border:1px solid var(--line);padding:4px 10px;text-align:right}
+.dy-terms th.l,.dy-terms td.l{text-align:left;font-weight:600;color:var(--dim)}
+.dy-terms thead th{background:var(--panel-2);color:var(--dim);font-weight:600;font-size:var(--t-meta);vertical-align:bottom}
+.dy-terms thead th em{font-style:normal;color:var(--faint);font-weight:400;font-size:.9em}
+.dy-terms th.off,.dy-terms td.off{color:var(--ghost)}
+.dy-terms .dy-inertia{background:color-mix(in srgb,var(--now) 6%,transparent)}
+.dy-terms .dy-cor{background:color-mix(in srgb,var(--miss) 6%,transparent)}
+.dy-terms .dy-grav{background:color-mix(in srgb,var(--hit) 6%,transparent)}
+.dy-terms td.dy-tau b{color:var(--now)}
+.dy-note{font:var(--t-meta) var(--sans);color:var(--faint);margin-top:5px;line-height:1.5}

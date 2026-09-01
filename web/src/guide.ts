@@ -855,6 +855,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { stage: string; torque: number }; const z = (x: number) => (Object.is(x, -0) ? 0 : x); return st.stage === 'done' ? 'i_q力矩旋钮' : st.stage === 'invsvpwm' ? `τ=${z(st.torque)}` : st.stage === 'pi' ? 'i_d*=0' : st.stage === 'park' ? '交流→直流' : st.stage === 'clarke' ? '3相→2相' : 'dq变换' },
     try: [{ act: '切「正转 iq*=+1.0A」', watch: 'i_q→+0.9、τ=+0.094 N·m(正转)；i_d 恒被压到 0。' }, { act: '切「反转 iq*=−1.0A」', watch: 'i_q→−0.9、τ=−0.094 N·m(反转)；i_d 仍是 0——只翻 i_q。' }, { act: '切「零力矩 iq*=0」', watch: 'i_q→0、τ=0；i_d 还是被压向 0。i_q 就是力矩旋钮。' }], terms: [],
   },
+  dyneom: {
+    question: '机械臂能不能一个电机管一个关节、各自 PID 就行？动力学方程 M q̈+C q̇+G=τ 到底在说什么？',
+    read: [{ at: '质量矩阵 M', is: '2×2，非对角=关节耦合。', anchor: '.dy-matrix' }, { at: '三项表', is: '惯性 M q̈ / 科氏 C q̇ / 重力 G 逐列汇成 τ。', anchor: '.dy-terms' }, { at: '读数', is: '运动状态、耦合项、G、τ。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { stage: string; motionLabel: string; M: number[][]; Cqd: number[]; G: number[]; Mqdd: number[]; tau: number[]; qd: number[]; qdd: number[] }; const z = (x: number) => (Object.is(x, -0) ? 0 : x); return [
+      { k: '本步输入', v: st.stage === 'intro' ? `运动状态 ${st.motionLabel}` : st.stage === 'mass' ? '构型 q=[30°,45°]' : st.stage === 'coriolis' ? `关节角速度 q̇=[${st.qd}]` : st.stage === 'gravity' ? '构型 q（重力方向）' : st.stage === 'assemble' ? `q̈=[${st.qdd}]、M/C/G 三项` : '完整运动方程' },
+      { k: '判定规则', v: `M(q)q̈+C(q,q̇)q̇+G(q)=τ；M 随构型变(非对角=耦合)、C·q̇ 科氏离心(∝q̇²、q̇=0则0)、G 重力(静止也要)。` },
+      { k: '本步结果', v: st.stage === 'intro' ? '关节被惯性/科氏/重力强耦合、不能各自独立' : st.stage === 'mass' ? `M=[[${st.M[0][0]},${st.M[0][1]}],[${st.M[1][0]},${st.M[1][1]}]]，非对角 ${st.M[0][1]}≠0=耦合` : st.stage === 'coriolis' ? `C·q̇=[${z(st.Cqd[0]!)}, ${z(st.Cqd[1]!)}]${z(st.Cqd[0]!) === 0 && z(st.Cqd[1]!) === 0 ? '（静止→全0）' : ''}` : st.stage === 'gravity' ? `重力 G=[${z(st.G[0]!)}, ${z(st.G[1]!)}]、静止也要顶` : st.stage === 'assemble' ? `τ=[${z(st.tau[0]!)}, ${z(st.tau[1]!)}]（M q̈+C q̇+G）` : '连逆动力学/计算力矩/正向动力学' },
+    ] },
+    verdict: (s: never) => { const st = s as { stage: string; tau: number[] }; const z = (x: number) => (Object.is(x, -0) ? 0 : x); return st.stage === 'done' ? 'τ=Mq̈+Cq̇+G' : st.stage === 'assemble' ? `τ₁=${z(st.tau[0]!)}` : st.stage === 'gravity' ? '重力G' : st.stage === 'coriolis' ? '科氏离心' : st.stage === 'mass' ? '质量矩阵M' : '强耦合' },
+    try: [{ act: '切「静止保持」', watch: 'q̇=q̈=0 → 科氏、惯性项全为0，τ=重力 G=[14.01,1.27]，举着也要力矩。' }, { act: '切「匀速转动」', watch: 'q̇≠0 → 冒出科氏/离心 C·q̇=[−2.39,0.8]，τ=科氏+重力。' }, { act: '切「加速起摆」', watch: 'q̈≠0 → 三项都在，τ=[17.05,3.78]，这才是完整动力学。' }], terms: [],
+  },
   queryplan: {
     question: '同一个查询有好几条路可走，数据库优化器凭什么选其中一条？',
     read: [{ at: '候选路径', is: '每条访问路径的 type + 估扫描行数代价条。', anchor: '.qp-paths' }, { at: 'EXPLAIN', is: '末步选中路径的 type/key/rows。', anchor: '.qp-explain' }],

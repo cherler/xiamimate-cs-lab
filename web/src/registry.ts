@@ -347,6 +347,7 @@ import { mqdesignKernel, type MqState } from '@engine/kernels/mqdesign.ts'
 import { topkKernel, type TopkState } from '@engine/kernels/topk.ts'
 import { feedKernel, type FeedState } from '@engine/kernels/feed.ts'
 import { fkKernel, type FKState } from '@engine/kernels/fk.ts'
+import { dyneomKernel, type DynState } from '@engine/kernels/dyneom.ts'
 import { ikKernel, type IKState } from '@engine/kernels/ik.ts'
 import { jacobianKernel, type JacoState } from '@engine/kernels/jacobian.ts'
 import { kalmanKernel, type KalmanState } from '@engine/kernels/kalman.ts'
@@ -370,6 +371,7 @@ import { TopkStage } from './stages/TopkStage.tsx'
 import { MqStage } from './stages/MqStage.tsx'
 import { FeedStage } from './stages/FeedStage.tsx'
 import { FKStage } from './stages/FKStage.tsx'
+import { DynEomStage } from './stages/DynEomStage.tsx'
 import { IKStage } from './stages/IKStage.tsx'
 import { JacobianStage } from './stages/JacobianStage.tsx'
 import { KalmanStage } from './stages/KalmanStage.tsx'
@@ -6475,6 +6477,33 @@ const fk: Experiment<FKState> = {
   ],
 }
 
+const dyneom: Experiment<DynState> = {
+  id: 'dyneom', group: '刚体动力学', title: '机械臂运动方程', subtitle: '拉格朗日 M(q)q̈+C(q,q̇)q̇+G(q)=τ：惯性耦合+科氏/离心+重力，各关节不是独立的',
+  kernel: dyneomKernel, defaultDoc: { kind: 'dyneom', params: { motion: '加速起摆' }, entities: [], streams: [] },
+  params: [{ key: 'motion', label: '运动状态', kind: 'enum', options: ['静止保持', '匀速转动', '加速起摆'] }],
+  paramsNote: '刚体动力学第一课(整组地基):机械臂不是"一个电机管一个关节"——各关节被惯性/科氏/重力**强耦合**,全写进一条**运动方程 M(q)q̈+C(q,q̇)q̇+G(q)=τ**。两连杆平面 RR 臂(标准 Spong/《Modern Robotics》ch.8),用 α=I1+I2+m1 lc1²+m2(l1²+lc2²)、β=m2 l1 lc2、δ=I2+m2 lc2²:①**M(q)** 质量矩阵(随构型变、**非对角≠0=关节耦合**)②**C(q,q̇)q̇** 科氏+离心(∝q̇²、**只在运动时**)③**G(q)** 重力(**静止举着也要力矩**)。切「运动状态」看静止(只 G)/匀速(+科氏)/加速(全三项)。M/C/G/τ 全现算。连「逆动力学RNEA(算这条τ)/计算力矩控制(用它抵消非线性)/正向动力学(反解 q̈)」。详见讲解卡。',
+  bounds: [
+    '机械臂运动方程 M(q)q̈+C(q,q̇)q̇+G(q)=τ:不能当 n 个独立单关节 PID(惯性耦合+科氏+重力)',
+    'M(q)质量矩阵:对称正定、随构型变(cos q2)、**非对角项=关节耦合**(动一个甩另一个);C(q,q̇)q̇ 科氏+离心 ∝q̇²、只在运动时',
+    'G(q)重力:静止 q̇=q̈=0 也要输出 τ=G 顶住(所以要重力补偿前馈,否则 PID 稳态下垂)',
+    '连:逆动力学RNEA 高效算这条 τ(O(n)递归);计算力矩控制 τ=M(q̈_d+Kd ė+Kp e)+Cq̇+G 抵消非线性;正向动力学 q̈=M⁻¹(τ−Cq̇−G)。参考:《Modern Robotics》ch.8、Spong',
+  ],
+  tabs: [{ id: 'dy', label: '运动方程逐步跑' }], Stage: DynEomStage, whyInRail: true,
+  tone: s => (s.stage === 'done' ? { key: 'good', label: 'τ=Mq̈+Cq̇+G' }
+    : s.stage === 'assemble' ? { key: 'good', label: `τ₁=${Object.is(s.tau[0], -0) ? 0 : s.tau[0]}` }
+    : s.stage === 'gravity' ? { key: 'idle', label: '重力 G' }
+    : s.stage === 'coriolis' ? { key: 'idle', label: '科氏/离心' }
+    : s.stage === 'mass' ? { key: 'idle', label: '质量矩阵 M' }
+    : { key: 'idle', label: '强耦合' }),
+  metric: s => (s.stage === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => ({ intro: '耦', mass: 'M', coriolis: 'C', gravity: 'G', assemble: 'τ', done: '成' }[s.stage] ?? '·'),
+  readouts: s => [
+    { label: '运动状态', value: s.motionLabel },
+    { label: '质量矩阵耦合项', value: s.showM ? `M₁₂=${s.M[0][1]}（≠0=耦合）` : '—' },
+    { label: '重力力矩 G', value: s.showG ? `[${Object.is(s.G[0], -0) ? 0 : s.G[0]}, ${Object.is(s.G[1], -0) ? 0 : s.G[1]}]` : '—' },
+    { label: '关节力矩 τ', value: s.showTau ? `[${Object.is(s.tau[0], -0) ? 0 : s.tau[0]}, ${Object.is(s.tau[1], -0) ? 0 : s.tau[1]}] N·m` : '—' },
+  ],
+}
 const ik: Experiment<IKState> = {
   id: 'ik', group: '机器人学基础', title: '逆运动学 IK', subtitle: '末端目标 → 关节角：多解(肘上/肘下)、可无解',
   kernel: ikKernel, defaultDoc: { kind: 'ik', params: {}, entities: [], streams: [] }, params: [],
@@ -6907,7 +6936,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, ik, jacobian, quat, trajectory, kalman, icp, slam, impedance, mpc, pid, rrt, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
+  fk, dyneom, ik, jacobian, quat, trajectory, kalman, icp, slam, impedance, mpc, pid, rrt, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
 ] as unknown as AnyExperiment[]
 
 /**
@@ -7079,7 +7108,7 @@ export const DISCIPLINES: Discipline[] = [
     sub: '机器人学 → 感知 · 控制 · 规划 → 具身智能',
     // 从零到具身智能工程师：机器人学基础(运动学/雅可比)→感知(卡尔曼/SLAM)→控制(PID/力控)
     // →规划(RRT)→具身学习(模仿/RL/VLA)→开源实战(LeRobot/MuJoCo)。分组随实验增量补齐。
-    groups: ['机器人学基础', '机器人感知', '机器人控制', '运动规划', '具身学习', '具身项目实战'],
+    groups: ['机器人学基础', '刚体动力学', '机器人感知', '机器人控制', '运动规划', '具身学习', '具身项目实战'],
     guide: { from: '一次关节转动', to: '具身智能工程师', toIcon: '🦾' },
   },
   {
