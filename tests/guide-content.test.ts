@@ -233,6 +233,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { step: 8, kind: 'action', round: 3, text: '', tool: 'calc', arg: '30 - 25', obs: '', history: [{ kind: 'thought', text: '两地都有了：30 和 25。用计算器算差。' }], answer: '', phase: 'run', focus: '第 3 轮 · Action：calc(30 - 25)' },
       b: { step: 11, kind: 'answer', round: 4, text: '北京今天最高 30°C，上海 25°C，北京比上海热 5°C。', tool: '', arg: '', obs: '', history: [{ kind: 'thought', text: 'x' }], answer: '北京今天最高 30°C，上海 25°C，北京比上海热 5°C。', phase: 'done', focus: 'Final Answer：够了，作答' },
     },
+    ctxcompact: {
+      doc: { kind: 'ctxcompact', params: { strategy: '总结', thresholdRatio: 0.8 }, entities: [], streams: [] },
+      a: { i: 2, step: 2, stage: 'pressure', strategy: '总结', N: 120, thresholdRatio: 0.8, retainRatio: 0.16, threshold: 96, retain: 20, msgs: [], running: 139, before: 139, relievedByPrune: false, phase: 'run', focus: '压力检查：累计 139 ≥ 阈值 96', log: '' },
+      b: { i: 6, step: 6, stage: 'rebuild', strategy: '总结', N: 120, thresholdRatio: 0.8, retainRatio: 0.16, threshold: 96, retain: 20, msgs: [], running: 50, before: 139, relievedByPrune: false, phase: 'done', focus: '压缩完成：139 → 50', log: '' },
+    },
     queryplan: {
       doc: { kind: 'queryplan', params: {}, entities: [], streams: [] },
       a: { step: 1, op: 'path', query: 'q', revealed: 1, cur: 0, chosen: -1, paths: [{ name: '全表扫描', type: 'ALL', key: '—', rows: 10000, note: 'x' }, { name: '走 idx(city)', type: 'ref', key: 'idx_city', rows: 500, note: 'x' }, { name: '走 idx(age)', type: 'range', key: 'idx_age', rows: 6000, note: 'x' }], phase: 'run', focus: '候选路径：全表扫描（type=ALL，估扫 10000 行）' },

@@ -334,6 +334,7 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   lrucache: {},
   topk: {},
   reactagent: {},
+  ctxcompact: { strategy: 'string', thresholdRatio: 'number' },
   lfucache: {},
   trie: {},
   quickselect: {},
@@ -398,6 +399,7 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
 /** 同名参数在不同 kind 下取值不同 —— 所以按 kind 分表，不能只按字段名 */
 const ENUMS: Record<string, Record<string, string[]>> = {
   cache:     { replacement: ['LRU', 'FIFO'] },
+  ctxcompact: { strategy: ['总结', '省略'] },
   iso:       { level: ['读未提交', '读已提交', '可重复读', '串行化'] },
   scheduler: { algorithm: ['FCFS', 'SJF', 'SRTF', 'RR'] },
   tcp:       { variant: ['Tahoe', 'Reno'] },

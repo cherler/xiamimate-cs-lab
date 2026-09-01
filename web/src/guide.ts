@@ -679,6 +679,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; kind: string; round: number }; return st.phase === 'done' ? '得到答案' : st.kind === 'action' ? '调工具' : st.kind === 'observation' ? '拿到结果' : st.kind === 'thought' ? `想·第${st.round}轮` : '开始' },
     try: [{ act: '看想→做→看循环', watch: 'Thought 决定查气温 → Action search → Observation 30°C → 下一轮再想。' }, { act: '看工具给真数据', watch: 'calc(30-25) 返回 5，不是模型口算——Agent 用真结果，少幻觉。' }], terms: [],
   },
+  ctxcompact: {
+    question: 'Agent 会话越聊越长、上下文窗口迟早爆——怎么在不丢关键信息的前提下把它压回去？',
+    read: [{ at: '计量条', is: '累计 token vs 窗口，竖线是压缩阈值。', anchor: '.cc-gauge' }, { at: '消息列表', is: '每条按区域染色：留头/中间/留尾/已剪/摘要。', anchor: '.cc-list' }, { at: '读数', is: '累计 token、阈值、省了多少。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { stage: string; running: number; threshold: number; before: number; strategy: string; N: number; relievedByPrune: boolean; meter?: { est: number; real: number } }; return [
+      { k: '本步输入', v: ({ intro: `一段会话共 ${st.before} tokens、窗口 ${st.N}`, meter: '估算 token vs 实际', pressure: `累计 ${st.running}、阈值 ${st.threshold}`, partition: '把历史切成 头/中/尾', prune: '中间的超大工具结果', compress: `压中间（${st.strategy}）`, rebuild: '头 + 压过的中间 + 尾' } as Record<string, string>)[st.stage] ?? '' },
+      { k: '判定规则', v: '量 token（~4字/token 会低估中文）→ 累计≥窗口×阈值就触发 → 留头(系统+首任务)+留最近(retainRatio=0.16，不拆 call/result 对)+压中间 → 先剪超大工具输出，够了就停，否则总结(有损)或省略(全丢)。原始日志不删。' },
+      { k: '本步结果', v: ({ intro: `${st.before} tokens，超了`, meter: st.meter ? `估 ${st.meter.est} ≪ 实际 ${st.meter.real}，低估 ${(st.meter.real / st.meter.est).toFixed(1)}×` : '中文被低估', pressure: st.running >= st.threshold ? `${st.running} ≥ ${st.threshold}，触发压缩` : `${st.running} < ${st.threshold}`, partition: '头钉住、尾原样、中间待压', prune: st.relievedByPrune ? `剪到 ${st.running} < 阈值，免总结` : `剪到 ${st.running}，仍超`, compress: `压到 ${st.running} tokens`, rebuild: `${st.before}→${st.running}，省 ${st.before - st.running}` } as Record<string, string>)[st.stage] ?? '' },
+    ] },
+    verdict: (s: never) => { const st = s as { stage: string; running: number; threshold: number; strategy: string; relievedByPrune: boolean }; return st.stage === 'rebuild' ? `压缩完成 ${st.running}t` : st.stage === 'compress' ? `压中间·${st.strategy}` : st.stage === 'prune' ? (st.relievedByPrune ? '剪枝已够' : '先剪工具输出') : st.stage === 'pressure' ? '超阈值' : st.stage === 'meter' ? '中文被低估' : st.stage === 'partition' ? '头/中/尾' : '会话渐长' },
+    try: [{ act: '把「压中间」切成省略', watch: '总结换成一行 [已省略]：token 更少，但中间全丢了——省钱 vs 记得住的取舍。' }, { act: '把阈值调到 0.9', watch: '光剪超大工具输出就落回阈值下，免了总结那次模型调用——先上最便宜的一招。' }], terms: [],
+  },
   queryplan: {
     question: '同一个查询有好几条路可走，数据库优化器凭什么选其中一条？',
     read: [{ at: '候选路径', is: '每条访问路径的 type + 估扫描行数代价条。', anchor: '.qp-paths' }, { at: 'EXPLAIN', is: '末步选中路径的 type/key/rows。', anchor: '.qp-explain' }],

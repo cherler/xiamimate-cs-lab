@@ -4926,3 +4926,53 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .lr-cmd{border:1px solid var(--line);border-radius:9px;overflow:hidden}
 .lr-cmdh{padding:5px 11px;background:var(--sunk-2);font-size:10.5px;color:var(--faint);border-bottom:1px solid var(--line-soft)}
 .lr-cmd pre{margin:0;padding:9px 11px;font-family:var(--mono);font-size:10px;line-height:1.55;color:var(--ink);white-space:pre-wrap;word-break:break-all;background:var(--panel-2)}
+
+/* ── 上下文压缩 ctxcompact ─────────────────────────────────────── */
+.cc-u{font-size:.7em;color:var(--faint);font-style:normal}
+/* token 计量条 */
+.cc-gauge{margin:10px 0 4px}
+.cc-bar{position:relative;height:14px;background:var(--sunk-1);border:1px solid var(--line);
+  border-radius:7px;overflow:hidden}
+.cc-before{position:absolute;top:0;bottom:0;left:0;background:color-mix(in srgb,var(--faint) 22%,transparent)}
+.cc-fill{position:absolute;top:0;bottom:0;left:0;border-radius:7px 0 0 7px;transition:width .25s}
+.cc-fill.ok{background:color-mix(in srgb,var(--hit) 62%,transparent)}
+.cc-fill.over{background:color-mix(in srgb,var(--now) 66%,transparent)}
+.cc-thr{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--ink)}
+.cc-scale{position:relative;display:flex;justify-content:space-between;
+  font:var(--t-meta)/1.2 var(--mono);color:var(--faint);margin-top:3px}
+.cc-thrlab{position:absolute;transform:translateX(-50%);color:var(--ink);white-space:nowrap}
+/* 量 token 的坑 */
+.cc-meter{margin:8px 0;padding:8px 10px;border:1px solid color-mix(in srgb,var(--now) 40%,var(--line));
+  border-radius:6px;background:color-mix(in srgb,var(--now) 7%,transparent)}
+.cc-meter-s{font:var(--t-meta)/1.4 var(--mono);color:var(--dim)}
+.cc-meter-s em{font-style:normal;color:var(--faint)}
+.cc-meter-r{display:flex;align-items:center;gap:8px;margin-top:4px;font-size:var(--t-ui)}
+.cc-est{color:var(--dim)}.cc-est b{color:var(--ink);font-size:1.15em}
+.cc-real b{color:var(--now);font-size:1.15em}
+.cc-arrow{color:var(--miss);font-weight:700}
+.cc-mult{margin-left:auto;color:var(--miss);font:var(--t-meta) var(--mono)}
+.cc-meter-n{margin-top:4px;font:var(--t-meta)/1.4 var(--sans);color:var(--faint)}
+/* 消息列表 */
+.cc-list{display:flex;flex-direction:column;gap:3px;margin-top:4px}
+.cc-row{display:flex;align-items:center;gap:7px;padding:3px 8px;border-radius:4px;
+  border-left:3px solid var(--line);background:var(--panel);font-size:var(--t-ui);
+  transition:background .2s,border-color .2s}
+.cc-ic{flex:none;font-size:.95em}
+.cc-tag{flex:none;font:var(--t-meta) var(--mono);color:var(--faint);width:2.4em}
+.cc-label{flex:1 1 auto;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cc-tok{flex:none;font:var(--t-meta) var(--mono);color:var(--dim);
+  background:var(--sunk-1);border-radius:3px;padding:0 5px}
+.cc-tok.cut{color:var(--now);background:color-mix(in srgb,var(--now) 12%,transparent);text-decoration:none}
+/* 区域配色 */
+.cc-head{border-left-color:var(--ink);background:var(--panel-2)}
+.cc-head .cc-tag{color:var(--ink)}
+.cc-middle{border-left-color:var(--line);background:var(--sunk-1)}
+.cc-middle .cc-label{color:var(--dim)}
+.cc-tail{border-left-color:var(--hit);background:color-mix(in srgb,var(--hit) 8%,transparent)}
+.cc-tail .cc-tag{color:var(--hit)}
+.cc-pruned{border-left-color:var(--now);background:color-mix(in srgb,var(--now) 8%,transparent)}
+.cc-pruned .cc-label{color:var(--dim)}.cc-pruned .cc-tag{color:var(--now)}
+.cc-summary{border-left:3px solid var(--now);background:color-mix(in srgb,var(--now) 13%,transparent)}
+.cc-summary .cc-tag{color:var(--now)}.cc-summary .cc-label{color:var(--ink);white-space:normal}
+.cc-elide{border-left:3px dashed var(--faint);background:transparent}
+.cc-elide .cc-label,.cc-elide .cc-tag{color:var(--faint);font-style:italic}

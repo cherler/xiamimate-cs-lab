@@ -86,6 +86,7 @@ import { happensbeforeKernel } from '../src/kernels/happensbefore.ts'
 import { lrucacheKernel } from '../src/kernels/lrucache.ts'
 import { topkKernel } from '../src/kernels/topk.ts'
 import { reactagentKernel } from '../src/kernels/reactagent.ts'
+import { ctxcompactKernel } from '../src/kernels/ctxcompact.ts'
 import { lfucacheKernel } from '../src/kernels/lfucache.ts'
 import { trieKernel } from '../src/kernels/trie.ts'
 import { quickselectKernel } from '../src/kernels/quickselect.ts'
@@ -1515,6 +1516,41 @@ export const CATALOG: CatalogEntry[] = [
         ask: '大模型直接回答"北京今天比上海热多少度"有什么问题，为什么 Agent 要调 search/calc?', kind: 'choice',
         compute: () => ({ answer: '实时气温不在模型训练知识里、直接答会幻觉；调 search 拿真实气温、调 calc 精确算差，Observation 把真结果喂回，答案就基于真数据而非编造', step: 11, evidence: 'search 得到 30/25、calc 得到 5，都是工具的真实返回' }),
         distractors: () => ['调工具只是为了更慢', '模型其实知道，调工具是多余的', '为了减少模型参数'],
+      },
+    ],
+  },
+  {
+    id: 'ctxcompact', title: '上下文压缩', kernel: ctxcompactKernel as Kernel<unknown>, doc: trivialDoc('ctxcompact'),
+    facts: [
+      {
+        id: 'cc_pipeline', label: '上下文窗口爆了的标准处理流水线',
+        ask: 'Agent 长会话把上下文窗口撑爆了，工程上标准的处理流水线是怎样的?', kind: 'choice',
+        compute: t => { const f = t as unknown as { stage: string; before: number; running: number }[]; const r = f.find(x => x.stage === 'rebuild'); return ({ answer: '量token→累计到阈值触发→分区:留头(系统+首任务)+留最近+压中间→先剪超大工具输出→还超就总结或省略→原始日志append-only不删', step: f.findIndex(x => x.stage === 'rebuild'), evidence: r ? `本例 ${r.before}→${r.running} tokens` : '压回阈值下' }) },
+        distractors: () => ['直接从最新消息往前删，删到不超为止', '把整段历史丢给另一个模型重写成一句话', '换一个上下文窗口更大的模型就行，不用压缩'],
+      },
+      {
+        id: 'cc_trigger', label: '压缩的触发阈值怎么算',
+        ask: '上下文窗口 120 tokens、thresholdRatio=0.8，累计到多少 tokens 触发压缩?', kind: 'number',
+        compute: t => { const f = t as unknown as { threshold: number; stage: string }[]; const thr = f.find(x => x.threshold != null)?.threshold ?? 96; return ({ answer: String(thr), step: f.findIndex(x => x.stage === 'pressure'), evidence: `阈值 = 窗口 120 × thresholdRatio 0.8 = ${thr}（DeepSeek Harness/Goose 默认 0.8，Codex ~0.9）` }) },
+        distractors: numDistractors,
+      },
+      {
+        id: 'cc_keep_drop', label: '压缩时保留什么、压什么',
+        ask: '压缩上下文时，哪些内容要原样保留、哪些被压掉?', kind: 'choice',
+        compute: t => { const f = t as unknown as { stage: string }[]; return ({ answer: '留头(系统提示+第一条任务，钉住)+留最近(retainRatio=0.16 的最新对话，原样)；压中间。分界处不能拆散「工具调用↔结果」这一对', step: f.findIndex(x => x.stage === 'partition'), evidence: '头=系统+首任务、尾=最新几条原样、中间被压；尾巴宁可略超预算也把成对的 call/result 补齐' }) },
+        distractors: () => ['只保留最新的一条，其余全删', '保留最长的几条消息', '按字母顺序保留一半'],
+      },
+      {
+        id: 'cc_sum_vs_elide', label: '总结 vs 省略的取舍',
+        ask: '压中间那段，用"总结成摘要"还是"直接省略"，两者怎么取舍?', kind: 'choice',
+        compute: t => { const f = t as unknown as { stage: string }[]; return ({ answer: '总结(summarize)：换成结构化摘要，有损、要花一次模型调用，但信息密度高、Agent 记得住来龙去脉；省略(elide)：换成一行标记，免费、确定、可回放，但中间全丢、Agent 失忆', step: Math.max(0, f.findIndex(x => x.stage === 'compress')), evidence: 'DeepSeek/Claude Code/Codex 用 8 段式摘要模板；SWE-agent 用「N 行已省略」的确定性省略' }) },
+        distractors: () => ['总结和省略没区别，随便用', '省略更好因为信息全保留', '总结免费所以永远用总结'],
+      },
+      {
+        id: 'cc_cjk_token', label: '为什么 4字/token 估算对中文有坑',
+        ask: '很多框架用"~4 字/token"快速估 token，这对中文场景有什么坑?', kind: 'choice',
+        compute: t => { const f = t as unknown as { stage: string; meter?: { est: number; real: number } }[]; const m = f.find(x => x.meter)?.meter; return ({ answer: `低估中文(和 JSON)：中文约 1 字≈1 token，用 4字/token 会算少好几倍，导致压缩触发得偏晚——你以为没满、其实早超了`, step: f.findIndex(x => x.meter), evidence: m ? `本例一句中文估 ${m.est}、实际约 ${m.real}，低估 ${(m.real / m.est).toFixed(1)} 倍` : '中文被严重低估' }) },
+        distractors: () => ['高估中文，导致压缩触发太早', '对中文刚好准确', '只影响英文不影响中文'],
       },
     ],
   },

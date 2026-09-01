@@ -282,6 +282,8 @@ import { lrucacheKernel, type LRUState } from '@engine/kernels/lrucache.ts'
 import { LRUCacheStage } from './stages/LRUCacheStage.tsx'
 import { reactagentKernel, type ReactState } from '@engine/kernels/reactagent.ts'
 import { ReactAgentStage } from './stages/ReactAgentStage.tsx'
+import { ctxcompactKernel, type CompactState } from '@engine/kernels/ctxcompact.ts'
+import { CtxCompactStage } from './stages/CtxCompactStage.tsx'
 import { lfucacheKernel, type LFUState } from '@engine/kernels/lfucache.ts'
 import { LFUCacheStage } from './stages/LFUCacheStage.tsx'
 import { trieKernel, type TrieState } from '@engine/kernels/trie.ts'
@@ -5766,6 +5768,37 @@ const reactagent: Experiment<ReactState> = {
     { label: '已走步数', value: `${s.history.length}`, tone: s.phase === 'done' ? 'good' : undefined },
   ],
 }
+const ctxcompact: Experiment<CompactState> = {
+  id: 'ctxcompact', group: '大模型项目实战', title: '上下文压缩', subtitle: 'Agent 长会话 token 爆了：留头+留最近+中间压掉',
+  kernel: ctxcompactKernel, defaultDoc: { kind: 'ctxcompact', params: { strategy: '总结', thresholdRatio: 0.8 }, entities: [], streams: [] },
+  params: [
+    { key: 'strategy', label: '压中间', kind: 'enum', options: ['总结', '省略'] },
+    { key: 'thresholdRatio', label: '触发阈值', kind: 'number', options: [0.7, 0.8, 0.9], unit: '×窗口' },
+  ],
+  paramsNote: '大模型应用/Agent 工程面试最高频题:上下文窗口爆了怎么办。真跑一遍压缩流水线,每个 token 都现算:量token(中文被4字/token低估)→到阈值触发(thresholdRatio,DeepSeek默认0.8)→分区(留头+留最近retainRatio=0.16+压中间,别拆call/result对)→先剪超大工具输出→还超就【总结】(有损·花模型调用·记得住)或【省略】(免费·确定·失忆)。调阈值到0.9可看到"光剪枝就够、免总结"。素材来自真实开源框架,详见讲解卡。',
+  bounds: [
+    '流水线:量token→到阈值触发→留头(系统+首任务)+留最近(retainRatio)+压中间→先剪超大工具输出→总结/省略',
+    '分区不拆「工具调用↔结果」对:结果留着调用被压走,模型看不懂结果哪来的',
+    '总结(summarize):8段式摘要,有损、花一次模型调用、信息密度高;省略(elide):一行标记,免费确定但全丢',
+    '原始日志append-only一条不删(可回放审计);系统提示+工具原样在最前→保住KV/前缀缓存。真实框架:Codex/Claude Code/OpenHands/SWE-agent/DeepSeek Harness',
+  ],
+  tabs: [{ id: 'cc', label: '压缩流水线' }], Stage: CtxCompactStage, whyInRail: true,
+  tone: s => (s.stage === 'rebuild' ? { key: 'good', label: `压缩完成 ${s.running}t` }
+    : s.stage === 'compress' ? { key: 'idle', label: `压中间·${s.strategy}` }
+    : s.stage === 'prune' ? (s.relievedByPrune ? { key: 'good', label: '剪枝已够' } : { key: 'idle', label: '先剪工具输出' })
+    : s.stage === 'partition' ? { key: 'idle', label: '分区:头/中/尾' }
+    : s.stage === 'pressure' ? { key: 'bad', label: `超阈值 ${s.running}≥${s.threshold}` }
+    : s.stage === 'meter' ? { key: 'bad', label: '中文被低估' }
+    : { key: 'idle', label: '会话渐长' }),
+  metric: s => (s.stage === 'rebuild' ? 1 : Math.max(0, (s.step + 1) / 7)),
+  tickLabel: s => ({ intro: '始', meter: '量', pressure: '压', partition: '分', prune: '剪', compress: '缩', rebuild: '成' }[s.stage] ?? '·'),
+  readouts: s => [
+    { label: '累计 token', value: `${s.running} / ${s.N}`, tone: s.running >= s.threshold ? 'bad' : 'good' },
+    { label: '压缩阈值', value: `${s.threshold}（${s.thresholdRatio}×窗口）` },
+    { label: '本步', value: { intro: '会话渐长', meter: '量 token·中文陷阱', pressure: '压力检查', partition: '分区', prune: '剪超大工具输出', compress: `压中间·${s.strategy}`, rebuild: '重建视图' }[s.stage] ?? '—' },
+    { label: '省下', value: s.stage === 'rebuild' ? `${s.before - s.running} tokens（${s.before}→${s.running}）` : '—', tone: s.stage === 'rebuild' ? 'good' : undefined },
+  ],
+}
 const lrucache: Experiment<LRUState> = {
   id: 'lrucache', group: '算法项目实战', title: '手写 LRU 缓存', subtitle: 'HashMap+双向链表，get/put 都 O(1)',
   kernel: lrucacheKernel, defaultDoc: { kind: 'lrucache', params: {}, entities: [], streams: [] }, params: [],
@@ -6435,7 +6468,7 @@ export const EXPERIMENTS = [
   cache, float, multiply, addsub, pipeline, vm,
   page, scheduler, disk, banker, mvcc, iso, cas, mesi, deadlock, raft,
   caesar, vigenere, xorcipher, modpow, diffiehellman, rsa, extgcd, signature, hashaval, merkle, crt, fermat, salt, ecbcbc, birthday, aesround, hmac, totp,
-  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, bufferpool, queryplan, wildcard, regex, blockingqueue, rwlock, aba, happensbefore, lockstrategy, lrucache, lfucache, trie, quickselect, reactagent, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign, topk, feed, objectstore,
+  tokenbucket, consistenthash, skiplist, twopc, snowflake, vectorclock, quorum, circuitbreaker, joins, compositeindex, bufferpool, queryplan, wildcard, regex, blockingqueue, rwlock, aba, happensbefore, lockstrategy, lrucache, lfucache, trie, quickselect, reactagent, ctxcompact, otpreuse, wal, lsm, minikv, minisearch, urlshortener, seckill, mqdesign, topk, feed, objectstore,
   partition, inode, semaphore, bitmap,
   sort, dijkstra, avl, btree, expr, bplus, hash, huffman, kmp, mst, topo, traverse, bloom, editdist, greedy,
   tcp, arq, crc, hamming, subnet, handshake, csma, rip,
