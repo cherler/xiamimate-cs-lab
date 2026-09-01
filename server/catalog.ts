@@ -101,6 +101,7 @@ import { deltatsKernel } from '../src/kernels/deltats.ts'
 import { normstatsKernel } from '../src/kernels/normstats.ts'
 import { teleopKernel } from '../src/kernels/teleop.ts'
 import { miniduckKernel } from '../src/kernels/miniduck.ts'
+import { focKernel } from '../src/kernels/foc.ts'
 import { lfucacheKernel } from '../src/kernels/lfucache.ts'
 import { trieKernel } from '../src/kernels/trie.ts'
 import { quickselectKernel } from '../src/kernels/quickselect.ts'
@@ -1932,6 +1933,41 @@ export const CATALOG: CatalogEntry[] = [
         id: 'at_chunksize', label: 'LeRobot ACT 的动作块长',
         ask: 'LeRobot 里 ACT 的动作块长 chunk_size 默认是多少?', kind: 'number',
         compute: () => ({ answer: '100', step: 1, evidence: '本实验演示用 K=4 便于手算；LeRobot 真值 chunk_size=100、n_action_steps=100' }),
+        distractors: numDistractors,
+      },
+    ],
+  },
+  {
+    id: 'foc', title: 'FOC 磁场定向控制', kernel: focKernel as Kernel<unknown>, doc: trivialDoc('foc'),
+    facts: [
+      {
+        id: 'foc_why', label: 'Park 变换关键在哪',
+        ask: 'FOC 里 Park 变换(αβ→dq)最关键的作用是什么?为什么它让简单 PI 能用?', kind: 'choice',
+        compute: () => ({ answer: 'Park 按转子电角把电流旋进"跟着转子转"的 dq 系，随转子转的正弦相电流在里面变成直流；PI 追不了正弦、却能把直流误差压到零稳态误差，所以两个简单 PI 就能分别控 i_d、i_q', step: 2, evidence: 'Clarke 先 3→2 降维、Park 再转进转子系:交流→直流是 FOC 能用 PI 的根本' }),
+        distractors: () => ['把三相变两相、减少一个电流传感器', '把电流放大、提高转矩', '把直流变交流去驱动电机'],
+      },
+      {
+        id: 'foc_id0', label: 'i_d 目标为什么设 0',
+        ask: 'FOC 电流环里为什么把 i_d 的目标设成 0?', kind: 'choice',
+        compute: () => ({ answer: '最大转矩每安培(MTPA)：表贴永磁/混合步进电机只有 i_q(交轴)产生转矩、i_d(直轴)只白白发热(I²R)不出力。i_d*=0 让每一安培都用在转矩上。唯一例外是高速弱磁时故意让 i_d<0', step: 3, evidence: 'τ=1.5·p·λ_m·i_q 只跟 i_q 走;i_d 只发热' }),
+        distractors: () => ['为了让电机转得更快', '因为 i_d 测不准、干脆设 0', '为了让电流环更稳定'],
+      },
+      {
+        id: 'foc_svpwm', label: 'SVPWM 比正弦 PWM 强在哪',
+        ask: 'SVPWM(空间矢量 PWM)相比朴素正弦 PWM 好在哪?', kind: 'choice',
+        compute: () => ({ answer: '在三相上注入一个共模(零序)偏置(中点钳位 −(max+min)/2)，把线电压顶得更高——比正弦 PWM 多约 15% 的母线电压利用率;相当于同样母线电压能输出更大转矩/转速', step: 4, evidence: '逆 Clarke 得三相电压后做中点钳位、就是 SVPWM' }),
+        distractors: () => ['开关损耗更低、发热更少', '不需要测转子角度', '能省掉两个 PI 控制器'],
+      },
+      {
+        id: 'foc_cascade', label: 'FOC 在级联 PID 的哪一环',
+        ask: 'FOC 电流环在机器人关节的级联 PID 里处于哪一环?和 Dummy-Robot 的 FK/IK 什么关系?', kind: 'choice',
+        compute: () => ({ answer: '最内环、带宽最高(20kHz):位置环→速度环→电流环，上一环的输出是下一环的设定值。FK/IK 把末端位姿解成关节角、下发到关节;这套 FOC 电流环就是把关节角指令变成协调的三相电流去执行的底层', step: 1, evidence: 'Dummy-Robot:STM32F4 解六轴 IK→CAN 下发→各关节 Ctrl-Step 电流环执行' }),
+        distractors: () => ['最外环、直接接收位姿指令', '和 FK/IK 无关、是独立系统', '在速度环外面、管全局规划'],
+      },
+      {
+        id: 'foc_idtarget', label: 'i_d 目标值是多少',
+        ask: '为了最大转矩每安培(MTPA)，表贴永磁/步进电机 FOC 电流环里 i_d 的目标值 i_d* 设为多少?', kind: 'number',
+        compute: t => { const f = t as unknown as { idTarget?: number }[]; const l = f[f.length - 1]; const v = l?.idTarget ?? 0; return ({ answer: String(v), step: 3, evidence: `i_d*=${v}:i_d 不产生转矩、只发热,设 0 让每安培都出力(MTPA);高速弱磁才 <0` }) },
         distractors: numDistractors,
       },
     ],

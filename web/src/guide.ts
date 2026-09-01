@@ -844,6 +844,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { stage: string; mode: string; reward: number }; return st.stage === 'done' ? '模仿奖励≠模仿学习' : st.stage === 'ablate' ? (st.mode === 'imit' ? '直立自然' : st.mode === 'velonly' ? '步态退化' : '摔倒') : st.stage === 'reward' ? `r=${st.reward}` : st.stage === 'policy' ? '残差+PD' : st.stage === 'phase' ? '相位+参考' : '腿式RL' },
     try: [{ act: '切「带模仿奖励」', watch: '−15‖q−q̂‖² 拉向参考步态 → q 紧跟 q̂、直立摇摆，r≈23.5。' }, { act: '切「只 velocity」', watch: '去掉模仿项 → q 偏离参考 ‖q−q̂‖²=0.365、reward 却只差一点点(22.5)、步态退化。' }, { act: '切「reference+PD 无策略」', watch: '开环 q=q̂ 精确对齐、照样摔——欠驱动浮基没被闭环镇定，回报崩到 0.5。' }], terms: [],
   },
+  foc: {
+    question: '三相电机的电流是随转子转的交流量，PID 根本追不上——FOC 是怎么把它变成能用两个 PI 独立控的？',
+    read: [{ at: '流水线', is: 'Clarke→Park→PI→逆变换+SVPWM 四块逐步现算。', anchor: '.fc-flow' }, { at: 'Park 块', is: 'i_d/i_q——交流相电流转成直流。', anchor: '.fc-badge' }, { at: '转矩条', is: 'τ=1.5·p·λ_m·i_q，随 i_q 翻转。', anchor: '.fc-torque' }],
+    step: (s: never) => { const st = s as { stage: string; cmdLabel: string; thetaDeg: number; iqTarget: number; iAlpha: number; iBeta: number; iD: number; iQ: number; eD: number; eQ: number; uD: number; uQ: number; uAc: number; poles: number; lambdaM: number; torque: number }; const z = (x: number) => (Object.is(x, -0) ? 0 : x); return [
+      { k: '本步输入', v: st.stage === 'intro' ? `力矩指令 ${st.cmdLabel}、θ_e=${st.thetaDeg}°` : st.stage === 'clarke' ? '测得三相电流 i_a,i_b,i_c' : st.stage === 'park' ? `αβ 电流 + θ_e=${st.thetaDeg}°` : st.stage === 'pi' ? `i_d=${z(st.iD)}、i_q=${z(st.iQ)}、目标 i_d*=0/i_q*=${st.iqTarget}` : '两轴电压 U_d,U_q' },
+      { k: '判定规则', v: `Clarke i_α=i_a、i_β=(1/√3)i_a+(2/√3)i_b；Park i_d=i_α cosθ+i_β sinθ、i_q=i_β cosθ−i_α sinθ；PI e_d=0−i_d、e_q=i_q*−i_q(i_d*=0=MTPA)；逆变换+SVPWM 中点钳位；τ=1.5·p·λ_m·i_q。` },
+      { k: '本步结果', v: st.stage === 'intro' ? '交流电流 PI 追不了，先转进 dq 系' : st.stage === 'clarke' ? `→ i_α=${st.iAlpha}、i_β=${st.iBeta}(3相→2相)` : st.stage === 'park' ? `→ i_d=${z(st.iD)}、i_q=${z(st.iQ)}(交流变直流!)` : st.stage === 'pi' ? `→ U_d=${st.uD}、U_q=${st.uQ}(i_d 压向 0、i_q 追指令)` : st.stage === 'invsvpwm' ? `→ 三相占空比(含 SVPWM 共模)、τ=1.5×${st.poles}×${st.lambdaM}×${z(st.iQ)}=${z(st.torque)} N·m` : 'i_q 是力矩旋钮、i_d 恒 0' },
+    ] },
+    verdict: (s: never) => { const st = s as { stage: string; torque: number }; const z = (x: number) => (Object.is(x, -0) ? 0 : x); return st.stage === 'done' ? 'i_q力矩旋钮' : st.stage === 'invsvpwm' ? `τ=${z(st.torque)}` : st.stage === 'pi' ? 'i_d*=0' : st.stage === 'park' ? '交流→直流' : st.stage === 'clarke' ? '3相→2相' : 'dq变换' },
+    try: [{ act: '切「正转 iq*=+1.0A」', watch: 'i_q→+0.9、τ=+0.094 N·m(正转)；i_d 恒被压到 0。' }, { act: '切「反转 iq*=−1.0A」', watch: 'i_q→−0.9、τ=−0.094 N·m(反转)；i_d 仍是 0——只翻 i_q。' }, { act: '切「零力矩 iq*=0」', watch: 'i_q→0、τ=0；i_d 还是被压向 0。i_q 就是力矩旋钮。' }], terms: [],
+  },
   queryplan: {
     question: '同一个查询有好几条路可走，数据库优化器凭什么选其中一条？',
     read: [{ at: '候选路径', is: '每条访问路径的 type + 估扫描行数代价条。', anchor: '.qp-paths' }, { at: 'EXPLAIN', is: '末步选中路径的 type/key/rows。', anchor: '.qp-explain' }],

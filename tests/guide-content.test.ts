@@ -324,6 +324,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { i: 3, step: 3, stage: 'reward', ...base, showPhase: true, showPolicy: true, showReward: true, showOutcome: false, phase: 'run' as const, focus: '奖励分解' },
       b: { i: 4, step: 4, stage: 'ablate', ...base, showPhase: true, showPolicy: true, showReward: true, showOutcome: true, phase: 'run' as const, focus: '消融结果' },
     } })(),
+    foc: (() => { const base = { cmd: 'fwd', cmdLabel: '正转 iq*=+1.0A', thetaDeg: 30, iqTarget: 1, idTarget: 0, ia: -0.363, ib: 0.899, ic: -0.536, iAlpha: -0.363, iBeta: 0.828, iD: 0.1, iQ: 0.899, eD: -0.1, eQ: 0.101, uD: -1, uQ: 1.01, uAlpha: -1.371, uBeta: 0.375, uA: -1.371, uB: 1.01, uC: 0.361, uAc: -1.19, uBc: 1.191, uCc: 0.542, svOffset: 0.181, torque: 0.094, poles: 7, lambdaM: 0.01, kp: 10, log: '' }; return {
+      doc: { kind: 'foc', params: { cmd: '正转 iq*=+1.0A' }, entities: [], streams: [] },
+      a: { i: 2, step: 2, stage: 'park', ...base, showClarke: true, showPark: true, showPI: false, showInv: false, phase: 'run' as const, focus: 'Park 交流→直流' },
+      b: { i: 4, step: 4, stage: 'invsvpwm', ...base, showClarke: true, showPark: true, showPI: true, showInv: true, phase: 'run' as const, focus: '逆变换+SVPWM' },
+    } })(),
     queryplan: {
       doc: { kind: 'queryplan', params: {}, entities: [], streams: [] },
       a: { step: 1, op: 'path', query: 'q', revealed: 1, cur: 0, chosen: -1, paths: [{ name: '全表扫描', type: 'ALL', key: '—', rows: 10000, note: 'x' }, { name: '走 idx(city)', type: 'ref', key: 'idx_city', rows: 500, note: 'x' }, { name: '走 idx(age)', type: 'range', key: 'idx_age', rows: 6000, note: 'x' }], phase: 'run', focus: '候选路径：全表扫描（type=ALL，估扫 10000 行）' },

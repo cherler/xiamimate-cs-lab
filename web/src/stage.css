@@ -5408,3 +5408,32 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .mk-out.mk-warn{background:color-mix(in srgb,var(--now) 8%,transparent);border:1px solid color-mix(in srgb,var(--now) 35%,var(--line))}
 .mk-out.mk-bad{background:color-mix(in srgb,var(--miss) 8%,transparent);border:1px solid color-mix(in srgb,var(--miss) 35%,var(--line))}
 .mk-outnote{font:var(--t-meta) var(--sans);color:var(--faint);margin-top:4px;line-height:1.5}
+
+/* foc · 磁场定向控制 */
+.scdn.fc-nd{color:var(--hit)}
+.scdn.fc-npos{color:var(--hit)}
+.scdn.fc-nneg{color:var(--miss)}
+.fc-flow{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.fc-blk{border:1px solid var(--line);border-radius:8px;padding:7px 10px;background:var(--panel-2)}
+.fc-blk.fc-off{opacity:.4}
+.fc-bh{font:var(--t-ui) var(--sans);font-weight:600;color:var(--dim);margin-bottom:5px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.fc-bn{font-family:var(--mono);color:var(--now);font-weight:700}
+.fc-badge{font-style:normal;font-size:.82em;font-weight:600;border-radius:4px;padding:0 6px;border:1px solid var(--line);color:var(--faint)}
+.fc-badge.fc-key{color:var(--now);border-color:color-mix(in srgb,var(--now) 45%,var(--line));background:color-mix(in srgb,var(--now) 8%,transparent)}
+.fc-badge.fc-mtpa{color:var(--hit);border-color:color-mix(in srgb,var(--hit) 45%,var(--line))}
+.fc-badge.fc-sv{color:var(--now);border-color:color-mix(in srgb,var(--now) 35%,var(--line))}
+.fc-brow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:var(--t-ui)}
+.fc-bwait{color:var(--ghost);font-size:var(--t-ui)}
+.fc-in,.fc-out{display:flex;gap:10px;flex-wrap:wrap}
+.fc-arr{color:var(--faint);font-weight:700}
+.fc-v{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.fc-v i{font-style:normal;color:var(--faint)}
+.fc-v.fc-hot{color:var(--now);font-weight:700}
+.fc-v.fc-hot i{color:color-mix(in srgb,var(--now) 70%,var(--faint))}
+.fc-inv{display:flex;flex-direction:column;gap:4px;width:100%}
+.fc-invr{display:flex;gap:10px;flex-wrap:wrap;align-items:baseline}
+.fc-sub{font:var(--t-meta) var(--sans);color:var(--faint);min-width:76px}
+.fc-torque{margin-top:10px;border-radius:8px;padding:8px 10px;font-size:var(--t-ui);line-height:1.5}
+.fc-torque.fc-tpos{background:color-mix(in srgb,var(--hit) 8%,transparent);border:1px solid color-mix(in srgb,var(--hit) 35%,var(--line))}
+.fc-torque.fc-tneg{background:color-mix(in srgb,var(--miss) 8%,transparent);border:1px solid color-mix(in srgb,var(--miss) 35%,var(--line))}
+.fc-torque.fc-tzero{background:var(--panel-2);border:1px solid var(--line)}

@@ -312,6 +312,8 @@ import { teleopKernel, type TeleState } from '@engine/kernels/teleop.ts'
 import { TeleopStage } from './stages/TeleopStage.tsx'
 import { miniduckKernel, type DuckState } from '@engine/kernels/miniduck.ts'
 import { MiniDuckStage } from './stages/MiniDuckStage.tsx'
+import { focKernel, type FocState } from '@engine/kernels/foc.ts'
+import { FocStage } from './stages/FocStage.tsx'
 import { lfucacheKernel, type LFUState } from '@engine/kernels/lfucache.ts'
 import { LFUCacheStage } from './stages/LFUCacheStage.tsx'
 import { trieKernel, type TrieState } from '@engine/kernels/trie.ts'
@@ -6743,6 +6745,33 @@ const deltats: Experiment<DTState> = {
     { label: '本步', value: ({ intro: '要时序窗口', sec2idx: '秒→帧偏移', clamp: '定位+边界钳', pad: 'pad 掩码', done: '窗口取出' } as Record<string, string>)[s.stage] ?? '—' },
   ],
 }
+const foc: Experiment<FocState> = {
+  id: 'foc', group: '具身项目实战', title: 'FOC 磁场定向控制', subtitle: '稚晖君 Dummy-Robot 关节驱动的电流环：Clarke→Park→PI(i_d→0,i_q→i_q*)→逆变换+SVPWM，级联 PID 最内环',
+  kernel: focKernel, defaultDoc: { kind: 'foc', params: { cmd: '正转 iq*=+1.0A' }, entities: [], streams: [] },
+  params: [{ key: 'cmd', label: '力矩指令', kind: 'enum', options: ['正转 iq*=+1.0A', '反转 iq*=−1.0A', '零力矩 iq*=0'] }],
+  paramsNote: '稚晖君 Dummy-Robot 关节靠 **Ctrl-Step**(闭环步进,FOC 收成"电流矢量恒超前转子 90°")驱动、配套 **Ctrl-FOC-Lite**(3 相无刷,基于 SimpleFOC 标准 Clarke/Park/SVPWM)。这里拆**标准三相 FOC 电流环**(嵌入式电机控制头号八股):三相电流是随转子转的交流量、PI 控不了→FOC 转进"跟转子转"的 dq 系、交流变直流→两个 PI 各管一路。一个控制周期(20kHz):①Clarke abc→αβ ②Park αβ→dq(**交流变直流**) ③两个 PI(e_d=0−i_d、e_q=i_q*−i_q;**i_d*=0** 是最大转矩每安培 MTPA) ④逆 Park+逆 Clarke+**SVPWM**(注共模零序、比正弦 PWM 多约 15% 母线利用率) ⑤转矩 τ=1.5·p·λ_m·i_q。切「力矩指令」看 i_q 翻转(力矩旋钮)、i_d 恒被压到 0。为何比开环微步好:闭环量转子角、恒 90°矢量→不丢步、每安培都出力。全链现算。连「PID(最内环)/FK·IK(它驱动的关节)」。详见讲解卡。',
+  bounds: [
+    'FOC=把三相交流相电流经 Clarke(3→2)+Park(转进转子 dq 系)变成直流→简单 PI 就能零稳态误差(PI 追不了正弦)',
+    'i_d*=0 是最大转矩每安培(MTPA):表贴永磁/步进只有 i_q 产生转矩、i_d 只发热;高速弱磁才让 i_d<0。d/q 两个独立 PI 解耦',
+    '逆 Park+逆 Clarke+SVPWM(中点钳位注共模零序):比正弦 PWM 多约 15% 母线电压利用率;转矩 τ=1.5·p·λ_m·i_q,i_q 是力矩旋钮',
+    'FOC 是级联 PID 最内环(位置→速度→电流、内环 20kHz 最快);比开环微步好在闭环量转子角、恒 90°矢量不丢步。真实项目:稚晖君 Dummy-Robot(Ctrl-Step/Ctrl-FOC-Lite)、SimpleFOC',
+  ],
+  tabs: [{ id: 'fc', label: '控制周期逐步跑' }], Stage: FocStage, whyInRail: true,
+  tone: s => (s.stage === 'done' ? { key: 'good', label: 'i_q 力矩旋钮' }
+    : s.stage === 'invsvpwm' ? (s.torque > 0 ? { key: 'good', label: `τ=${s.torque}` } : s.torque < 0 ? { key: 'bad', label: `τ=${s.torque}` } : { key: 'idle', label: 'τ=0' })
+    : s.stage === 'pi' ? { key: 'idle', label: 'i_d*=0' }
+    : s.stage === 'park' ? { key: 'idle', label: '交流→直流' }
+    : s.stage === 'clarke' ? { key: 'idle', label: '3相→2相' }
+    : { key: 'idle', label: 'dq 变换' }),
+  metric: s => (s.stage === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => ({ intro: '交', clarke: '克', park: '帕', pi: 'PI', invsvpwm: '逆', done: '矩' }[s.stage] ?? '·'),
+  readouts: s => [
+    { label: '力矩指令 i_q*', value: `${s.iqTarget} A` },
+    { label: 'i_d / i_q (Park)', value: s.showPark ? `${Object.is(s.iD, -0) ? 0 : s.iD} / ${Object.is(s.iQ, -0) ? 0 : s.iQ}` : '—' },
+    { label: '转矩 τ', value: s.showInv ? `${Object.is(s.torque, -0) ? 0 : s.torque} N·m` : '—', tone: s.showInv && s.torque < 0 ? 'bad' : undefined },
+    { label: '本步', value: ({ intro: '交流难控', clarke: 'Clarke 3→2', park: 'Park 交流→直流', pi: '两个 PI(i_d*=0)', invsvpwm: '逆变换+SVPWM', done: 'i_q=力矩旋钮' } as Record<string, string>)[s.stage] ?? '—' },
+  ],
+}
 const miniduck: Experiment<DuckState> = {
   id: 'miniduck', group: '具身项目实战', title: 'Open Duck Mini · 学会走路', subtitle: 'BD-X 迷你复刻的腿式 RL：相位参考步态 + 「模仿奖励」(≠模仿学习)；LeRobot 线收官',
   kernel: miniduckKernel, defaultDoc: { kind: 'miniduck', params: { mode: '带模仿奖励' }, entities: [], streams: [] },
@@ -6878,7 +6907,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, ik, jacobian, quat, trajectory, kalman, icp, slam, impedance, mpc, pid, rrt, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck,
+  fk, ik, jacobian, quat, trajectory, kalman, icp, slam, impedance, mpc, pid, rrt, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
 ] as unknown as AnyExperiment[]
 
 /**
