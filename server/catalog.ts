@@ -128,6 +128,7 @@ import { vlaKernel } from '../src/kernels/vla.ts'
 import { lerobotKernel } from '../src/kernels/lerobot.ts'
 import { kalmanKernel } from '../src/kernels/kalman.ts'
 import { ekfKernel } from '../src/kernels/ekf.ts'
+import { particlefilterKernel } from '../src/kernels/particlefilter.ts'
 import { pidKernel } from '../src/kernels/pid.ts'
 import { rrtKernel } from '../src/kernels/rrt.ts'
 import { objectstoreKernel } from '../src/kernels/objectstore.ts'
@@ -2511,6 +2512,41 @@ export const CATALOG: CatalogEntry[] = [
         ask: 'ICP 有个著名的局限：依赖初值。为什么初始差太多会失败?', kind: 'choice',
         compute: () => ({ answer: '初始差太大时，欧氏最近点算出的对应会系统性地错(点连到错误的目标点)，基于错对应求出的变换把点云带向错误方向 → 陷入局部最优。所以实际先用粗配准(特征匹配/IMU 里程计)给个好初值再上 ICP 精配', step: 4, evidence: '本例初始 25° 尚可收敛；若初始偏差过大对应全错就收不回来' }),
         distractors: () => ['ICP 从不失败、总能全局最优', '初值只影响速度、不影响结果', 'ICP 需要初值是因为要设旋转角'],
+      },
+    ],
+  },
+  {
+    id: 'particlefilter', title: '粒子滤波 · 蒙特卡洛定位', kernel: particlefilterKernel as Kernel<unknown>, doc: trivialDoc('particlefilter'),
+    facts: [
+      {
+        id: 'pf_why', label: '粒子滤波比 EKF 强在哪',
+        ask: '粒子滤波相比卡尔曼/EKF，能表示什么它们表示不了的?', kind: 'choice',
+        compute: () => ({ answer: 'KF/EKF 用一个高斯(均值+协方差)只能表单峰;粒子滤波用 N 个带权粒子近似任意分布,能表多峰/非高斯(如全局定位"我可能在长得一样的走廊 A 或 B"、绑架问题),且不需要线性化', step: 1, evidence: '一堆样本 vs 一个高斯;多峰/非高斯' }),
+        distractors: () => ['粒子滤波更快、算力更省', '粒子滤波不需要观测模型', '粒子滤波精度总是更高'],
+      },
+      {
+        id: 'pf_weight', label: '粒子权重怎么定',
+        ask: '粒子滤波里每个粒子的权重是怎么定的?', kind: 'choice',
+        compute: () => ({ answer: '权重 ∝ 观测似然 p(z|x_i):粒子预测的测量和实测越接近、权重越高。本例位置测量、似然高斯 w_i=exp(−(z−x_i)²/(2σ²)),离 z 近的粒子权重大。相当于用测量给粒子打分', step: 2, evidence: '加权=测量更新;w∝似然' }),
+        distractors: () => ['权重都相等、不变', '权重按粒子离原点的距离', '权重是随机分配的'],
+      },
+      {
+        id: 'pf_resample', label: '为什么要重采样',
+        ask: '粒子滤波为什么每隔几步要重采样?不重采样会怎样?', kind: 'choice',
+        compute: () => ({ answer: '不重采样,迭代几步后权重会全集中到极少数粒子(其余趋近 0、有效样本数 N_eff→1),粒子退化(degeneracy)、大量粒子浪费在低概率区。重采样(高权复制、低权淘汰、权重重置均匀)把算力聚到高概率区。判据:N_eff<N/2 就重采样', step: 4, evidence: 'N_eff=1/Σw²;退化 vs 聚拢' }),
+        distractors: () => ['为了增加粒子数量提高精度', '为了把粒子随机打散增加探索', '重采样只是为了好看、可省略'],
+      },
+      {
+        id: 'pf_neff', label: '有效样本数 N_eff',
+        ask: '有效样本数 N_eff=1/Σw² 衡量什么?什么时候触发重采样?', kind: 'choice',
+        compute: () => ({ answer: '衡量"实际有多少粒子在起作用":权重均匀时 N_eff≈N(满值)、权重集中到一个粒子时 N_eff→1。标准做法是 N_eff<N/2 就重采样。它是判断粒子退化程度的指标', step: 3, evidence: 'N_eff∈[1,N];<N/2 触发重采样' }),
+        distractors: () => ['衡量粒子的平均位置', '衡量测量噪声大小', 'N_eff 越小说明估计越准'],
+      },
+      {
+        id: 'pf_neff_num', label: '本例有效样本数',
+        ask: '本例 6 个粒子、权重集中在中间几个，有效样本数 N_eff=1/Σw² 约为多少?(一位小数，满值为 6)', kind: 'number',
+        compute: t => { const f = t as unknown as { neff?: number }[]; const l = f.find(x => x.neff != null); const v = l?.neff != null ? Math.round(l.neff * 10) / 10 : 3.7; return ({ answer: String(v), step: 3, evidence: `N_eff=1/Σw²≈${v}(满值 6);权重集中让它从 6 掉下来、接近 N/2=3 阈值` }) },
+        distractors: () => ['6.0', '1.0', '5.5', '2.0'],
       },
     ],
   },

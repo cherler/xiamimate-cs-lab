@@ -921,6 +921,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { stage: string; H: number; xPost: number }; return st.stage === 'done' ? '雅可比+卡尔曼' : st.stage === 'update' ? `x̂=${st.xPost}` : st.stage === 'jacobian' ? `H=${st.H}` : st.stage === 'measmodel' ? '非线性观测' : st.stage === 'predict' ? '预测' : '非线性' },
     try: [{ act: '切「测量准(R=0.25)」', watch: '信测量 → K=−1.286 大、状态拉到 3.81、P 从 5 收到 0.45。' }, { act: '切「测量糙(R=9)」', watch: '信预测 → K=−0.307 小、状态几乎不动(4.71)、P 只收到 3.91。' }, { act: '看雅可比 H', watch: 'H=−0.707 把非线性距离测量翻译成局部线性斜率，卡尔曼公式才能用。' }], terms: [],
   },
+  particlefilter: {
+    question: 'EKF 用一个高斯表信念、强非线性/多峰就崩。粒子滤波怎么用一堆样本表示任意分布？',
+    read: [{ at: '粒子云图', is: '数轴上粒子(半径∝权重)、重采样后聚拢。', anchor: '.pf-svg' }, { at: '加权块', is: 'w∝观测似然。', anchor: '.pf-blk' }, { at: '读数', is: 'N_eff、加权均值估计。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { stage: string; modeLabel: string; z: number; sigma: number; particles: { pos: number; wn: number }[]; neff: number; N: number; resampled: number[]; estimate: number; mode: string }; return [
+      { k: '本步输入', v: st.stage === 'intro' ? `${st.N} 个粒子、测量 z=${st.z}` : st.stage === 'predict' ? '每粒子按运动+噪声动' : st.stage === 'weight' ? `测量 z=${st.z}、σ=${st.sigma}` : st.stage === 'neff' ? '归一化权重' : '归一权重的累积分布' },
+      { k: '判定规则', v: `加权 w_i=exp(−(z−x_i)²/(2σ²))；归一 + N_eff=1/Σw²（<N/2 重采样）；系统重采样高权复制/低权淘汰；估计=加权均值。` },
+      { k: '本步结果', v: st.stage === 'intro' ? '一堆带权粒子表任意分布(多峰/非高斯)' : st.stage === 'predict' ? '粒子云散开(不确定度涨)' : st.stage === 'weight' ? `离 z=${st.z} 近的权重高(x=5、6≈0.33)` : st.stage === 'neff' ? `N_eff=${st.neff}(满值${st.N})、加权均值估计=${st.estimate}` : st.mode === 'on' ? `重采样→[${st.resampled.join(',')}]、聚拢、权重重置` : '不重采样→权重退化、N_eff→1' },
+    ] },
+    verdict: (s: never) => { const st = s as { stage: string; neff: number; N: number; mode: string }; return st.stage === 'done' ? '样本表信念' : st.stage === 'resample' ? (st.mode === 'on' ? '重采样聚拢' : '退化') : st.stage === 'neff' ? `N_eff=${st.neff}` : st.stage === 'weight' ? '加权' : st.stage === 'predict' ? '预测散开' : '粒子' },
+    try: [{ act: '切「重采样」', watch: 'N_eff=3.72、加权均值 5.4；系统重采样 → [4,5,5,6,6,8]，x=2/9 死、x=5/6 复制、聚拢。' }, { act: '切「不重采样」', watch: '权重继续退化：迭代几步后全集中到极少数粒子(N_eff→1)、粒子浪费——所以 PF 必须重采样。' }, { act: '想 vs EKF', watch: 'EKF 一个高斯、单峰；粒子滤波一堆样本、能表多峰/非高斯(全局定位)、但慢。' }], terms: [],
+  },
   queryplan: {
     question: '同一个查询有好几条路可走，数据库优化器凭什么选其中一条？',
     read: [{ at: '候选路径', is: '每条访问路径的 type + 估扫描行数代价条。', anchor: '.qp-paths' }, { at: 'EXPLAIN', is: '末步选中路径的 type/key/rows。', anchor: '.qp-explain' }],

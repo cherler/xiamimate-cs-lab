@@ -5559,3 +5559,22 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .ek-n{font-family:var(--mono);color:var(--now);font-weight:700;margin-right:6px}
 .ek-sub{display:block;font:var(--t-meta) var(--sans);color:var(--faint);margin-top:2px;font-style:normal}
 .ek-jt{color:var(--now)}
+
+/* particlefilter · 粒子滤波 */
+.scdn.pf-hot{color:var(--now)}
+.scdn.pf-bad{color:var(--miss)}
+.pf-svg{margin:6px 0 2px;max-width:360px}
+.pf-axis{stroke:var(--line);stroke-width:1.5}
+.pf-tick{fill:var(--faint);font:10px var(--mono);text-anchor:middle}
+.pf-z{stroke:var(--now);stroke-width:1.5;stroke-dasharray:3 2}
+.pf-zt{fill:var(--now);font:10px var(--mono);text-anchor:middle}
+.pf-p{fill:var(--dim)}
+.pf-pw{fill:color-mix(in srgb,var(--now) 55%,transparent);stroke:var(--now);stroke-width:.5}
+.pf-pr{fill:var(--hit)}
+.pf-rowl{fill:var(--faint);font:9px var(--sans)}
+.pf-bad{color:var(--miss);fill:var(--miss)}
+.pf-flow{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+.pf-blk{border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--panel-2);font-size:var(--t-ui);line-height:1.8;font-variant-numeric:tabular-nums}
+.pf-blk.pf-off{opacity:.4}
+.pf-n{font-family:var(--mono);color:var(--now);font-weight:700;margin-right:6px}
+.pf-wchip{display:inline-block;background:var(--sunk-1);border:1px solid var(--line);border-radius:4px;padding:0 5px;margin:0 3px;font-family:var(--mono);font-size:.9em}

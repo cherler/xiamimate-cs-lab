@@ -353,6 +353,7 @@ import { fwddynKernel, type FwdState } from '@engine/kernels/fwddyn.ts'
 import { computedtorqueKernel, type CtcState } from '@engine/kernels/computedtorque.ts'
 import { contactlcpKernel, type LcpState } from '@engine/kernels/contactlcp.ts'
 import { ekfKernel, type EkfState } from '@engine/kernels/ekf.ts'
+import { particlefilterKernel, type PfState } from '@engine/kernels/particlefilter.ts'
 import { ikKernel, type IKState } from '@engine/kernels/ik.ts'
 import { jacobianKernel, type JacoState } from '@engine/kernels/jacobian.ts'
 import { kalmanKernel, type KalmanState } from '@engine/kernels/kalman.ts'
@@ -382,6 +383,7 @@ import { FwdDynStage } from './stages/FwdDynStage.tsx'
 import { ComputedTorqueStage } from './stages/ComputedTorqueStage.tsx'
 import { ContactLcpStage } from './stages/ContactLcpStage.tsx'
 import { EkfStage } from './stages/EkfStage.tsx'
+import { PfStage } from './stages/PfStage.tsx'
 import { IKStage } from './stages/IKStage.tsx'
 import { JacobianStage } from './stages/JacobianStage.tsx'
 import { KalmanStage } from './stages/KalmanStage.tsx'
@@ -6717,6 +6719,33 @@ const ekf: Experiment<EkfState> = {
     { label: '方差 P', value: s.showUpd ? `${s.PPost}（收敛）` : `${s.PPred}`, tone: s.showUpd ? 'good' : undefined },
   ],
 }
+const particlefilter: Experiment<PfState> = {
+  id: 'particlefilter', group: '机器人感知', title: '粒子滤波 · 蒙特卡洛定位', subtitle: '用一堆带权粒子表示信念：加权→N_eff→重采样，能表多峰/非高斯',
+  kernel: particlefilterKernel, defaultDoc: { kind: 'particlefilter', params: { resample: '重采样' }, entities: [], streams: [] },
+  params: [{ key: 'resample', label: '重采样', kind: 'enum', options: ['重采样', '不重采样'] }],
+  paramsNote: 'EKF 用一个高斯表信念、强非线性/多峰会崩;**粒子滤波**用 **N 个带权粒子** {(x_i,w_i)} 近似**任意分布**(多峰/非高斯都能表,如全局定位)。每步:①预测(每粒子按运动+噪声动)②**加权** w_i∝观测似然 exp(−(z−x_i)²/(2σ²))(离测量越近权重越高)③归一 + **有效样本数 N_eff=1/Σw²**(权重集中→N_eff 掉、<N/2 该重采样)④**系统重采样**(高权复制、低权淘汰、权重重置均匀、治退化)。估计=加权均值。切「重采样」看开(粒子聚拢可持续)vs 关(权重退化 N_eff→1)。本例 6 粒子、z=5.5→估计 5.4。全现算。连「卡尔曼滤波/EKF(它失效时用粒子)」。详见讲解卡。',
+  bounds: [
+    '粒子滤波=用 N 个带权粒子近似任意分布(多峰/非高斯);预测(粒子各自动+噪声)+加权(w∝观测似然)+重采样',
+    '有效样本数 N_eff=1/Σw²:权重越集中越小,<N/2 就重采样;系统(低方差)重采样高权复制低权淘汰、权重重置均匀',
+    '不重采样→粒子退化(权重全集中到极少数、N_eff→1、浪费采样);粒子贫化靠加噪缓解',
+    '连:是卡尔曼/EKF 的采样式替代、EKF 强非线性失效时的答案(蒙特卡洛定位 MCL);KF/EKF 快但单峰、PF 表多峰但慢。参考:Thrun《Probabilistic Robotics》',
+  ],
+  tabs: [{ id: 'pf', label: '粒子滤波逐步跑' }], Stage: PfStage, whyInRail: true,
+  tone: s => (s.stage === 'done' ? { key: 'good', label: '样本表信念' }
+    : s.stage === 'resample' ? (s.mode === 'on' ? { key: 'good', label: '重采样聚拢' } : { key: 'bad', label: '退化' })
+    : s.stage === 'neff' ? { key: (s.neff < s.N / 2 ? 'bad' : 'idle'), label: `N_eff=${s.neff}` }
+    : s.stage === 'weight' ? { key: 'idle', label: '加权' }
+    : s.stage === 'predict' ? { key: 'idle', label: '预测散开' }
+    : { key: 'idle', label: '粒子' }),
+  metric: s => (s.stage === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => ({ intro: '粒', predict: '散', weight: '权', neff: 'N', resample: '采', done: '成' }[s.stage] ?? '·'),
+  readouts: s => [
+    { label: '重采样', value: s.modeLabel },
+    { label: '有效样本数 N_eff', value: s.showNeff ? `${s.neff} / ${s.N}` : '—', tone: s.showNeff && s.neff < s.N / 2 ? 'bad' : undefined },
+    { label: '估计(加权均值)', value: s.showNeff ? `${s.estimate}` : '—', tone: s.showNeff ? 'good' : undefined },
+    { label: '本步', value: ({ intro: '样本表信念', predict: '预测散开', weight: '加权(似然)', neff: 'N_eff 判据', resample: '重采样', done: '样本表信念' } as Record<string, string>)[s.stage] ?? '—' },
+  ],
+}
 const kalman: Experiment<KalmanState> = {
   id: 'kalman', group: '机器人感知', title: '卡尔曼滤波', subtitle: '预测+观测按方差融合：机器人定位的地基',
   kernel: kalmanKernel, defaultDoc: { kind: 'kalman', params: {}, entities: [], streams: [] }, params: [],
@@ -7080,7 +7109,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, icp, slam, impedance, mpc, pid, rrt, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
+  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, icp, slam, impedance, mpc, pid, rrt, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
 ] as unknown as AnyExperiment[]
 
 /**
