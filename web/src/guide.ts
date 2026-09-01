@@ -976,6 +976,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { stage: string; stuck: boolean; fMag: number }; return st.stage === 'done' ? '引力+斥力' : st.stage === 'outcome' ? (st.stuck ? '卡局部极小' : '绕过到达') : st.stage === 'total' ? `|F|=${st.fMag}` : st.stage === 'repulsive' ? '斥力' : st.stage === 'attractive' ? '引力' : '势场' },
     try: [{ act: '切「障碍正中」', watch: '引力(+x 5.43)和斥力(−x 5.37)几乎抵消、合力仅 0.06≈0，机器人卡在离目标 5.43 的假谷——局部极小。' }, { act: '切「障碍偏侧」', watch: '斥力有横向分量(y −0.19)，合力 [5.74,−0.19] 把机器人往障碍旁带、绕过到达。' }, { act: '想怎么救', watch: '局部极小靠随机扰动/导航函数/配全局规划(RRT 出全局路、势场只做局部避障)解决。' }], terms: [],
   },
+  trapezoid: {
+    question: '规划出"走哪条路"之后，电机怎么知道每一刻该走多快？梯形速度曲线怎么算总时间？',
+    read: [{ at: 'v(t) 图', is: '速度-时间曲线：梯形或三角。', anchor: '.tz-svg' }, { at: '判形块', is: 'D vs 2·d_a → 梯形/三角。', anchor: '.tz-t' }, { at: '读数', is: '加速段、形态、总时间。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { stage: string; distLabel: string; D: number; vMax: number; aMax: number; tA: number; dA: number; isTrap: boolean; vPeak: number; dCruise: number; tCruise: number; tTotal: number }; return [
+      { k: '本步输入', v: st.stage === 'intro' ? `${st.distLabel}、v_max=${st.vMax}、a_max=${st.aMax}` : st.stage === 'accel' ? '约束 v_max、a_max' : st.stage === 'regime' ? `D=${st.D} 与 2·d_a=${Math.round(2 * st.dA * 100) / 100}` : st.stage === 'profile' ? '各段距离' : '各段时间' },
+      { k: '判定规则', v: `t_a=v_max/a_max、d_a=v_max²/(2a_max)；D≥2 d_a→梯形(T=2 t_a+t_c)、否则三角(v_peak=√(a_max·D)、T=2√(D/a_max))。` },
+      { k: '本步结果', v: st.stage === 'intro' ? '路径→轨迹：算每刻速度' : st.stage === 'accel' ? `t_a=${st.tA}s、d_a=${st.dA}m（减速对称）` : st.stage === 'regime' ? `D=${st.D}${st.isTrap ? '≥' : '<'}${Math.round(2 * st.dA * 100) / 100} → ${st.isTrap ? '梯形（达 v_max）' : `三角（v_peak=${st.vPeak}<${st.vMax}）`}` : st.stage === 'profile' ? (st.isTrap ? `匀速段 d_c=${st.dCruise}m、t_c=${st.tCruise}s` : `加速+减速各 ${Math.round(st.D / 2 * 100) / 100}m、无匀速`) : `T=${st.tTotal}s（时间最优）` },
+    ] },
+    verdict: (s: never) => { const st = s as { stage: string; tTotal: number; isTrap: boolean }; return st.stage === 'done' ? '时间最优' : st.stage === 'time' ? `T=${st.tTotal}s` : st.stage === 'profile' ? (st.isTrap ? '梯形三段' : '三角两段') : st.stage === 'regime' ? (st.isTrap ? '梯形' : '三角') : st.stage === 'accel' ? '加速段' : '速度曲线' },
+    try: [{ act: '切「长距离 D=10」', watch: 'D=10≥2·d_a=4 → 梯形：加速2m+匀速6m+减速2m，T=2·2+3=7s，达到 v_max=2。' }, { act: '切「短距离 D=3」', watch: 'D=3<4 → 三角：还没加到 v_max 就得减速，v_peak=√3≈1.73，T=2√3≈3.46s。' }, { act: '想 S 曲线', watch: '梯形的加速度是阶跃、会激振；S 曲线再限 jerk、更柔更抗振但稍慢。' }], terms: [],
+  },
   queryplan: {
     question: '同一个查询有好几条路可走，数据库优化器凭什么选其中一条？',
     read: [{ at: '候选路径', is: '每条访问路径的 type + 估扫描行数代价条。', anchor: '.qp-paths' }, { at: 'EXPLAIN', is: '末步选中路径的 type/key/rows。', anchor: '.qp-explain' }],

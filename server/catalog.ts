@@ -135,6 +135,7 @@ import { pidKernel } from '../src/kernels/pid.ts'
 import { rrtKernel } from '../src/kernels/rrt.ts'
 import { rrtstarKernel } from '../src/kernels/rrtstar.ts'
 import { potentialfieldKernel } from '../src/kernels/potentialfield.ts'
+import { trapezoidKernel } from '../src/kernels/trapezoid.ts'
 import { objectstoreKernel } from '../src/kernels/objectstore.ts'
 import { queryplanKernel } from '../src/kernels/queryplan.ts'
 import { wildcardKernel } from '../src/kernels/wildcard.ts'
@@ -2792,6 +2793,41 @@ export const CATALOG: CatalogEntry[] = [
         ask: 'PID 控制的 P、I、D 三项分别按什么量、起什么作用?', kind: 'choice',
         compute: () => ({ answer: 'P=Kp·e 按当前误差使劲(越远越使劲)；D=Kd·误差变化率提供阻尼(快到时反向刹车、防冲过头);I=Ki·误差累计消除稳态误差(顶掉重力等恒定扰动)。P管现在、I管过去累计、D管趋势', step: 14, evidence: '本例加 D=Kd·误差变化率(负=刹车)后，位置平稳收敛到目标不震荡' }),
         distractors: () => ['三项都按当前误差，只是系数不同', 'D 让响应更快、P 提供阻尼', 'I 提供阻尼、D 消除稳态误差'],
+      },
+    ],
+  },
+  {
+    id: 'trapezoid', title: '梯形速度曲线', kernel: trapezoidKernel as Kernel<unknown>, doc: trivialDoc('trapezoid'),
+    facts: [
+      {
+        id: 'trap_what', label: '梯形速度曲线为何时间最优',
+        ask: '梯形速度曲线(加速-匀速-减速)为什么在 v_max/a_max 约束下时间最优?', kind: 'choice',
+        compute: () => ({ answer: 'bang-bang:全程要么全力加速(+a_max)、要么全力减速(−a_max)、加速度始终取极值,中间尽量以 v_max 匀速。在速度/加速度上限下,任何别的走法都更慢或违反约束,所以它最快', step: 5, evidence: '加速度取极值=bang-bang=时间最优' }),
+        distractors: () => ['因为它最平滑', '因为加速度恒为 0', '因为它是三次多项式'],
+      },
+      {
+        id: 'trap_regime', label: '何时退化成三角',
+        ask: '梯形速度曲线什么时候退化成三角形?', kind: 'choice',
+        compute: t => { const f = t as unknown as { dA?: number }[]; const dA = f.find(x => x.dA != null)?.dA ?? 2; return ({ answer: `距离太短:D < 2·d_a(加速+减速的距离和,本例 2·${dA}=${2 * dA})。还没加到 v_max 就得开始减速、根本达不到 v_max,曲线退化成三角,峰值 v_peak=√(a_max·D)`, step: 2, evidence: `D<2 d_a→三角;v_peak=√(a_max·D)<v_max` }) },
+        distractors: () => ['加速度太大时', '速度上限太高时永远是三角', '距离很长时'],
+      },
+      {
+        id: 'trap_time', label: '总时间怎么算',
+        ask: '梯形/三角速度曲线的总时间怎么算?', kind: 'choice',
+        compute: () => ({ answer: '梯形:T=2·t_a+t_c,t_a=v_max/a_max、匀速段 t_c=(D−2 d_a)/v_max;三角:T=2·√(D/a_max)(没有匀速段)。都是约束下走完 D 的最短时间', step: 4, evidence: '梯形 2 t_a+t_c、三角 2√(D/a_max)' }),
+        distractors: () => ['T=D/v_max、匀速走全程', 'T=√(2D/a_max)、全程加速', 'T 和加速度无关'],
+      },
+      {
+        id: 'trap_scurve', label: 'S 曲线比梯形好在哪',
+        ask: 'S 曲线相比梯形速度曲线好在哪?代价是什么?', kind: 'choice',
+        compute: () => ({ answer: '梯形曲线的加速度是阶跃(瞬间从0跳到a_max)、会激起振动冲击;S 曲线再限制 jerk(加速度的变化率),让加速度也平滑升降→运动更柔、对机械和负载更友好。代价是稍慢、更复杂(七段式)', step: 6, evidence: 'S 曲线限 jerk、抗振;梯形加速度阶跃' }),
+        distractors: () => ['S 曲线更快、无任何代价', 'S 曲线不需要 v_max/a_max', 'S 曲线是直线、最简单'],
+      },
+      {
+        id: 'trap_num', label: '长距离总时间',
+        ask: '走 D=10m、v_max=2m/s、a_max=1m/s²，梯形速度曲线的总时间 T 是多少?(秒)', kind: 'number',
+        compute: t => { const f = t as unknown as { tTotal?: number; isTrap?: boolean }[]; const l = f.find(x => x.isTrap) ?? f[f.length - 1] as unknown as { tTotal?: number }; const v = l?.tTotal != null ? Math.round(l.tTotal) : 7; return ({ answer: String(v), step: 4, evidence: `t_a=2s、d_a=2m、匀速 d_c=10−4=6m、t_c=3s → T=2·2+3=${v}s` }) },
+        distractors: numDistractors,
       },
     ],
   },

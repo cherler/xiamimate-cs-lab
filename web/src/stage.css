@@ -5683,3 +5683,22 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .po-out{border-radius:8px;padding:8px 10px;font-size:var(--t-ui);line-height:1.6}
 .po-out.po-ostuck{background:color-mix(in srgb,var(--miss) 8%,transparent);border:1px solid color-mix(in srgb,var(--miss) 35%,var(--line))}
 .po-out.po-oreach{background:color-mix(in srgb,var(--hit) 8%,transparent);border:1px solid color-mix(in srgb,var(--hit) 35%,var(--line))}
+
+/* trapezoid · 梯形速度曲线 */
+.scdn.tz-hot{color:var(--now)}
+.tz-svg{margin:6px 0;max-width:360px;background:var(--sunk-1);border:1px solid var(--line);border-radius:8px;color:color-mix(in srgb,var(--now) 18%,transparent)}
+.tz-axis{stroke:var(--line);stroke-width:1.2}
+.tz-axl{fill:var(--faint);font:10px var(--mono)}
+.tz-vmax{stroke:color-mix(in srgb,var(--miss) 40%,transparent);stroke-width:1;stroke-dasharray:3 2}
+.tz-vmaxl{fill:var(--miss);font:9px var(--mono)}
+.tz-profile{stroke:var(--now);stroke-width:2}
+.tz-profile.tz-fill{opacity:1}
+.tz-tick{fill:var(--faint);font:9px var(--mono);text-anchor:middle}
+.tz-peak{fill:var(--now)}
+.tz-flow{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+.tz-blk{border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--panel-2);font-size:var(--t-ui);line-height:1.7;font-variant-numeric:tabular-nums}
+.tz-blk.tz-off{opacity:.4}
+.tz-n{font-family:var(--mono);color:var(--now);font-weight:700;margin-right:6px}
+.tz-t{color:var(--now)}
+.tz-r{color:var(--miss)}
+.tz-hot2{color:var(--now)}

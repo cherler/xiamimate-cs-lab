@@ -363,6 +363,7 @@ import { pidKernel, type PIDState } from '@engine/kernels/pid.ts'
 import { rrtKernel, type RRTState } from '@engine/kernels/rrt.ts'
 import { rrtstarKernel, type RRTSState } from '@engine/kernels/rrtstar.ts'
 import { potentialfieldKernel, type PotState } from '@engine/kernels/potentialfield.ts'
+import { trapezoidKernel, type TrapState } from '@engine/kernels/trapezoid.ts'
 import { quatKernel, type QuatState } from '@engine/kernels/quat.ts'
 import { trajectoryKernel, type TrajState } from '@engine/kernels/trajectory.ts'
 import { icpKernel, type ICPState } from '@engine/kernels/icp.ts'
@@ -397,6 +398,7 @@ import { PIDStage } from './stages/PIDStage.tsx'
 import { RRTStage } from './stages/RRTStage.tsx'
 import { RrtStarStage } from './stages/RrtStarStage.tsx'
 import { PotentialFieldStage } from './stages/PotentialFieldStage.tsx'
+import { TrapezoidStage } from './stages/TrapezoidStage.tsx'
 import { QuatStage } from './stages/QuatStage.tsx'
 import { TrajStage } from './stages/TrajStage.tsx'
 import { ICPStage } from './stages/ICPStage.tsx'
@@ -6933,6 +6935,33 @@ const potentialfield: Experiment<PotState> = {
     { label: '结局', value: s.showOut ? (s.stuck ? `卡局部极小(离目标 ${s.distToGoal})` : '绕过到达') : '—', tone: s.showOut ? (s.stuck ? 'bad' : 'good') : undefined },
   ],
 }
+const trapezoid: Experiment<TrapState> = {
+  id: 'trapezoid', group: '运动规划', title: '梯形速度曲线', subtitle: '时间最优轨迹：加速-匀速-减速，v_max/a_max 约束下最快走完；短则退化三角',
+  kernel: trapezoidKernel, defaultDoc: { kind: 'trapezoid', params: { distance: '长距离' }, entities: [], streams: [] },
+  params: [{ key: 'distance', label: '移动距离', kind: 'enum', options: ['长距离', '短距离'] }],
+  paramsNote: '「RRT/A\*」出的是**几何路径**(走哪),电机执行要**每时刻的速度**=轨迹规划。经典**梯形速度曲线**:全程用 a_max **加速**到 v_max→**匀速**→再 a_max **减速**到 0,在 v_max/a_max 约束下**时间最优**(bang-bang)。加速段 t_a=v_max/a_max、d_a=v_max²/(2a_max)。**判形**:D≥2 d_a→**梯形**(匀速段 d_c=D−2 d_a、总时 T=2 t_a+t_c);D<2 d_a→**三角**(达不到 v_max、峰值 v_peak=√(a_max·D)、T=2√(D/a_max))。本例 v_max=2、a_max=1:长距离 D=10→梯形 T=7s、短距离 D=3→三角 T=3.46s。切「距离」看两形态。全现算。S 曲线(限 jerk 更平滑)在小结。连「轨迹规划(三次多项式)/RRT」。详见讲解卡。',
+  bounds: [
+    '梯形速度曲线:加速(t_a=v_max/a_max、d_a=v_max²/(2a_max))-匀速-减速;bang-bang(取极值加速度)故时间最优',
+    '判形:D≥2 d_a→梯形(达 v_max、有匀速段);D<2 d_a→三角(达不到、v_peak=√(a_max·D)、无匀速)',
+    '总时间:梯形 T=2 t_a+t_c(t_c=(D−2 d_a)/v_max)、三角 T=2√(D/a_max);是约束下走完 D 的最短时间',
+    'S 曲线:再限 jerk(加速度变化率)、更柔更抗振、稍慢。连轨迹规划(三次多项式是另一插值)、RRT/A*(几何路径每段配速度曲线才能执行)',
+  ],
+  tabs: [{ id: 'tz', label: '速度曲线逐步跑' }], Stage: TrapezoidStage, whyInRail: true,
+  tone: s => (s.stage === 'done' ? { key: 'good', label: '时间最优' }
+    : s.stage === 'time' ? { key: 'good', label: `T=${s.tTotal}s` }
+    : s.stage === 'profile' ? { key: 'idle', label: s.isTrap ? '梯形三段' : '三角两段' }
+    : s.stage === 'regime' ? { key: 'idle', label: s.isTrap ? '梯形' : '三角' }
+    : s.stage === 'accel' ? { key: 'idle', label: '加速段' }
+    : { key: 'idle', label: '速度曲线' }),
+  metric: s => (s.stage === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => ({ intro: '轨', accel: '加', regime: '形', profile: '段', time: 'T', done: '成' }[s.stage] ?? '·'),
+  readouts: s => [
+    { label: '距离 / v_max / a_max', value: `${s.D} / ${s.vMax} / ${s.aMax}` },
+    { label: '加速段 t_a / d_a', value: s.showAccel ? `${s.tA}s / ${s.dA}m` : '—' },
+    { label: '形态', value: s.showRegime ? (s.isTrap ? '梯形（达 v_max）' : `三角（v_peak=${s.vPeak}）`) : '—' },
+    { label: '总时间 T', value: s.showTime ? `${s.tTotal}s` : '—', tone: s.showTime ? 'good' : undefined },
+  ],
+}
 const rrt: Experiment<RRTState> = {
   id: 'rrt', group: '运动规划', title: 'RRT 运动规划', subtitle: '采样式避障：随机长树绕障碍到终点',
   kernel: rrtKernel, defaultDoc: { kind: 'rrt', params: {}, entities: [], streams: [] }, params: [],
@@ -7225,7 +7254,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, icp, slam, impedance, mpc, pid, rrt, rrtstar, potentialfield, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
+  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, icp, slam, impedance, mpc, pid, rrt, rrtstar, potentialfield, trapezoid, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
 ] as unknown as AnyExperiment[]
 
 /**

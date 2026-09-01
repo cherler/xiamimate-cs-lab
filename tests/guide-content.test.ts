@@ -384,6 +384,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { i: 3, step: 3, stage: 'total', ...base, showAtt: true, showRep: true, showTotal: true, showOut: false, phase: 'run' as const, focus: '合力' },
       b: { i: 4, step: 4, stage: 'outcome', ...base, showAtt: true, showRep: true, showTotal: true, showOut: true, phase: 'run' as const, focus: '结局' },
     } })(),
+    trapezoid: (() => { const base = { dist: 'long', distLabel: '长距离 D=10（梯形）', D: 10, vMax: 2, aMax: 1, tA: 2, dA: 2, isTrap: true, vPeak: 2, dCruise: 6, tCruise: 3, tTotal: 7, log: '' }; return {
+      doc: { kind: 'trapezoid', params: { distance: '长距离' }, entities: [], streams: [] },
+      a: { i: 2, step: 2, stage: 'regime', ...base, showAccel: true, showRegime: true, showProfile: false, showTime: false, phase: 'run' as const, focus: '判形' },
+      b: { i: 4, step: 4, stage: 'time', ...base, showAccel: true, showRegime: true, showProfile: true, showTime: true, phase: 'run' as const, focus: '总时间' },
+    } })(),
     queryplan: {
       doc: { kind: 'queryplan', params: {}, entities: [], streams: [] },
       a: { step: 1, op: 'path', query: 'q', revealed: 1, cur: 0, chosen: -1, paths: [{ name: '全表扫描', type: 'ALL', key: '—', rows: 10000, note: 'x' }, { name: '走 idx(city)', type: 'ref', key: 'idx_city', rows: 500, note: 'x' }, { name: '走 idx(age)', type: 'range', key: 'idx_age', rows: 6000, note: 'x' }], phase: 'run', focus: '候选路径：全表扫描（type=ALL，估扫 10000 行）' },
