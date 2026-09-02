@@ -1108,6 +1108,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { stage: string; disp: number; Zrec: number; dZ: number }; return st.stage === 'done' ? '视差→深度' : st.stage === 'precision' ? `ΔZ=±${st.dZ}m` : st.stage === 'depth' ? `Z=${st.Zrec}m` : st.stage === 'disparity' ? `视差${st.disp}px` : st.stage === 'project' ? '左右投影' : '双目' },
     try: [{ act: '切「近处 Z=2m」', watch: '视差大(25px)、深度 Z=fb/d=2m、1px 误差只 ΔZ=0.08m——近处又准视差又大。' }, { act: '切「远处 Z=5m」', watch: '视差小(10px)、Z=5m、但 1px 误差 ΔZ=0.5m——远处极不准(ΔZ∝Z²)。' }, { act: '想找对应', watch: '平行相机下左右对应点在同一行(极线水平)、沿行块匹配即可。' }], terms: [],
   },
+  handeye: {
+    question: '相机装在机械臂夹爪上，怎么标出"相机相对夹爪的固定变换 X"？为什么 A 的旋转角必须等于 B 的？',
+    read: [{ at: '示意图', is: '夹爪—X→相机，方程 A·X=X·B。', anchor: '.he-svg' }, { at: '流程块', is: '①运动对 ②角度自检 ③解 R_X ④解 t_X。', anchor: '.he-blk' }, { at: '还原对比', is: '还原 R_X/t_X vs 真值。', anchor: '.he-cmp' }],
+    step: (s: never) => { const st = s as { stage: string; scenLabel: string; motions: { angA: number; angB: number; axA: number[]; axB: number[]; tB: number[] }[]; angleMatch: boolean; RXrec: number[][]; tXrec: number[]; rotOK: boolean; transOK: boolean }; return [
+      { k: '本步输入', v: st.stage === 'intro' ? `${st.scenLabel}、eye-in-hand` : st.stage === 'motions' ? '机器人动两次' : st.stage === 'angle' ? `θ_A=${st.motions[0].angA}/${st.motions[1].angA}、θ_B=${st.motions[0].angB}/${st.motions[1].angB}` : st.stage === 'rotation' ? `轴对应 n_A=[${st.motions[0].axA}]/[${st.motions[1].axA}]、n_B=[${st.motions[0].axB}]/[${st.motions[1].axB}]` : '解出 R_X 后' },
+      { k: '判定规则', v: `相机固连夹爪 → A·X=X·B。旋转：R_A/R_B 角相等(自检)、R_X 把 n_B 转到 n_A、≥2 组定 R_X；平移：(R_A−I)t_X=R_X t_B−t_A 线性解。` },
+      { k: '本步结果', v: st.stage === 'intro' ? '手眼标定：求相机↔夹爪的固定 X' : st.stage === 'motions' ? `得两组 (A_i,B_i)：B₁绕[${st.motions[0].axB}]、B₂绕[${st.motions[1].axB}]` : st.stage === 'angle' ? `θ_A=θ_B ${st.angleMatch ? '都相等 ✓ 数据可用' : '不等 ✗'}` : st.stage === 'rotation' ? `还原 R_X=[[${st.RXrec[0]}],[${st.RXrec[1]}],[${st.RXrec[2]}]] ${st.rotOK ? '=真值 ✓' : '✗'}` : `还原 t_X=[${st.tXrec}] ${st.transOK ? '=真值 ✓' : '✗'}` },
+    ] },
+    verdict: (s: never) => { const st = s as { stage: string; angleMatch: boolean; rotOK: boolean; transOK: boolean }; return st.stage === 'done' ? (st.rotOK && st.transOK ? 'X 还原=真值' : '✗') : st.stage === 'translation' ? (st.transOK ? 't_X 解出' : '✗') : st.stage === 'rotation' ? (st.rotOK ? 'R_X 解出' : '✗') : st.stage === 'angle' ? (st.angleMatch ? 'θ_A=θ_B' : '角度不符') : st.stage === 'motions' ? '两组运动对' : 'A·X=X·B' },
+    try: [{ act: '看角度自检', watch: '每组 A、B 旋转角必相等(90°=90°)——R_A、R_B 相似；某组不等就是数据配错、该剔掉。' }, { act: '看解 R_X', watch: 'n_A=R_X·n_B：两组不共线的轴对应就定出 R_X，还原=真值 Rz(90°)。' }, { act: '切「真值 z45」', watch: '换个真值 X，还原的 R_X 跟着变成 Rz(45°)——方法能还原任意 X。' }], terms: [],
+  },
   queryplan: {
     question: '同一个查询有好几条路可走，数据库优化器凭什么选其中一条？',
     read: [{ at: '候选路径', is: '每条访问路径的 type + 估扫描行数代价条。', anchor: '.qp-paths' }, { at: 'EXPLAIN', is: '末步选中路径的 type/key/rows。', anchor: '.qp-explain' }],

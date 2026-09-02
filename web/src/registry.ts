@@ -356,6 +356,7 @@ import { ekfKernel, type EkfState } from '@engine/kernels/ekf.ts'
 import { pinholeKernel, type PinState } from '@engine/kernels/pinhole.ts'
 import { pointcloudKernel, type CloudState } from '@engine/kernels/pointcloud.ts'
 import { stereoKernel, type StereoState } from '@engine/kernels/stereo.ts'
+import { handeyeKernel, type HandEyeState } from '@engine/kernels/handeye.ts'
 import { particlefilterKernel, type PfState } from '@engine/kernels/particlefilter.ts'
 import { ukfKernel, type UkfState } from '@engine/kernels/ukf.ts'
 import { complementaryKernel, type CompState } from '@engine/kernels/complementary.ts'
@@ -402,6 +403,7 @@ import { EkfStage } from './stages/EkfStage.tsx'
 import { PinholeStage } from './stages/PinholeStage.tsx'
 import { PointCloudStage } from './stages/PointCloudStage.tsx'
 import { StereoStage } from './stages/StereoStage.tsx'
+import { HandEyeStage } from './stages/HandEyeStage.tsx'
 import { PfStage } from './stages/PfStage.tsx'
 import { UkfStage } from './stages/UkfStage.tsx'
 import { CompStage } from './stages/CompStage.tsx'
@@ -7190,6 +7192,33 @@ const stereo: Experiment<StereoState> = {
     { label: '1px 深度误差 ΔZ', value: s.showPrec ? `±${s.dZ}m` : '—', tone: s.showPrec ? 'bad' : undefined },
   ],
 }
+const handeye: Experiment<HandEyeState> = {
+  id: 'handeye', group: '机器人感知', title: '手眼标定 AX=XB', subtitle: '相机装夹爪上，求相机↔夹爪固定变换 X：先解旋转、再解平移',
+  kernel: handeyeKernel, defaultDoc: { kind: 'handeye', params: { xrot: 'z90' }, entities: [], streams: [] },
+  params: [{ key: 'xrot', label: '真值 X 旋转', kind: 'enum', options: ['z90', 'z45'] }],
+  paramsNote: '视觉引导抓取里相机常**装在夹爪上**(eye-in-hand)。要用相机看到的指挥手,先得知道**相机相对夹爪的固定变换 X**——手眼标定。让机器人动几下:每次记 **A=夹爪相对运动**(关节角+正运动学 [[fk]] 算)、**B=相机相对运动**(观测固定标定板算);相机固连夹爪 → 经典手眼方程 **A·X=X·B**。①**先解旋转**:R_A R_X=R_X R_B ⟹ R_A、R_B **旋转角必相等**(θ_A=θ_B、自检),且 **R_X 把 B 的转轴转到 A 的转轴**(n_A=R_X n_B),≥2 组不共线定出 R_X(Tsai-Lenz);②**再解平移**:(R_A−I)t_X=R_X t_B−t_A **线性方程**、≥2 组凑满秩解出。本例构造真值 X(绕z 90°/45° + 平移[0.1,0,0.05])、用两组运动(绕x90°、绕y90°)生成 B=X⁻¹AX,再还原出 X 与真值一致(闭环验证)。全用矩阵现算。切「真值旋转」看还原跟着变。连「正运动学FK(算A)/相机标定针孔(B前提)/位姿」。详见讲解卡。',
+  bounds: [
+    '手眼标定:求相机相对夹爪(eye-in-hand)固定变换 X;数据 A=夹爪相对运动(FK)、B=相机相对运动(看标定板);满足 A·X=X·B',
+    '先解旋转:R_A R_X=R_X R_B → R_A/R_B 旋转角相等(θ_A=θ_B 自检)、R_X 把 n_B 转到 n_A、≥2 组不共线定出 R_X(Tsai-Lenz/Park-Martin)',
+    '再解平移:(R_A−I)t_X=R_X t_B−t_A 线性方程;(R_A−I) 沿转轴秩亏,要 ≥2 组不共线凑满秩、多组最小二乘去噪',
+    'eye-in-hand vs eye-to-hand;AX=XB vs AX=ZB(同时标机器人-世界);对偶四元数解法;结果喂视觉引导抓取(相机看到目标乘 X 换算到夹爪去抓)。参考 Tsai&Lenz 1989、Park&Martin 1994',
+  ],
+  tabs: [{ id: 'he', label: '标定逐步跑' }], Stage: HandEyeStage, whyInRail: true,
+  tone: s => (s.stage === 'done' ? (s.rotOK && s.transOK ? { key: 'good', label: 'X 还原=真值' } : { key: 'bad', label: '还原失败' })
+    : s.stage === 'translation' ? (s.transOK ? { key: 'good', label: 't_X 解出' } : { key: 'bad', label: '✗' })
+    : s.stage === 'rotation' ? (s.rotOK ? { key: 'good', label: 'R_X 解出' } : { key: 'bad', label: '✗' })
+    : s.stage === 'angle' ? (s.angleMatch ? { key: 'good', label: 'θ_A=θ_B ✓' } : { key: 'bad', label: '角度不符' })
+    : s.stage === 'motions' ? { key: 'idle', label: '两组运动对' }
+    : { key: 'idle', label: 'A·X=X·B' }),
+  metric: s => (s.stage === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => ({ intro: '眼', motions: '动', angle: '角', rotation: 'R', translation: 't', done: '成' }[s.stage] ?? '·'),
+  readouts: s => [
+    { label: '真值 X 旋转', value: s.scenLabel.replace('真值 ', '') },
+    { label: '角度自检 θ_A=θ_B', value: s.showAngle ? (s.angleMatch ? '通过' : '不符') : '—', tone: s.showAngle ? (s.angleMatch ? 'good' : 'bad') : undefined },
+    { label: '还原旋转 R_X', value: s.showRot ? (s.rotOK ? '=真值' : '✗') : '—', tone: s.showRot ? (s.rotOK ? 'good' : 'bad') : undefined },
+    { label: '还原平移 t_X', value: s.showTrans ? `[${s.tXrec}]${s.transOK ? ' ✓' : ''}` : '—', tone: s.showTrans ? (s.transOK ? 'good' : 'bad') : undefined },
+  ],
+}
 const icp: Experiment<ICPState> = {
   id: 'icp', group: '机器人感知', title: 'ICP 点云配准', subtitle: '迭代最近点：两片点云对齐求位姿',
   kernel: icpKernel, defaultDoc: { kind: 'icp', params: {}, entities: [], streams: [] }, params: [],
@@ -7574,7 +7603,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, pinhole, pointcloud, stereo, icp, slam, impedance, mpc, pid, rrt, rrtstar, prm, potentialfield, chomp, trapezoid, gjk, dubins, mdp, qlearning, policygrad, ppo, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
+  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, pinhole, pointcloud, stereo, handeye, icp, slam, impedance, mpc, pid, rrt, rrtstar, prm, potentialfield, chomp, trapezoid, gjk, dubins, mdp, qlearning, policygrad, ppo, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
 ] as unknown as AnyExperiment[]
 
 /**

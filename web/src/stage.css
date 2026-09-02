@@ -5959,3 +5959,29 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .du-wbest .du-wlen{color:var(--hit);font-weight:700}
 .du-wnote{font-size:var(--t-ui);color:var(--dim);line-height:1.7;margin-top:4px}
 .du-hotc{color:var(--hit)}
+
+/* handeye · 手眼标定 AX=XB */
+.scdn.he-good{color:var(--hit)}
+.scdn.he-bad{color:var(--miss)}
+.he-svg{margin:6px 0;max-width:360px;background:var(--sunk-1);border:1px solid var(--line);border-radius:8px}
+.he-grip{fill:color-mix(in srgb,var(--now) 14%,transparent);stroke:var(--now);stroke-width:1.5}
+.he-cam{fill:color-mix(in srgb,var(--hit) 14%,transparent);stroke:var(--hit);stroke-width:1.5}
+.he-ilbl{fill:var(--ink);font:9px var(--sans);font-weight:700;text-anchor:middle}
+.he-slbl{fill:var(--faint);font:6.5px var(--sans);text-anchor:middle}
+.he-xarr{stroke:var(--miss);stroke-width:1.8}
+.he-ahf{fill:var(--miss)}
+.he-xlbl{fill:var(--miss);font:8px var(--sans);font-weight:700;text-anchor:middle}
+.he-eq{fill:var(--ink);font:11px var(--mono);font-weight:700}
+.he-flow{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+.he-blk{border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--panel-2);font-size:var(--t-ui);line-height:1.7;font-variant-numeric:tabular-nums}
+.he-blk.he-off{opacity:.4}
+.he-blk-r{border:1px solid color-mix(in srgb,var(--hit) 30%,var(--line));border-radius:8px;padding:8px 10px;background:color-mix(in srgb,var(--hit) 5%,transparent);font-size:var(--t-ui);line-height:1.9;font-variant-numeric:tabular-nums}
+.he-n{font-family:var(--mono);color:var(--now);font-weight:700;margin-right:6px}
+.he-cmp{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;margin-left:4px}
+.he-mat{display:inline-flex;flex-direction:column;border-left:1.5px solid var(--dim);border-right:1.5px solid var(--dim);padding:1px 4px;vertical-align:middle}
+.he-mat-hot{border-color:var(--hit)}
+.he-mrow{display:flex;gap:6px}
+.he-mcell{font-family:var(--mono);font-size:.85em;min-width:20px;text-align:right}
+.he-hotc{color:var(--now)}
+.he-goodc{color:var(--hit)}
+.he-badc{color:var(--miss)}

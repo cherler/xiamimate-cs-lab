@@ -131,6 +131,7 @@ import { ekfKernel } from '../src/kernels/ekf.ts'
 import { pinholeKernel } from '../src/kernels/pinhole.ts'
 import { pointcloudKernel } from '../src/kernels/pointcloud.ts'
 import { stereoKernel } from '../src/kernels/stereo.ts'
+import { handeyeKernel } from '../src/kernels/handeye.ts'
 import { particlefilterKernel } from '../src/kernels/particlefilter.ts'
 import { ukfKernel } from '../src/kernels/ukf.ts'
 import { complementaryKernel } from '../src/kernels/complementary.ts'
@@ -2738,6 +2739,41 @@ export const CATALOG: CatalogEntry[] = [
         ask: 'f=500px、基线 b=0.1m、测得视差 d=25px，深度 Z=f·b/d 是多少米?', kind: 'number',
         compute: t => { const f = t as unknown as { disp?: number; Zrec?: number }[]; const l = f.find(x => x.disp === 25 && x.Zrec != null); const v = l?.Zrec ?? 2; return ({ answer: String(v), step: 3, evidence: `Z=f·b/d=500·0.1/25=50/25=${v}m` }) },
         distractors: numDistractors,
+      },
+    ],
+  },
+  {
+    id: 'handeye', title: '手眼标定 AX=XB', kernel: handeyeKernel as Kernel<unknown>, doc: trivialDoc('handeye'),
+    facts: [
+      {
+        id: 'he_what', label: '手眼标定求什么',
+        ask: '手眼标定(AX=XB)要求解的 X 是什么?', kind: 'choice',
+        compute: () => ({ answer: '相机坐标系和夹爪(手)坐标系之间的固定变换(位置+朝向)。相机装在手腕上(eye-in-hand),要用相机看到的东西指挥手去抓,必须先知道这个固定关系 X', step: 1, evidence: 'X=相机↔夹爪的固定变换' }),
+        distractors: () => ['相机的内参(焦距、主点)', '机器人每个关节的角度', '标定板在世界里的位置'],
+      },
+      {
+        id: 'he_data', label: 'A 和 B 怎么来',
+        ask: '手眼方程 A·X=X·B 里,A 和 B 分别怎么得到?', kind: 'choice',
+        compute: () => ({ answer: '机器人动几下:A=夹爪的相对运动,由关节角+正运动学 FK 算(机器人自己知道);B=相机的相对运动,让相机盯着一块固定标定板、从图像算出相机动了多少。相机固连夹爪→A·X=X·B', step: 1, evidence: 'A 靠 FK、B 靠看固定标定板' }),
+        distractors: () => ['A、B 都由相机测', 'A 是标定板位置、B 是相机内参', 'A、B 都由关节编码器直接给'],
+      },
+      {
+        id: 'he_angle', label: '为什么 θ_A=θ_B',
+        ask: '手眼标定里,为什么每组运动 A 的旋转角必须等于 B 的旋转角?', kind: 'choice',
+        compute: () => ({ answer: '因为 R_B=R_X⁻¹ R_A R_X,R_A 和 R_B 是相似矩阵、相似矩阵旋转角相等,所以 θ_A=θ_B 是硬约束。可当自检:哪组 θ_A≠θ_B 就是这组数据配错了(时间戳没对齐/标定板没看准)、该剔除', step: 3, evidence: 'R_A~R_B 相似、角相等、可自检' }),
+        distractors: () => ['巧合、不一定相等', 'A 的角总是 B 的两倍', '因为转轴一样'],
+      },
+      {
+        id: 'he_solve', label: '旋转和平移怎么解',
+        ask: '手眼标定 AX=XB 通常怎么解?', kind: 'choice',
+        compute: () => ({ answer: '拆两步:①先解旋转 R_X——R_X 把 B 的转轴转到 A 的转轴(n_A=R_X n_B)、≥2 组不共线运动定出 R_X;②再解平移 t_X——(R_A−I)t_X=R_X t_B−t_A 是线性方程、≥2 组凑满秩解出。多组做最小二乘去噪(Tsai-Lenz/Park-Martin)', step: 4, evidence: '先旋转(轴对应)后平移(线性)' }),
+        distractors: () => ['一步直接矩阵求逆 X=A⁻¹XB', '只解旋转、平移不用管', '随机搜索直到 AX≈XB'],
+      },
+      {
+        id: 'he_eih', label: 'eye-in-hand vs eye-to-hand',
+        ask: 'eye-in-hand 和 eye-to-hand 有什么区别?', kind: 'choice',
+        compute: () => ({ answer: 'eye-in-hand=相机装在手腕/夹爪上、跟着手一起动(本实验就是,方程 AX=XB 求相机↔夹爪);eye-to-hand=相机固定在外面看着机器人(求相机↔机器人基座)。两者方程形式类似、但 X 的含义和数据采法不同', step: 6, evidence: 'in-hand相机在手上动、to-hand相机在外固定' }),
+        distractors: () => ['一个用单目、一个用双目', 'eye-to-hand 不需要标定', '只是叫法不同、完全一样'],
       },
     ],
   },
