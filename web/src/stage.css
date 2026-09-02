@@ -5867,3 +5867,21 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .cm-r2{color:var(--miss)}
 .cm-h{color:var(--hit)}
 .cm-step{border:1px solid color-mix(in srgb,var(--hit) 30%,var(--line));border-radius:8px;padding:8px 10px;background:color-mix(in srgb,var(--hit) 5%,transparent);font-size:var(--t-ui);line-height:1.6}
+
+/* pointcloud · 点云预处理(下采样+法线 PCA) */
+.scdn.pc-hot{color:var(--hit)}
+.pc-svg{margin:6px 0;max-width:340px;background:var(--sunk-1);border:1px solid var(--line);border-radius:8px}
+.pc-raw{fill:var(--ghost)}
+.pc-nbr{fill:var(--now)}
+.pc-vox{fill:none;stroke:var(--hit);stroke-width:2}
+.pc-query{fill:var(--now);stroke:var(--panel);stroke-width:1}
+.pc-tan{stroke:var(--dim);stroke-width:1.5;stroke-dasharray:3 2}
+.pc-norm{stroke:var(--miss);stroke-width:2.2}
+.pc-normlbl{fill:var(--miss);font:8px var(--sans)}
+.pc-flow{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+.pc-blk{border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--panel-2);font-size:var(--t-ui);line-height:1.7;font-variant-numeric:tabular-nums}
+.pc-blk.pc-off{opacity:.4}
+.pc-n{font-family:var(--mono);color:var(--now);font-weight:700;margin-right:6px}
+.pc-pca{border:1px solid color-mix(in srgb,var(--hit) 30%,var(--line));border-radius:8px;padding:8px 10px;background:color-mix(in srgb,var(--hit) 5%,transparent);font-size:var(--t-ui);line-height:1.7;font-variant-numeric:tabular-nums}
+.pc-tanc{color:var(--dim)}
+.pc-normc{color:var(--miss)}

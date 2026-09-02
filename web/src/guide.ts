@@ -1064,6 +1064,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { stage: string; dist: string; shift: number; uIdeal: number }; return st.stage === 'done' ? '透视+内参+畸变' : st.stage === 'result' ? (st.dist === 'on' ? `偏${st.shift}px` : '理想像素') : st.stage === 'distortion' ? '径向畸变' : st.stage === 'intrinsic' ? '内参K' : st.stage === 'perspective' ? '除以深度' : '3D→2D' },
     try: [{ act: '切「有畸变」', watch: '边缘点被径向畸变从 (620,440) 推到 (655,464)、偏 42px——离中心越远越弯。' }, { act: '切「无畸变」', watch: '理想针孔：像素就是 (620,440)、直线还是直线。' }, { act: '想标定', watch: 'fx,fy,cx,cy,k1,k2 从拍棋盘格、已知 3D↔2D 反求(张正友法)。' }], terms: [],
   },
+  pointcloud: {
+    question: '一片又密又不均的原始点云，配准/建图前怎么"梳理"？每个点的表面法线又是怎么算出来的？',
+    read: [{ at: '2D 散点图', is: '原始点(小)、下采样质心(大绿)、查询点+k 近邻高亮、法线/切向箭头。', anchor: '.pc-svg' }, { at: '流程块', is: '①下采样 ②k 近邻 ③协方差 C ④PCA。', anchor: '.pc-blk' }, { at: 'PCA 块', is: '最小特征值的特征向量=法线。', anchor: '.pc-pca' }],
+    step: (s: never) => { const st = s as { stage: string; L: number; raw: unknown[]; voxels: unknown[]; nbrs: unknown[]; query: number[]; cov: number[][]; lamBig: number; lamSmall: number; normal: number[]; tangent: number[] }; return [
+      { k: '本步输入', v: st.stage === 'intro' ? `原始点云 ${st.raw.length} 点、下采样 L=${st.L}` : st.stage === 'voxel' ? `边长 L=${st.L} 的体素网格` : st.stage === 'neighbors' ? `目标点 (${st.query})、k=${st.nbrs.length}` : st.stage === 'covariance' ? `${st.nbrs.length} 个邻居去均值` : `协方差 C=[[${st.cov[0]}],[${st.cov[1]}]]` },
+      { k: '判定规则', v: `体素下采样:点落哪格看 ⌊坐标/L⌋、每个占用体素只保留质心；法线估计:k 近邻→邻域协方差 C→特征分解,最小特征值的特征向量=表面法线(方差最小方向⊥面)、最大的=切向。` },
+      { k: '本步结果', v: st.stage === 'intro' ? '点云预处理=下采样+法线两步' : st.stage === 'voxel' ? `${st.raw.length} 点降到 ${st.voxels.length} 个质心(密度均匀)` : st.stage === 'neighbors' ? `取到 ${st.nbrs.length} 个最近邻(法线是局部性质)` : st.stage === 'covariance' ? `C=[[${st.cov[0]}],[${st.cov[1]}]]` : `λ=${st.lamBig}/${st.lamSmall}→法线 [${st.normal}]、切向 [${st.tangent}]` },
+    ] },
+    verdict: (s: never) => { const st = s as { stage: string; raw: unknown[]; voxels: unknown[]; normal: number[] }; return st.stage === 'done' ? '下采样+法线' : st.stage === 'pca' ? `法线 [${st.normal}]` : st.stage === 'covariance' ? '协方差 C' : st.stage === 'neighbors' ? 'k 近邻' : st.stage === 'voxel' ? `${st.raw.length}→${st.voxels.length}` : '原始点云' },
+    try: [{ act: '切「粗 L=2」', watch: '网格变大、8 点只剩 2 个质心——L 越大越粗、点更少但细节丢更多。' }, { act: '切「细 L=1」', watch: '下采样到 5 个质心、保留更多结构。' }, { act: '看 PCA 一步', watch: 'λ大=0.687(切向)、λ小=0.013(法向)；最小特征值的特征向量 [−0.77,0.64] 就是法线、⊥斜面。' }], terms: [],
+  },
   queryplan: {
     question: '同一个查询有好几条路可走，数据库优化器凭什么选其中一条？',
     read: [{ at: '候选路径', is: '每条访问路径的 type + 估扫描行数代价条。', anchor: '.qp-paths' }, { at: 'EXPLAIN', is: '末步选中路径的 type/key/rows。', anchor: '.qp-explain' }],

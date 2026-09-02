@@ -354,6 +354,7 @@ import { computedtorqueKernel, type CtcState } from '@engine/kernels/computedtor
 import { contactlcpKernel, type LcpState } from '@engine/kernels/contactlcp.ts'
 import { ekfKernel, type EkfState } from '@engine/kernels/ekf.ts'
 import { pinholeKernel, type PinState } from '@engine/kernels/pinhole.ts'
+import { pointcloudKernel, type CloudState } from '@engine/kernels/pointcloud.ts'
 import { particlefilterKernel, type PfState } from '@engine/kernels/particlefilter.ts'
 import { ukfKernel, type UkfState } from '@engine/kernels/ukf.ts'
 import { complementaryKernel, type CompState } from '@engine/kernels/complementary.ts'
@@ -396,6 +397,7 @@ import { ComputedTorqueStage } from './stages/ComputedTorqueStage.tsx'
 import { ContactLcpStage } from './stages/ContactLcpStage.tsx'
 import { EkfStage } from './stages/EkfStage.tsx'
 import { PinholeStage } from './stages/PinholeStage.tsx'
+import { PointCloudStage } from './stages/PointCloudStage.tsx'
 import { PfStage } from './stages/PfStage.tsx'
 import { UkfStage } from './stages/UkfStage.tsx'
 import { CompStage } from './stages/CompStage.tsx'
@@ -7074,6 +7076,33 @@ const pinhole: Experiment<PinState> = {
     { label: '最终像素', value: s.showResult ? (s.dist === 'on' ? `(${s.uDist}, ${s.vDist}) 偏${s.shift}px` : `(${s.uIdeal}, ${s.vIdeal})`) : '—', tone: s.showResult ? (s.dist === 'on' ? 'bad' : 'good') : undefined },
   ],
 }
+const pointcloud: Experiment<CloudState> = {
+  id: 'pointcloud', group: '机器人感知', title: '点云预处理 · 下采样+法线', subtitle: '体素下采样降密度 + PCA 求表面法线：配准/建图前必做',
+  kernel: pointcloudKernel, defaultDoc: { kind: 'pointcloud', params: { voxel: '细' }, entities: [], streams: [] },
+  params: [{ key: 'voxel', label: '下采样分辨率', kind: 'enum', options: ['细', '粗'] }],
+  paramsNote: '深度相机/激光出的原始点云**又密又不均、还带噪**,配准(ICP)/建图前先做两步预处理。①**体素下采样(voxel grid)**:把空间切成边长 **L** 的网格(点落哪格看 ⌊坐标/L⌋)、**每个占用体素只保留落在里面所有点的质心**→点数降下来、密度变均匀(L 越大越粗)。②**法线估计(PCA)**:法线是局部性质→对目标点找 **k 近邻**、算邻域 **2×2 协方差矩阵 C**(点云往哪散、散多大)、做**特征分解**——**最小特征值的特征向量=表面法线**(方差最小方向⊥局部面)、最大的=切向;**λ小/λ大** 判形状(≈0 局部很平、两 λ 都不小=边/角)。本例 2D、8 点在斜面上:L=1 下采样到 5 个体素(切「分辨率」看 L=2→2 个);对点(1.6,1.3)取 4 近邻、C=[[0.287,0.331],[0.331,0.413]]、λ=0.687/0.013→法线≈[−0.77,0.64](⊥斜面)。全现算。连「ICP(配准前下采样、点到面误差要法线)/SLAM/PCA 降维(同一套特征分解)」。详见讲解卡。',
+  bounds: [
+    '点云预处理两步:①体素下采样(边长 L 网格、每格取质心→降密度、密度均匀化);②法线估计(PCA)。配准/建图前必做',
+    '法线估计:找 k 近邻→邻域协方差矩阵 C→特征分解,**最小特征值对应的特征向量=表面法线**(方差最小方向⊥面)、最大特征值=切向',
+    'λ小/λ大 判局部形状:≈0→平面(法线可靠)、两个都不小→边/角(法线不确定);法线有±方向歧义、一般统一朝相机',
+    '为什么重要:「ICP」配准前先下采样(快、稳),点到面(point-to-plane)ICP 的误差要用法线(比点到点收敛快);法向一致性剔外点;曲面重建/抓取姿态都要法线。PCA 和「PCA 降维」同一套特征分解',
+  ],
+  tabs: [{ id: 'pc', label: '预处理逐步跑' }], Stage: PointCloudStage, whyInRail: true,
+  tone: s => (s.stage === 'done' ? { key: 'good', label: '下采样+法线' }
+    : s.stage === 'pca' ? { key: 'good', label: `法线 [${s.normal}]` }
+    : s.stage === 'covariance' ? { key: 'idle', label: '协方差 C' }
+    : s.stage === 'neighbors' ? { key: 'idle', label: `k=${s.nbrs.length} 近邻` }
+    : s.stage === 'voxel' ? { key: 'idle', label: `${s.raw.length}→${s.voxels.length}` }
+    : { key: 'idle', label: '原始点云' }),
+  metric: s => (s.stage === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => ({ intro: '云', voxel: '采', neighbors: 'k', covariance: 'C', pca: '法', done: '成' }[s.stage] ?? '·'),
+  readouts: s => [
+    { label: '下采样', value: `${s.resLabel.split('(')[0]} L=${s.L}` },
+    { label: '点数', value: s.showVoxel ? `${s.raw.length}→${s.voxels.length}` : '—' },
+    { label: 'λ小/λ大', value: s.showPca ? `${s.lamSmall} / ${s.lamBig}` : '—' },
+    { label: '法线(小λ特征向量)', value: s.showPca ? `[${s.normal}]` : '—', tone: s.showPca ? 'good' : undefined },
+  ],
+}
 const icp: Experiment<ICPState> = {
   id: 'icp', group: '机器人感知', title: 'ICP 点云配准', subtitle: '迭代最近点：两片点云对齐求位姿',
   kernel: icpKernel, defaultDoc: { kind: 'icp', params: {}, entities: [], streams: [] }, params: [],
@@ -7458,7 +7487,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, pinhole, icp, slam, impedance, mpc, pid, rrt, rrtstar, prm, potentialfield, chomp, trapezoid, mdp, qlearning, policygrad, ppo, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
+  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, pinhole, pointcloud, icp, slam, impedance, mpc, pid, rrt, rrtstar, prm, potentialfield, chomp, trapezoid, mdp, qlearning, policygrad, ppo, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
 ] as unknown as AnyExperiment[]
 
 /**

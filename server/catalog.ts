@@ -129,6 +129,7 @@ import { lerobotKernel } from '../src/kernels/lerobot.ts'
 import { kalmanKernel } from '../src/kernels/kalman.ts'
 import { ekfKernel } from '../src/kernels/ekf.ts'
 import { pinholeKernel } from '../src/kernels/pinhole.ts'
+import { pointcloudKernel } from '../src/kernels/pointcloud.ts'
 import { particlefilterKernel } from '../src/kernels/particlefilter.ts'
 import { ukfKernel } from '../src/kernels/ukf.ts'
 import { complementaryKernel } from '../src/kernels/complementary.ts'
@@ -2663,6 +2664,41 @@ export const CATALOG: CatalogEntry[] = [
         id: 'pin_num', label: '理想像素坐标',
         ask: '相机系点 X=(3,2,5)、fx=500、cx=320，无畸变时像素 u=fx·(X/Z)+cx 是多少?', kind: 'number',
         compute: t => { const f = t as unknown as { uIdeal?: number }[]; const l = f.find(x => x.uIdeal != null); const v = l?.uIdeal != null ? Math.round(l.uIdeal) : 620; return ({ answer: String(v), step: 3, evidence: `x_n=3/5=0.6、u=500·0.6+320=${v}(透视除以深度再乘焦距加主点)` }) },
+        distractors: numDistractors,
+      },
+    ],
+  },
+  {
+    id: 'pointcloud', title: '点云预处理 · 下采样+法线', kernel: pointcloudKernel as Kernel<unknown>, doc: trivialDoc('pointcloud'),
+    facts: [
+      {
+        id: 'pc_normal', label: '法线是哪个特征向量',
+        ask: '点云法线估计(PCA):一个点的表面法线对应邻域协方差矩阵的哪个特征向量?', kind: 'choice',
+        compute: () => ({ answer: '最小特征值对应的特征向量。表面法线方向上点云几乎没铺开(方差最小),所以是最小特征值那个方向;最大特征值的特征向量是表面切向(点云铺开的方向)', step: 5, evidence: '最小 λ 的特征向量=法线(方差最小方向⊥面)' }),
+        distractors: () => ['最大特征值对应的特征向量', '所有特征向量的平均', '协方差矩阵的对角线'],
+      },
+      {
+        id: 'pc_voxel', label: '体素下采样怎么做',
+        ask: '体素下采样(voxel grid)是怎么把点云降密度的?', kind: 'choice',
+        compute: () => ({ answer: '把空间切成边长 L 的网格,点落哪格看 ⌊坐标/L⌋,每个被占用的体素只保留落在里面所有点的质心(平均位置)、其余丢掉。效果是点数下降且密度变均匀;L 越大越粗(点更少、细节丢更多)', step: 1, evidence: '网格分箱、每格取质心;L 控制粗细' }),
+        distractors: () => ['随机删掉一半点', '只保留每格里第一个点', '按距离排序取前 N 个'],
+      },
+      {
+        id: 'pc_lambda', label: 'λ 的比说明什么',
+        ask: '法线估计里,邻域协方差的特征值 λ 之间的比(λ小/λ大)能说明什么?', kind: 'choice',
+        compute: () => ({ answer: '局部形状(曲率):λ小/λ大≈0→局部很平(法线可靠);若几个 λ 都不小→是边/角、点云在多个方向都铺开、法线不确定。本例 λ=0.687/0.013、比≈0.02→局部很平', step: 5, evidence: 'λ 比≈0 平面、都不小=边/角' }),
+        distractors: () => ['点云的颜色', '相机到点的距离', '下采样用的 L 大小'],
+      },
+      {
+        id: 'pc_why', label: '为什么要算法线',
+        ask: '配准/建图前为什么要给每个点算表面法线?', kind: 'choice',
+        compute: () => ({ answer: '点到面(point-to-plane)ICP 的误差要用法线(比点到点收敛快)、法向一致性用来剔除外点/错匹配、曲面重建和抓取姿态也都要法线。法线是点云几何的基本局部特征', step: 6, evidence: '点到面 ICP、剔外点、重建/抓取都要法线' }),
+        distractors: () => ['为了给点云上色', '为了压缩点云体积', '法线只是可视化好看、算法不用'],
+      },
+      {
+        id: 'pc_num', label: '下采样后点数',
+        ask: '8 个点做体素下采样、L=1(细)时下采样到几个点?(每个占用体素取质心)', kind: 'number',
+        compute: t => { const f = t as unknown as { voxels?: unknown[]; L?: number }[]; const l = f.find(x => x.L === 1 && x.voxels); const v = l?.voxels?.length ?? 5; return ({ answer: String(v), step: 1, evidence: `L=1 网格下 8 点占 ${v} 个体素、每格取质心 → ${v} 个下采样点` }) },
         distractors: numDistractors,
       },
     ],

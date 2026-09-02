@@ -364,6 +364,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { i: 2, step: 2, stage: 'intrinsic', ...base, showPersp: true, showIntr: true, showDist: false, showResult: false, phase: 'run' as const, focus: '内参' },
       b: { i: 3, step: 3, stage: 'distortion', ...base, showPersp: true, showIntr: true, showDist: true, showResult: false, phase: 'run' as const, focus: '畸变' },
     } })(),
+    pointcloud: (() => { const base = { res: 'fine' as const, resLabel: '细(L=1)', L: 1, raw: [[0.3, 0.2], [0.7, 0.6], [1.4, 1.5], [1.6, 1.3], [2.2, 2.4], [2.6, 2.1], [3.1, 3.2], [3.4, 2.9]] as [number, number][], voxels: [[0.5, 0.4], [1.5, 1.4], [2.4, 2.25], [3.1, 3.2], [3.4, 2.9]] as [number, number][], query: [1.6, 1.3] as [number, number], nbrs: [[1.6, 1.3], [1.4, 1.5], [0.7, 0.6], [2.2, 2.4]] as [number, number][], cov: [[0.287, 0.331], [0.331, 0.413]] as [[number, number], [number, number]], lamBig: 0.687, lamSmall: 0.013, normal: [-0.77, 0.64] as [number, number], tangent: [0.64, 0.77] as [number, number], phase: 'run' as const, log: '' }; return {
+      doc: { kind: 'pointcloud', params: { voxel: '细' }, entities: [], streams: [] },
+      a: { i: 1, step: 1, stage: 'voxel', ...base, showVoxel: true, showNbr: false, showCov: false, showPca: false, focus: '下采样' },
+      b: { i: 4, step: 4, stage: 'pca', ...base, showVoxel: true, showNbr: true, showCov: true, showPca: true, focus: 'PCA 法线' },
+    } })(),
     particlefilter: (() => { const base = { mode: 'on', modeLabel: '重采样(标准)', z: 5.5, sigma: 1.5, particles: [{ pos: 2, w: 0.066, wn: 0.023 }, { pos: 4, w: 0.607, wn: 0.211 }, { pos: 5, w: 0.946, wn: 0.329 }, { pos: 6, w: 0.946, wn: 0.329 }, { pos: 8, w: 0.249, wn: 0.087 }, { pos: 9, w: 0.066, wn: 0.023 }], sumW: 2.88, neff: 3.72, N: 6, resampled: [4, 5, 5, 6, 6, 8], estimate: 5.4, estimateResampled: 5.67, log: '' }; return {
       doc: { kind: 'particlefilter', params: { resample: '重采样' }, entities: [], streams: [] },
       a: { i: 3, step: 3, stage: 'neff', ...base, showWeight: true, showNeff: true, showResample: false, phase: 'run' as const, focus: 'N_eff' },
