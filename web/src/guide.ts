@@ -1009,6 +1009,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { stage: string; iterNo: number; passed: boolean; contained: boolean; collide: boolean | null }; return st.stage === 'done' ? (st.collide ? '碰撞' : '不碰') : st.stage === 'result' && st.contained ? '含原点·碰' : st.stage === 'support' && !st.passed ? 'a·d<0 不碰' : st.stage === 'support' ? `第${st.iterNo}轮支撑点` : st.stage === 'simplex' ? 'doSimplex' : 'Minkowski 差' },
     try: [{ act: '切「相交」', watch: '2 轮把原点围进三角形 [(1,2),(-5,-4),(1,-4)]、原点在内 → 碰。' }, { act: '切「分离」', watch: '第 2 轮朝 d=[72,0] 取支撑点、a·d=-144<0 → 最远都没越过原点 → 不碰、提前停。' }, { act: '看支撑函数', watch: '每轮只朝一个方向要一个最远点 support_A(d)−support_B(−d)、不用建整个 A⊖B。' }], terms: [],
   },
+  dubins: {
+    question: '车不能像质点那样横着走、还有最小转弯半径。两个位姿之间，只能前进的车最短怎么开？',
+    read: [{ at: '世界图', is: '起/终位姿(带朝向箭头)、两端转向圆、最优 Dubins 路径。', anchor: '.du-svg' }, { at: '四词条', is: '4 种 CSC 词的长度、最优高亮。', anchor: '.du-word' }, { at: '读数', is: '最优词、最短总长、三段。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { stage: string; scenLabel: string; goal: number[]; words: Record<string, number | null>; bestType: string; t: number; p: number; q: number; len: number; segs: string; headingDeg: number }; return [
+      { k: '本步输入', v: st.stage === 'intro' ? `${st.scenLabel}、最小转弯半径 R=1` : st.stage === 'circles' ? '起/终各有左右转向圆' : st.stage === 'words' ? '四种 CSC 词' : st.stage === 'best' ? `LSL=${st.words.LSL}、RSR=${st.words.RSR}、LSR=${st.words.LSR}、RSL=${st.words.RSL}` : `最优词 ${st.bestType}` },
+      { k: '判定规则', v: `只前进的车两位姿间最短路一定是三段、6 种词之一（CSC:LSL/RSR/LSR/RSL + CCC:RLR/LRL）；每种词闭式算三段、取总长最短；转弯半径都=R。` },
+      { k: '本步结果', v: st.stage === 'intro' ? 'Dubins：非完整车的最短路=转-直-转' : st.stage === 'circles' ? '打死方向盘=半径 R 的圆；四种圆的搭配=四种词' : st.stage === 'words' ? `四词长度 LSL=${st.words.LSL}/RSR=${st.words.RSR}/LSR=${st.words.LSR}/RSL=${st.words.RSL}` : st.stage === 'best' ? `最短=${st.bestType}（${st.len}）；改朝向最优词会变(LSL↔LSR)` : `${st.bestType} 三段：${st.segs[0]}转${st.t}→直${st.p}→${st.segs[2]}转${st.q}，重建终点严格落在 (${st.goal[0]},${st.goal[1]},${st.headingDeg}°)` },
+    ] },
+    verdict: (s: never) => { const st = s as { stage: string; bestType: string; len: number }; return st.stage === 'done' ? `最优 ${st.bestType}` : st.stage === 'segments' ? `${st.bestType} 三段` : st.stage === 'best' ? `${st.bestType}=${st.len}` : st.stage === 'words' ? '四词算长度' : st.stage === 'circles' ? '转向圆' : '非完整约束' },
+    try: [{ act: '切「终点朝上」', watch: '最优 LSL：左转0.464→直2.236→左转1.107，总长 3.807。' }, { act: '切「终点朝下」', watch: '同起终位置、只改朝向，最优就变 LSR：1.571→直1→右转3.142，总长 5.712。' }, { act: '看转向圆', watch: '起/终各有左右两个半径 R 的圆；一条 CSC=起点某圆→公切线直线→终点某圆。' }], terms: [],
+  },
   prm: {
     question: 'RRT 每次朝一个目标长一棵树。要在同一个固定环境里反复规划不同起终点，怎么才不用每次重来？',
     read: [{ at: '路图', is: '障碍+节点+边(灰=路图/红虚=被挡/绿=最短路)。', anchor: '.pm-svg' }, { at: '连边块', is: 'k 近邻+碰撞检测。', anchor: '.pm-r' }, { at: '结局横幅', is: '连通找到路/断开。', anchor: '.pm-out' }],

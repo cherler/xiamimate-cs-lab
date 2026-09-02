@@ -369,6 +369,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { i: 1, step: 1, stage: 'voxel', ...base, showVoxel: true, showNbr: false, showCov: false, showPca: false, focus: '下采样' },
       b: { i: 4, step: 4, stage: 'pca', ...base, showVoxel: true, showNbr: true, showCov: true, showPca: true, focus: 'PCA 法线' },
     } })(),
+    dubins: (() => { const base = { scen: 'up' as const, scenLabel: '终点朝上(90°)', headingDeg: 90, start: [0, 0, 0] as [number, number, number], goal: [3, 2, 1.571] as [number, number, number], rho: 1, words: { LSL: 3.807, RSR: 15.996, LSR: 9.821, RSL: 10.064 } as Record<'LSL' | 'RSR' | 'LSR' | 'RSL', number | null>, bestType: 'LSL' as const, t: 0.464, p: 2.236, q: 1.107, len: 3.807, segs: 'LSL', pathPts: [[0, 0], [3, 2]] as [number, number][], c1: [0, 1] as [number, number], c2: [2, 2] as [number, number], log: '' }; return {
+      doc: { kind: 'dubins', params: { heading: '朝上' }, entities: [], streams: [] },
+      a: { i: 2, step: 2, stage: 'words', ...base, showCircles: true, showWords: true, showBest: false, showPath: false, phase: 'run' as const, focus: '四词' },
+      b: { i: 3, step: 3, stage: 'best', ...base, showCircles: true, showWords: true, showBest: true, showPath: true, phase: 'run' as const, focus: '选最短' },
+    } })(),
     gjk: (() => { const base = { scen: 'hit' as const, scenLabel: '相交(会碰)', A: [[1, 1], [4, 1], [4, 4], [1, 4]] as [number, number][], B: [[3, 2], [6, 2], [6, 5], [3, 5]] as [number, number][], mink: [[-5, -4], [1, -4], [1, 2], [-5, 2]] as [number, number][], collide: true, log: '' }; return {
       doc: { kind: 'gjk', params: { scenario: '相交' }, entities: [], streams: [] },
       a: { i: 1, step: 1, stage: 'support', ...base, iterNo: 1, dir: [-1, -2] as [number, number], a: [-5, -4] as [number, number], sA: [1, 1] as [number, number], sB: [6, 5] as [number, number], adot: 13, passed: true, simplex: [[1, 2], [-5, -4]] as [number, number][], contained: false, phase: 'run' as const, focus: '支撑点' },

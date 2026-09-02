@@ -369,6 +369,7 @@ import { potentialfieldKernel, type PotState } from '@engine/kernels/potentialfi
 import { trapezoidKernel, type TrapState } from '@engine/kernels/trapezoid.ts'
 import { chompKernel, type ChompState } from '@engine/kernels/chomp.ts'
 import { gjkKernel, type GjkState } from '@engine/kernels/gjk.ts'
+import { dubinsKernel, type DubinsState } from '@engine/kernels/dubins.ts'
 import { prmKernel, type PrmState } from '@engine/kernels/prm.ts'
 import { mdpKernel, type MdpState } from '@engine/kernels/mdp.ts'
 import { qlearningKernel, type QState } from '@engine/kernels/qlearning.ts'
@@ -414,6 +415,7 @@ import { PotentialFieldStage } from './stages/PotentialFieldStage.tsx'
 import { TrapezoidStage } from './stages/TrapezoidStage.tsx'
 import { ChompStage } from './stages/ChompStage.tsx'
 import { GjkStage } from './stages/GjkStage.tsx'
+import { DubinsStage } from './stages/DubinsStage.tsx'
 import { PrmStage } from './stages/PrmStage.tsx'
 import { MdpStage } from './stages/MdpStage.tsx'
 import { QlearningStage } from './stages/QlearningStage.tsx'
@@ -7063,6 +7065,33 @@ const gjk: Experiment<GjkState> = {
     { label: '结论', value: s.stage === 'done' ? (s.collide ? '碰撞' : '不碰') : s.contained ? '含原点·碰' : '—', tone: s.stage === 'done' ? (s.collide ? 'bad' : 'good') : undefined },
   ],
 }
+const dubins: Experiment<DubinsState> = {
+  id: 'dubins', group: '运动规划', title: 'Dubins 曲线', subtitle: '只能前进、有最小转弯半径的车，两位姿间最短路=转-直-转三段（6 种词取最短）',
+  kernel: dubinsKernel, defaultDoc: { kind: 'dubins', params: { heading: '朝上' }, entities: [], streams: [] },
+  params: [{ key: 'heading', label: '终点朝向', kind: 'enum', options: ['朝上', '朝下'] }],
+  paramsNote: '车/差速底盘不像机械臂能任意方向移动——**不能横着走**(非完整约束 nonholonomic)、且有**最小转弯半径 R**(方向盘打死也只能拐这么急)。**Dubins(1957)** 证明:只前进的车,任意两个**位姿(位置+朝向)**间的**最短路**一定是**三段**、只可能是 **6 种"词"**之一:**CSC**(转-直-转)LSL/RSR/LSR/RSL、**CCC**(转-转-转)RLR/LRL(近距离才用)。每种词用**闭式几何**直接算三段长度(转弯段弧度、直线段长度、半径都=R)、取总长最短。本例起点(0,0,东 0°)、终点(3,2)、R=1:终点**朝上(90°)**→最优 **LSL**(左转0.464+直2.236+左转1.107=3.807);终点**朝下(−90°)**→最优 **LSR**(1.571+1+3.142=5.712)。**同起终位置、只改朝向,最优词就从 LSL 变 LSR**——最优路径由位姿决定。长度全用 Dubins 闭式现算、并按三段重建验证终点严格落在目标位姿(误差 0)。切「朝向」对比。连「RRT/PRM(车上两点转移换成 Dubins)/混合A*/Reeds-Shepp(可倒车版)」。详见讲解卡。',
+  bounds: [
+    '非完整约束(不能横走)+最小转弯半径 R;Dubins:只前进的车两位姿间最短路一定是三段、6 种词之一(CSC LSL/RSR/LSR/RSL + CCC RLR/LRL)',
+    '每种词闭式几何直接算三段(两段圆弧转角+一段公切线)、取总长最短、不用搜索;转弯半径都=R',
+    '最优词由位姿决定:本例同起终位置、终点朝上→LSL(3.807)、朝下→LSR(5.712);Dubins 把 (α,β,d) 参数空间分区、每块对应一种最优词',
+    '给车式/差速机器人规划:RRT/PRM 的两点转移要换成 Dubins(直线拐不过来);混合 A* 用作启发与末端接入;Reeds-Shepp 是可倒车推广(多 6 种含后退的词)。参考 Dubins 1957、LaValle 规划算法 §15.3',
+  ],
+  tabs: [{ id: 'du', label: 'Dubins 逐步跑' }], Stage: DubinsStage, whyInRail: true,
+  tone: s => (s.stage === 'done' ? { key: 'good', label: `最优 ${s.bestType}` }
+    : s.stage === 'segments' ? { key: 'good', label: `${s.bestType} 三段` }
+    : s.stage === 'best' ? { key: 'good', label: `${s.bestType}=${s.len}` }
+    : s.stage === 'words' ? { key: 'idle', label: '四词算长度' }
+    : s.stage === 'circles' ? { key: 'idle', label: '转向圆' }
+    : { key: 'idle', label: '非完整约束' }),
+  metric: s => (s.stage === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => ({ intro: '车', circles: '圆', words: '词', best: '选', segments: '段', done: '成' }[s.stage] ?? '·'),
+  readouts: s => [
+    { label: '终点朝向', value: s.scenLabel },
+    { label: '最优词', value: s.showBest ? s.bestType : '—', tone: s.showBest ? 'good' : undefined },
+    { label: '最短总长', value: s.showBest ? `${s.len}` : '—', tone: s.showBest ? 'good' : undefined },
+    { label: '三段(转+直+转)', value: s.showBest ? `${s.t}+${s.p}+${s.q}` : '—' },
+  ],
+}
 const rrt: Experiment<RRTState> = {
   id: 'rrt', group: '运动规划', title: 'RRT 运动规划', subtitle: '采样式避障：随机长树绕障碍到终点',
   kernel: rrtKernel, defaultDoc: { kind: 'rrt', params: {}, entities: [], streams: [] }, params: [],
@@ -7545,7 +7574,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, pinhole, pointcloud, stereo, icp, slam, impedance, mpc, pid, rrt, rrtstar, prm, potentialfield, chomp, trapezoid, gjk, mdp, qlearning, policygrad, ppo, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
+  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, pinhole, pointcloud, stereo, icp, slam, impedance, mpc, pid, rrt, rrtstar, prm, potentialfield, chomp, trapezoid, gjk, dubins, mdp, qlearning, policygrad, ppo, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
 ] as unknown as AnyExperiment[]
 
 /**

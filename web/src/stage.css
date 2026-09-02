@@ -5935,3 +5935,27 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .st-hotc{color:var(--now)}
 .st-goodc{color:var(--hit)}
 .st-badc{color:var(--miss)}
+
+/* dubins · 非完整车最短路(转-直-转 6 词) */
+.scdn.du-hot{color:var(--now)}
+.scdn.du-good{color:var(--hit)}
+.du-svg{margin:6px 0;max-width:340px;background:var(--sunk-1);border:1px solid var(--line);border-radius:8px}
+.du-circ{fill:none;stroke:var(--ghost);stroke-width:1;stroke-dasharray:3 2}
+.du-path{stroke:var(--hit);stroke-width:2.4}
+.du-arr{stroke:var(--dim);stroke-width:1.5}
+.du-ahf{fill:var(--dim)}
+.du-start{fill:var(--now);stroke:var(--panel);stroke-width:1}
+.du-goal{fill:var(--miss);stroke:var(--panel);stroke-width:1}
+.du-plbl{fill:var(--dim);font:8px var(--sans);font-weight:700}
+.du-words{display:flex;flex-direction:column;gap:5px;margin-top:6px}
+.du-word{display:flex;align-items:center;gap:8px;font-size:var(--t-ui);font-variant-numeric:tabular-nums;opacity:.7}
+.du-word.du-wbest{opacity:1}
+.du-word.du-winvalid{opacity:.4}
+.du-wk{font-family:var(--mono);font-weight:700;width:34px;color:var(--dim)}
+.du-wbest .du-wk{color:var(--hit)}
+.du-wbar{height:8px;background:var(--ghost);border-radius:4px;min-width:2px;transition:width .2s}
+.du-wbest .du-wbar{background:var(--hit)}
+.du-wlen{font-family:var(--mono);color:var(--dim)}
+.du-wbest .du-wlen{color:var(--hit);font-weight:700}
+.du-wnote{font-size:var(--t-ui);color:var(--dim);line-height:1.7;margin-top:4px}
+.du-hotc{color:var(--hit)}

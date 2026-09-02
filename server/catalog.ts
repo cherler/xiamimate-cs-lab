@@ -141,6 +141,7 @@ import { potentialfieldKernel } from '../src/kernels/potentialfield.ts'
 import { chompKernel } from '../src/kernels/chomp.ts'
 import { trapezoidKernel } from '../src/kernels/trapezoid.ts'
 import { gjkKernel } from '../src/kernels/gjk.ts'
+import { dubinsKernel } from '../src/kernels/dubins.ts'
 import { prmKernel } from '../src/kernels/prm.ts'
 import { mdpKernel } from '../src/kernels/mdp.ts'
 import { qlearningKernel } from '../src/kernels/qlearning.ts'
@@ -3187,6 +3188,41 @@ export const CATALOG: CatalogEntry[] = [
         id: 'gjk_num', label: '不碰时的 a·d',
         ask: '分离场景第 2 轮朝 d=[72,0] 取支撑点 a=[-2,-1]，a·d 是多少?(<0 即判不碰)', kind: 'number',
         compute: t => { const f = t as unknown as { stage?: string; passed?: boolean; adot?: number }[]; const l = f.find(x => x.stage === 'support' && x.passed === false); const v = l?.adot ?? -144; return ({ answer: String(v), step: 4, evidence: `a·d=(-2)·72+(-1)·0=${v}<0 → 沿 d 最远都没越过原点 → 不碰` }) },
+        distractors: numDistractors,
+      },
+    ],
+  },
+  {
+    id: 'dubins', title: 'Dubins 曲线', kernel: dubinsKernel as Kernel<unknown>, doc: trivialDoc('dubins'),
+    facts: [
+      {
+        id: 'du_shape', label: 'Dubins 最短路的形状',
+        ask: 'Dubins 曲线说,只能前进、有最小转弯半径的车,两位姿间最短路是什么形状?', kind: 'choice',
+        compute: () => ({ answer: '三段拼成、且只可能是 6 种"词"之一:CSC(转-直-转)LSL/RSR/LSR/RSL、CCC(转-转-转)RLR/LRL。L=左转弧、R=右转弧、S=直线,圆弧半径都=最小转弯半径 R。每种词闭式算三段、取最短', step: 1, evidence: '三段、6 种词(CSC+CCC)取最短' }),
+        distractors: () => ['总是一条直线', '任意光滑曲线都行', '一段圆弧'],
+      },
+      {
+        id: 'du_why', label: '为什么要用 Dubins',
+        ask: '给车式/差速机器人规划,为什么不能像质点那样两点连直线?', kind: 'choice',
+        compute: () => ({ answer: '车有非完整约束(不能横着走)和最小转弯半径,直线要求任意方向瞬移、车根本拐不过来。所以两个位姿之间要用 Dubins(只前进)或 Reeds-Shepp(可倒车)这种满足转弯半径的曲线来连', step: 1, evidence: '非完整+最小转弯半径、直线拐不过来' }),
+        distractors: () => ['直线太短、绕远反而快', '质点和车没区别、只是习惯', '直线会撞障碍'],
+      },
+      {
+        id: 'du_pose', label: '最优词由什么决定',
+        ask: '本例起点终点位置不变,只把终点朝向从朝上换成朝下,最优的 Dubins 词发生了什么?', kind: 'choice',
+        compute: () => ({ answer: '从 LSL(3.807)变成了 LSR(5.712)。说明最优词由位姿(尤其朝向)决定、不只看位置——Dubins 把 (起点朝向α、终点朝向β、距离d) 参数空间划分成若干区域、每块对应一种最优词', step: 4, evidence: '朝上→LSL、朝下→LSR;最优词由位姿定' }),
+        distractors: () => ['最优词不变、还是 LSL', '变成一条直线 S', '两种朝向长度一样'],
+      },
+      {
+        id: 'du_rs', label: 'Reeds-Shepp 的区别',
+        ask: 'Reeds-Shepp 曲线和 Dubins 曲线最主要的区别是什么?', kind: 'choice',
+        compute: () => ({ answer: 'Reeds-Shepp 允许车倒车(有前进也有后退段),是 Dubins(只前进)的推广、词的种类更多(含后退共 48 种情形)。停车、狭窄空间掉头等需要倒车的场景用 Reeds-Shepp;只前进的场景用 Dubins', step: 6, evidence: 'Reeds-Shepp 可倒车、Dubins 只前进' }),
+        distractors: () => ['Reeds-Shepp 不需要最小转弯半径', 'Reeds-Shepp 用于机械臂、Dubins 用于车', '两者完全一样、只是名字不同'],
+      },
+      {
+        id: 'du_num', label: '最短总长',
+        ask: '起点(0,0,0°)、终点(3,2,90°)、最小转弯半径 R=1，最优 LSL 的总长是多少?(保留三位)', kind: 'number',
+        compute: t => { const f = t as unknown as { bestType?: string; len?: number }[]; const l = f.find(x => x.bestType === 'LSL' && x.len != null); const v = l?.len ?? 3.807; return ({ answer: String(v), step: 4, evidence: `LSL=左转0.464+直2.236+左转1.107=${v}(四种 CSC 里最短)` }) },
         distractors: numDistractors,
       },
     ],
