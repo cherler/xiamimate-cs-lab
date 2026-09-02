@@ -1119,6 +1119,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { stage: string; angleMatch: boolean; rotOK: boolean; transOK: boolean }; return st.stage === 'done' ? (st.rotOK && st.transOK ? 'X 还原=真值' : '✗') : st.stage === 'translation' ? (st.transOK ? 't_X 解出' : '✗') : st.stage === 'rotation' ? (st.rotOK ? 'R_X 解出' : '✗') : st.stage === 'angle' ? (st.angleMatch ? 'θ_A=θ_B' : '角度不符') : st.stage === 'motions' ? '两组运动对' : 'A·X=X·B' },
     try: [{ act: '看角度自检', watch: '每组 A、B 旋转角必相等(90°=90°)——R_A、R_B 相似；某组不等就是数据配错、该剔掉。' }, { act: '看解 R_X', watch: 'n_A=R_X·n_B：两组不共线的轴对应就定出 R_X，还原=真值 Rz(90°)。' }, { act: '切「真值 z45」', watch: '换个真值 X，还原的 R_X 跟着变成 Rz(45°)——方法能还原任意 X。' }], terms: [],
   },
+  vo: {
+    question: '单目相机连续两帧，怎么从匹配点反推"相机自己转了多少、往哪走了"？为什么单目定不了绝对尺度？',
+    read: [{ at: '帧1/帧2', is: '同一批点在两帧的像位置；帧2 画对极线+极点。', anchor: '.vo-svg' }, { at: '流程块', is: '①E ②对极约束 ③对极线/极点 ④分解 (R,t)。', anchor: '.vo-blk' }, { at: '读数', is: '对极约束、极点、单目尺度。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { stage: string; scenLabel: string; E: number[][]; corrs: { x1: number[]; x2: number[] }[]; epiLine: number[]; onLine: number; epipole: number[] | null; scaleC: number }; return [
+      { k: '本步输入', v: st.stage === 'intro' ? `${st.scenLabel}、R=I` : st.stage === 'essential' ? '相对旋转 R、平移方向 t' : st.stage === 'constraint' ? '3 对匹配点 (x1,x2)' : st.stage === 'epiline' ? `点2 x1=[${st.corrs[1].x1}]` : '本质矩阵 E' },
+      { k: '判定规则', v: `E=[t]×R；对极约束 x2ᵀE x1=0（对 E 线性→8 点法）；对极线 l2=E x1、x2 落其上、所有线交于极点；分解 E→4 组 (R,t)、手性选唯一、单目 t 无尺度。` },
+      { k: '本步结果', v: st.stage === 'intro' ? '对极几何：从两帧错位恢复相机运动' : st.stage === 'essential' ? `E=[[${st.E[0]}],[${st.E[1]}],[${st.E[2]}]]` : st.stage === 'constraint' ? `三对匹配 x2ᵀE x1 都 ≈0 ✓（8 点法据此解 E）` : st.stage === 'epiline' ? `对极线 l2=[${st.epiLine}]、x2 在线上（l2·x2=${Math.abs(st.onLine) < 1e-9 ? '≈0' : st.onLine}）；极点=${st.epipole ? `图心 FOE (${st.epipole})、线放射` : '无穷远、线水平 y1=y2'}` : `SVD 4 候选、手性选唯一；单目 t 无绝对尺度（E 与 2E 同约束 ${Math.abs(st.scaleC) < 1e-9 ? '≈0' : st.scaleC}）` },
+    ] },
+    verdict: (s: never) => { const st = s as { stage: string; epipole: number[] | null }; return st.stage === 'done' ? '恢复 (R,t)' : st.stage === 'recover' ? '单目无尺度' : st.stage === 'epiline' ? (st.epipole ? '极点=FOE' : '极点∞·水平') : st.stage === 'constraint' ? 'x2ᵀEx1≈0' : st.stage === 'essential' ? 'E=[t]×R' : '两帧恢复运动' },
+    try: [{ act: '切「前进平移」', watch: '极点=图像中心的扩张焦点 FOE，对极线从中心放射——就是开车往前看的样子。' }, { act: '切「横向平移」', watch: '极点在无穷远，对极线是水平平行线、y1=y2——正是双目校正情形。' }, { act: '看尺度', watch: 'E 和 2E 给完全相同的约束≈0——单目只能定平移方向、定不了绝对尺度。' }], terms: [],
+  },
   queryplan: {
     question: '同一个查询有好几条路可走，数据库优化器凭什么选其中一条？',
     read: [{ at: '候选路径', is: '每条访问路径的 type + 估扫描行数代价条。', anchor: '.qp-paths' }, { at: 'EXPLAIN', is: '末步选中路径的 type/key/rows。', anchor: '.qp-explain' }],

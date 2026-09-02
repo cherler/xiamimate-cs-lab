@@ -132,6 +132,7 @@ import { pinholeKernel } from '../src/kernels/pinhole.ts'
 import { pointcloudKernel } from '../src/kernels/pointcloud.ts'
 import { stereoKernel } from '../src/kernels/stereo.ts'
 import { handeyeKernel } from '../src/kernels/handeye.ts'
+import { voKernel } from '../src/kernels/vo.ts'
 import { particlefilterKernel } from '../src/kernels/particlefilter.ts'
 import { ukfKernel } from '../src/kernels/ukf.ts'
 import { complementaryKernel } from '../src/kernels/complementary.ts'
@@ -2774,6 +2775,41 @@ export const CATALOG: CatalogEntry[] = [
         ask: 'eye-in-hand 和 eye-to-hand 有什么区别?', kind: 'choice',
         compute: () => ({ answer: 'eye-in-hand=相机装在手腕/夹爪上、跟着手一起动(本实验就是,方程 AX=XB 求相机↔夹爪);eye-to-hand=相机固定在外面看着机器人(求相机↔机器人基座)。两者方程形式类似、但 X 的含义和数据采法不同', step: 6, evidence: 'in-hand相机在手上动、to-hand相机在外固定' }),
         distractors: () => ['一个用单目、一个用双目', 'eye-to-hand 不需要标定', '只是叫法不同、完全一样'],
+      },
+    ],
+  },
+  {
+    id: 'vo', title: '视觉里程计 · 对极几何', kernel: voKernel as Kernel<unknown>, doc: trivialDoc('vo'),
+    facts: [
+      {
+        id: 'vo_essential', label: '本质矩阵是什么',
+        ask: '对极几何里的本质矩阵 E 打包了什么?', kind: 'choice',
+        compute: () => ({ answer: 'E=[t]×R,在归一化坐标下打包相机的相对旋转 R 和平移方向 t([t]× 是 t 的反对称叉乘矩阵)。带内参的像素坐标对应基础矩阵 F=K⁻ᵀE K⁻¹。E 秩 2、5 个自由度(3 旋转+2 平移方向、尺度未定)', step: 1, evidence: 'E=[t]×R、打包相对旋转+平移方向' }),
+        distractors: () => ['相机的内参 K(焦距、主点)', '两帧之间的时间差', '3D 点的绝对坐标'],
+      },
+      {
+        id: 'vo_constraint', label: '对极约束与 8 点法',
+        ask: '对极约束 x2ᵀE x1=0 为什么能用来解本质矩阵 E?', kind: 'choice',
+        compute: () => ({ answer: '因为 x2ᵀE x1=0 对 E 的 9 个元素是线性的,每对匹配点给一个线性方程,给 ≥8 对匹配就能线性解出 E(8 点法,Longuet-Higgins)。实际有误匹配,用 RANSAC 稳健估计', step: 2, evidence: '对 E 线性、≥8 对匹配解 E(8 点法)' }),
+        distractors: () => ['它是非线性的、要迭代优化', '一对匹配点就能解出 E', '它给出 3D 点的深度'],
+      },
+      {
+        id: 'vo_epi', label: '对极线和极点',
+        ask: '对极线 l2=E x1 和极点是什么?有什么用?', kind: 'choice',
+        compute: () => ({ answer: 'l2=E x1 是 x1 在第二帧的对极线,x2 必落在它上面;所有对极线交于极点 e2(=平移方向的像)。用处:找 x1 在第二帧的匹配只需沿这一条对极线搜、不用搜整幅图,极大加速。前进平移时极点是图心扩张焦点 FOE、线放射;横向平移时极点在无穷远、线水平', step: 3, evidence: 'x2 在对极线上、沿线搜匹配、交于极点' }),
+        distractors: () => ['对极线是 3D 点的轨迹', '极点是图像最亮的点', '和匹配无关、只是可视化'],
+      },
+      {
+        id: 'vo_scale', label: '单目为什么无尺度',
+        ask: '单目视觉里程计从两帧为什么只能定平移方向、定不了绝对尺度?', kind: 'choice',
+        compute: () => ({ answer: '因为本质矩阵 E 对 t 的尺度是齐次的——E 和 2E(即 t 和 2t)给出完全相同的对极约束,尺度不可观。所以单目只能定平移方向、不知道是小场景走 1 米还是大场景走 100 米。要定尺度靠双目基线、IMU、已知物体大小或回环', step: 5, evidence: 'E 与 2E 同约束、尺度不可观' }),
+        distractors: () => ['相机分辨率不够高', '因为没有 GPS', '因为只用了 8 个点'],
+      },
+      {
+        id: 'vo_recover', label: '从 E 恢复位姿',
+        ask: '从本质矩阵 E 恢复相机运动 (R,t) 怎么做?', kind: 'choice',
+        compute: () => ({ answer: '对 E 做 SVD 分解,得到 4 组 (R,t) 候选(旋转 2 种×平移 ±方向);用手性检验(cheirality)——真正那组必须让三角化出的 3D 点在两个相机前方(深度为正)——选出唯一解。之后三角化匹配点建 3D 地图、接成轨迹', step: 5, evidence: 'SVD 得 4 解、手性(点在相机前方)选唯一' }),
+        distractors: () => ['直接矩阵求逆 (R,t)=E⁻¹', 'E 已经就是 (R,t)、不用分解', '随机搜索直到满足约束'],
       },
     ],
   },

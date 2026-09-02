@@ -5985,3 +5985,29 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .he-hotc{color:var(--now)}
 .he-goodc{color:var(--hit)}
 .he-badc{color:var(--miss)}
+
+/* vo · 视觉里程计/对极几何 */
+.scdn.vo-good{color:var(--hit)}
+.scdn.vo-hot{color:var(--now)}
+.vo-panes{display:flex;gap:10px;flex-wrap:wrap}
+.vo-pane{flex:1 1 150px;min-width:150px}
+.vo-svg{background:var(--sunk-1);border:1px solid var(--line);border-radius:8px}
+.vo-frame{fill:none;stroke:var(--line);stroke-width:1;stroke-dasharray:3 2}
+.vo-flbl{fill:var(--faint);font:7px var(--sans)}
+.vo-pt{fill:var(--dim)}
+.vo-pt-hot{fill:var(--now)}
+.vo-ptlbl{fill:var(--faint);font:7px var(--mono)}
+.vo-epi{stroke:var(--ghost);stroke-width:1}
+.vo-epi-hot{stroke:var(--now);stroke-width:1.6}
+.vo-epole{fill:var(--miss);stroke:var(--panel);stroke-width:1}
+.vo-elbl{fill:var(--miss);font:7px var(--sans);font-weight:700}
+.vo-flow{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.vo-blk{border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--panel-2);font-size:var(--t-ui);line-height:1.8;font-variant-numeric:tabular-nums}
+.vo-blk-r{border:1px solid color-mix(in srgb,var(--miss) 30%,var(--line));border-radius:8px;padding:8px 10px;background:color-mix(in srgb,var(--miss) 5%,transparent);font-size:var(--t-ui);line-height:1.8;font-variant-numeric:tabular-nums}
+.vo-n{font-family:var(--mono);color:var(--now);font-weight:700;margin-right:6px}
+.vo-cc{margin:0 6px;font-family:var(--mono)}
+.vo-mat{display:inline-flex;flex-direction:column;border-left:1.5px solid var(--dim);border-right:1.5px solid var(--dim);padding:1px 4px;vertical-align:middle;margin:0 3px}
+.vo-mrow{display:flex;gap:6px}
+.vo-mcell{font-family:var(--mono);font-size:.85em;min-width:18px;text-align:right}
+.vo-goodc{color:var(--hit)}
+.vo-badc{color:var(--miss)}

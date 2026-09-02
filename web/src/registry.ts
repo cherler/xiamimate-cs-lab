@@ -357,6 +357,7 @@ import { pinholeKernel, type PinState } from '@engine/kernels/pinhole.ts'
 import { pointcloudKernel, type CloudState } from '@engine/kernels/pointcloud.ts'
 import { stereoKernel, type StereoState } from '@engine/kernels/stereo.ts'
 import { handeyeKernel, type HandEyeState } from '@engine/kernels/handeye.ts'
+import { voKernel, type VoState } from '@engine/kernels/vo.ts'
 import { particlefilterKernel, type PfState } from '@engine/kernels/particlefilter.ts'
 import { ukfKernel, type UkfState } from '@engine/kernels/ukf.ts'
 import { complementaryKernel, type CompState } from '@engine/kernels/complementary.ts'
@@ -404,6 +405,7 @@ import { PinholeStage } from './stages/PinholeStage.tsx'
 import { PointCloudStage } from './stages/PointCloudStage.tsx'
 import { StereoStage } from './stages/StereoStage.tsx'
 import { HandEyeStage } from './stages/HandEyeStage.tsx'
+import { VoStage } from './stages/VoStage.tsx'
 import { PfStage } from './stages/PfStage.tsx'
 import { UkfStage } from './stages/UkfStage.tsx'
 import { CompStage } from './stages/CompStage.tsx'
@@ -7219,6 +7221,33 @@ const handeye: Experiment<HandEyeState> = {
     { label: '还原平移 t_X', value: s.showTrans ? `[${s.tXrec}]${s.transOK ? ' ✓' : ''}` : '—', tone: s.showTrans ? (s.transOK ? 'good' : 'bad') : undefined },
   ],
 }
+const vo: Experiment<VoState> = {
+  id: 'vo', group: '机器人感知', title: '视觉里程计 · 对极几何', subtitle: '单目两帧恢复相机运动：本质矩阵 E=[t]×R、对极约束 x2ᵀE x1=0、分解 (R,t)',
+  kernel: voKernel, defaultDoc: { kind: 'vo', params: { motion: '前进平移' }, entities: [], streams: [] },
+  params: [{ key: 'motion', label: '相机运动', kind: 'enum', options: ['前进平移', '横向平移'] }],
+  paramsNote: '视觉里程计(VO)/单目 SLAM 前端:相机从上一帧到这一帧,**自己转了多少、往哪走了**。靠**对极几何**:①**本质矩阵 E=[t]×R**(归一化坐标下打包相对旋转 R + 平移方向 t、[t]× 是叉乘反对称阵);②**对极约束 x2ᵀE x1=0**(同一 3D 点两帧归一化像点的硬约束、对 E 线性 → **8 点法**从 ≥8 对匹配解 E、RANSAC 去误匹配);③**对极线 l2=E x1 + 极点 e2**(x2 必落在对极线上、所有线交于极点=平移方向的像;**找匹配只沿一条线搜**);④**分解 E→(R,t)**(SVD 得 4 组候选、手性/点在两相机前方选唯一;**单目 t 只定方向不定绝对尺度**、E 与 2E 同约束=尺度不确定)。本例 R=I:**前进平移** t=[0,0,1](极点=图心扩张焦点 FOE、对极线放射,像往前开)vs **横向平移** t=[1,0,0](极点无穷远、对极线水平 y1=y2、正是双目校正情形)。3 组匹配点约束≈0、画对极线与极点。全用矩阵现算。切「运动」对比。连「针孔/双目/ICP/SLAM/PnP」。详见讲解卡。',
+  bounds: [
+    '对极几何:E=[t]×R(归一化;带内参是基础矩阵 F);对极约束 x2ᵀE x1=0(对 E 线性 → 8 点法解 E、RANSAC 去误匹配)',
+    '对极线 l2=E x1:x2 必落在线上、所有线交于极点 e2(=平移方向的像);匹配只沿一条对极线搜、不搜全图',
+    '极点位置由平移方向定:横向平移→极点无穷远、对极线水平(y1=y2、双目校正);前进平移→极点=图心扩张焦点 FOE、对极线放射',
+    '分解 E→(R,t):SVD 4 组候选、手性(点在两相机前方)选唯一;单目 t 无绝对尺度(E 与 2E 同约束)→尺度不确定,靠双目/IMU/回环补。三角化建图接成轨迹。参考 Longuet-Higgins 1981、Hartley-Zisserman',
+  ],
+  tabs: [{ id: 'vo', label: '对极逐步跑' }], Stage: VoStage, whyInRail: true,
+  tone: s => (s.stage === 'done' ? { key: 'good', label: '恢复 (R,t)' }
+    : s.stage === 'recover' ? { key: 'bad', label: '单目无尺度' }
+    : s.stage === 'epiline' ? { key: 'good', label: s.epipole ? '极点=FOE' : '极点∞·水平' }
+    : s.stage === 'constraint' ? { key: 'good', label: 'x2ᵀEx1≈0' }
+    : s.stage === 'essential' ? { key: 'idle', label: 'E=[t]×R' }
+    : { key: 'idle', label: '两帧恢复运动' }),
+  metric: s => (s.stage === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => ({ intro: 'VO', essential: 'E', constraint: '约', epiline: '线', recover: 'Rt', done: '成' }[s.stage] ?? '·'),
+  readouts: s => [
+    { label: '相机运动', value: s.scenLabel.split('(')[0] },
+    { label: '对极约束 x2ᵀEx1', value: s.showConstraint ? '≈0（三对匹配）' : '—', tone: s.showConstraint ? 'good' : undefined },
+    { label: '极点 e2', value: s.showEpi ? (s.epipole ? `(${s.epipole}) FOE` : '∞（水平线）') : '—' },
+    { label: '单目恢复 (R,t)', value: s.showRecover ? '方向定·尺度不定' : '—', tone: s.showRecover ? 'bad' : undefined },
+  ],
+}
 const icp: Experiment<ICPState> = {
   id: 'icp', group: '机器人感知', title: 'ICP 点云配准', subtitle: '迭代最近点：两片点云对齐求位姿',
   kernel: icpKernel, defaultDoc: { kind: 'icp', params: {}, entities: [], streams: [] }, params: [],
@@ -7603,7 +7632,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, pinhole, pointcloud, stereo, handeye, icp, slam, impedance, mpc, pid, rrt, rrtstar, prm, potentialfield, chomp, trapezoid, gjk, dubins, mdp, qlearning, policygrad, ppo, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
+  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, pinhole, pointcloud, stereo, handeye, vo, icp, slam, impedance, mpc, pid, rrt, rrtstar, prm, potentialfield, chomp, trapezoid, gjk, dubins, mdp, qlearning, policygrad, ppo, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
 ] as unknown as AnyExperiment[]
 
 /**
