@@ -141,6 +141,7 @@ import { pidKernel } from '../src/kernels/pid.ts'
 import { rrtKernel } from '../src/kernels/rrt.ts'
 import { rrtconnectKernel } from '../src/kernels/rrtconnect.ts'
 import { dstarliteKernel } from '../src/kernels/dstarlite.ts'
+import { libraryKernel } from '../src/kernels/library.ts'
 import { rrtstarKernel } from '../src/kernels/rrtstar.ts'
 import { potentialfieldKernel } from '../src/kernels/potentialfield.ts'
 import { chompKernel } from '../src/kernels/chomp.ts'
@@ -3491,6 +3492,41 @@ export const CATALOG: CatalogEntry[] = [
         ask: 'D* Lite 和 A* 是什么关系?', kind: 'choice',
         compute: () => ({ answer: 'D* Lite 是 A* 的增量式版本:同样可以用启发式 h 制导搜索(h=0 时退化成增量 Dijkstra),但它在地图变化时能复用上次的结果只做局部修复,而 A* 每次都从头搜。它建立在 LPA* 之上、再加起点会移动的补偿(km 项)', step: 4, evidence: 'A* 的增量版、可用 h 制导、复用旧结果局部修' }),
         distractors: () => ['和 A* 无关、是采样式的', 'D* Lite 不用代价、只看方向', 'A* 是 D* Lite 的特例、更强'],
+      },
+    ],
+  },
+  {
+    id: 'moveit', title: 'MoveIt 2 · 机械臂运动规划框架', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'moveit' }, entities: [], streams: [] },
+    facts: [
+      {
+        id: 'mi_what', label: 'MoveIt 是什么',
+        ask: 'MoveIt 2 是什么?在机器人栈里处于什么位置?', kind: 'choice',
+        compute: () => ({ answer: 'ROS 2 上机械臂(操作臂)运动规划的事实标准框架:给机器人模型+目标位姿,算出无碰撞、可执行的关节轨迹。中枢是 move_group 节点,把 规划场景/规划器/碰撞检测/运动学/轨迹时间参数化 串成一条流水线。它是"库层"、骑在运动规划算法之上', step: 0, evidence: 'ROS 2 机械臂运动规划框架、move_group 流水线' }),
+        distractors: () => ['一个物理仿真器(像 MuJoCo/Gazebo)', '一个移动底盘的导航栈', '一个深度学习训练框架'],
+      },
+      {
+        id: 'mi_planner', label: 'MoveIt 默认规划器',
+        ask: 'MoveIt 默认用哪类规划器?底层库是什么?', kind: 'choice',
+        compute: () => ({ answer: '默认接 OMPL(Open Motion Planning Library)里的采样式规划器,默认规划器是 RRT-Connect(双向长两棵树+贪心连接);OMPL 里还有 RRT、RRT*、PRM 等。MoveIt 也支持 CHOMP(优化式)、STOMP、Pilz(工业 LIN/PTP)', step: 0, evidence: 'OMPL、默认 RRT-Connect' }),
+        distractors: () => ['自己写的 A* 栅格搜索', '深度强化学习策略', '只有一种固定规划器、不可换'],
+      },
+      {
+        id: 'mi_collision', label: 'MoveIt 碰撞检测',
+        ask: 'MoveIt 用什么做碰撞检测?背后是什么算法?', kind: 'choice',
+        compute: () => ({ answer: '用 FCL(Flexible Collision Library)判机器人与环境/自身碰撞;底层就是 GJK 那类凸-凸碰撞检测(支撑函数 + Minkowski 差)。这正是实验室「GJK 碰撞检测」实验的原理', step: 0, evidence: 'FCL、底层 GJK 凸检测' }),
+        distractors: () => ['逐像素比对摄像头图像', '训练一个神经网络判碰撞', '不做碰撞检测、靠人避让'],
+      },
+      {
+        id: 'mi_notinvent', label: 'MoveIt 的定位',
+        ask: 'MoveIt 和它内部的算法(RRT-Connect/GJK/CHOMP)是什么关系?', kind: 'choice',
+        compute: () => ({ answer: 'MoveIt 不发明新算法,而是把这些经典算法工程化、拼成一条能用的规划流水线(库=用法、算法=原理)。所以学 MoveIt 之前先在实验里把 RRT-Connect/GJK/CHOMP/时间参数化的原理焊死,再回头看 MoveIt 就是"把它们拼起来"', step: 0, evidence: '库把经典算法工程化拼成系统、非发明新算法' }),
+        distractors: () => ['MoveIt 发明了全新的规划算法', 'MoveIt 和这些算法无关', 'MoveIt 只是这些算法的文档'],
+      },
+      {
+        id: 'mi_scope', label: 'MoveIt vs Nav2',
+        ask: 'MoveIt 和 Nav2 分工是什么?MoveIt 有什么局限?', kind: 'choice',
+        compute: () => ({ answer: 'MoveIt 管机械臂(操作臂)的运动规划;移动底盘的自主导航是 Nav2 的活。MoveIt 局限:学习曲线陡、配置繁琐(URDF/SRDF+一堆yaml)、和 ROS 强耦合、量级重、默认采样规划不最优要调参。许可 BSD-3-Clause、PickNik 维护', step: 0, evidence: 'MoveIt=机械臂、Nav2=移动导航;学习曲线陡/偏机械臂' }),
+        distractors: () => ['MoveIt 既管机械臂又管移动导航、Nav2 是它的子模块', 'MoveIt 只能用于仿真、不能上真机', '两者完全一样、只是名字不同'],
       },
     ],
   },

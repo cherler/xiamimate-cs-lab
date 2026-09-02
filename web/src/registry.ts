@@ -375,6 +375,7 @@ import { gjkKernel, type GjkState } from '@engine/kernels/gjk.ts'
 import { dubinsKernel, type DubinsState } from '@engine/kernels/dubins.ts'
 import { rrtconnectKernel, type RRTCState } from '@engine/kernels/rrtconnect.ts'
 import { dstarliteKernel, type DStarState } from '@engine/kernels/dstarlite.ts'
+import { libraryKernel, type LibraryState } from '@engine/kernels/library.ts'
 import { prmKernel, type PrmState } from '@engine/kernels/prm.ts'
 import { mdpKernel, type MdpState } from '@engine/kernels/mdp.ts'
 import { qlearningKernel, type QState } from '@engine/kernels/qlearning.ts'
@@ -426,6 +427,7 @@ import { GjkStage } from './stages/GjkStage.tsx'
 import { DubinsStage } from './stages/DubinsStage.tsx'
 import { RrtConnectStage } from './stages/RrtConnectStage.tsx'
 import { DStarLiteStage } from './stages/DStarLiteStage.tsx'
+import { LibraryStage } from './stages/LibraryStage.tsx'
 import { PrmStage } from './stages/PrmStage.tsx'
 import { MdpStage } from './stages/MdpStage.tsx'
 import { QlearningStage } from './stages/QlearningStage.tsx'
@@ -7581,6 +7583,32 @@ const foc: Experiment<FocState> = {
     { label: '本步', value: ({ intro: '交流难控', clarke: 'Clarke 3→2', park: 'Park 交流→直流', pi: '两个 PI(i_d*=0)', invsvpwm: '逆变换+SVPWM', done: 'i_q=力矩旋钮' } as Record<string, string>)[s.stage] ?? '—' },
   ],
 }
+// ── 具身智能 · 软件库与框架(新内容类型:库层介绍,非焊死仿真) ──
+const moveit: Experiment<LibraryState> = {
+  id: 'moveit', group: '软件库与框架', title: 'MoveIt 2 · 机械臂运动规划框架', subtitle: 'ROS 2 上机械臂规划的事实标准：把 OMPL/FCL/CHOMP/IK 拼成一条规划流水线（库层，非仿真）',
+  kernel: libraryKernel, defaultDoc: { kind: 'library', params: { lib: 'moveit' }, entities: [], streams: [] }, params: [],
+  paramsNote: '**软件库/框架层**(新内容类型):在单个"知识理论/算法"实验之上,加一层软件库的介绍——它们没法做焊死仿真,改成四要素:①特点介绍 ②优缺点剖析 ③内容覆盖(并**反向连回**用到的理论实验) ④落地项目。**MoveIt 2** = ROS 2 上机械臂(操作臂)运动规划的事实标准框架:给机器人模型 + 目标位姿,算出无碰撞可执行的关节轨迹;中枢 move_group 串起 场景/规划/碰撞/运动学/轨迹一条流水线。它不发明新算法,而是把经典算法工程化拼成系统——**默认规划器就是我们建过的 RRT-Connect、碰撞用 FCL(=GJK 那类)、优化用 CHOMP、时间参数化=梯形速度曲线、逆解=IK/雅可比**。许可 BSD-3-Clause、维护 PickNik。库是"用法"、实验是"原理",两层对着看。逐段翻:特点→优缺点→覆盖→落地。',
+  bounds: [
+    'MoveIt 2=ROS 2 机械臂运动规划事实标准框架(BSD-3-Clause,PickNik 维护);中枢 move_group 串 场景/规划/碰撞/运动学/轨迹流水线',
+    '不发明算法、把经典算法工程化:OMPL(采样,默认 RRT-Connect)+CHOMP(优化)+FCL(碰撞)+KDL/IKFast(运动学)+时间参数化',
+    '内容覆盖反向连回理论实验:OMPL↔RRT-Connect/RRT/RRT*/PRM、FCL↔GJK、CHOMP、时间参数化↔梯形速度曲线、IK↔逆运动学/雅可比',
+    '取舍:生态标准/可插拔/开箱即用,但学习曲线陡、配置繁、和 ROS 强耦合、偏机械臂(移动导航是 Nav2)。落地:Franka Panda、UR 等',
+  ],
+  tabs: [{ id: 'lib', label: '逐段翻' }], Stage: LibraryStage, whyInRail: true,
+  tone: s => (s.section === 'done' ? { key: 'good', label: '库层小结' }
+    : s.section === 'coverage' ? { key: 'good', label: '反向连回实验' }
+    : s.section === 'proscons' ? { key: 'idle', label: '优缺点' }
+    : s.section === 'projects' ? { key: 'idle', label: '落地项目' }
+    : { key: 'idle', label: '特点介绍' }),
+  metric: s => Math.max(0, (s.step + 1) / 5),
+  tickLabel: s => ({ intro: '特', proscons: '优', coverage: '覆', projects: '落', done: '结' }[s.section] ?? '·'),
+  readouts: s => [
+    { label: '库/框架', value: s.name },
+    { label: '许可', value: s.license },
+    { label: '当前段', value: ({ intro: '特点介绍', proscons: '优缺点剖析', coverage: '内容覆盖', projects: '落地项目', done: '小结' } as Record<string, string>)[s.section] ?? '—' },
+    { label: '覆盖理论实验', value: `${s.coverage.flatMap(c => c.links).length} 个`, tone: s.section === 'coverage' || s.section === 'done' ? 'good' : undefined },
+  ],
+}
 const miniduck: Experiment<DuckState> = {
   id: 'miniduck', group: '具身项目实战', title: 'Open Duck Mini · 学会走路', subtitle: 'BD-X 迷你复刻的腿式 RL：相位参考步态 + 「模仿奖励」(≠模仿学习)；LeRobot 线收官',
   kernel: miniduckKernel, defaultDoc: { kind: 'miniduck', params: { mode: '带模仿奖励' }, entities: [], streams: [] },
@@ -7716,7 +7744,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, pinhole, pointcloud, stereo, handeye, vo, pnp, icp, slam, impedance, mpc, pid, rrt, rrtconnect, rrtstar, prm, potentialfield, chomp, trapezoid, gjk, dubins, dstarlite, mdp, qlearning, policygrad, ppo, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
+  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, pinhole, pointcloud, stereo, handeye, vo, pnp, icp, slam, impedance, mpc, pid, rrt, rrtconnect, rrtstar, prm, potentialfield, chomp, trapezoid, gjk, dubins, dstarlite, mdp, qlearning, policygrad, ppo, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc, moveit,
 ] as unknown as AnyExperiment[]
 
 /**
@@ -7865,12 +7893,8 @@ export const DISCIPLINES: Discipline[] = [
     groups: ['数据结构', '计算机组成原理', '操作系统', '计算机网络'],
     guide: { from: '一次内存访问', to: '吃透 408 四门', toIcon: '🎓' },
   },
-  {
-    key: 'backend', title: '后端', icon: '🖥️', status: 'active',
-    sub: '数据库 · 并发 · 分布式 · 系统设计 · 项目',
-    groups: ['数据库系统', '并发编程', '分布式系统', '系统设计', '项目实战'],
-    guide: { from: '一次数据库查询', to: '扛住高并发的后端', toIcon: '🖥️' },
-  },
+  // 后端轨已下线(2026-09-02 用户只保留 408/算法/大模型/具身四轨);实验仍在 EXPERIMENTS 里、
+  // 其 group(数据库系统/并发编程/分布式系统/系统设计/项目实战)成孤儿不显示,未删除,日后可恢复或重挂。
   {
     key: 'algo', title: '算法', icon: '🧮', status: 'active',
     sub: '经典算法 → 会学习的模型 · 求职',
@@ -7888,15 +7912,10 @@ export const DISCIPLINES: Discipline[] = [
     sub: '机器人学 → 感知 · 控制 · 规划 → 具身智能',
     // 从零到具身智能工程师：机器人学基础(运动学/雅可比)→感知(卡尔曼/SLAM)→控制(PID/力控)
     // →规划(RRT)→具身学习(模仿/RL/VLA)→开源实战(LeRobot/MuJoCo)。分组随实验增量补齐。
-    groups: ['机器人学基础', '刚体动力学', '机器人感知', '机器人控制', '运动规划', '机器人强化学习', '具身学习', '具身项目实战'],
+    groups: ['机器人学基础', '刚体动力学', '机器人感知', '机器人控制', '运动规划', '机器人强化学习', '具身学习', '具身项目实战', '软件库与框架'],
     guide: { from: '一次关节转动', to: '具身智能工程师', toIcon: '🦾' },
   },
-  {
-    key: 'security', title: '安全', icon: '🔐', status: 'active',
-    sub: '密码学 → 可信系统',
-    groups: ['密码学'],
-    guide: { from: '一次移位', to: '一套加密协议', toIcon: '🔐' },
-  },
+  // 安全轨已下线(2026-09-02 用户只保留 408/算法/大模型/具身四轨);密码学实验仍在 EXPERIMENTS 里、成孤儿不显示,未删除。
 ]
 
 export type Anchor = {

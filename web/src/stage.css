@@ -6075,3 +6075,37 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .ds-hotc{color:var(--now)}
 .ds-goodc{color:var(--hit)}
 .ds-badc{color:var(--miss)}
+
+/* library · 软件库/框架介绍(库层,新内容类型) */
+.lib-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px;padding-bottom:8px;border-bottom:1px solid var(--line);margin-bottom:8px}
+.lib-name{font-size:var(--t-read);font-weight:700;color:var(--ink)}
+.lib-meta{font-size:var(--t-meta);color:var(--faint)}
+.lib-meta b{color:var(--dim);font-weight:600}
+.lib-tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.lib-tab{font-size:var(--t-meta);color:var(--faint);border:1px solid var(--line);border-radius:20px;padding:2px 10px}
+.lib-tab.on{color:var(--panel);background:var(--now);border-color:var(--now);font-weight:700}
+.lib-tab.done{color:var(--dim);border-color:color-mix(in srgb,var(--hit) 40%,var(--line))}
+.lib-sec{font-size:var(--t-ui);line-height:1.85;color:var(--dim)}
+.lib-what{margin:0 0 10px;line-height:1.9}
+.lib-feat-grid{display:flex;flex-direction:column;gap:6px}
+.lib-feat{border:1px solid var(--line);border-radius:8px;padding:7px 10px;background:var(--panel-2)}
+.lib-ft{font-weight:700;color:var(--ink);margin-right:6px}
+.lib-fd{color:var(--dim)}
+.lib-pc{display:flex;gap:10px;flex-wrap:wrap}
+.lib-pros,.lib-cons{flex:1 1 200px;min-width:200px;border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.lib-pros{background:color-mix(in srgb,var(--hit) 5%,transparent)}
+.lib-cons{background:color-mix(in srgb,var(--miss) 5%,transparent)}
+.lib-pchead{font-weight:700;margin-bottom:5px}
+.lib-good{color:var(--hit)}
+.lib-bad{color:var(--miss)}
+.lib-pcitem{line-height:1.7}
+.lib-covnote{margin:0 0 8px}
+.lib-cov{border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:7px;background:var(--panel-2)}
+.lib-covmod{font-weight:700;color:var(--ink)}
+.lib-covd{font-weight:400;color:var(--faint);font-size:var(--t-meta);margin-left:8px}
+.lib-covlinks{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.lib-link{font-size:var(--t-meta);color:var(--hit);border:1px solid color-mix(in srgb,var(--hit) 40%,var(--line));border-radius:20px;padding:2px 9px;background:color-mix(in srgb,var(--hit) 7%,transparent);font-family:var(--mono)}
+.lib-proj-grid{display:flex;flex-direction:column;gap:6px}
+.lib-proj{border-left:2px solid var(--now);padding:4px 10px;background:var(--panel-2);border-radius:0 6px 6px 0}
+.lib-see{margin-top:10px;font-size:var(--t-meta);color:var(--faint)}
+.lib-covnote b,.lib-what b{color:var(--ink)}

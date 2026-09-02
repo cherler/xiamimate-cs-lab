@@ -400,6 +400,7 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   rrt: {},
   rrtconnect: {},
   dstarlite: {},
+  library: { lib: 'string' },
   wildcard: {},
   blockingqueue: {},
   regex: {},
