@@ -133,6 +133,7 @@ import { pointcloudKernel } from '../src/kernels/pointcloud.ts'
 import { stereoKernel } from '../src/kernels/stereo.ts'
 import { handeyeKernel } from '../src/kernels/handeye.ts'
 import { voKernel } from '../src/kernels/vo.ts'
+import { pnpKernel } from '../src/kernels/pnp.ts'
 import { particlefilterKernel } from '../src/kernels/particlefilter.ts'
 import { ukfKernel } from '../src/kernels/ukf.ts'
 import { complementaryKernel } from '../src/kernels/complementary.ts'
@@ -2810,6 +2811,41 @@ export const CATALOG: CatalogEntry[] = [
         ask: '从本质矩阵 E 恢复相机运动 (R,t) 怎么做?', kind: 'choice',
         compute: () => ({ answer: '对 E 做 SVD 分解,得到 4 组 (R,t) 候选(旋转 2 种×平移 ±方向);用手性检验(cheirality)——真正那组必须让三角化出的 3D 点在两个相机前方(深度为正)——选出唯一解。之后三角化匹配点建 3D 地图、接成轨迹', step: 5, evidence: 'SVD 得 4 解、手性(点在相机前方)选唯一' }),
         distractors: () => ['直接矩阵求逆 (R,t)=E⁻¹', 'E 已经就是 (R,t)、不用分解', '随机搜索直到满足约束'],
+      },
+    ],
+  },
+  {
+    id: 'pnp', title: 'PnP · 6D 位姿估计', kernel: pnpKernel as Kernel<unknown>, doc: trivialDoc('pnp'),
+    facts: [
+      {
+        id: 'pnp_what', label: 'PnP 求什么',
+        ask: 'PnP(Perspective-n-Point)要解的是什么?', kind: 'choice',
+        compute: () => ({ answer: '已知 n 个 3D 点(物体系坐标)+它们的 2D 像素+内参 K,求相机相对物体的 6 自由度位姿 (R,t)(3 旋转+3 平移)。3D 点来自 CAD 模型角点或 SLAM 地图点', step: 1, evidence: '2D-3D 对应 + K → 6 自由度位姿' }),
+        distractors: () => ['求相机的内参 K', '求 3D 点之间的距离', '求图像的深度图'],
+      },
+      {
+        id: 'pnp_crit', label: 'PnP 的准则',
+        ask: 'PnP 求位姿要最小化的量(准则)是什么?', kind: 'choice',
+        compute: () => ({ answer: '重投影误差 Σ‖投影(X_i;R,t)−观测像素_i‖²。真正的位姿能把 3D 点按 u=K[R|t]X 投影后正好落在观测像素上、误差=0;位姿越偏、各点像素残差越大。PnP 就是找让这个误差最小的位姿', step: 2, evidence: '最小化重投影误差、真位姿处=0' }),
+        distractors: () => ['3D 点两两之间的距离', '图像的亮度差', '相机移动的速度'],
+      },
+      {
+        id: 'pnp_p3p', label: 'P3P 为什么 4 解',
+        ask: 'P3P(用 3 个点的最小 PnP)有什么特点?', kind: 'choice',
+        compute: () => ({ answer: '3 个点是求位姿的最小情形,几何上一般解出 4 组候选位姿(有歧义),需要用第 4 个点的投影一致性来消歧、选出唯一解。是很多 RANSAC-PnP 的最小样本', step: 4, evidence: '3 点给 4 组候选、第 4 点消歧' }),
+        distractors: () => ['3 点直接给唯一解、不用消歧', 'P3P 需要至少 6 个点', 'P3P 只能求平移不能求旋转'],
+      },
+      {
+        id: 'pnp_methods', label: 'PnP 的解法',
+        ask: '常见的 PnP 解法有哪些?', kind: 'choice',
+        compute: () => ({ answer: 'P3P(3 点 4 解、第 4 点消歧)、DLT/线性 PnP(≥6 点、把投影排成线性方程 SVD 解)、EPnP(把点表成 4 个控制点、O(n)、OpenCV solvePnP 常用),最后用高斯-牛顿/LM 迭代最小化重投影误差精修、配 RANSAC 去外点', step: 4, evidence: 'P3P/DLT/EPnP + 高斯牛顿精修 + RANSAC' }),
+        distractors: () => ['只有暴力搜索一种', '直接矩阵求逆', '必须用深度学习'],
+      },
+      {
+        id: 'pnp_use', label: 'PnP 的用途',
+        ask: 'PnP 在机器人/SLAM 里典型用在哪?', kind: 'choice',
+        compute: () => ({ answer: 'VO/SLAM 建好 3D 地图后、新一帧靠 PnP 用 2D-3D 对应快速重定位(比重做对极几何稳);机械臂抓取先求物体 6D 位姿(2D-3D 或 CAD 模型)才能规划抓;AR 标记/物体跟踪。是把图像观测对齐到已知 3D 结构的标准工具', step: 5, evidence: 'SLAM 重定位、抓取求 6D 位姿、AR 跟踪' }),
+        distractors: () => ['给点云做下采样', '标定相机内参', '生成深度图'],
       },
     ],
   },

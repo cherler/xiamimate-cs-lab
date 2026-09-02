@@ -1130,6 +1130,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { stage: string; epipole: number[] | null }; return st.stage === 'done' ? '恢复 (R,t)' : st.stage === 'recover' ? '单目无尺度' : st.stage === 'epiline' ? (st.epipole ? '极点=FOE' : '极点∞·水平') : st.stage === 'constraint' ? 'x2ᵀEx1≈0' : st.stage === 'essential' ? 'E=[t]×R' : '两帧恢复运动' },
     try: [{ act: '切「前进平移」', watch: '极点=图像中心的扩张焦点 FOE，对极线从中心放射——就是开车往前看的样子。' }, { act: '切「横向平移」', watch: '极点在无穷远，对极线是水平平行线、y1=y2——正是双目校正情形。' }, { act: '看尺度', watch: 'E 和 2E 给完全相同的约束≈0——单目只能定平移方向、定不了绝对尺度。' }], terms: [],
   },
+  pnp: {
+    question: '已知一个物体的 3D 点和它们在图里的 2D 像素，怎么求相机相对它的 6 自由度位姿？',
+    read: [{ at: '成像面', is: '观测像素(绿)、当前位姿的重投影(橙)、残差线。', anchor: '.pn-svg' }, { at: '误差曲线', is: '重投影误差随位姿变化、真值处最小。', anchor: '.pn-curve' }, { at: '读数', is: 'RMS 误差、当前位姿、解。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { stage: string; scenLabel: string; obs: number[][]; curLabel: string; resid: number[]; rmsCur: number; trueVal: number; unit: string; curVal: number }; return [
+      { k: '本步输入', v: st.stage === 'intro' ? `4 个 3D 点 + K、偏移 ${st.scenLabel}` : st.stage === 'observe' ? '真位姿 R=I、t=[0,0,5]' : st.stage === 'reproject' ? `偏位姿 ${st.curLabel}` : st.stage === 'landscape' ? '沿该自由度扫描' : '解到真值位姿' },
+      { k: '判定规则', v: `投影 u=K[R|t]X；PnP=找位姿让 Σ‖投影−观测‖²(重投影误差)最小；真位姿处误差=0。P3P/DLT/EPnP+高斯牛顿求解。` },
+      { k: '本步结果', v: st.stage === 'intro' ? 'PnP：2D-3D 对应 + K → 6D 位姿' : st.stage === 'observe' ? `投出观测像素 ${st.obs.map(o => `(${o})`).join('、')}` : st.stage === 'reproject' ? `偏位姿重投影残差 [${st.resid}]px、RMS=${st.rmsCur}px(>0、位姿不对)` : st.stage === 'landscape' ? `误差碗形、真值 ${st.trueVal}${st.unit} 处最小≈0(当前偏值 ${st.curVal}${st.unit} 误差 ${st.rmsCur}px)` : `解到真值、4 点重投影残差全归零 ✓` },
+    ] },
+    verdict: (s: never) => { const st = s as { stage: string; rmsCur: number }; return st.stage === 'done' ? '重投影归零' : st.stage === 'solve' ? '残差归零' : st.stage === 'landscape' ? '误差碗形' : st.stage === 'reproject' ? `RMS ${st.rmsCur}px` : st.stage === 'observe' ? '投出观测' : '2D-3D→位姿' },
+    try: [{ act: '看重投影误差', watch: '偏位姿(tz=5.6)时 4 点残差 [7.58,7.58,7.58,0]px、RMS=6.56——位姿不对、投影对不上。' }, { act: '看误差曲线', watch: '沿 tz 扫一遍，误差碗形、真值 tz=5 处最小≈0——PnP 就是找这个最低点。' }, { act: '切「旋转」', watch: '偏航偏移时，凸出的顶点 D 残差最大(7.46px)——非共面点最能约束旋转。' }], terms: [],
+  },
   queryplan: {
     question: '同一个查询有好几条路可走，数据库优化器凭什么选其中一条？',
     read: [{ at: '候选路径', is: '每条访问路径的 type + 估扫描行数代价条。', anchor: '.qp-paths' }, { at: 'EXPLAIN', is: '末步选中路径的 type/key/rows。', anchor: '.qp-explain' }],

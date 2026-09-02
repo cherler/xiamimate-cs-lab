@@ -6011,3 +6011,31 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .vo-mcell{font-family:var(--mono);font-size:.85em;min-width:18px;text-align:right}
 .vo-goodc{color:var(--hit)}
 .vo-badc{color:var(--miss)}
+
+/* pnp · 6D 位姿估计(重投影误差) */
+.scdn.pn-good{color:var(--hit)}
+.scdn.pn-bad{color:var(--miss)}
+.pn-panes{display:flex;gap:10px;flex-wrap:wrap}
+.pn-pane{flex:1 1 160px;min-width:160px}
+.pn-cap{font-size:var(--t-meta);color:var(--faint);margin-bottom:2px}
+.pn-svg{background:var(--sunk-1);border:1px solid var(--line);border-radius:8px}
+.pn-frame{fill:none;stroke:var(--line);stroke-width:1;stroke-dasharray:3 2}
+.pn-obs{fill:none;stroke:var(--hit);stroke-width:1.8}
+.pn-lbl{fill:var(--dim);font:8px var(--mono);font-weight:700}
+.pn-reproj{fill:var(--miss)}
+.pn-res{stroke:var(--miss);stroke-width:1.4}
+.pn-solved{fill:var(--hit)}
+.pn-axis{stroke:var(--faint);stroke-width:1}
+.pn-curve{stroke:var(--now);stroke-width:2}
+.pn-truex{stroke:var(--hit);stroke-width:1;stroke-dasharray:2 2}
+.pn-min{fill:var(--hit)}
+.pn-cur{fill:var(--miss)}
+.pn-tlbl{fill:var(--hit);font:7px var(--sans)}
+.pn-albl{fill:var(--faint);font:7px var(--sans)}
+.pn-flow{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.pn-blk{border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--panel-2);font-size:var(--t-ui);line-height:1.7;font-variant-numeric:tabular-nums}
+.pn-blk.pn-off{opacity:.4}
+.pn-blk-g{border:1px solid color-mix(in srgb,var(--hit) 30%,var(--line));border-radius:8px;padding:8px 10px;background:color-mix(in srgb,var(--hit) 5%,transparent);font-size:var(--t-ui);line-height:1.7;font-variant-numeric:tabular-nums}
+.pn-n{font-family:var(--mono);color:var(--now);font-weight:700;margin-right:6px}
+.pn-goodc{color:var(--hit)}
+.pn-badc{color:var(--miss)}

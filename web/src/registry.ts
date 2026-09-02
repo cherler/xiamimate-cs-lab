@@ -358,6 +358,7 @@ import { pointcloudKernel, type CloudState } from '@engine/kernels/pointcloud.ts
 import { stereoKernel, type StereoState } from '@engine/kernels/stereo.ts'
 import { handeyeKernel, type HandEyeState } from '@engine/kernels/handeye.ts'
 import { voKernel, type VoState } from '@engine/kernels/vo.ts'
+import { pnpKernel, type PnpState } from '@engine/kernels/pnp.ts'
 import { particlefilterKernel, type PfState } from '@engine/kernels/particlefilter.ts'
 import { ukfKernel, type UkfState } from '@engine/kernels/ukf.ts'
 import { complementaryKernel, type CompState } from '@engine/kernels/complementary.ts'
@@ -406,6 +407,7 @@ import { PointCloudStage } from './stages/PointCloudStage.tsx'
 import { StereoStage } from './stages/StereoStage.tsx'
 import { HandEyeStage } from './stages/HandEyeStage.tsx'
 import { VoStage } from './stages/VoStage.tsx'
+import { PnpStage } from './stages/PnpStage.tsx'
 import { PfStage } from './stages/PfStage.tsx'
 import { UkfStage } from './stages/UkfStage.tsx'
 import { CompStage } from './stages/CompStage.tsx'
@@ -7248,6 +7250,33 @@ const vo: Experiment<VoState> = {
     { label: '单目恢复 (R,t)', value: s.showRecover ? '方向定·尺度不定' : '—', tone: s.showRecover ? 'bad' : undefined },
   ],
 }
+const pnp: Experiment<PnpState> = {
+  id: 'pnp', group: '机器人感知', title: 'PnP · 6D 位姿估计', subtitle: '已知 3D 点+它们的 2D 像素+内参 K，求 6 自由度位姿：最小化重投影误差',
+  kernel: pnpKernel, defaultDoc: { kind: 'pnp', params: { dof: '平移' }, entities: [], streams: [] },
+  params: [{ key: 'dof', label: '偏移自由度', kind: 'enum', options: ['平移', '旋转'] }],
+  paramsNote: 'PnP(Perspective-n-Point):已知 **n 个 3D 点**在物体系的坐标(CAD 角点/SLAM 地图点)、又检测到它们的 **2D 像素**、加**标定好的内参 K**,求相机相对物体的 **6 自由度位姿 (R,t)**。本质=**最小化重投影误差**:找 (R,t) 让每个 3D 点按 u=K[R|t]X 投影后尽量落在观测像素上(Σ‖投影−观测‖² 最小、真位姿处=0)。解法:**P3P**(3 点最小情形、4 组候选、第 4 点消歧)、**DLT/线性 PnP**(≥6 点线性)、**EPnP**(O(n)、OpenCV solvePnP 常用)、再**高斯-牛顿/LM 迭代**精修 + RANSAC 去外点。本例 4 个 3D 点(方底+凸顶点)、K:fx=fy=500 cx=cy=320,真位姿 R=I、t=[0,0,5] 投出观测像素 [(270,270),(370,270),(370,370),(320,320)];换偏位姿(param:平移 tz+0.6 / 偏航+8°)重投影就偏离观测、每点有像素残差;沿该自由度扫描,重投影误差在真值处最小(≈0)。全用投影现算。切「自由度」看平移/旋转。连「针孔(投影+K)/VO/SLAM(地图点来源)/双目/ICP(3D-3D 对应)」。详见讲解卡。',
+  bounds: [
+    'PnP:n 个 3D 点 + 它们的 2D 像素 + 内参 K → 相机相对物体 6 自由度位姿 (R,t)',
+    '准则=最小化重投影误差 Σ‖K[R|t]X−观测‖²:真位姿处=0、位姿越偏残差越大(重投影误差碗形、最低点=解)',
+    '解法:P3P(3 点 4 解、第 4 点消歧)、DLT(≥6 线性)、EPnP(O(n))、高斯-牛顿/LM 精修 + RANSAC 去外点',
+    '用途:VO/SLAM 建图后用 PnP 做 2D-3D 重定位;机械臂抓取先求物体 6D 位姿;AR 跟踪。共面点退化(用单应);PnP(2D-3D) vs ICP(3D-3D)。参考 EPnP(Lepetit 2009)、OpenCV solvePnP',
+  ],
+  tabs: [{ id: 'pn', label: 'PnP 逐步跑' }], Stage: PnpStage, whyInRail: true,
+  tone: s => (s.stage === 'done' ? { key: 'good', label: '重投影归零' }
+    : s.stage === 'solve' ? { key: 'good', label: '残差归零 ✓' }
+    : s.stage === 'landscape' ? { key: 'idle', label: '误差碗形' }
+    : s.stage === 'reproject' ? { key: 'bad', label: `RMS ${s.rmsCur}px` }
+    : s.stage === 'observe' ? { key: 'idle', label: '投出观测' }
+    : { key: 'idle', label: '2D-3D→位姿' }),
+  metric: s => (s.stage === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => ({ intro: 'P', observe: '观', reproject: '差', landscape: '碗', solve: '解', done: '成' }[s.stage] ?? '·'),
+  readouts: s => [
+    { label: '偏移自由度', value: s.scenLabel.split('(')[0] },
+    { label: '重投影 RMS 误差', value: s.showSolved ? '0px' : (s.showReproj ? `${s.rmsCur}px` : '—'), tone: s.showSolved ? 'good' : (s.showReproj ? 'bad' : undefined) },
+    { label: '当前位姿', value: s.showSolved ? `真值 ${s.trueVal}${s.unit}` : (s.showReproj ? `${s.curVal}${s.unit}` : '—') },
+    { label: 'PnP 解', value: s.showSolved ? '残差归零' : '—', tone: s.showSolved ? 'good' : undefined },
+  ],
+}
 const icp: Experiment<ICPState> = {
   id: 'icp', group: '机器人感知', title: 'ICP 点云配准', subtitle: '迭代最近点：两片点云对齐求位姿',
   kernel: icpKernel, defaultDoc: { kind: 'icp', params: {}, entities: [], streams: [] }, params: [],
@@ -7632,7 +7661,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, pinhole, pointcloud, stereo, handeye, vo, icp, slam, impedance, mpc, pid, rrt, rrtstar, prm, potentialfield, chomp, trapezoid, gjk, dubins, mdp, qlearning, policygrad, ppo, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
+  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, pinhole, pointcloud, stereo, handeye, vo, pnp, icp, slam, impedance, mpc, pid, rrt, rrtstar, prm, potentialfield, chomp, trapezoid, gjk, dubins, mdp, qlearning, policygrad, ppo, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
 ] as unknown as AnyExperiment[]
 
 /**
