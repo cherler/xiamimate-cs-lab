@@ -409,6 +409,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { i: 3, step: 3, stage: 'gradient', ...base, showPolicy: true, showSample: true, showGrad: true, showUpdate: false, phase: 'run' as const, focus: '策略梯度' },
       b: { i: 4, step: 4, stage: 'update', ...base, showPolicy: true, showSample: true, showGrad: true, showUpdate: true, phase: 'run' as const, focus: '更新' },
     } })(),
+    ppo: (() => { const base = { move: 'large', moveLabel: '大步 r=1.5（触发裁剪）', eps: 0.2, A: 1, r: 1.5, rA: 1.5, clipR: 1.2, clipA: 1.2, Lclip: 1.2, clipped: true, curve: [{ r: 1, L: 1 }, { r: 1.2, L: 1.2 }, { r: 1.5, L: 1.2 }], log: '' }; return {
+      doc: { kind: 'ppo', params: { move: '大步' }, entities: [], streams: [] },
+      a: { i: 3, step: 3, stage: 'clip', ...base, showRatio: true, showSurr: true, showClip: true, showEff: false, phase: 'run' as const, focus: '裁剪' },
+      b: { i: 4, step: 4, stage: 'effect', ...base, showRatio: true, showSurr: true, showClip: true, showEff: true, phase: 'run' as const, focus: '效果' },
+    } })(),
     queryplan: {
       doc: { kind: 'queryplan', params: {}, entities: [], streams: [] },
       a: { step: 1, op: 'path', query: 'q', revealed: 1, cur: 0, chosen: -1, paths: [{ name: '全表扫描', type: 'ALL', key: '—', rows: 10000, note: 'x' }, { name: '走 idx(city)', type: 'ref', key: 'idx_city', rows: 500, note: 'x' }, { name: '走 idx(age)', type: 'range', key: 'idx_age', rows: 6000, note: 'x' }], phase: 'run', focus: '候选路径：全表扫描（type=ALL，估扫 10000 行）' },

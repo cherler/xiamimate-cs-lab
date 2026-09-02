@@ -1031,6 +1031,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { stage: string; adv: number; weight: number; pi: number[]; piNew: number[]; sampled: number }; return st.stage === 'done' ? '∇logπ·优势' : st.stage === 'update' ? (st.piNew[st.sampled]! < st.pi[st.sampled]! ? '压低差动作' : '误推高') : st.stage === 'gradient' ? `权重${st.weight}` : st.stage === 'sample' ? `A=${st.adv}` : st.stage === 'policy' ? 'softmax' : '学策略' },
     try: [{ act: '切「带基线」', watch: '优势 A=1−2=−1<0 → π(L) 0.5→0.27，差动作被正确压低。' }, { act: '切「不带基线」', watch: '权重=回报 1>0 → π(L) 0.5→0.73，差动作反被误推高——纯回报方差大。' }, { act: '想连续动作', watch: 'softmax 是离散版；连续动作用高斯策略，miniduck 就这么输出关节残差。' }], terms: [],
   },
+  ppo: {
+    question: '策略梯度一步迈太大会把策略更新崩坏。PPO 用什么招把每次更新限住？',
+    read: [{ at: 'L^clip 曲线', is: 'r 超过 1+ε 后变平=无梯度。', anchor: '.pp-svg' }, { at: '裁剪块', is: 'min(r·A, clip(r)·A)。', anchor: '.pp-h' }, { at: '效果框', is: '大步拦住/小步正常。', anchor: '.pp-eff' }],
+    step: (s: never) => { const st = s as { stage: string; moveLabel: string; move: string; eps: number; A: number; r: number; rA: number; clipR: number; clipA: number; Lclip: number; clipped: boolean }; return [
+      { k: '本步输入', v: st.stage === 'intro' ? `步幅 ${st.moveLabel}、优势 A=${st.A}` : st.stage === 'ratio' ? '新旧策略' : st.stage === 'surrogate' ? `r=${st.r}、A=${st.A}` : st.stage === 'clip' ? `r=${st.r}、ε=${st.eps}` : '裁剪后的目标' },
+      { k: '判定规则', v: `重要性比 r=π_new/π_old；替代目标 L=r·A；裁剪 L^clip=min(r·A, clip(r,1−ε,1+ε)·A)；差出 ε 就无梯度=信任域。` },
+      { k: '本步结果', v: st.stage === 'intro' ? 'PPO:裁剪替代目标限每次更新' : st.stage === 'ratio' ? `r=π_new/π_old=${st.r}（r=1 没变）` : st.stage === 'surrogate' ? `L=r·A=${st.rA}（无脑最大化会把 r 推到无穷、崩）` : st.stage === 'clip' ? `L^clip=min(${st.rA}, clip(r)·A=${st.clipA})=${st.Lclip}（r 限[${1 - st.eps},${1 + st.eps}]）` : st.clipped ? `大步 r=${st.r}>1+ε 触发裁剪、封顶 ${st.Lclip}、梯度0、拦住` : `小步 r=${st.r} 在信任域内、不裁剪、正常更新` },
+    ] },
+    verdict: (s: never) => { const st = s as { stage: string; clipped: boolean; Lclip: number; r: number }; return st.stage === 'done' ? '裁剪限信任域' : st.stage === 'effect' ? (st.clipped ? '裁剪拦住' : '正常更新') : st.stage === 'clip' ? `L^clip=${st.Lclip}` : st.stage === 'surrogate' ? 'L=r·A' : st.stage === 'ratio' ? `r=${st.r}` : '限步' },
+    try: [{ act: '切「大步 r=1.5」', watch: 'r=1.5>1+ε=1.2 → 裁剪触发、L^clip 封在 1.2、梯度0，过大更新被拦住。' }, { act: '切「小步 r=1.1」', watch: 'r=1.1 在 [0.8,1.2] 内、不裁剪，L^clip=r·A=1.1，正常更新。' }, { act: '看 L^clip 曲线', watch: 'A>0 时曲线在 r=1+ε 处变平，平的地方没梯度=PPO 的信任域。' }], terms: [],
+  },
   queryplan: {
     question: '同一个查询有好几条路可走，数据库优化器凭什么选其中一条？',
     read: [{ at: '候选路径', is: '每条访问路径的 type + 估扫描行数代价条。', anchor: '.qp-paths' }, { at: 'EXPLAIN', is: '末步选中路径的 type/key/rows。', anchor: '.qp-explain' }],

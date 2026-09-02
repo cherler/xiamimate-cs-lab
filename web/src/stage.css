@@ -5795,3 +5795,28 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .pg-n{font-family:var(--mono);color:var(--now);font-weight:700;margin-right:6px}
 .pg-g{color:var(--hit)}
 .pg-r{color:var(--miss)}
+
+/* ppo · 近端策略优化 */
+.scdn.pp-hot{color:var(--now)}
+.scdn.pp-good{color:var(--hit)}
+.scdn.pp-bad{color:var(--miss)}
+.pp-svg{margin:6px 0;max-width:360px;background:var(--sunk-1);border:1px solid var(--line);border-radius:8px}
+.pp-axis{stroke:var(--line);stroke-width:1.2}
+.pp-axl{fill:var(--faint);font:10px var(--mono)}
+.pp-clipb{stroke:color-mix(in srgb,var(--now) 45%,transparent);stroke-width:1;stroke-dasharray:3 2}
+.pp-clbl{fill:var(--now);font:9px var(--mono);text-anchor:middle}
+.pp-flat{fill:var(--faint);font:8px var(--sans);text-anchor:middle}
+.pp-r1{stroke:var(--line);stroke-width:1;stroke-dasharray:2 2}
+.pp-r1lbl{fill:var(--faint);font:9px var(--mono);text-anchor:middle}
+.pp-curve{stroke:var(--dim);stroke-width:2}
+.pp-ptgood{fill:var(--hit)}
+.pp-ptbad{fill:var(--miss)}
+.pp-ptlbl{fill:var(--ink);font:9px var(--mono);text-anchor:middle;font-weight:600}
+.pp-flow{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+.pp-blk{border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--panel-2);font-size:var(--t-ui);line-height:1.7;font-variant-numeric:tabular-nums}
+.pp-blk.pp-off{opacity:.4}
+.pp-n{font-family:var(--mono);color:var(--now);font-weight:700;margin-right:6px}
+.pp-h{color:var(--now)}
+.pp-eff{border-radius:8px;padding:8px 10px;font-size:var(--t-ui);line-height:1.6}
+.pp-eff.pp-eclip{background:color-mix(in srgb,var(--miss) 8%,transparent);border:1px solid color-mix(in srgb,var(--miss) 35%,var(--line))}
+.pp-eff.pp-enorm{background:color-mix(in srgb,var(--hit) 8%,transparent);border:1px solid color-mix(in srgb,var(--hit) 35%,var(--line))}

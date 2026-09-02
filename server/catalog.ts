@@ -140,6 +140,7 @@ import { prmKernel } from '../src/kernels/prm.ts'
 import { mdpKernel } from '../src/kernels/mdp.ts'
 import { qlearningKernel } from '../src/kernels/qlearning.ts'
 import { policygradKernel } from '../src/kernels/policygrad.ts'
+import { ppoKernel } from '../src/kernels/ppo.ts'
 import { objectstoreKernel } from '../src/kernels/objectstore.ts'
 import { queryplanKernel } from '../src/kernels/queryplan.ts'
 import { wildcardKernel } from '../src/kernels/wildcard.ts'
@@ -2797,6 +2798,41 @@ export const CATALOG: CatalogEntry[] = [
         ask: 'PID 控制的 P、I、D 三项分别按什么量、起什么作用?', kind: 'choice',
         compute: () => ({ answer: 'P=Kp·e 按当前误差使劲(越远越使劲)；D=Kd·误差变化率提供阻尼(快到时反向刹车、防冲过头);I=Ki·误差累计消除稳态误差(顶掉重力等恒定扰动)。P管现在、I管过去累计、D管趋势', step: 14, evidence: '本例加 D=Kd·误差变化率(负=刹车)后，位置平稳收敛到目标不震荡' }),
         distractors: () => ['三项都按当前误差，只是系数不同', 'D 让响应更快、P 提供阻尼', 'I 提供阻尼、D 消除稳态误差'],
+      },
+    ],
+  },
+  {
+    id: 'ppo', title: 'PPO 近端策略优化', kernel: ppoKernel as Kernel<unknown>, doc: trivialDoc('ppo'),
+    facts: [
+      {
+        id: 'ppo_clip', label: 'PPO 的裁剪目标起什么作用',
+        ask: 'PPO 的裁剪替代目标 min(r·A, clip(r,1−ε,1+ε)·A) 起什么作用?', kind: 'choice',
+        compute: () => ({ answer: '把每次更新限在信任域、防策略崩:重要性比 r=π_new/π_old 差出 ε(超 [1−ε,1+ε])就被裁剪、目标封顶、梯度=0,优化器得不到继续推大 r 的动力。用一行 min/clip 实现信任域、比 TRPO 简单得多', step: 3, evidence: 'r 差出 ε 就无梯度=信任域;防一步迈太大崩' }),
+        distractors: () => ['让训练跑得更快', '把连续动作变成离散动作', '替代掉奖励函数'],
+      },
+      {
+        id: 'ppo_ratio', label: '重要性比 r 是什么',
+        ask: 'PPO 里的重要性比 r 是什么?衡量什么?', kind: 'choice',
+        compute: () => ({ answer: 'r=π_θ(a|s)/π_θ_old(a|s):新策略给这个动作的概率÷旧策略的。r=1 表示没变、r>1 新策略更偏爱、r<1 更嫌弃。它衡量新策略离旧策略走了多远,PPO 就是盯住它别离 1 太远', step: 1, evidence: 'r=新/旧策略概率比;r=1 没变' }),
+        distractors: () => ['r 是学习率', 'r 是折扣因子', 'r 是奖励与基线的比'],
+      },
+      {
+        id: 'ppo_why', label: 'PPO 为何成主力',
+        ask: 'PPO 相比 REINFORCE / TRPO 为什么成了主力?', kind: 'choice',
+        compute: () => ({ answer: '比 TRPO(复杂的二阶信任域)简单得多、效果相当;比 REINFORCE 稳、超参不敏感,而且裁剪限制了更新幅度、同一批数据可跑多个 epoch(样本效率更高、不像 REINFORCE 用完即扔)。配 actor-critic+GAE 算优势', step: 6, evidence: '简单+稳+可多epoch复用batch' }),
+        distractors: () => ['因为它是 off-policy、能复用所有旧数据', '因为它不需要优势函数', '因为它只能用于离散动作'],
+      },
+      {
+        id: 'ppo_miniduck', label: 'PPO 和 miniduck 的关系',
+        ask: 'PPO 和 miniduck(Open Duck Mini)是什么关系?', kind: 'choice',
+        compute: () => ({ answer: 'miniduck 用 Brax PPO 在 MuJoCo 里学走路:动作是连续的关节位置残差,PPO 的优势里就是那套 velocity tracking + imitation(相位参考步态)奖励。PPO 是它的训练算法', step: 6, evidence: 'miniduck=Brax PPO 学腿式locomotion;连续关节残差' }),
+        distractors: () => ['无关、miniduck 用模仿学习', 'miniduck 用值迭代', 'PPO 只能用于机械臂不能用于腿'],
+      },
+      {
+        id: 'ppo_num', label: '大步的裁剪目标',
+        ask: 'A=+1、ε=0.2，新策略把重要性比推到 r=1.5，裁剪目标 L^clip=min(r·A, clip(r,0.8,1.2)·A) 是多少?', kind: 'number',
+        compute: t => { const f = t as unknown as { Lclip?: number; clipped?: boolean }[]; const l = f.find(x => x.clipped) ?? f[f.length - 1] as unknown as { Lclip?: number }; const v = l?.Lclip != null ? Math.round(l.Lclip * 10) / 10 : 1.2; return ({ answer: String(v), step: 3, evidence: `clip(1.5,0.8,1.2)=1.2、L^clip=min(1.5·1, 1.2·1)=${v}(被封在 1.2、超出 1+ε 无梯度)` }) },
+        distractors: () => ['1.5', '1.0', '0.8', '2.0'],
       },
     ],
   },

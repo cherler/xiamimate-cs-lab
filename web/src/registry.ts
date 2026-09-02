@@ -368,6 +368,7 @@ import { prmKernel, type PrmState } from '@engine/kernels/prm.ts'
 import { mdpKernel, type MdpState } from '@engine/kernels/mdp.ts'
 import { qlearningKernel, type QState } from '@engine/kernels/qlearning.ts'
 import { policygradKernel, type PgState } from '@engine/kernels/policygrad.ts'
+import { ppoKernel, type PpoState } from '@engine/kernels/ppo.ts'
 import { quatKernel, type QuatState } from '@engine/kernels/quat.ts'
 import { trajectoryKernel, type TrajState } from '@engine/kernels/trajectory.ts'
 import { icpKernel, type ICPState } from '@engine/kernels/icp.ts'
@@ -407,6 +408,7 @@ import { PrmStage } from './stages/PrmStage.tsx'
 import { MdpStage } from './stages/MdpStage.tsx'
 import { QlearningStage } from './stages/QlearningStage.tsx'
 import { PolicyGradStage } from './stages/PolicyGradStage.tsx'
+import { PpoStage } from './stages/PpoStage.tsx'
 import { QuatStage } from './stages/QuatStage.tsx'
 import { TrajStage } from './stages/TrajStage.tsx'
 import { ICPStage } from './stages/ICPStage.tsx'
@@ -7130,6 +7132,33 @@ const policygrad: Experiment<PgState> = {
     { label: `π(${s.acts[s.sampled]}) 变化`, value: s.showUpdate ? `${s.pi[s.sampled]}→${s.piNew[s.sampled]}` : '—', tone: s.showUpdate ? (s.piNew[s.sampled]! < s.pi[s.sampled]! ? 'good' : 'bad') : undefined },
   ],
 }
+const ppo: Experiment<PpoState> = {
+  id: 'ppo', group: '机器人强化学习', title: 'PPO 近端策略优化', subtitle: '策略梯度+裁剪的替代目标：把每次更新限在信任域；miniduck 用的就是它',
+  kernel: ppoKernel, defaultDoc: { kind: 'ppo', params: { move: '大步' }, entities: [], streams: [] },
+  params: [{ key: 'move', label: '尝试步幅', kind: 'enum', options: ['小步', '大步'] }],
+  paramsNote: '「策略梯度」痛点:步子难调、一步太大策略会崩。**PPO** 用**裁剪的替代目标**把新旧策略差距锁小:**重要性比** r=π_θ(a|s)/π_θ_old(a|s)(r=1 没变);**替代目标** L=r·A(A=优势),无脑最大化会把 r 推到无穷、崩;**裁剪目标** L^clip=**min(r·A, clip(r,1−ε,1+ε)·A)**(ε=0.2→r 限 [0.8,1.2])。A>0 时 r 涨到 1+ε 封顶、再涨无梯度(不过度增概率);A<0 对称。**新旧策略差出 ε 就没梯度**=天然信任域,比 TRPO 简单得多。本例 A=+1、ε=0.2:小步 r=1.1(不裁剪、正常);大步 r=1.5(超 1+ε、裁剪到 1.2、封顶、梯度0、拦住)。切「步幅」看裁剪。PPO 是当今主力、可多 epoch 复用 batch。**miniduck 用 Brax PPO 学走路**。连「策略梯度/miniduck」。详见讲解卡。',
+  bounds: [
+    'PPO=策略梯度+裁剪信任域:重要性比 r=π_new/π_old、裁剪目标 min(r·A, clip(r,1−ε,1+ε)·A);新旧策略差出 ε 就无梯度',
+    'A>0 时 r 涨到 1+ε 封顶(不过度增好动作概率)、A<0 时 r 跌到 1−ε 封底;把每次更新限在信任域、防策略崩',
+    '比 TRPO(二阶信任域)简单得多、效果相当;稳、超参不敏感、同一批数据可多 epoch 复用(比 REINFORCE 省样本);仍 on-policy',
+    '配 actor-critic(critic 学 V 当基线)+GAE 算优势 A。是策略梯度的稳定化升级;miniduck 用 Brax PPO 学走路。参考:Schulman PPO 2017',
+  ],
+  tabs: [{ id: 'pp', label: 'PPO 逐步跑' }], Stage: PpoStage, whyInRail: true,
+  tone: s => (s.stage === 'done' ? { key: 'good', label: '裁剪限信任域' }
+    : s.stage === 'effect' ? (s.clipped ? { key: 'bad', label: '裁剪拦住' } : { key: 'good', label: '正常更新' })
+    : s.stage === 'clip' ? { key: 'idle', label: `L^clip=${s.Lclip}` }
+    : s.stage === 'surrogate' ? { key: 'idle', label: `L=r·A=${s.rA}` }
+    : s.stage === 'ratio' ? { key: 'idle', label: `r=${s.r}` }
+    : { key: 'idle', label: '限步' }),
+  metric: s => (s.stage === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => ({ intro: '限', ratio: 'r', surrogate: 'L', clip: '裁', effect: '果', done: '成' }[s.stage] ?? '·'),
+  readouts: s => [
+    { label: '尝试步幅', value: s.moveLabel },
+    { label: '重要性比 r', value: s.showRatio ? `${s.r}` : '—' },
+    { label: '裁剪目标 L^clip', value: s.showClip ? `${s.Lclip}（r·A=${s.rA}）` : '—' },
+    { label: '触发裁剪', value: s.showEff ? (s.clipped ? '是（封顶·无梯度）' : '否（信任域内）') : '—', tone: s.showEff ? (s.clipped ? 'bad' : 'good') : undefined },
+  ],
+}
 // ── 具身智能 · 具身学习 ──
 const bc: Experiment<BCState> = {
   id: 'bc', group: '具身学习', title: '模仿学习 · 行为克隆', subtitle: '从专家示范学策略；分布漂移→复合误差',
@@ -7371,7 +7400,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, icp, slam, impedance, mpc, pid, rrt, rrtstar, prm, potentialfield, trapezoid, mdp, qlearning, policygrad, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
+  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, icp, slam, impedance, mpc, pid, rrt, rrtstar, prm, potentialfield, trapezoid, mdp, qlearning, policygrad, ppo, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
 ] as unknown as AnyExperiment[]
 
 /**
