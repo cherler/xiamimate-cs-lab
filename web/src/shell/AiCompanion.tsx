@@ -45,7 +45,6 @@ async function postJSON<T>(path: string, body: unknown): Promise<T> {
 
 type Mode = 'quiz' | 'ask' | 'review' | 'interview' | 'debate'
 type Turn = { role: 'interviewer' | 'candidate'; text: string }
-type DebateTurn = { role: 'classmate' | 'you'; text: string }
 
 export function AiCompanion({ expId }: { expId: string }) {
   const [supported, setSupported] = useState<boolean | null>(null)
@@ -263,66 +262,54 @@ function InterviewView({ expId }: { expId: string }) {
   )
 }
 
-// ── 反驳（会反驳的 AI 同学，多轮辩论） ──
-type Prov = { factId: string; label: string; step: number; evidence: string }
+// ── 反驳（会反驳的 AI 同学，选择题版：同学抛错主张，你选能驳倒 TA 的那句） ──
+type DebateData = { factId: string; claim: string; options: string[]; correctIndex: number; answer: string; provenance: { label: string; step: number; evidence: string } }
 function DebateView({ expId }: { expId: string }) {
-  const [history, setHistory] = useState<DebateTurn[]>([])
-  const [factId, setFactId] = useState<string | undefined>(undefined)
-  const [prov, setProv] = useState<Prov | null>(null)
-  const [input, setInput] = useState('')
+  const [data, setData] = useState<DebateData | null>(null)
+  const [picked, setPicked] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [done, setDone] = useState(false)
 
-  async function post(nextHistory: DebateTurn[], fid?: string) {
-    setLoading(true); setError('')
+  async function start() {
+    setLoading(true); setError(''); setPicked(null); setData(null)
     try {
-      const d = await postJSON<{ reply: string; done: boolean; factId: string; provenance?: Prov }>('/lab/ai/debate', { expId, factId: fid, history: nextHistory })
-      setHistory([...nextHistory, { role: 'classmate', text: d.reply }])
-      setFactId(d.factId); setDone(d.done)
-      if (d.provenance) setProv(d.provenance)
+      const d = await postJSON<DebateData>('/lab/ai/debate', { expId })
+      setData(d)
     } catch (e) { setError((e as Error).message) } finally { setLoading(false) }
   }
 
-  function start() { setHistory([]); setDone(false); setProv(null); setFactId(undefined); post([]) }
-  function answer() {
-    if (!input.trim() || loading || done) return
-    const next: DebateTurn[] = [...history, { role: 'you', text: input.trim() }]
-    setHistory(next); setInput('')
-    post(next, factId)
-  }
-
+  const answered = picked != null
   return (
     <div className="aic-body">
-      {history.length === 0
+      {!data
         ? <>
-            <p className="aic-hint">AI 当<b>爱抬杠的同学</b>：它先抛一个<b>其实错的</b>常见误解挑衅你，你来反驳，它嘴硬或认输，最后揭晓正解。那个错误立场取自这道题<b>钉死的干扰项</b>，对错由引擎标准答案裁——你越会辩护记得越牢。</p>
+            <p className="aic-hint">AI 当<b>爱抬杠的同学</b>：它抛一个<b>其实错的</b>常见误解，你从几句里<b>选出能驳倒 TA 的那句</b>。错误主张取自这道题<b>钉死的干扰项</b>，对错由引擎判（和出题一个口径，不用打字）。</p>
             <button className="aic-go" disabled={loading} onClick={start}>{loading ? '同学准备开怼…' : '来辩一场'}</button>
           </>
         : <>
             <div className="aic-chat">
-              {history.map((t, i) => (
-                <div key={i} className={`aic-msg ${t.role === 'you' ? 'candidate' : 'interviewer'}`}>
-                  <span className="aic-msg-who">{t.role === 'you' ? '你' : '同学'}</span>
-                  <span className="aic-msg-text">{t.text}</span>
-                </div>
-              ))}
-              {loading && <div className="aic-msg interviewer"><span className="aic-msg-who">同学</span><span className="aic-msg-text" style={{ opacity: .6 }}>盘算怎么怼…</span></div>}
+              <div className="aic-msg interviewer"><span className="aic-msg-who">同学</span><span className="aic-msg-text">{data.claim}</span></div>
             </div>
-            {done && prov && (
-              <div className="aic-cite" title={prov.evidence}>
-                <span className="aic-cite-tag">依据</span>
-                <span className="aic-cite-text">{prov.label}（第 {prov.step} 步 · 引擎钉死）</span>
-              </div>
+            <p className="aic-qtext">选一句驳倒 TA：</p>
+            <div className="aic-opts">
+              {data.options.map((opt, oi) => {
+                let cls = 'aic-opt'
+                if (answered) { if (oi === data.correctIndex) cls += ' correct'; else if (oi === picked) cls += ' wrong' }
+                return <button key={oi} className={cls} disabled={answered} onClick={() => setPicked(oi)}>{opt}</button>
+              })}
+            </div>
+            {answered && (
+              <>
+                <p className="aic-explain">
+                  {picked === data.correctIndex ? '✓ 驳倒了！同学：哦……好像真是我错了。' : `✗ 没驳到点上。正解：${data.answer}。同学：看吧，你也没搞对。`}
+                </p>
+                <div className="aic-cite" title={data.provenance.evidence}>
+                  <span className="aic-cite-tag">依据</span>
+                  <span className="aic-cite-text">{data.provenance.label}（第 {data.provenance.step} 步 · 引擎钉死）</span>
+                </div>
+                <button className="aic-go" onClick={start}>换个点再辩</button>
+              </>
             )}
-            {done
-              ? <button className="aic-go" onClick={start}>换个点再辩</button>
-              : <>
-                  <textarea className="aic-ta" value={input} placeholder="反驳它（⌘/Ctrl+Enter 提交）"
-                    onChange={e => setInput(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) answer() }} />
-                  <button className="aic-go" disabled={loading || !input.trim()} onClick={answer}>{loading ? '同学盘算中…' : '反驳'}</button>
-                </>}
           </>}
       {error && <p className="aic-err">出错了：{error}</p>}
     </div>
