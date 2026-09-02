@@ -1009,6 +1009,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { stage: string; vFinal: Record<string, number> }; return st.stage === 'done' ? 'V=max[R+γV]' : st.stage === 'converge' ? `V*(A)=${st.vFinal.A}` : st.stage === 'iterate' ? '值往回传' : st.stage === 'bellman' ? '贝尔曼备份' : st.stage === 'components' ? 'MDP五要素' : 'RL地基' },
     try: [{ act: '切「远视 γ=0.9」', watch: '值从 G 往回传：C=1、B=0.9、A=0.81(γ²)，远处 +1 也看重。' }, { act: '切「短视 γ=0.5」', watch: 'V=[0.25,0.5,1]，γ 小、远处 +1 折得狠、更顾眼前。' }, { act: '看值迭代表', watch: '每扫一次、值往回传一格：iter1 C、iter2 B、iter3 A，然后收敛。' }], terms: [],
   },
+  qlearning: {
+    question: '真实机器人不知道转移和奖励模型，值迭代用不了。Q-learning 怎么只靠试错的经验学出最优？',
+    read: [{ at: '状态链', is: 'A→B→C→G，Q(·,→) 值。', anchor: '.ql-svg' }, { at: 'TD 更新块', is: 'Q←Q+α[r+γmaxQ−Q]、TD 误差 δ。', anchor: '.ql-g' }, { at: '收敛框', is: 'Q→值迭代的 V*。', anchor: '.ql-conv' }],
+    step: (s: never) => { const st = s as { stage: string; alLabel: string; alpha: number; gamma: number; td: { r: number; maxNext: number; oldQ: number; delta: number; newQ: number }; q1ep: Record<string, number>; qConv: Record<string, number> }; return [
+      { k: '本步输入', v: st.stage === 'intro' ? `学习率 ${st.alLabel}、免模型` : st.stage === 'qtable' ? 'Q 表初始全 0' : st.stage === 'tdupdate' ? `经验 (C,→,r=1,G)` : st.stage === 'episode' ? '一回合的在线更新' : '多回合后的 Q' },
+      { k: '判定规则', v: `免模型:只从经验 (s,a,r,s') 学 Q;TD 更新 Q←Q+α[r+γ·max Q(s')−Q];argmax Q 给策略;off-policy(更新用max、行为带探索)。` },
+      { k: '本步结果', v: st.stage === 'intro' ? 'Q-learning:免模型、从试错学 Q' : st.stage === 'qtable' ? 'Q 全 0、策略瞎猜、待学' : st.stage === 'tdupdate' ? `δ=r+γ·maxQ(G)−Q=${st.td.r}+${st.gamma}·${st.td.maxNext}−${st.td.oldQ}=${st.td.delta}、Q(C,→)←α·δ=${st.td.newQ}` : st.stage === 'episode' ? `一回合只有 C 学到 ${st.q1ep.C}(A/B 还0)、奖励每回合往回传一步` : `收敛 Q=[${st.qConv.A},${st.qConv.B},${st.qConv.C}]=值迭代 V*(免模型学到同解)` },
+    ] },
+    verdict: (s: never) => { const st = s as { stage: string; td: { delta: number }; qConv: Record<string, number> }; return st.stage === 'done' ? '免模型学最优' : st.stage === 'converge' ? '收敛=值迭代' : st.stage === 'episode' ? '奖励往回传' : st.stage === 'tdupdate' ? `δ=${st.td.delta}` : st.stage === 'qtable' ? 'Q表' : '免模型' },
+    try: [{ act: '切「快 α=0.5」', watch: '首次更新 Q(C,→)=α·δ=0.5·1=0.5，学得快但抖。' }, { act: '切「慢 α=0.2」', watch: 'Q(C,→)=0.2·1=0.2，学得慢但稳——都收敛到同一 Q*。' }, { act: '想 vs 值迭代', watch: '值迭代要模型 P/R；Q-learning 免模型、只从经验，却学到同样的 [0.81,0.9,1]。' }], terms: [],
+  },
   queryplan: {
     question: '同一个查询有好几条路可走，数据库优化器凭什么选其中一条？',
     read: [{ at: '候选路径', is: '每条访问路径的 type + 估扫描行数代价条。', anchor: '.qp-paths' }, { at: 'EXPLAIN', is: '末步选中路径的 type/key/rows。', anchor: '.qp-explain' }],

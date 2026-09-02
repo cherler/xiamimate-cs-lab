@@ -366,6 +366,7 @@ import { potentialfieldKernel, type PotState } from '@engine/kernels/potentialfi
 import { trapezoidKernel, type TrapState } from '@engine/kernels/trapezoid.ts'
 import { prmKernel, type PrmState } from '@engine/kernels/prm.ts'
 import { mdpKernel, type MdpState } from '@engine/kernels/mdp.ts'
+import { qlearningKernel, type QState } from '@engine/kernels/qlearning.ts'
 import { quatKernel, type QuatState } from '@engine/kernels/quat.ts'
 import { trajectoryKernel, type TrajState } from '@engine/kernels/trajectory.ts'
 import { icpKernel, type ICPState } from '@engine/kernels/icp.ts'
@@ -403,6 +404,7 @@ import { PotentialFieldStage } from './stages/PotentialFieldStage.tsx'
 import { TrapezoidStage } from './stages/TrapezoidStage.tsx'
 import { PrmStage } from './stages/PrmStage.tsx'
 import { MdpStage } from './stages/MdpStage.tsx'
+import { QlearningStage } from './stages/QlearningStage.tsx'
 import { QuatStage } from './stages/QuatStage.tsx'
 import { TrajStage } from './stages/TrajStage.tsx'
 import { ICPStage } from './stages/ICPStage.tsx'
@@ -7072,6 +7074,33 @@ const mdp: Experiment<MdpState> = {
     { label: '最优策略 π*', value: s.showConv ? `A${s.policy.A} B${s.policy.B} C${s.policy.C}` : '—' },
   ],
 }
+const qlearning: Experiment<QState> = {
+  id: 'qlearning', group: '机器人强化学习', title: 'Q-learning · 免模型', subtitle: '不知道模型，从经验 (s,a,r,s\') 学 Q(s,a)：TD 更新、off-policy',
+  kernel: qlearningKernel, defaultDoc: { kind: 'qlearning', params: { alpha: '快' }, entities: [], streams: [] },
+  params: [{ key: 'alpha', label: '学习率 α', kind: 'enum', options: ['快', '慢'] }],
+  paramsNote: '和「MDP 值迭代」(要知道转移 P/奖励 R、有模型)不同,Q-learning **免模型**:只从**经验元组 (s,a,r,s\')** 学**动作值 Q(s,a)**。**TD 更新** Q(s,a)←Q+α·[r+γ·max_a\' Q(s\',a\')−Q],方括号=**TD 误差 δ**(自举、走一步更一次)。为何学 Q 不学 V?argmax Q 直接给策略、免转移模型。**off-policy**:更新用 max(贪心)、行为带 ε-greedy 探索。同链 A→B→C→G(C→G 得 +1、γ=0.9):首次更新 δ=1、Q(C,→)←α·1;**奖励每回合往回传一步**;多回合收敛到 **[0.81,0.9,1]**(和值迭代 V\\* 一样、但免模型+渐进)。切「学习率 α」看快(0.5)/慢稳(0.2)。全现算。连「MDP(有模型)/DQN/PPO/miniduck」。详见讲解卡。',
+  bounds: [
+    'Q-learning 免模型:只从经验 (s,a,r,s\') 学动作值 Q(s,a)、不需要转移 P/奖励 R;argmax Q 直接给策略',
+    'TD 更新 Q←Q+α[r+γmax Q(s\')−Q]:方括号=TD 误差 δ(自举 bootstrapping、走一步更一次);α 学习率',
+    'off-policy:更新用 max(目标策略贪心)、行为带 ε-greedy 探索(探索 vs 利用);奖励每回合往回传一步',
+    '收敛到和值迭代一样的 Q*=[0.81,0.9,1];Q 表只处理离散小规模→大/连续用 DQN(神经网络近似Q)/PPO/SAC。参考:Watkins Q-learning、Sutton&Barto',
+  ],
+  tabs: [{ id: 'ql', label: 'Q-learning 逐步跑' }], Stage: QlearningStage, whyInRail: true,
+  tone: s => (s.stage === 'done' ? { key: 'good', label: '免模型学最优' }
+    : s.stage === 'converge' ? { key: 'good', label: '收敛=值迭代' }
+    : s.stage === 'episode' ? { key: 'idle', label: '奖励往回传' }
+    : s.stage === 'tdupdate' ? { key: 'good', label: `δ=${s.td.delta}` }
+    : s.stage === 'qtable' ? { key: 'idle', label: 'Q 表' }
+    : { key: 'idle', label: '免模型' }),
+  metric: s => (s.stage === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => ({ intro: 'Q', qtable: '表', tdupdate: 'TD', episode: '回', converge: '敛', done: '成' }[s.stage] ?? '·'),
+  readouts: s => [
+    { label: '学习率 α', value: `${s.alpha}（${s.alLabel.includes('快') ? '快' : '慢稳'}）` },
+    { label: 'TD 误差 δ', value: s.showTd ? `${s.td.delta}` : '—' },
+    { label: 'Q(C,→) 首更', value: s.showTd ? `${s.td.newQ}` : '—' },
+    { label: '收敛 Q*(A,B,C)', value: s.showConv ? `[${s.qConv.A}, ${s.qConv.B}, ${s.qConv.C}]（=V*）` : '—', tone: s.showConv ? 'good' : undefined },
+  ],
+}
 // ── 具身智能 · 具身学习 ──
 const bc: Experiment<BCState> = {
   id: 'bc', group: '具身学习', title: '模仿学习 · 行为克隆', subtitle: '从专家示范学策略；分布漂移→复合误差',
@@ -7313,7 +7342,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, icp, slam, impedance, mpc, pid, rrt, rrtstar, prm, potentialfield, trapezoid, mdp, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
+  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, icp, slam, impedance, mpc, pid, rrt, rrtstar, prm, potentialfield, trapezoid, mdp, qlearning, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
 ] as unknown as AnyExperiment[]
 
 /**

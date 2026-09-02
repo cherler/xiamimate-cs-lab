@@ -138,6 +138,7 @@ import { potentialfieldKernel } from '../src/kernels/potentialfield.ts'
 import { trapezoidKernel } from '../src/kernels/trapezoid.ts'
 import { prmKernel } from '../src/kernels/prm.ts'
 import { mdpKernel } from '../src/kernels/mdp.ts'
+import { qlearningKernel } from '../src/kernels/qlearning.ts'
 import { objectstoreKernel } from '../src/kernels/objectstore.ts'
 import { queryplanKernel } from '../src/kernels/queryplan.ts'
 import { wildcardKernel } from '../src/kernels/wildcard.ts'
@@ -2795,6 +2796,41 @@ export const CATALOG: CatalogEntry[] = [
         ask: 'PID 控制的 P、I、D 三项分别按什么量、起什么作用?', kind: 'choice',
         compute: () => ({ answer: 'P=Kp·e 按当前误差使劲(越远越使劲)；D=Kd·误差变化率提供阻尼(快到时反向刹车、防冲过头);I=Ki·误差累计消除稳态误差(顶掉重力等恒定扰动)。P管现在、I管过去累计、D管趋势', step: 14, evidence: '本例加 D=Kd·误差变化率(负=刹车)后，位置平稳收敛到目标不震荡' }),
         distractors: () => ['三项都按当前误差，只是系数不同', 'D 让响应更快、P 提供阻尼', 'I 提供阻尼、D 消除稳态误差'],
+      },
+    ],
+  },
+  {
+    id: 'qlearning', title: 'Q-learning · 免模型', kernel: qlearningKernel as Kernel<unknown>, doc: trivialDoc('qlearning'),
+    facts: [
+      {
+        id: 'ql_modelfree', label: 'Q-learning 和值迭代的区别',
+        ask: 'Q-learning 和 MDP 值迭代最本质的区别是什么?', kind: 'choice',
+        compute: () => ({ answer: 'Q-learning 免模型:什么模型都不知道、只从和环境交互得到的经验元组 (s,a,r,s\') 学动作值 Q(s,a);值迭代要知道转移 P 和奖励 R(有模型)。真实机器人 P/R 常未知,所以要免模型', step: 1, evidence: '免模型(经验)vs 有模型(要 P/R)' }),
+        distractors: () => ['Q-learning 更快、值迭代更准', 'Q-learning 不用折扣 γ', 'Q-learning 学 V、值迭代学 Q'],
+      },
+      {
+        id: 'ql_td', label: 'TD 更新在做什么',
+        ask: 'Q-learning 的 TD 更新 Q←Q+α[r+γmax Q(s\')−Q] 在做什么?', kind: 'choice',
+        compute: () => ({ answer: '方括号是 TD 误差 δ=(即时奖励+折扣后对未来的估计 γmax Q(s\'))−(当前估计 Q(s,a)),用它按学习率 α 修正 Q。自举(bootstrapping):用当前对未来的估计更新自己、走一步更一次(不用等回合结束)', step: 2, evidence: 'δ=目标−当前;自举、在线更新' }),
+        distractors: () => ['等整局结束后统计平均回报', '直接把 Q 设成奖励 r', '随机扰动 Q'],
+      },
+      {
+        id: 'ql_offpolicy', label: 'off-policy 与探索',
+        ask: 'Q-learning 为什么叫 off-policy?为什么需要探索?', kind: 'choice',
+        compute: () => ({ answer: 'off-policy:更新用 max(目标策略是贪心)、但行为可以带探索(行为策略 ε-greedy)——学的策略和执行的策略可以不一样。需要探索是因为:要学到最优必须走遍各状态动作,只贪心会错过没试过的好动作(探索 vs 利用)', step: 5, evidence: '更新用max、行为带ε-greedy;探索走遍' }),
+        distractors: () => ['off-policy 指不用奖励', '探索是为了跑得快', 'on-policy 和 off-policy 完全一样'],
+      },
+      {
+        id: 'ql_converge', label: 'Q-learning 收敛到哪',
+        ask: 'Q-learning 多回合后收敛到什么?说明了什么?', kind: 'choice',
+        compute: () => ({ answer: '收敛到和值迭代完全一样的最优 Q*(本例 [0.81,0.9,1]=γ^步数·1)。说明:免模型、只靠经验试错,也能学到和有模型值迭代一样的最优值。α 只影响速度不影响收敛点(大快但抖、小慢但稳)', step: 4, evidence: '收敛=值迭代 V*;免模型学到同解' }),
+        distractors: () => ['收敛到 0', '收敛到比值迭代差的次优', '不会收敛、一直震荡'],
+      },
+      {
+        id: 'ql_num', label: 'C→G 的 TD 误差',
+        ask: 'Q 全 0、经验 (C,→,r=1,G)、γ=0.9，这次 TD 误差 δ=r+γ·max Q(G)−Q(C,→) 是多少?', kind: 'number',
+        compute: t => { const f = t as unknown as { td?: { delta: number } }[]; const l = f.find(x => x.td); const v = l?.td?.delta ?? 1; return ({ answer: String(v), step: 2, evidence: `δ=1+0.9·0−0=${v}(Q 全 0、只有即时奖励 r=1);Q(C,→)←α·δ` }) },
+        distractors: numDistractors,
       },
     ],
   },
