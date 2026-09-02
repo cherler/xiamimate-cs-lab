@@ -7769,6 +7769,74 @@ const llamaindex = mkLib('llamaindex', 'LlamaIndex · RAG 框架', '给大模型
     '反向连回:RAG 检索增强生成↔rag、检索打分/排序↔记忆检索打分',
     '连各种数据源和向量库(FAISS/Milvus/Qdrant);让模型基于私有数据答、减少幻觉',
     '取舍:抽象多简单场景偏重、效果强依赖切块/检索/重排调优、和 LangChain 有重叠'], LG)
+// ── 算法轨 · 软件库与框架 ──(PyTorch 软链自大模型轨,见 SOFT_LINKS)
+const AG = '算法软件库与框架'
+const numpy = mkLib('numpy', 'NumPy · 科学计算地基', 'N 维数组 + 向量化运算，几乎所有数据科学库都建在它上（库层）', 'numpy',
+  '**软件库层** · NumPy(BSD-3,NumFOCUS)= Python 科学计算地基:核心 ndarray(N 维数组、连续内存)+向量化运算(下沉 C/SIMD、比纯 Python 快几十上百倍)+广播/线代/随机数/FFT。pandas/SciPy/scikit-learn/PyTorch 全建其上。反向连回:矩阵乘/内存布局/softmax/条件数/低秩。逐段翻。',
+  ['NumPy=科学计算地基(BSD-3);ndarray N 维数组+向量化(C/SIMD)+广播+线代+随机数+FFT',
+    '反向连回:矩阵乘 matmul、内存布局、softmax、条件数、低秩近似(都是它的数组运算)',
+    '数据科学事实地基、生态全建其上;接口成"数组协议"标准(CuPy/JAX 兼容)',
+    '取舍:单机内存内(大数据看 Dask)、CPU 为主(GPU 看 CuPy/JAX)、不含高层 ML'], AG)
+const pandas = mkLib('pandas', 'pandas · 数据分析', 'DataFrame 清洗/合并/重塑结构化数据——ML 前的数据整理主力（库层）', 'pandas',
+  '**软件库层** · pandas(BSD-3,NumFOCUS)= 结构化数据处理行业标准:核心 DataFrame(带行列标签的表),读写(CSV/Parquet/SQL)、清洗、缺失值、分组聚合(groupby)、合并(merge)、时间序列、透视。ML 之前的数据整理(80% 的活)都在它里。2.x 起可用 Arrow 后端提速。逐段翻。',
+  ['pandas=结构化数据处理事实标准(BSD-3);DataFrame+清洗/缺失值/groupby/merge/时间序列/IO',
+    '是从"原始数据"到"能喂模型的特征"之间的桥;ML/分析前的数据整理主力',
+    '和 NumPy/scikit-learn/Matplotlib 无缝;Arrow 后端提速',
+    '取舍:单机内存内(大数据看 Polars/Dask/Spark)、大表易慢吃内存、不做建模'], AG)
+const scipy = mkLib('scipy', 'SciPy · 科学计算算法', '优化/线代/统计/信号,建在 NumPy 上——ML 方法的数值底座（库层）', 'scipy',
+  '**软件库层** · SciPy(BSD-3,NumFOCUS)= 建在 NumPy 上的科学计算算法:优化(minimize/最小二乘)、线代(SVD/特征/稀疏)、统计(分布/检验)、信号、插值、积分/ODE。很多 ML/统计方法的底层数值工具来自它。反向连回:条件数/低秩(SVD)/中心极限·大数定律(分布)/梯度下降(优化)。逐段翻。',
+  ['SciPy=科学计算算法库(BSD-3);优化+线代(SVD/稀疏)+统计(分布/检验)+信号+积分,建在 NumPy 上',
+    '反向连回:条件数/低秩(SVD)、中心极限定理/大数定律(分布)、梯度下降(优化)',
+    'ML/统计方法的数值底座(底层 BLAS/LAPACK/Fortran、快)',
+    '取舍:偏底层算法非开箱 ML(那是 scikit-learn)、CPU 为主、接口专业'], AG)
+const matplotlib = mkLib('matplotlib', 'Matplotlib · 数据可视化', 'Python 可视化老牌主力——什么图都能画、可控到每个像素（库层）', 'matplotlib',
+  '**软件库层** · Matplotlib(BSD 兼容,NumFOCUS)= Python 数据可视化老牌主力:折线/散点/柱状/热图/等高线/3D 都能画,pyplot 上手快又可控到每个元素;seaborn 建其上做统计图、Plotly 补交互。做 ML 时画损失曲线、决策边界、特征分布、混淆矩阵都靠它——把"数字"变成"看得懂"。逐段翻。',
+  ['Matplotlib=Python 可视化老牌主力(BSD 兼容);pyplot 接口+精细控制(轴/刻度/图例)+多种图+导出',
+    '做 ML/分析时画损失曲线/决策边界/分布/混淆矩阵的工具;seaborn/pandas .plot 都基于它',
+    '最通用、可控到出版级、生态庞大',
+    '取舍:默认样式一般精修啰嗦、交互弱(看 Plotly)、两套 API 易混、大数据点渲染慢'], AG)
+const sklearn = mkLib('sklearn', 'scikit-learn · 经典机器学习', '统一 API 把几十种经典 ML 算法一键可用——结构化建模首选（库层）', 'sklearn',
+  '**软件库层** · scikit-learn(BSD-3,NumFOCUS)= 经典(非深度)ML 事实标准:KNN/K-Means/PCA/SVM/决策树/逻辑·线性回归/随机森林/GBDT 统一成 fit/predict/transform API,配特征处理、交叉验证、网格搜索、Pipeline。反向连回:KNN/K-Means/PCA/SVM/决策树/逻辑回归/线性回归(机器学习算法组几乎全覆盖)。逐段翻。',
+  ['scikit-learn=经典 ML 事实标准(BSD-3);fit/predict/transform 统一 API+算法全+Pipeline+交叉验证+调参',
+    '反向连回(最多):KNN/SVM/逻辑回归/线性回归/决策树、K-Means/PCA、GBDT——机器学习算法组几乎全覆盖',
+    '结构化建模/快速基线/教学首选;和 NumPy/pandas 无缝',
+    '取舍:不做深度学习(那是 PyTorch)、单机内存内、GBDT 不如 XGBoost/LightGBM 快、默认非 GPU'], AG)
+const xgboost = mkLib('xgboost', 'XGBoost · 梯度提升树', '结构化数据之王——梯度提升决策树,Kaggle 常胜将军（库层）', 'xgboost',
+  '**软件库层** · XGBoost(Apache-2.0,DMLC)= 梯度提升决策树(GBDT)高性能实现:一棵棵树串行拟合残差逐步变强,工程上二阶泰勒近似+正则+缺失值处理+直方图分裂+GPU。表格/结构化数据上常年最强(Kaggle 王者)。反向连回:GBDT/决策树。逐段翻。',
+  ['XGBoost=梯度提升树高性能实现(Apache-2.0,DMLC);串行加树拟合残差(二阶泰勒+正则)+直方图分裂+GPU',
+    '反向连回:GBDT(梯度提升)、决策树(基学习器)',
+    '表格数据准确率常年最强(Kaggle 王者)、快、可扩展;金融风控/推荐/CTR',
+    '取舍:不适合图像/文本(那是 DL)、调参项多、大类别要编码、比线性模型难解释(SHAP 缓解)'], AG)
+const jax = mkLib('jax', 'JAX · 可微的 NumPy', '自动求导 + XLA 编译 + GPU/TPU,函数式高性能数值计算（库层）', 'jax',
+  '**软件库层** · JAX(Apache-2.0,Google)= 高性能数值计算:NumPy 接口 + 自动求导(grad)+ XLA 编译(jit)+ 向量化(vmap)+ GPU/TPU。函数式风格,grad 求导、jit 编译加速、vmap 批处理。学界/前沿(DeepMind、Brax、MuJoCo MJX)大量用。反向连回:梯度下降/反向传播/矩阵运算——写 JAX 就是"可微的 NumPy"。逐段翻。',
+  ['JAX=可微 NumPy 高性能计算(Apache-2.0,Google);grad 自动求导+jit(XLA 编译)+vmap/pmap+GPU/TPU',
+    '反向连回:梯度下降、反向传播、矩阵乘("可微 NumPy"一条心智模型从数值到 DL)',
+    '函数式(纯函数+可组合变换);前沿 DL/RL 仿真(Flax/Brax/MJX)大量用',
+    '取舍:函数式思维需转变、高层 API 不如 PyTorch 厚(配 Flax)、jit 内调试有门槛'], AG)
+const opencv = mkLib('opencv', 'OpenCV · 计算机视觉', '图像处理/特征/几何/相机标定一整套——CV 老牌全家桶（库层）', 'opencv',
+  '**软件库层** · OpenCV(Apache-2.0(4.5+;旧版 BSD-3))= 计算机视觉老牌全家桶:图像读写/滤波卷积、特征(ORB/SIFT)、几何变换、相机标定(solvePnP)、光流、立体视觉、传统检测,还能跑 DNN。既是 CV 经典算法库,也和「机器人感知」轨的针孔/双目/点云相通。反向连回:卷积/池化(图像处理)。逐段翻。',
+  ['OpenCV=计算机视觉老牌全家桶(Apache-2.0(4.5+));图像处理+特征匹配+相机标定+光流+立体+DNN 模块',
+    '反向连回:卷积(图像卷积/滤波)、池化(图像金字塔/降采样);和机器人感知的针孔/双目/点云相通',
+    'CV 算法最全、C++ 核心快 Python 好用、跨平台',
+    '取舍:DL 训练不归它(那是 PyTorch)、API 庞杂、旧版 BSD 新版才 Apache-2.0'], AG)
+const statsmodels = mkLib('statsmodels', 'statsmodels · 统计建模与推断', '回归/时间序列/假设检验——给你 p 值和置信区间（库层）', 'statsmodels',
+  '**软件库层** · statsmodels(BSD-3)= 专注统计建模与推断(不同于 sklearn 的预测取向):线性/广义线性回归(OLS/GLM/logit)、时间序列(ARIMA/VAR)、假设检验、方差分析,给完整统计报告(系数/标准误/p 值/置信区间/R²)。要"解释变量显著吗"而非只"预测准"时用。反向连回:线性/逻辑回归、中心极限/大数定律。逐段翻。',
+  ['statsmodels=统计建模与推断(BSD-3);回归(OLS/GLM/logit)+时间序列(ARIMA)+假设检验+完整统计报告(p 值/置信区间)',
+    '反向连回:线性回归、逻辑回归、中心极限定理、大数定律(统计根基)',
+    '统计推断为一等公民、时间序列/计量经济强、R 风格公式',
+    '取舍:偏推断解释非大规模预测(那是 sklearn/XGBoost)、大数据/高维非强项、DL 不归它'], AG)
+const networkx = mkLib('networkx', 'NetworkX · 图/网络分析', '最短路/PageRank/社区/连通——经典图算法一站式（库层）', 'networkx',
+  '**软件库层** · NetworkX(BSD-3,NumFOCUS)= Python 图/网络分析库:建图(有向/无向/带权)+经典图算法——最短路(Dijkstra/A*/Bellman-Ford)、PageRank、连通/并查集、MST、最大流、中心性、社区发现。纯 Python 上手极快。反向连回:PageRank/A* 寻路/并查集(经典算法组)。逐段翻。',
+  ['NetworkX=图/网络分析库(BSD-3);图数据结构+最短路(Dijkstra/A*)+PageRank+连通/并查集/MST/中心性/社区',
+    '反向连回:PageRank、A* 寻路、并查集(连通)——经典算法组的现成算法',
+    '纯 Python 上手极快、算法全、和 Matplotlib 集成、适合建模/教学',
+    '取舍:纯 Python 大图慢(百万边看 igraph/graph-tool)、内存内、不做图神经网络(PyG/DGL)'], AG)
+const gensim = mkLib('gensim', 'gensim · 主题模型与词向量', 'Word2Vec / LDA——无监督挖文本语义（库层，⚠️LGPL）', 'gensim',
+  '**软件库层** · gensim(⚠️LGPL-2.1)= 主题建模与词向量经典库:Word2Vec/FastText/Doc2Vec 词/文档向量、LDA/LSI 主题模型、TF-IDF、相似度,主打无监督从大规模文本挖语义、能流式处理大语料。**Word2Vec 的著名实现出自这里**("国王−男人+女人≈王后")。反向连回:词向量。⚠️许可 LGPL-2.1(弱传染、商用要评估)。逐段翻。',
+  ['gensim=主题模型与词向量经典库(⚠️LGPL-2.1);Word2Vec/FastText/Doc2Vec+LDA/LSI 主题模型+TF-IDF+流式',
+    '反向连回:词向量 Word2Vec(它是 word2vec 原产地、"国王−男人+女人≈王后")',
+    '无监督挖文本语义、能流式处理大语料、教学首选',
+    '⚠️取舍:LGPL-2.1 比 BSD/MIT 严(商用评估)、经典方法为主(上下文向量看 Transformers)、非端到端 NLP(看 spaCy)'], AG)
 const miniduck: Experiment<DuckState> = {
   id: 'miniduck', group: '具身项目实战', title: 'Open Duck Mini · 学会走路', subtitle: 'BD-X 迷你复刻的腿式 RL：相位参考步态 + 「模仿奖励」(≠模仿学习)；LeRobot 线收官',
   kernel: miniduckKernel, defaultDoc: { kind: 'miniduck', params: { mode: '带模仿奖励' }, entities: [], streams: [] },
@@ -7904,7 +7972,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, pinhole, pointcloud, stereo, handeye, vo, pnp, icp, slam, impedance, mpc, pid, rrt, rrtconnect, rrtstar, prm, potentialfield, chomp, trapezoid, gjk, dubins, dstarlite, mdp, qlearning, policygrad, ppo, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc, moveit, ros2, pinocchio, lerobotlib, mujoco, isaaclab, pcl, orbslam3, ros2control, nav2, openvla, simplefoc, pytorch, transformers, vllm, sglang, tensorrtllm, llamacpp, flashattn, megatron, deepspeed, peft, langgraph, llamaindex,
+  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, pinhole, pointcloud, stereo, handeye, vo, pnp, icp, slam, impedance, mpc, pid, rrt, rrtconnect, rrtstar, prm, potentialfield, chomp, trapezoid, gjk, dubins, dstarlite, mdp, qlearning, policygrad, ppo, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc, moveit, ros2, pinocchio, lerobotlib, mujoco, isaaclab, pcl, orbslam3, ros2control, nav2, openvla, simplefoc, pytorch, transformers, vllm, sglang, tensorrtllm, llamacpp, flashattn, megatron, deepspeed, peft, langgraph, llamaindex, numpy, pandas, scipy, matplotlib, sklearn, xgboost, jax, opencv, statsmodels, networkx, gensim,
 ] as unknown as AnyExperiment[]
 
 /**
@@ -8040,6 +8108,8 @@ export const SOFT_LINKS: Record<string, string[]> = {
   '并发编程': ['semaphore', 'banker'],
   //  A* 栅格寻路也是机器人运动规划的经典——真身在算法轨「经典算法」，软链进具身智能轨「运动规划」，和 RRT(采样式)配成栅格最优 vs 采样两条路。
   '运动规划': ['astar'],
+  //  PyTorch 真身在大模型轨「大模型软件库与框架」,软链进算法轨库层(它也是算法/DL 实验的底座)。
+  '算法软件库与框架': ['pytorch'],
 }
 
 export const DISCIPLINES: Discipline[] = [
@@ -8058,7 +8128,7 @@ export const DISCIPLINES: Discipline[] = [
   {
     key: 'algo', title: '算法', icon: '🧮', status: 'active',
     sub: '经典算法 → 会学习的模型 · 求职',
-    groups: ['经典算法', '概率统计原理', '机器学习基础', '机器学习算法', '深度学习算法', '算法系统设计', '算法项目实战'],
+    groups: ['经典算法', '概率统计原理', '机器学习基础', '机器学习算法', '深度学习算法', '算法系统设计', '算法项目实战', '算法软件库与框架'],
     guide: { from: '一次排序', to: '会学习的模型', toIcon: '🧠' },
   },
   {

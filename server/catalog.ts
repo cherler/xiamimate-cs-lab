@@ -3760,6 +3760,94 @@ export const CATALOG: CatalogEntry[] = [
     ],
   },
   {
+    id: 'numpy', title: 'NumPy · 科学计算地基', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'numpy' }, entities: [], streams: [] },
+    facts: [
+      { id: 'np_what', label: 'NumPy 是什么', ask: 'NumPy 为什么是数据科学的地基?', kind: 'choice', compute: () => ({ answer: '核心是 ndarray(N 维数组、连续内存、类型统一)+向量化运算(把 for 循环下沉到 C/SIMD,比纯 Python 快几十上百倍),加广播/线代/随机数/FFT。pandas/SciPy/scikit-learn/PyTorch 全建在它(或它的数组接口)之上', step: 0, evidence: 'ndarray+向量化、生态全建其上' }), distractors: () => ['一个机器学习模型库', '一个可视化库', '一个数据库'] },
+      { id: 'np_vec', label: '向量化为什么快', ask: 'NumPy 的向量化为什么比纯 Python 循环快?', kind: 'choice', compute: () => ({ answer: '把整块数组的运算下沉到编译好的 C/SIMD 代码一次算完,避免 Python 解释器逐元素循环的开销(还利用连续内存和缓存)。所以写 NumPy 要"整块数组运算"而不是 Python for 循环', step: 0, evidence: '整块运算下沉 C/SIMD、免解释器循环开销' }), distractors: () => ['因为用了 GPU', '因为多线程', '因为压缩了数据'] },
+      { id: 'np_cover', label: 'NumPy 对应的实验', ask: 'NumPy 的数组运算对应实验室哪些实验?', kind: 'choice', compute: () => ({ answer: '矩阵乘、内存布局(行/列主序与步幅)、softmax(数值稳定)、条件数、低秩近似(SVD)——这些「机器学习基础」实验底层就是 NumPy 的数组/线代运算', step: 0, evidence: 'matmul/布局/softmax/条件数/低秩' }), distractors: () => ['RRT 和 A*', 'ICP 和 SLAM', 'FOC 电流环'] },
+    ],
+  },
+  {
+    id: 'pandas', title: 'pandas · 数据分析', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'pandas' }, entities: [], streams: [] },
+    facts: [
+      { id: 'pd_what', label: 'pandas 是什么', ask: 'pandas 是干什么的?核心数据结构?', kind: 'choice', compute: () => ({ answer: '结构化数据处理的行业标准:核心是 DataFrame(带行列标签的二维表),做读写(CSV/Parquet/SQL)、清洗、缺失值、分组聚合(groupby)、合并(merge)、时间序列。是 ML 前"数据整理"(约 80% 的活)的主力', step: 0, evidence: 'DataFrame、清洗/groupby/merge、数据整理' }), distractors: () => ['一个深度学习框架', '一个绘图库', '一个推理引擎'] },
+      { id: 'pd_role', label: 'pandas 的角色', ask: 'pandas 在机器学习流程里处于什么位置?', kind: 'choice', compute: () => ({ answer: '在"原始数据"和"能喂模型的特征"之间的桥:清洗、合并、聚合出干净的特征表,再交给 scikit-learn/XGBoost 建模。做 ML 大部分时间其实花在 pandas 的数据整理上', step: 0, evidence: '原始数据→特征表的桥、数据整理主力' }), distractors: () => ['负责训练模型', '负责部署推理', '负责画图'] },
+      { id: 'pd_limit', label: 'pandas 的局限', ask: 'pandas 处理大数据有什么局限?', kind: 'choice', compute: () => ({ answer: '单机内存内——数据大过内存就吃力;大表/链式操作也容易慢或吃内存。更大/更快看 Polars、Dask、Spark。它也不做建模(那是 scikit-learn)', step: 0, evidence: '单机内存内、大数据看 Polars/Dask' }), distractors: () => ['不能读 CSV', '只能处理数字不能处理文本', '必须联网'] },
+    ],
+  },
+  {
+    id: 'scipy', title: 'SciPy · 科学计算算法', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'scipy' }, entities: [], streams: [] },
+    facts: [
+      { id: 'sp_what', label: 'SciPy 是什么', ask: 'SciPy 提供什么?和 NumPy 什么关系?', kind: 'choice', compute: () => ({ answer: '建在 NumPy 之上的科学计算算法库:优化(minimize/最小二乘)、线代(SVD/特征/稀疏)、统计(分布/检验)、信号、插值、积分/ODE。NumPy 给数组、SciPy 给"算法"。很多 ML/统计方法的底层数值工具来自它', step: 0, evidence: '建在 NumPy 上、优化/线代/统计/信号算法' }), distractors: () => ['一个模型库', '一个数据库', 'NumPy 的替代品'] },
+      { id: 'sp_cover', label: 'SciPy 对应的实验', ask: 'SciPy 的算法对应实验室哪些概念?', kind: 'choice', compute: () => ({ answer: '线代里的 SVD 对应条件数/低秩、optimize 的最小化对应梯度下降(训练底层)、stats 的分布对应中心极限定理/大数定律。它是这些统计/ML 方法的数值底座', step: 0, evidence: 'SVD↔条件数/低秩、优化↔梯度下降、分布↔CLT/LLN' }), distractors: () => ['卷积和池化', 'RRT 和 Dubins', 'FOC 和 PID'] },
+      { id: 'sp_pos', label: 'SciPy vs scikit-learn', ask: 'SciPy 和 scikit-learn 分工?', kind: 'choice', compute: () => ({ answer: 'SciPy 是底层数值算法(优化/线代/统计),scikit-learn 建在它和 NumPy 之上、提供开箱的机器学习模型(fit/predict)。要"数值算法"用 SciPy、要"直接建模"用 scikit-learn', step: 0, evidence: 'SciPy 底层数值、sklearn 开箱 ML' }), distractors: () => ['两者完全一样', 'SciPy 做深度学习', 'scikit-learn 是 SciPy 的底层'] },
+    ],
+  },
+  {
+    id: 'matplotlib', title: 'Matplotlib · 数据可视化', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'matplotlib' }, entities: [], streams: [] },
+    facts: [
+      { id: 'mpl_what', label: 'Matplotlib 是什么', ask: 'Matplotlib 是干什么的?', kind: 'choice', compute: () => ({ answer: 'Python 数据可视化的老牌主力:折线/散点/柱状/热图/等高线/3D 都能画,pyplot 上手快又能控到每个元素。做 ML 时画损失曲线、决策边界、特征分布、混淆矩阵都靠它——把"数字"变成"看得懂"', step: 0, evidence: 'Python 可视化主力、pyplot、什么图都能画' }), distractors: () => ['一个机器学习库', '一个数据处理库', '一个推理引擎'] },
+      { id: 'mpl_eco', label: 'Matplotlib 的生态', ask: 'seaborn/Plotly 和 Matplotlib 什么关系?', kind: 'choice', compute: () => ({ answer: 'seaborn 建在 Matplotlib 之上、做统计图更省事(几行出漂亮图);Plotly 补交互(能缩放/悬停)。Matplotlib 是最通用可控的底层,pandas .plot 也基于它', step: 0, evidence: 'seaborn 建其上、Plotly 补交互、pandas .plot 基于它' }), distractors: () => ['它们是 Matplotlib 的竞品完全无关', 'seaborn 是深度学习库', 'Plotly 是数据库'] },
+      { id: 'mpl_limit', label: 'Matplotlib 的取舍', ask: 'Matplotlib 有什么取舍?', kind: 'choice', compute: () => ({ answer: '最通用、可控到出版级,但默认样式一般、精修代码啰嗦;交互弱(要交互看 Plotly/Bokeh);有 pyplot 和面向对象两套 API 易混;大量数据点渲染慢', step: 0, evidence: '通用可控但精修啰嗦、交互弱、两套 API' }), distractors: () => ['不能导出图片', '只能画折线图', '必须用 GPU'] },
+    ],
+  },
+  {
+    id: 'sklearn', title: 'scikit-learn · 经典机器学习', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'sklearn' }, entities: [], streams: [] },
+    facts: [
+      { id: 'sk_what', label: 'scikit-learn 是什么', ask: 'scikit-learn 是干什么的?', kind: 'choice', compute: () => ({ answer: '经典(非深度)机器学习的事实标准库:把几十种算法(KNN/K-Means/PCA/SVM/决策树/逻辑·线性回归/随机森林/GBDT)统一成 fit/predict/transform API,配特征处理、交叉验证、网格搜索、Pipeline。结构化数据建模/快速基线/教学首选', step: 0, evidence: '经典 ML 事实标准、统一 API+Pipeline' }), distractors: () => ['一个深度学习框架', '一个数据可视化库', '一个推理引擎'] },
+      { id: 'sk_api', label: '统一 API 与 Pipeline', ask: 'scikit-learn 的 fit/predict 统一 API 和 Pipeline 有什么好处?', kind: 'choice', compute: () => ({ answer: '所有模型都是 fit(训练)/predict(预测)/transform(变换)同一套,换算法只改一行;Pipeline 把预处理+模型串成一条流水线,交叉验证时能防"数据泄露"(预处理只在训练折上 fit)。规范又不易出错', step: 0, evidence: '统一 API 换算法改一行、Pipeline 防数据泄露' }), distractors: () => ['能自动收集数据', '能自动部署到生产', '能自动画图'] },
+      { id: 'sk_cover', label: 'scikit-learn 对应的实验', ask: 'scikit-learn 的算法对应实验室哪些实验?', kind: 'choice', compute: () => ({ answer: 'KNN/SVM/逻辑回归/线性回归/决策树(分类回归)、K-Means/PCA(聚类降维)、GBDT(集成)——正是「机器学习算法」组那批实验。库是现成算法、实验讲原理', step: 0, evidence: 'KNN/SVM/逻辑·线性回归/决策树/K-Means/PCA/GBDT' }), distractors: () => ['卷积/池化/RNN', 'ICP/SLAM/点云', 'RRT/A*/Dubins'] },
+    ],
+  },
+  {
+    id: 'xgboost', title: 'XGBoost · 梯度提升树', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'xgboost' }, entities: [], streams: [] },
+    facts: [
+      { id: 'xgb_what', label: 'XGBoost 是什么', ask: 'XGBoost 是什么?为什么在结构化数据上强?', kind: 'choice', compute: () => ({ answer: '梯度提升决策树(GBDT)的高性能实现:一棵棵树串行拟合前面的残差、逐步变强;工程上二阶泰勒近似+正则化+缺失值处理+直方图分裂+GPU。在表格/结构化数据上常年准确率最强(Kaggle 王者)', step: 0, evidence: 'GBDT 高性能实现、串行加树拟合残差、表格最强' }), distractors: () => ['一种神经网络', '一个数据库', '一个可视化库'] },
+      { id: 'xgb_cover', label: 'XGBoost 对应的实验', ask: 'XGBoost 对应实验室哪些实验?', kind: 'choice', compute: () => ({ answer: 'GBDT(梯度提升,它就是 GBDT 的工程实现)、决策树(基学习器)——「机器学习算法」组里的实验。原理在实验里、工业实现在 XGBoost', step: 0, evidence: 'GBDT/决策树' }), distractors: () => ['卷积和注意力', 'PageRank 和 A*', '词向量和 RNN'] },
+      { id: 'xgb_vs', label: 'XGBoost vs 神经网络', ask: '什么时候用 XGBoost、什么时候用深度学习?', kind: 'choice', compute: () => ({ answer: '表格/结构化数据(金融/推荐/CTR)常年是 XGBoost/LightGBM 等梯度提升更强、又快又准;图像/文本/语音这类非结构化数据才是深度学习(PyTorch)的主场。选型看数据类型', step: 0, evidence: '表格用梯度提升、非结构化用 DL' }), distractors: () => ['XGBoost 永远比 DL 强', 'DL 永远比 XGBoost 强', '两者不能同一项目'] },
+    ],
+  },
+  {
+    id: 'jax', title: 'JAX · 可微的 NumPy', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'jax' }, entities: [], streams: [] },
+    facts: [
+      { id: 'jx_what', label: 'JAX 是什么', ask: 'JAX 是什么?为什么叫"可微的 NumPy"?', kind: 'choice', compute: () => ({ answer: 'Google 的高性能数值计算库:NumPy 接口 + 自动求导(grad)+ XLA 编译(jit)+ 向量化(vmap)+ GPU/TPU。用几乎和 NumPy 一样的代码,但能自动求导、能编译加速——所以叫"可微的 NumPy"', step: 0, evidence: 'NumPy 接口+grad 自动求导+jit 编译+GPU/TPU' }), distractors: () => ['一个数据库', '一个可视化库', '一个推理服务'] },
+      { id: 'jx_transform', label: 'grad/jit/vmap', ask: 'JAX 的 grad、jit、vmap 分别做什么?', kind: 'choice', compute: () => ({ answer: 'grad:对任意函数自动求导(还能高阶);jit:用 XLA 把函数编译成融合内核、GPU/TPU 提速;vmap:自动把函数向量化成批处理。它们是可组合的函数变换,函数式风格', step: 0, evidence: 'grad 求导/jit 编译/vmap 批处理、可组合变换' }), distractors: () => ['分别是三个模型', '分别是三种数据库', '分别是三个可视化函数'] },
+      { id: 'jx_cover', label: 'JAX 对应的实验/用途', ask: 'JAX 对应实验室哪些概念?典型用在哪?', kind: 'choice', compute: () => ({ answer: '梯度下降、反向传播、矩阵运算——写 JAX 就是"可微的 NumPy"。前沿 DL/研究(Flax)、大规模 RL 仿真(Brax、MuJoCo MJX)、科学计算、TPU 训练大量用它', step: 0, evidence: '梯度下降/反向传播/矩阵;前沿 DL/RL 仿真' }), distractors: () => ['ICP/SLAM', 'B+树/LSM', 'RSA/AES'] },
+    ],
+  },
+  {
+    id: 'opencv', title: 'OpenCV · 计算机视觉', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'opencv' }, entities: [], streams: [] },
+    facts: [
+      { id: 'cv_what', label: 'OpenCV 是什么', ask: 'OpenCV 是干什么的?', kind: 'choice', compute: () => ({ answer: '计算机视觉的老牌全家桶:图像读写/滤波卷积、特征(ORB/SIFT)、几何变换、相机标定(solvePnP)、光流、立体视觉、传统目标检测,还能跑 DNN 推理。既是 CV 经典算法库,也是机器人/图像项目的地基', step: 0, evidence: 'CV 全家桶:图像处理/特征/标定/立体/DNN' }), distractors: () => ['一个深度学习训练框架', '一个数据库', '一个绘图库'] },
+      { id: 'cv_cover', label: 'OpenCV 对应的实验', ask: 'OpenCV 对应实验室哪些实验?和机器人感知什么关系?', kind: 'choice', compute: () => ({ answer: '卷积/滤波(图像卷积)、池化(图像金字塔/降采样)对应 DL 里的卷积/池化实验;它的相机标定/立体视觉/位姿又和「机器人感知」轨的针孔/双目/点云/PnP 相通', step: 0, evidence: '卷积/池化;和针孔/双目/PnP 相通' }), distractors: () => ['B+树/LSM', 'RRT/A*', 'FOC/PID'] },
+      { id: 'cv_limit', label: 'OpenCV 的取舍', ask: 'OpenCV 的取舍是什么?', kind: 'choice', compute: () => ({ answer: 'CV 算法最全、C++ 核心快 Python 好用、跨平台;但深度学习训练不归它(那是 PyTorch,它只能跑现成 DNN),API 庞杂、旧版 BSD 新版(4.5+)才 Apache-2.0', step: 0, evidence: 'CV 算法全但不训 DL、API 庞杂、4.5+ 才 Apache' }), distractors: () => ['不能读图片', '只支持 Python', '必须联网'] },
+    ],
+  },
+  {
+    id: 'statsmodels', title: 'statsmodels · 统计建模与推断', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'statsmodels' }, entities: [], streams: [] },
+    facts: [
+      { id: 'sm_what', label: 'statsmodels 是什么', ask: 'statsmodels 和 scikit-learn 有什么不同?', kind: 'choice', compute: () => ({ answer: 'statsmodels 专注统计建模与"推断"(要 p 值、置信区间、显著性、诊断报告),scikit-learn 专注"预测"(要准)。statsmodels 做回归/时间序列/假设检验时给完整统计报告——回答"这个变量显著吗、关系可信吗"', step: 0, evidence: '推断(p 值/置信区间)vs 预测(准)' }), distractors: () => ['两者完全一样', 'statsmodels 做深度学习', 'statsmodels 是画图库'] },
+      { id: 'sm_cover', label: 'statsmodels 对应的实验', ask: 'statsmodels 对应实验室哪些概念?', kind: 'choice', compute: () => ({ answer: '线性回归、逻辑回归(带显著性推断)、以及中心极限定理、大数定律(统计根基)——「机器学习算法/概率统计」里的实验。它把这些做成带统计报告的建模', step: 0, evidence: '线性/逻辑回归、中心极限、大数定律' }), distractors: () => ['卷积和池化', 'ICP 和点云', 'PagedAttention'] },
+      { id: 'sm_use', label: 'statsmodels 用在哪', ask: 'statsmodels 典型用在什么场景?', kind: 'choice', compute: () => ({ answer: '计量经济/社科的统计分析、时间序列预测(ARIMA)、A/B 实验的显著性检验——要"解释"而非只"预测"的场景。大规模纯预测则用 sklearn/XGBoost', step: 0, evidence: '计量/时间序列/AB 检验,要解释' }), distractors: () => ['图像识别', '大模型推理', '机器人控制'] },
+    ],
+  },
+  {
+    id: 'networkx', title: 'NetworkX · 图/网络分析', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'networkx' }, entities: [], streams: [] },
+    facts: [
+      { id: 'nx_what', label: 'NetworkX 是什么', ask: 'NetworkX 是干什么的?', kind: 'choice', compute: () => ({ answer: 'Python 图/网络分析库:建图(有向/无向/带权)+跑经典图算法——最短路(Dijkstra/A*/Bellman-Ford)、PageRank、连通分量/并查集、最小生成树、最大流、中心性、社区发现。纯 Python 上手极快、适合建模/分析/教学', step: 0, evidence: '图分析库、最短路/PageRank/连通/中心性' }), distractors: () => ['一个神经网络框架', '一个数据库', '一个绘图库'] },
+      { id: 'nx_cover', label: 'NetworkX 对应的实验', ask: 'NetworkX 对应实验室哪些经典算法实验?', kind: 'choice', compute: () => ({ answer: 'PageRank(网页排名)、A* 寻路(带启发的最短路)、并查集(连通分量)——正是「经典算法」组里的实验。库里都是现成一行调用、原理在实验里', step: 0, evidence: 'PageRank/A*/并查集' }), distractors: () => ['卷积/RNN/注意力', 'FOC/PID', 'KV Cache/量化'] },
+      { id: 'nx_limit', label: 'NetworkX 的取舍', ask: 'NetworkX 处理超大图有什么局限?', kind: 'choice', compute: () => ({ answer: '纯 Python、图很大(百万边以上)会慢、内存内;超大图看 igraph/graph-tool(C 核)或 GPU 图库。它也不做图神经网络(那是 PyG/DGL)。胜在灵活、算法全、上手快', step: 0, evidence: '纯 Python 大图慢、超大看 igraph;不做 GNN' }), distractors: () => ['不能建有向图', '只能算最短路', '必须用 GPU'] },
+    ],
+  },
+  {
+    id: 'gensim', title: 'gensim · 主题模型与词向量', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'gensim' }, entities: [], streams: [] },
+    facts: [
+      { id: 'gs_what', label: 'gensim 是什么', ask: 'gensim 是干什么的?', kind: 'choice', compute: () => ({ answer: '主题建模与词向量的经典库:Word2Vec/FastText/Doc2Vec 词/文档向量、LDA/LSI 主题模型、TF-IDF、相似度检索,主打无监督从大规模文本挖语义、能流式处理大语料。Word2Vec 的著名实现就出自这里', step: 0, evidence: '主题模型+词向量、无监督挖语义、word2vec 原产地' }), distractors: () => ['一个深度学习训练框架', '一个数据库', '一个绘图库'] },
+      { id: 'gs_cover', label: 'gensim 对应的实验', ask: 'gensim 对应实验室哪个实验?', kind: 'choice', compute: () => ({ answer: '词向量(Word2Vec)——它是 word2vec 的原产地,「国王−男人+女人≈王后」那个著名例子就来自这类词向量。「深度学习算法」里的词向量实验讲的就是它的原理', step: 0, evidence: '词向量 Word2Vec、国王−男人+女人≈王后' }), distractors: () => ['ICP 点云配准', 'RRT 运动规划', 'FOC 电流环'] },
+      { id: 'gs_license', label: 'gensim 的许可注意', ask: '用 gensim 要注意什么许可问题?', kind: 'choice', compute: () => ({ answer: '它是 LGPL-2.1(弱传染)——比 NumPy/scikit-learn 的 BSD 严:动态链接调用一般 OK,但静态链接或改动它的源码再分发,可能要求把那部分也按 LGPL 开源。商用要评估。这正是"库要核许可"的价值', step: 0, evidence: 'LGPL-2.1 弱传染、动态调用OK/改源要开源' }), distractors: () => ['MIT 随便用', '公有领域无限制', '闭源收费软件'] },
+    ],
+  },
+  {
     id: 'wildcard', title: '通配符匹配', kernel: wildcardKernel as Kernel<unknown>, doc: trivialDoc('wildcard'),
     facts: [
       {
