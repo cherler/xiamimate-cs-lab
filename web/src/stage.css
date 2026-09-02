@@ -3620,6 +3620,13 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
   background:var(--sunk-1); border:1px solid var(--line); border-radius:6px; cursor:pointer; }
 .aic-modes button.on { color:var(--ink); background:var(--panel); border-color:var(--now); font-weight:600; }
 .aic-body { display:flex; flex-direction:column; gap:9px; }
+.aic-suggest { display:flex; flex-direction:column; gap:6px; }
+.aic-sug { text-align:left; padding:8px 11px; font-size:12px; color:var(--ink); background:var(--sunk-1);
+  border:1px solid var(--line); border-radius:8px; cursor:pointer; line-height:1.5; }
+.aic-sug:hover { border-color:var(--now); background:var(--panel); }
+.aic-sug.on { border-color:var(--now); border-left:3px solid var(--now); }
+.aic-sug:disabled { opacity:.55; cursor:default; }
+.aic-linkbtn { align-self:flex-start; background:none; border:none; color:var(--now); font-size:11.5px; cursor:pointer; padding:2px 0; text-decoration:underline; }
 .aic-subtabs { display:flex; gap:6px; }
 .aic-subtabs button { padding:3px 12px; font-size:11.5px; color:var(--dim); background:transparent;
   border:1px solid var(--line); border-radius:20px; cursor:pointer; }

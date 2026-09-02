@@ -88,7 +88,7 @@ export function AiCompanion({ expId, onCite }: { expId: string; onCite?: (step: 
         <button className={mode === 'interview' ? 'on' : ''} onClick={() => setMode('interview')}>面试</button>
       </div>
       {mode === 'quiz' && <QuizView expId={expId} onCite={onCite} />}
-      {mode === 'ask' && <AskView expId={expId} />}
+      {mode === 'ask' && <AskView expId={expId} onCite={onCite} />}
       {mode === 'review' && <ReviewView expId={expId} />}
       {mode === 'interview' && <InterviewView expId={expId} />}
     </div>
@@ -176,30 +176,52 @@ function QuizView({ expId, onCite }: { expId: string; onCite?: (step: number) =>
 }
 
 // ── 答疑 ──
-function AskView({ expId }: { expId: string }) {
+function AskView({ expId, onCite }: { expId: string; onCite?: (step: number) => void }) {
+  const [suggest, setSuggest] = useState<{ factId: string; ask: string }[]>([])
   const [q, setQ] = useState('')
+  const [asked, setAsked] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [answer, setAnswer] = useState('')
+  const [prov, setProv] = useState<{ step: number; evidence: string } | null>(null)
+  const [customOpen, setCustomOpen] = useState(false)
 
-  async function ask() {
-    if (!q.trim()) return
-    setLoading(true); setError(''); setAnswer('')
+  useEffect(() => {
+    let live = true
+    setSuggest([]); setAnswer(''); setAsked('')
+    fetch(`/lab/ai/suggest?expId=${encodeURIComponent(expId)}`).then(r => r.json())
+      .then(d => { if (live) setSuggest(d.questions ?? []) }).catch(() => { })
+    return () => { live = false }
+  }, [expId])
+
+  async function ask(question: string, factId?: string) {
+    if (!question.trim() || loading) return
+    setLoading(true); setError(''); setAnswer(''); setProv(null); setAsked(question)
     try {
-      const d = await postJSON<{ answer: string }>('/lab/ai/ask', { expId, question: q })
-      setAnswer(d.answer)
+      const d = await postJSON<{ answer: string; provenance?: { step: number; evidence: string } }>('/lab/ai/ask', { expId, question, factId })
+      setAnswer(d.answer); if (d.provenance) setProv(d.provenance)
     } catch (e) { setError((e as Error).message) } finally { setLoading(false) }
   }
 
   return (
     <div className="aic-body">
-      <p className="aic-hint">按这个实验<b>实际跑出来的每一步</b>回答。问轨迹里没有的，它会直说不知道。</p>
-      <textarea className="aic-ta" value={q} placeholder="例如：第 0 步为什么往右半查找？"
-        onChange={e => setQ(e.target.value)}
-        onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) ask() }} />
-      <button className="aic-go" disabled={loading || !q.trim()} onClick={ask}>{loading ? '思考中…' : '问（⌘/Ctrl+Enter）'}</button>
+      <p className="aic-hint">点一个想弄懂的问题——按这个实验<b>真跑出来的每一步 + 钉死要点</b>回答（轨迹里没有的会直说不知道）。</p>
+      <div className="aic-suggest">
+        {suggest.map(s => (
+          <button key={s.factId} className={`aic-sug${asked === s.ask ? ' on' : ''}`} disabled={loading} onClick={() => ask(s.ask, s.factId)}>{s.ask}</button>
+        ))}
+      </div>
+      <button className="aic-linkbtn" onClick={() => setCustomOpen(o => !o)}>{customOpen ? '收起自定义提问' : '或者自己问一句…'}</button>
+      {customOpen && <>
+        <textarea className="aic-ta" value={q} placeholder="例如：第 0 步为什么往右半查找？（⌘/Ctrl+Enter 提交）"
+          onChange={e => setQ(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) ask(q) }} />
+        <button className="aic-go" disabled={loading || !q.trim()} onClick={() => ask(q)}>{loading ? '助教思考中…' : '问'}</button>
+      </>}
+      {loading && <p className="aic-hint" style={{ opacity: .7 }}>助教思考中…</p>}
       {error && <p className="aic-err">出错了：{error}</p>}
       {answer && <div className="aic-answer">{answer}</div>}
+      {answer && prov && <CiteChip step={prov.step} evidence={prov.evidence} onCite={onCite} />}
     </div>
   )
 }

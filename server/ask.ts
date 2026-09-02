@@ -15,7 +15,14 @@ export type AskResult = {
   expId: string
   answer: string
   grounding: { title: string; step: number | null; frames: number; usedTrace: string }
+  provenance?: { step: number; evidence: string }   // 点选"常见疑问"来的问题→对应 fact 的出处,给 citation chip
   billing: { metered: boolean; credits: number; tokens: number; note: string }
+}
+
+// 常见疑问:直接用每个 fact 自带的"这在考什么"当可点问题——用户不用打字,点一个就问。
+export function suggestQuestions(expId: string): { factId: string; ask: string }[] {
+  const entry = getEntry(expId)
+  return entry ? entry.facts.map(f => ({ factId: f.id, ask: f.ask })) : []
 }
 
 // 把 trace 摊成「第i步：log」文本。给了 step 就聚焦它附近 ±3 帧，否则给全程（本仓 trace 都很短）。
@@ -43,7 +50,7 @@ const SYSTEM =
   '若学生问得含糊或有误解，先温和点一句再讲透。**轨迹和要点里都找不到依据的，老实说「这个实验的轨迹里看不出来」**，不要编造、不要引入实验之外的假设。' +
   '面向考研 408 / 算法面试，讲清原理即可，简洁但别冷冰冰。'
 
-export type AskOptions = { step?: number | null; principal?: Principal; useLLM?: boolean }
+export type AskOptions = { step?: number | null; factId?: string; principal?: Principal; useLLM?: boolean }
 
 export async function askAboutExperiment(
   expId: string, question: string, opts: AskOptions = {},
@@ -51,7 +58,11 @@ export async function askAboutExperiment(
   const entry = getEntry(expId)
   if (!entry) throw new Error(`未知实验：${expId}（可用：见 /lab/ai/experiments）`)
   if (!question || !question.trim()) throw new Error('问题不能为空')
-  const step = opts.step ?? null
+  // 点选常见疑问带来的 factId → 定位该 fact 的出处(step/evidence),既聚焦轨迹上下文、又给 citation chip
+  let prov: { step: number; evidence: string } | undefined
+  const fact = opts.factId ? entry.facts.find(f => f.id === opts.factId) : undefined
+  if (fact) { try { const c = fact.compute(traceOf(entry) as never); prov = { step: c.step, evidence: c.evidence } } catch { /* ignore */ } }
+  const step = opts.step ?? prov?.step ?? null
   const ctx = traceContext(entry, step)
 
   if (opts.useLLM === false) {
@@ -71,6 +82,7 @@ export async function askAboutExperiment(
   return {
     expId, answer: r.text.trim(),
     grounding: { title: entry.title, step, frames: ctx.split('\n').length, usedTrace: ctx },
+    ...(prov ? { provenance: prov } : {}),
     billing: r.billing,
   }
 }
