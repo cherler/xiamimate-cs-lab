@@ -28,11 +28,20 @@ function traceContext(entry: CatalogEntry, step: number | null): string {
   return `（聚焦第${step}步附近；完整轨迹共${t.length}步）\n` + window.join('\n')
 }
 
+// 实验的钉死要点（facts 的答案）—— 让助教也能答"概念"类问题，不止"第k步"。
+function keyPoints(entry: CatalogEntry): string {
+  const t = traceOf(entry)
+  return entry.facts.map(f => {
+    try { return `- ${f.label}：${f.compute(t as never).answer}` } catch { return `- ${f.label}` }
+  }).join('\n')
+}
+
 const SYSTEM =
-  '你是这个交互实验的助教。下面给出的是该实验**引擎实际运行的逐步轨迹**（地面真值）。' +
-  '只依据这段轨迹回答学生的问题：解释「为什么这一步这样走」时，要引用轨迹里的具体数值/状态。' +
-  '轨迹里没有依据的，直接说「轨迹里看不出来」，不要编造、不要引入轨迹之外的假设。' +
-  '面向考研 408 / 算法面试，讲清原理即可，简洁，不用寒暄。'
+  '你是这个交互实验的**助教**，耐心、鼓励，像学长带学弟——但讲原理时严谨、不打太极。' +
+  '下面给你该实验**引擎实际运行的逐步轨迹**和**钉死要点**（都是地面真值）。依据它们回答学生的问题：' +
+  '解释「为什么这一步这样走」要引用轨迹里的具体数值/状态；问概念就用要点讲清。' +
+  '若学生问得含糊或有误解，先温和点一句再讲透。**轨迹和要点里都找不到依据的，老实说「这个实验的轨迹里看不出来」**，不要编造、不要引入实验之外的假设。' +
+  '面向考研 408 / 算法面试，讲清原理即可，简洁但别冷冰冰。'
 
 export type AskOptions = { step?: number | null; principal?: Principal; useLLM?: boolean }
 
@@ -54,7 +63,7 @@ export async function askAboutExperiment(
     }
   }
 
-  const prompt = `实验：${entry.title}\n===== 运行轨迹（唯一依据）=====\n${ctx}\n===== 轨迹结束 =====\n\n学生的问题：${question}`
+  const prompt = `实验：${entry.title}\n===== 运行轨迹（依据）=====\n${ctx}\n===== 钉死要点（依据）=====\n${keyPoints(entry)}\n===== 依据结束 =====\n\n学生的问题：${question}`
   const r = await generate({
     module: 'lab_ai', task: 'ask', system: SYSTEM, prompt,
     maxTokens: 700, provider: 'minimax', principal: opts.principal ?? null,
