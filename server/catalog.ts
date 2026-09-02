@@ -139,6 +139,7 @@ import { trapezoidKernel } from '../src/kernels/trapezoid.ts'
 import { prmKernel } from '../src/kernels/prm.ts'
 import { mdpKernel } from '../src/kernels/mdp.ts'
 import { qlearningKernel } from '../src/kernels/qlearning.ts'
+import { policygradKernel } from '../src/kernels/policygrad.ts'
 import { objectstoreKernel } from '../src/kernels/objectstore.ts'
 import { queryplanKernel } from '../src/kernels/queryplan.ts'
 import { wildcardKernel } from '../src/kernels/wildcard.ts'
@@ -2796,6 +2797,41 @@ export const CATALOG: CatalogEntry[] = [
         ask: 'PID 控制的 P、I、D 三项分别按什么量、起什么作用?', kind: 'choice',
         compute: () => ({ answer: 'P=Kp·e 按当前误差使劲(越远越使劲)；D=Kd·误差变化率提供阻尼(快到时反向刹车、防冲过头);I=Ki·误差累计消除稳态误差(顶掉重力等恒定扰动)。P管现在、I管过去累计、D管趋势', step: 14, evidence: '本例加 D=Kd·误差变化率(负=刹车)后，位置平稳收敛到目标不震荡' }),
         distractors: () => ['三项都按当前误差，只是系数不同', 'D 让响应更快、P 提供阻尼', 'I 提供阻尼、D 消除稳态误差'],
+      },
+    ],
+  },
+  {
+    id: 'policygrad', title: '策略梯度 REINFORCE', kernel: policygradKernel as Kernel<unknown>, doc: trivialDoc('policygrad'),
+    facts: [
+      {
+        id: 'pg_theorem', label: '策略梯度在做什么',
+        ask: '策略梯度(policy gradient)和值方法(Q-learning)最本质的区别?策略梯度定理直觉是什么?', kind: 'choice',
+        compute: () => ({ answer: '值方法先学值 Q 再 argmax;策略梯度直接参数化策略 π_θ、对期望回报梯度上升。策略梯度定理 ∇J=E[∇log π·G]:把导致高回报 G 的动作、概率往上推。天然处理连续动作(值方法难对无穷动作 argmax)', step: 1, evidence: '直接学策略;∇log π·G 推高好动作' }),
+        distractors: () => ['策略梯度也是先学 Q 再选动作', '策略梯度不需要奖励', '策略梯度只能处理离散动作'],
+      },
+      {
+        id: 'pg_baseline', label: '基线/优势为何降方差',
+        ask: '策略梯度里减去基线(用优势 A=G−b 代替回报 G)为什么重要?', kind: 'choice',
+        compute: () => ({ answer: '降方差、且能正确压制低于平均的动作。纯回报 G 全是正的、任何被采到的动作都被推高(方差大、方向常错);减基线后用优势 A=G−b:A>0(高于平均)才推高、A<0(低于平均)压低。减基线不改变梯度期望(不引偏)、只降方差', step: 4, evidence: 'A=G−b;比平均好才强化;不引偏只降方差' }),
+        distractors: () => ['加快计算', '让回报变成整数', '把 on-policy 变 off-policy'],
+      },
+      {
+        id: 'pg_ac', label: '基线引向什么',
+        ask: '把基线做成一个学出来的 V(s)，策略梯度就变成了什么?', kind: 'choice',
+        compute: () => ({ answer: 'actor-critic:actor 是策略 π_θ、critic 学值 V(s) 当基线,用优势 A=G−V(s)(或 TD 优势)更新 actor。PPO、SAC 都是 actor-critic 的变体', step: 6, evidence: 'actor=策略、critic=V 基线;PPO/SAC 是其变体' }),
+        distractors: () => ['Q-learning', '值迭代', '蒙特卡洛树搜索'],
+      },
+      {
+        id: 'pg_onpolicy', label: '为何 on-policy 且要 PPO',
+        ask: 'REINFORCE 是 on-policy 还是 off-policy?它有什么痛点、怎么解决?', kind: 'choice',
+        compute: () => ({ answer: 'on-policy:必须用当前策略采的数据更新、用完即扔(样本效率低)。痛点是更新步子难调:太大一步可能把策略更新崩坏、太小又慢。PPO 用裁剪的替代目标把每次更新限制在信任域(新旧策略别差太多),稳且样本利用更好(miniduck 用的就是 PPO)', step: 6, evidence: 'on-policy;步子难调→PPO 裁剪限信任域' }),
+        distractors: () => ['off-policy、可复用旧数据', '没有痛点、直接可用', '用更大的学习率就行'],
+      },
+      {
+        id: 'pg_num', label: '较差动作的优势',
+        ask: '单状态 2 动作(L 回报1、R 回报3、初始 π=[0.5,0.5])，采到 L；基线 b=Σπ·R，优势 A=G−b 是多少?', kind: 'number',
+        compute: t => { const f = t as unknown as { adv?: number }[]; const l = f.find(x => x.adv != null); const v = l?.adv != null ? Math.round(l.adv) : -1; return ({ answer: String(v), step: 3, evidence: `b=0.5·1+0.5·3=2、A=G−b=1−2=${v}<0(L 低于平均、该压低)` }) },
+        distractors: () => ['1', '2', '0', '3'],
       },
     ],
   },

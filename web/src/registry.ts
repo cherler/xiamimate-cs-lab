@@ -367,6 +367,7 @@ import { trapezoidKernel, type TrapState } from '@engine/kernels/trapezoid.ts'
 import { prmKernel, type PrmState } from '@engine/kernels/prm.ts'
 import { mdpKernel, type MdpState } from '@engine/kernels/mdp.ts'
 import { qlearningKernel, type QState } from '@engine/kernels/qlearning.ts'
+import { policygradKernel, type PgState } from '@engine/kernels/policygrad.ts'
 import { quatKernel, type QuatState } from '@engine/kernels/quat.ts'
 import { trajectoryKernel, type TrajState } from '@engine/kernels/trajectory.ts'
 import { icpKernel, type ICPState } from '@engine/kernels/icp.ts'
@@ -405,6 +406,7 @@ import { TrapezoidStage } from './stages/TrapezoidStage.tsx'
 import { PrmStage } from './stages/PrmStage.tsx'
 import { MdpStage } from './stages/MdpStage.tsx'
 import { QlearningStage } from './stages/QlearningStage.tsx'
+import { PolicyGradStage } from './stages/PolicyGradStage.tsx'
 import { QuatStage } from './stages/QuatStage.tsx'
 import { TrajStage } from './stages/TrajStage.tsx'
 import { ICPStage } from './stages/ICPStage.tsx'
@@ -7101,6 +7103,33 @@ const qlearning: Experiment<QState> = {
     { label: '收敛 Q*(A,B,C)', value: s.showConv ? `[${s.qConv.A}, ${s.qConv.B}, ${s.qConv.C}]（=V*）` : '—', tone: s.showConv ? 'good' : undefined },
   ],
 }
+const policygrad: Experiment<PgState> = {
+  id: 'policygrad', group: '机器人强化学习', title: '策略梯度 REINFORCE', subtitle: '直接学策略 π_θ：把高回报动作概率推上去；基线/优势降方差',
+  kernel: policygradKernel, defaultDoc: { kind: 'policygrad', params: { baseline: '带基线' }, entities: [], streams: [] },
+  params: [{ key: 'baseline', label: '基线', kind: 'enum', options: ['带基线', '不带基线'] }],
+  paramsNote: '「Q-learning」是值方法(先学值再 argmax);**策略梯度直接参数化策略 π_θ(a|s)**、以 J(θ)=E[回报] 梯度上升。**策略梯度定理** ∇_θ J=E[∇_θ log π·G]("把导致高回报的动作概率往上推")。**REINFORCE**:采样轨迹、用 G 估梯度、上升。天然处理**连续动作**(miniduck 的关节力矩);缺点**高方差**。**基线/优势** A=G−b(b 常用 V(s))降方差、且能**正确压制低于平均的动作**(A<0)、而非只要回报>0 就强化。本例单状态 2 动作(L 回报1、R 回报3、b=2):采到较差的 L,带基线 A=−1→π(L) 0.5→0.27(对);不带基线 权重=G=1→π(L)→0.73(错、被误强化)。切「基线」对比。全现算。连「Q-learning/PPO(下一课稳住更新)/actor-critic/miniduck」。详见讲解卡。',
+  bounds: [
+    '策略梯度直接参数化 π_θ、梯度上升 J=E[回报];策略梯度定理 ∇J=E[∇log π·G];REINFORCE 采样估梯度。天然处理连续动作',
+    '基线/优势 A=G−b(b 常用 V(s)):降方差、正确压制低于平均动作(A<0);不带基线纯回报 G 全正、方差大、会误强化差动作',
+    '基线→actor-critic(actor=策略π、critic=值V当基线);on-policy(当前策略采的数据、用完即扔、样本效率低)',
+    '痛点:步子难调(太大崩、太小慢)→PPO 裁剪替代目标限信任域。连 Q-learning(值方法)/PPO/SAC/miniduck(PPO 学走路)。参考:Sutton PG 定理、Williams REINFORCE',
+  ],
+  tabs: [{ id: 'pg', label: '策略梯度逐步跑' }], Stage: PolicyGradStage, whyInRail: true,
+  tone: s => (s.stage === 'done' ? { key: 'good', label: '∇log π·优势' }
+    : s.stage === 'update' ? (s.piNew[s.sampled]! < s.pi[s.sampled]! ? { key: 'good', label: '压低差动作' } : { key: 'bad', label: '误推高' })
+    : s.stage === 'gradient' ? { key: 'idle', label: `权重 ${s.weight}` }
+    : s.stage === 'sample' ? { key: (s.adv < 0 ? 'bad' : 'idle'), label: `A=${s.adv}` }
+    : s.stage === 'policy' ? { key: 'idle', label: 'softmax π' }
+    : { key: 'idle', label: '直接学策略' }),
+  metric: s => (s.stage === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => ({ intro: '策', policy: 'π', sample: '采', gradient: '∇', update: '新', done: '成' }[s.stage] ?? '·'),
+  readouts: s => [
+    { label: '基线', value: s.baseLabel },
+    { label: '优势 A=G−b', value: s.showSample ? `${s.adv}` : '—', tone: s.showSample && s.adv < 0 ? 'bad' : undefined },
+    { label: '更新权重', value: s.showGrad ? `${s.weight}（${s.base === 'on' ? '优势' : '回报'}）` : '—' },
+    { label: `π(${s.acts[s.sampled]}) 变化`, value: s.showUpdate ? `${s.pi[s.sampled]}→${s.piNew[s.sampled]}` : '—', tone: s.showUpdate ? (s.piNew[s.sampled]! < s.pi[s.sampled]! ? 'good' : 'bad') : undefined },
+  ],
+}
 // ── 具身智能 · 具身学习 ──
 const bc: Experiment<BCState> = {
   id: 'bc', group: '具身学习', title: '模仿学习 · 行为克隆', subtitle: '从专家示范学策略；分布漂移→复合误差',
@@ -7342,7 +7371,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, icp, slam, impedance, mpc, pid, rrt, rrtstar, prm, potentialfield, trapezoid, mdp, qlearning, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
+  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, icp, slam, impedance, mpc, pid, rrt, rrtstar, prm, potentialfield, trapezoid, mdp, qlearning, policygrad, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
 ] as unknown as AnyExperiment[]
 
 /**

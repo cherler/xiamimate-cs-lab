@@ -404,6 +404,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { i: 2, step: 2, stage: 'tdupdate', ...base, showQ: true, showTd: true, showEp: false, showConv: false, phase: 'run' as const, focus: 'TD 更新' },
       b: { i: 4, step: 4, stage: 'converge', ...base, showQ: true, showTd: true, showEp: true, showConv: true, phase: 'run' as const, focus: '收敛' },
     } })(),
+    policygrad: (() => { const base = { base: 'on', baseLabel: '带基线(优势 A=G−b)', acts: ['L', 'R'], rewards: [1, 3], theta: [0, 0], pi: [0.5, 0.5], sampled: 0, rS: 1, b: 2, adv: -1, weight: -1, gradLog: [0.5, -0.5], dTheta: [-0.5, 0.5], thetaNew: [-0.5, 0.5], piNew: [0.269, 0.731], log: '' }; return {
+      doc: { kind: 'policygrad', params: { baseline: '带基线' }, entities: [], streams: [] },
+      a: { i: 3, step: 3, stage: 'gradient', ...base, showPolicy: true, showSample: true, showGrad: true, showUpdate: false, phase: 'run' as const, focus: '策略梯度' },
+      b: { i: 4, step: 4, stage: 'update', ...base, showPolicy: true, showSample: true, showGrad: true, showUpdate: true, phase: 'run' as const, focus: '更新' },
+    } })(),
     queryplan: {
       doc: { kind: 'queryplan', params: {}, entities: [], streams: [] },
       a: { step: 1, op: 'path', query: 'q', revealed: 1, cur: 0, chosen: -1, paths: [{ name: '全表扫描', type: 'ALL', key: '—', rows: 10000, note: 'x' }, { name: '走 idx(city)', type: 'ref', key: 'idx_city', rows: 500, note: 'x' }, { name: '走 idx(age)', type: 'range', key: 'idx_age', rows: 6000, note: 'x' }], phase: 'run', focus: '候选路径：全表扫描（type=ALL，估扫 10000 行）' },

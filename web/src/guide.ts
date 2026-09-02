@@ -1020,6 +1020,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { stage: string; td: { delta: number }; qConv: Record<string, number> }; return st.stage === 'done' ? '免模型学最优' : st.stage === 'converge' ? '收敛=值迭代' : st.stage === 'episode' ? '奖励往回传' : st.stage === 'tdupdate' ? `δ=${st.td.delta}` : st.stage === 'qtable' ? 'Q表' : '免模型' },
     try: [{ act: '切「快 α=0.5」', watch: '首次更新 Q(C,→)=α·δ=0.5·1=0.5，学得快但抖。' }, { act: '切「慢 α=0.2」', watch: 'Q(C,→)=0.2·1=0.2，学得慢但稳——都收敛到同一 Q*。' }, { act: '想 vs 值迭代', watch: '值迭代要模型 P/R；Q-learning 免模型、只从经验，却学到同样的 [0.81,0.9,1]。' }], terms: [],
   },
+  policygrad: {
+    question: 'Q-learning 先学值再选动作。策略梯度直接学策略，怎么"把好动作的概率推上去"？基线又是干嘛的？',
+    read: [{ at: '概率条', is: '动作 L/R 的 π，采样前/后。', anchor: '.pg-bars' }, { at: '梯度块', is: '∇log π·权重(回报或优势)。', anchor: '.pg-blk' }, { at: '读数', is: '优势 A、权重、π 变化。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { stage: string; baseLabel: string; base: string; acts: string[]; rewards: number[]; pi: number[]; sampled: number; rS: number; b: number; adv: number; weight: number; gradLog: number[]; thetaNew: number[]; piNew: number[] }; const a = st.acts[st.sampled]; return [
+      { k: '本步输入', v: st.stage === 'intro' ? `基线 ${st.baseLabel}` : st.stage === 'policy' ? '参数 θ=[0,0]' : st.stage === 'sample' ? `按 π 采样` : st.stage === 'gradient' ? `采到 ${a}、回报 ${st.rS}` : `权重 ${st.weight}、梯度` },
+      { k: '判定规则', v: `π=softmax(θ)；策略梯度定理 ∇J=E[∇log π·G]；基线降方差用优势 A=G−b；θ←θ+α·权重·∇log π。` },
+      { k: '本步结果', v: st.stage === 'intro' ? '策略梯度:直接把高回报动作概率推上去' : st.stage === 'policy' ? `π=[${st.pi}]（均匀）` : st.stage === 'sample' ? `采到 ${a}(回报 ${st.rS}、较差)、基线 b=${st.b}、优势 A=${st.adv}` : st.stage === 'gradient' ? `∇log π(${a})=[${st.gradLog}]、权重=${st.base === 'on' ? `优势 A=${st.adv}` : `回报 G=${st.rS}`}` : `π(${a}) ${st.pi[st.sampled]}→${st.piNew[st.sampled]}（${st.base === 'on' ? 'A<0 压低差动作✓' : 'G>0 误推高差动作✗'}）` },
+    ] },
+    verdict: (s: never) => { const st = s as { stage: string; adv: number; weight: number; pi: number[]; piNew: number[]; sampled: number }; return st.stage === 'done' ? '∇logπ·优势' : st.stage === 'update' ? (st.piNew[st.sampled]! < st.pi[st.sampled]! ? '压低差动作' : '误推高') : st.stage === 'gradient' ? `权重${st.weight}` : st.stage === 'sample' ? `A=${st.adv}` : st.stage === 'policy' ? 'softmax' : '学策略' },
+    try: [{ act: '切「带基线」', watch: '优势 A=1−2=−1<0 → π(L) 0.5→0.27，差动作被正确压低。' }, { act: '切「不带基线」', watch: '权重=回报 1>0 → π(L) 0.5→0.73，差动作反被误推高——纯回报方差大。' }, { act: '想连续动作', watch: 'softmax 是离散版；连续动作用高斯策略，miniduck 就这么输出关节残差。' }], terms: [],
+  },
   queryplan: {
     question: '同一个查询有好几条路可走，数据库优化器凭什么选其中一条？',
     read: [{ at: '候选路径', is: '每条访问路径的 type + 估扫描行数代价条。', anchor: '.qp-paths' }, { at: 'EXPLAIN', is: '末步选中路径的 type/key/rows。', anchor: '.qp-explain' }],
