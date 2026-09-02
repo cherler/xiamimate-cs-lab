@@ -108,6 +108,50 @@ function CiteChip({ step, label, evidence, onCite }: { step: number; label?: str
   )
 }
 
+// ── 轻量 markdown 渲染 ──
+// 大模型输出带 **粗体** / `代码` / ## 小标题 / 有序·无序列表；不引第三方库，就地渲染这一小撮语法。
+// mdInline：只处理行内(粗体/代码/斜体)，用于气泡、卡片这类不便放块级元素的地方。
+function mdInline(text: string): React.ReactNode[] {
+  const nodes: React.ReactNode[] = []
+  const re = /(\*\*([^*]+)\*\*|`([^`]+)`|(?<![*\w])\*([^*\n]+)\*(?![*\w]))/g
+  let last = 0, m: RegExpExecArray | null, k = 0
+  while ((m = re.exec(text))) {
+    if (m.index > last) nodes.push(text.slice(last, m.index))
+    if (m[2] != null) nodes.push(<strong key={k++}>{m[2]}</strong>)
+    else if (m[3] != null) nodes.push(<code key={k++} className="aic-code">{m[3]}</code>)
+    else nodes.push(<em key={k++}>{m[4]}</em>)
+    last = m.index + m[0].length
+  }
+  if (last < text.length) nodes.push(text.slice(last))
+  return nodes
+}
+// Md：块级渲染(段落/小标题/有序·无序列表 + 行内)。用于答疑答案、参考答案、面试对话、讲解、复习小结等长文。
+function Md({ text }: { text: string }) {
+  const lines = (text ?? '').replace(/\r/g, '').split('\n')
+  const out: React.ReactNode[] = []
+  let para: string[] = []; let key = 0
+  const flush = () => { if (para.length) { const p = para; out.push(<p key={key++}>{p.map((l, j) => <span key={j}>{j > 0 && <br />}{mdInline(l)}</span>)}</p>); para = [] } }
+  for (let i = 0; i < lines.length;) {
+    const line = lines[i]
+    if (!line.trim()) { flush(); i++; continue }
+    const h = line.match(/^(#{1,4})\s+(.*)$/)
+    if (h) { flush(); out.push(<p key={key++} className="aic-md-h">{mdInline(h[2])}</p>); i++; continue }
+    if (/^\s*\d+[.)]\s+/.test(line)) {
+      flush(); const items: string[] = []
+      while (i < lines.length && /^\s*\d+[.)]\s+/.test(lines[i])) items.push(lines[i++].replace(/^\s*\d+[.)]\s+/, ''))
+      out.push(<ol key={key++}>{items.map((t, j) => <li key={j}>{mdInline(t)}</li>)}</ol>); continue
+    }
+    if (/^\s*[-*+]\s+/.test(line)) {
+      flush(); const items: string[] = []
+      while (i < lines.length && /^\s*[-*+]\s+/.test(lines[i])) items.push(lines[i++].replace(/^\s*[-*+]\s+/, ''))
+      out.push(<ul key={key++}>{items.map((t, j) => <li key={j}>{mdInline(t)}</li>)}</ul>); continue
+    }
+    para.push(line); i++
+  }
+  flush()
+  return <div className="aic-md">{out}</div>
+}
+
 // ── 出题 ──
 function QuizView({ expId, onCite }: { expId: string; onCite?: (step: number) => void }) {
   const [sub, setSub] = useState<'normal' | 'debate'>('normal')
@@ -160,11 +204,11 @@ function QuizView({ expId, onCite }: { expId: string; onCite?: (step: number) =>
             </div>
             {answered && (
               <>
-                <p className="aic-explain">
-                  {chosen === q.correctIndex ? '✓ 对了。' : `✗ 正确答案：${q.options[q.correctIndex]}。`}
-                  {' '}{q.explanation}
+                <div className="aic-explain">
+                  <p className="aic-explain-verdict">{chosen === q.correctIndex ? '✓ 对了。' : `✗ 正确答案：${q.options[q.correctIndex]}。`}</p>
+                  <Md text={q.explanation} />
                   <span className="aic-prov">答案由引擎钉死{q.provenance.phrasedBy === 'llm' ? '，题面由大模型改写' : ''}</span>
-                </p>
+                </div>
                 {q.provenance.sourceStep != null && <CiteChip step={q.provenance.sourceStep} evidence={q.provenance.evidence} onCite={onCite} />}
               </>
             )}
@@ -220,7 +264,7 @@ function AskView({ expId, onCite }: { expId: string; onCite?: (step: number) => 
       </>}
       {loading && <p className="aic-hint" style={{ opacity: .7 }}>助教思考中…</p>}
       {error && <p className="aic-err">出错了：{error}</p>}
-      {answer && <div className="aic-answer">{answer}</div>}
+      {answer && <div className="aic-answer"><Md text={answer} /></div>}
       {answer && prov && <CiteChip step={prov.step} evidence={prov.evidence} onCite={onCite} />}
     </div>
   )
@@ -246,7 +290,7 @@ function ReviewView({ expId }: { expId: string }) {
       {error && <p className="aic-err">出错了：{error}</p>}
       {pack && (
         <>
-          {pack.summary && <div className="aic-summary"><b>复习小结</b><p>{pack.summary}</p></div>}
+          {pack.summary && <div className="aic-summary"><b>复习小结</b><Md text={pack.summary} /></div>}
           {pack.factCards.length > 0 && (
             <div className="aic-cards">
               <div className="aic-cards-h">要点卡 <span className="aic-badge engine">答案钉死</span></div>
@@ -326,12 +370,12 @@ function InterviewView({ expId }: { expId: string }) {
               {history.map((t, i) => (
                 <div key={i} className={`aic-msg ${t.role}`}>
                   <span className="aic-msg-who">{t.role === 'interviewer' ? '面试官' : '你'}</span>
-                  <span className="aic-msg-text">{t.text}</span>
+                  <div className="aic-msg-text"><Md text={t.text} /></div>
                 </div>
               ))}
               {loading && <div className="aic-msg interviewer"><span className="aic-msg-who">面试官</span><span className="aic-msg-text" style={{ opacity: .6 }}>思考中…</span></div>}
             </div>
-            {ref && <div className="aic-ref"><span className="aic-ref-tag">参考答案 · 由实验要点钉死</span><div className="aic-ref-body">{ref}</div></div>}
+            {ref && <div className="aic-ref"><span className="aic-ref-tag">参考答案 · 由实验要点钉死</span><div className="aic-ref-body"><Md text={ref} /></div></div>}
             {done
               ? <button className="aic-go" onClick={start}>再面一轮</button>
               : <>
@@ -375,7 +419,7 @@ function DebateView({ expId, onCite }: { expId: string; onCite?: (step: number) 
           </>
         : <>
             <div className="aic-chat">
-              <div className="aic-msg interviewer"><span className="aic-msg-who">同学</span><span className="aic-msg-text">{data.claim}</span></div>
+              <div className="aic-msg interviewer"><span className="aic-msg-who">同学</span><div className="aic-msg-text"><Md text={data.claim} /></div></div>
             </div>
             <p className="aic-qtext">选一句驳倒 TA：</p>
             <div className="aic-opts">
@@ -404,8 +448,8 @@ function Flashcard({ card }: { card: Card }) {
   const [open, setOpen] = useState(false)
   return (
     <button className={`aic-card ${open ? 'open' : ''}`} onClick={() => setOpen(o => !o)}>
-      <span className="aic-card-front">{card.front}</span>
-      {open && <span className="aic-card-back">{card.back}</span>}
+      <span className="aic-card-front">{mdInline(card.front)}</span>
+      {open && <span className="aic-card-back">{mdInline(card.back)}</span>}
       {!open && <span className="aic-card-flip">点击看答案</span>}
     </button>
   )
