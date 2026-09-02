@@ -11,6 +11,7 @@
  *   POST /lab/ai/ask           答疑 { expId, question, step?, useLLM? }（喂真实 trace 当唯一依据）
  *   POST /lab/ai/review        复习包 { expId, useLLM? }（钉死事实卡 + 概念卡 + 小结）
  *   POST /lab/ai/interview     模拟面试 { expId, history, useLLM? }（AI 面试官:问→答→点评+追问→评分）
+ *   POST /lab/ai/debate        辩论/抬杠 { expId, factId?, history, useLLM? }（会反驳的 AI 同学:抛错→你反驳→引擎揭晓正解）
  *
  * 鉴权/计费：浏览器请求的 xm_session Cookie 原样转发给主站（见 llm.ts 的 Principal）。
  * 本机开发未配 XM_API_BASE 时全程透明、不计费、不报错。
@@ -20,6 +21,7 @@ import { buildQuiz } from './quiz.ts'
 import { askAboutExperiment } from './ask.ts'
 import { buildReview } from './review.ts'
 import { interview, type Turn } from './interview.ts'
+import { debate, type DebateTurn } from './debate.ts'
 import { listExperiments } from './catalog.ts'
 import type { Principal } from './llm.ts'
 
@@ -97,6 +99,14 @@ const server = createServer(async (req, res) => {
       try { body = raw ? JSON.parse(raw) : {} } catch { return send(res, 400, { error: '请求体不是合法 JSON' }) }
       if (!body.expId) return send(res, 400, { error: '缺少 expId' })
       const result = await interview(body.expId, { history: body.history, useLLM: body.useLLM, principal: principalOf(req) })
+      return send(res, 200, result)
+    }
+    if (req.method === 'POST' && path === '/lab/ai/debate') {
+      const raw = await readBody(req)
+      let body: { expId?: string; factId?: string; history?: DebateTurn[]; useLLM?: boolean } = {}
+      try { body = raw ? JSON.parse(raw) : {} } catch { return send(res, 400, { error: '请求体不是合法 JSON' }) }
+      if (!body.expId) return send(res, 400, { error: '缺少 expId' })
+      const result = await debate(body.expId, { factId: body.factId, history: body.history, useLLM: body.useLLM, principal: principalOf(req) })
       return send(res, 200, result)
     }
     return send(res, 404, { error: `未知路由 ${req.method} ${path}` })
