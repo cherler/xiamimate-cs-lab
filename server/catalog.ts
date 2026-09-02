@@ -3664,6 +3664,102 @@ export const CATALOG: CatalogEntry[] = [
     ],
   },
   {
+    id: 'pytorch', title: 'PyTorch · 深度学习地基', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'pytorch' }, entities: [], streams: [] },
+    facts: [
+      { id: 'pt_what', label: 'PyTorch 是什么', ask: 'PyTorch 是什么?为什么大模型都用它?', kind: 'choice', compute: () => ({ answer: '深度学习事实标准框架(BSD-3):张量(GPU 加速)+自动求导(autograd)+动态计算图+nn 模块。手推的前向传播/注意力写成代码就是几行 PyTorch;大模型训练/推理栈(Transformers/vLLM/DeepSpeed)全建在它上', step: 0, evidence: '张量+自动求导+动态图、大模型代码底座' }), distractors: () => ['一个推理服务引擎', '一个向量数据库', '一个操作系统'] },
+      { id: 'pt_autograd', label: 'autograd 是什么', ask: 'PyTorch 的自动求导(autograd)在做什么?', kind: 'choice', compute: () => ({ answer: '动态记录前向计算构成的计算图,反向传播时自动按链式法则算出每个参数的梯度——你只写前向,梯度自动来。这是训练神经网络的核心便利', step: 0, evidence: '记录计算图、反向自动求梯度' }), distractors: () => ['自动下载模型', '自动量化权重', '自动分配 GPU'] },
+      { id: 'pt_pos', label: 'PyTorch 的定位', ask: 'PyTorch 和 vLLM/DeepSpeed 是什么关系?', kind: 'choice', compute: () => ({ answer: 'PyTorch 是通用底座(写模型/训练/推理的语言);vLLM 是建在它上的高吞吐推理服务、DeepSpeed 是建在它上的训练优化。要开箱的推理服务/大规模并行训练,要在 PyTorch 之上再叠专用库', step: 0, evidence: '通用底座、vLLM/DeepSpeed 建其上' }), distractors: () => ['PyTorch 是 vLLM 的替代品', 'PyTorch 只能推理不能训练', 'PyTorch 只能跑 CPU'] },
+    ],
+  },
+  {
+    id: 'transformers', title: 'HF Transformers · 模型库', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'transformers' }, entities: [], streams: [] },
+    facts: [
+      { id: 'tf_what', label: 'Transformers 是什么', ask: 'Hugging Face Transformers 是干什么的?', kind: 'choice', compute: () => ({ answer: '模型库(Apache-2.0):把几十万预训练模型(GPT/LLaMA/Qwen/BERT)统一成一套 API,from_pretrained 几行加载/推理/微调;配 Tokenizers(BPE 分词)、PEFT(LoRA)、TRL(对齐)、Datasets。是"用大模型"的门户', step: 0, evidence: '几十万模型统一 API、from_pretrained' }), distractors: () => ['一个物理仿真器', '一个推理编译器', '一个向量库'] },
+      { id: 'tf_cover', label: 'Transformers 对应的实验', ask: 'Transformers 里现成的模块对应实验室哪些实验?', kind: 'choice', compute: () => ({ answer: '多头注意力/RoPE/RMSNorm(架构)、BPE(分词 Tokenizers)、top-k/top-p/温度采样与束搜索(生成)——正是实验室 Transformer 原理/大模型算法里那些实验。库是现成模块、实验是原理', step: 0, evidence: '多头/RoPE/RMSNorm/BPE/采样/束搜索' }), distractors: () => ['ICP 和点云配准', 'RRT 和 A*', 'FOC 电流环'] },
+      { id: 'tf_limit', label: 'Transformers 的局限', ask: '用 Transformers 做生产推理有什么局限?', kind: 'choice', compute: () => ({ answer: '它的默认推理吞吐不如专用引擎——生产高并发要用 vLLM/SGLang/TGI/TensorRT-LLM;默认注意力也常要换 FlashAttention 加速。它强在"加载/微调/实验"、不是"高吞吐服务"', step: 0, evidence: '推理吞吐不如专用引擎、生产要 vLLM 等' }), distractors: () => ['不能加载开源模型', '不支持微调', '只能用 TensorFlow'] },
+    ],
+  },
+  {
+    id: 'vllm', title: 'vLLM · 高吞吐推理引擎', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'vllm' }, entities: [], streams: [] },
+    facts: [
+      { id: 'vl_paged', label: 'PagedAttention 是什么', ask: 'vLLM 的招牌 PagedAttention 解决什么问题?', kind: 'choice', compute: () => ({ answer: '把 KV 缓存像操作系统的虚拟内存一样分块管理:按需分配、跨请求共享(如共同前缀),几乎消除显存碎片、大幅提高吞吐和可容纳的并发数。这是 vLLM 高吞吐的核心', step: 0, evidence: 'KV 缓存仿 OS 分页、分块共享、消碎片' }), distractors: () => ['把模型权重分页到磁盘', '把注意力矩阵压缩成低秩', '用更小的模型代替'] },
+      { id: 'vl_batch', label: '连续批处理', ask: 'vLLM 的连续批处理(continuous batching)是什么?', kind: 'choice', compute: () => ({ answer: '请求可以动态地进出同一个批次(谁生成完就退出、新请求随时加入),让 GPU 始终打满、不用等整批对齐,大幅提高吞吐。配 PagedAttention 一起把利用率拉满', step: 0, evidence: '请求动态进出同批、GPU 打满' }), distractors: () => ['一次只处理一个请求', '把所有请求攒够再一起算', '在 CPU 上批处理'] },
+      { id: 'vl_pos', label: 'vLLM 的定位', ask: 'vLLM 适合什么?和 llama.cpp/TensorRT-LLM 怎么选?', kind: 'choice', compute: () => ({ answer: 'vLLM 面向 GPU 上的高吞吐服务、开箱 OpenAI 兼容、易用;端侧/CPU 本地跑用 llama.cpp;NVIDIA GPU 上追极致延迟用 TensorRT-LLM(但要编译、运维更复杂,vLLM 以 85% 性能换易用)', step: 0, evidence: 'GPU 高吞吐易用;端侧 llama.cpp、极致 TRT-LLM' }), distractors: () => ['vLLM 专门跑手机端', 'vLLM 只做训练不做推理', 'vLLM 只能跑一个模型'] },
+    ],
+  },
+  {
+    id: 'sglang', title: 'SGLang · 结构化推理引擎', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'sglang' }, entities: [], streams: [] },
+    facts: [
+      { id: 'sg_radix', label: 'RadixAttention 是什么', ask: 'SGLang 的核心创新 RadixAttention 是什么?', kind: 'choice', compute: () => ({ answer: '用基数树(radix tree)按 token 前缀组织 KV 缓存块,自动、细粒度地复用共享前缀的缓存。多轮对话/RAG/few-shot 里前缀大量重复时,命中率高、吞吐大幅提升', step: 0, evidence: '基数树按前缀复用 KV 缓存' }), distractors: () => ['一种新的注意力数学近似', '把 KV 缓存放到磁盘', '一种量化方法'] },
+      { id: 'sg_vs', label: 'SGLang vs vLLM', ask: 'SGLang 相比 vLLM 强在什么场景?', kind: 'choice', compute: () => ({ answer: '前缀重复多的场景(多轮对话、RAG、few-shot)——RadixAttention 自动复用共享前缀,吞吐常胜过 vLLM(基准显示 H100 上更高、RAG 场景加速明显);还把结构化/受约束生成(JSON/正则)做成一等公民', step: 0, evidence: '前缀复用场景吞吐领先、结构化生成' }), distractors: () => ['它专门跑在 CPU 上', '它不需要 KV 缓存', '它只支持单轮对话'] },
+      { id: 'sg_struct', label: 'SGLang 的结构化生成', ask: 'SGLang 除了快,还有什么特色?', kind: 'choice', compute: () => ({ answer: '结构化/受约束生成:前端 DSL 方便写多步流程、约束输出为 JSON/正则/固定选项,适合 Agent、工具调用、结构化抽取。是"服务引擎 + 结构化前端"二合一', step: 0, evidence: 'DSL + 受约束生成(JSON/正则)' }), distractors: () => ['自带图形界面', '自动训练模型', '内置向量数据库'] },
+    ],
+  },
+  {
+    id: 'tensorrtllm', title: 'TensorRT-LLM · NVIDIA 极致推理', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'tensorrtllm' }, entities: [], streams: [] },
+    facts: [
+      { id: 'tr_what', label: 'TensorRT-LLM 是什么', ask: 'TensorRT-LLM 是什么?怎么做到快?', kind: 'choice', compute: () => ({ answer: 'NVIDIA 的 LLM 推理库(Apache-2.0):用 Python API 定义模型、编译成 TensorRT 引擎,靠算子融合、量化(INT8/FP8/NVFP4)、内核自动调优在 NVIDIA GPU 上做极致优化,通常吞吐/延迟最优(比 vLLM 高约 10-20%)', step: 0, evidence: '编译成 TensorRT 引擎、算子融合+量化、NVIDIA 最快' }), distractors: () => ['靠更大的模型', '靠 CPU 多线程', '靠云端转发'] },
+      { id: 'tr_cost', label: 'TensorRT-LLM 的代价', ask: 'TensorRT-LLM 追求极致性能的代价是什么?', kind: 'choice', compute: () => ({ answer: '要把模型编译成引擎(上手复杂、换模型/配置要重编)、强绑 NVIDIA 硬件(换硬件重来)、灵活性低于 PyTorch 原生。所以很多人用 vLLM——85% 的性能换来低得多的运维复杂度', step: 0, evidence: '要编译、绑 NVIDIA 硬件、灵活性低' }), distractors: () => ['完全没有代价', '只能跑很小的模型', '需要联网'] },
+      { id: 'tr_cover', label: 'TensorRT-LLM 用到的技术', ask: 'TensorRT-LLM 内部用到实验室哪些概念?', kind: 'choice', compute: () => ({ answer: '量化(FP8/NVFP4)、张量并行/流水并行(多卡切模型)、in-flight(连续)批处理、FlashAttention 类注意力核、编译式推理引擎——都是「大模型推理」组里的实验', step: 0, evidence: '量化/张量并行/推理引擎/FlashAttention' }), distractors: () => ['卷积和池化', 'ICP 和 SLAM', 'RRT 和 A*'] },
+    ],
+  },
+  {
+    id: 'llamacpp', title: 'llama.cpp · 端侧本地推理', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'llamacpp' }, entities: [], streams: [] },
+    facts: [
+      { id: 'lc_what', label: 'llama.cpp 是什么', ask: 'llama.cpp 是干什么的?最大特点?', kind: 'choice', compute: () => ({ answer: '把大模型跑到普通设备(CPU/Apple Silicon/手机)的 C++ 框架(MIT):基于自研 ggml 张量库、模型用 GGUF 格式 + 量化(Q4_K_M 等)大幅压内存,不用 GPU 也能跑。是端侧/本地 LLM 的事实标准(Ollama 封装它)', step: 0, evidence: 'C++ 端侧推理、GGUF 量化、不用 GPU' }), distractors: () => ['一个 GPU 集群训练框架', '一个云端推理服务', '一个向量数据库'] },
+      { id: 'lc_gguf', label: 'GGUF 和量化', ask: 'llama.cpp 靠什么在普通设备上跑大模型?', kind: 'choice', compute: () => ({ answer: 'GGUF 格式 + 量化:把权重从 FP16 压成 4/5/8-bit(如 Q4_K_M),显存/内存需求骤降,普通 CPU/笔记本/手机就能跑。量化是端侧推理的关键(有精度损失、低档更明显)', step: 0, evidence: 'GGUF+量化压权重、端侧可跑' }), distractors: () => ['把模型上传云端算', '用更多内存条', '换更大的模型'] },
+      { id: 'lc_pos', label: 'llama.cpp 的定位', ask: 'llama.cpp 适合/不适合什么?', kind: 'choice', compute: () => ({ answer: '适合本地/端侧/离线/隐私场景(不用 GPU、可移植到手机树莓派);不适合高并发大吞吐服务(那用 vLLM/TensorRT-LLM)。Ollama/LM Studio 等桌面工具就封装它', step: 0, evidence: '端侧本地强、高并发服务弱' }), distractors: () => ['适合万卡训练', '适合高并发云服务', '只能跑在服务器 GPU'] },
+    ],
+  },
+  {
+    id: 'flashattn', title: 'FlashAttention · 注意力内核', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'flashattn' }, entities: [], streams: [] },
+    facts: [
+      { id: 'fa_what', label: 'FlashAttention 是什么', ask: 'FlashAttention 解决了注意力的什么问题?', kind: 'choice', compute: () => ({ answer: '标准注意力要把 N×N 的注意力矩阵写回显存、显存 O(N²) 且访存慢。FlashAttention 通过 IO 感知——把注意力分块在片上 SRAM 里算、不落地 N×N 矩阵 + 在线 softmax——做到又快又省显存(O(N)),且是精确注意力(不近似)', step: 0, evidence: 'IO 感知分块进 SRAM、显存 O(N)、精确' }), distractors: () => ['用低秩近似省算力', '把注意力换成卷积', '丢掉一部分注意力头'] },
+      { id: 'fa_exact', label: 'FlashAttention 近似吗', ask: 'FlashAttention 是对注意力的近似吗?', kind: 'choice', compute: () => ({ answer: '不是近似——它和标准注意力数学上完全等价(精确),只是换了个又快又省显存的算法(分块+在线 softmax)。所以能直接替换标准注意力、不掉精度,这是它成为默认实现的原因', step: 0, evidence: '精确、和标准注意力等价、可直接替换' }), distractors: () => ['是近似、会掉精度', '只在推理时能用', '只对短序列有效'] },
+      { id: 'fa_cover', label: 'FlashAttention 的意义', ask: 'FlashAttention 为什么对大模型很关键?对应哪些实验?', kind: 'choice', compute: () => ({ answer: '显存从 O(N²) 降到 O(N),让训练/推理更长上下文成为可能、还更快;是现代大模型默认注意力(Transformers/vLLM/TensorRT-LLM 都集成)。对应实验:FlashAttention、Flash-Decoding、缩放点积/掩码', step: 0, evidence: '省显存能训长上下文、默认实现;↔flash/flashdecode' }), distractors: () => ['只是省一点点无关紧要', '和上下文长度无关', '只用于 CV 不用于 LLM'] },
+    ],
+  },
+  {
+    id: 'megatron', title: 'Megatron-LM · 并行训练引擎', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'megatron' }, entities: [], streams: [] },
+    facts: [
+      { id: 'mg_what', label: 'Megatron-LM 是什么', ask: 'Megatron-LM 解决什么问题?', kind: 'choice', compute: () => ({ answer: 'NVIDIA 的超大模型并行训练引擎(Apache-2.0):当模型大到单卡放不下、连 ZeRO 也不够时,靠切开计算本身来训。Megatron-Core 提供五种并行:张量 TP/流水 PP/数据 DP/专家 EP/上下文 CP', step: 0, evidence: '并行训练引擎、TP/PP/DP/EP/CP 五种并行' }), distractors: () => ['一个推理服务引擎', '一个微调库', '一个向量数据库'] },
+      { id: 'mg_par', label: '张量并行 vs 流水并行', ask: 'Megatron 的张量并行和流水并行有什么区别?', kind: 'choice', compute: () => ({ answer: '张量并行(TP):把同一层的大矩阵切到多卡、算完 all-reduce 合并(层内切);流水并行(PP):把不同层分到不同卡、用微批流水填满(层间切)。专家并行(EP)则把 MoE 的不同专家放不同卡。对应实验里的张量/流水/专家并行', step: 0, evidence: 'TP 层内切矩阵、PP 层间切、EP 专家分卡' }), distractors: () => ['两者完全一样', 'TP 切数据、PP 切模型参数量', 'TP 用于推理、PP 用于训练'] },
+      { id: 'mg_vs', label: 'Megatron vs DeepSpeed', ask: 'Megatron-LM 和 DeepSpeed 分工?', kind: 'choice', compute: () => ({ answer: 'Megatron 强在切开计算的并行(张量/流水/专家并行,把集群榨满);DeepSpeed 强在 ZeRO(分片优化器状态省显存)+卸载+MoE。二者常结合(Megatron-DeepSpeed)训超大模型', step: 0, evidence: 'Megatron 切计算并行、DeepSpeed ZeRO 省显存、常结合' }), distractors: () => ['两者是竞品不能一起用', 'Megatron 做推理、DeepSpeed 做训练', 'DeepSpeed 是 Megatron 的子模块'] },
+    ],
+  },
+  {
+    id: 'deepspeed', title: 'DeepSpeed · 训练优化(ZeRO)', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'deepspeed' }, entities: [], streams: [] },
+    facts: [
+      { id: 'ds_zero', label: 'ZeRO 是什么', ask: 'DeepSpeed 的招牌 ZeRO 解决什么?', kind: 'choice', compute: () => ({ answer: '零冗余优化器:数据并行里每张卡本来都存一份完整的优化器状态/梯度/参数(冗余),ZeRO 把它们分片到多卡(ZeRO-1/2/3),消除冗余显存,让单卡放不下的大模型也能训。是"平民训大模型"的关键', step: 0, evidence: '分片优化器状态/梯度/参数、消冗余显存' }), distractors: () => ['一种新的注意力', '把模型量化到 0-bit', '一种采样策略'] },
+      { id: 'ds_offload', label: 'ZeRO-Offload', ask: 'DeepSpeed 的 Offload/Infinity 是什么?', kind: 'choice', compute: () => ({ answer: '把优化器状态/参数等卸载到 CPU 内存甚至 NVMe 硬盘,让单卡也能训超大模型(用速度换容量);对应实验里的 KV/状态卸载思想。代价是带宽瓶颈、速度下降', step: 0, evidence: '卸载到 CPU/NVMe、以速度换容量' }), distractors: () => ['把模型上传云端', '删掉一半参数', '只训练一层'] },
+      { id: 'ds_cover', label: 'DeepSpeed 对应的实验', ask: 'DeepSpeed 用到实验室哪些概念?', kind: 'choice', compute: () => ({ answer: 'MoE(混合专家)训练、KV/状态卸载、张量并行、集合通信(all-reduce/all-gather)——都是「大模型推理/算法」里的实验。它和 Megatron 结合(Megatron-DeepSpeed)训超大模型', step: 0, evidence: 'MoE/KV 卸载/张量并行/集合通信' }), distractors: () => ['ICP/点云/SLAM', 'Dubins/RRT/A*', 'FOC/PID'] },
+    ],
+  },
+  {
+    id: 'peft', title: 'PEFT(LoRA) · 参数高效微调', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'peft' }, entities: [], streams: [] },
+    facts: [
+      { id: 'pf_lora', label: 'LoRA 是什么', ask: 'LoRA(PEFT)是怎么做到高效微调的?', kind: 'choice', compute: () => ({ answer: '冻结大模型主体,只在权重旁边加一对低秩矩阵 A·B、只训这两个小矩阵(原权重不动)。要训的参数量骤降到千分之几,显存/成本大降,效果却接近全量微调', step: 0, evidence: '冻结主体、只训低秩 A·B、参数骤降' }), distractors: () => ['把整个模型重新训一遍', '把模型量化成 1-bit', '换更大的模型'] },
+      { id: 'pf_qlora', label: 'QLoRA 是什么', ask: 'QLoRA 为什么能在消费级单卡微调大模型?', kind: 'choice', compute: () => ({ answer: '把基座模型量化成 4-bit(省显存)+ 在上面挂 LoRA(只训低秩小矩阵)。量化压住基座显存 + LoRA 压住可训参数,双管齐下,消费级单卡就能微调几十亿参数模型', step: 0, evidence: '4-bit 量化基座 + LoRA、消费级卡可微调' }), distractors: () => ['用云端 GPU 集群', '只微调最后一层', '把数据集变小'] },
+      { id: 'pf_use', label: 'PEFT 的用途与局限', ask: 'PEFT/LoRA 适合什么?有什么局限?', kind: 'choice', compute: () => ({ answer: '适合领域/任务微调、一个基座挂多套 LoRA 按任务切换、低成本对齐(配 TRL);局限是冻结主体、极端任务不如全量微调,且仍依赖一个好的预训练基座、秩等超参要调', step: 0, evidence: '领域微调/多适配器切换;不如全量、依赖好基座' }), distractors: () => ['能从零训练一个大模型', '不需要任何基座', '效果一定超过全量微调'] },
+    ],
+  },
+  {
+    id: 'langgraph', title: 'LangGraph · Agent 编排', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'langgraph' }, entities: [], streams: [] },
+    facts: [
+      { id: 'lgg_what', label: 'LangGraph 是什么', ask: 'LangGraph 是干什么的?为什么用图?', kind: 'choice', compute: () => ({ answer: 'LangChain 出的 Agent 编排框架(MIT):把智能体流程写成有状态的图(节点=步骤/工具/模型、边=转移)。用图是因为 Agent 需要循环、分支、人审——线性链表达不了"想→调工具→观察→再想"的主循环、防死循环、子 Agent', step: 0, evidence: '把 Agent 写成有状态图、支持循环/分支/人审' }), distractors: () => ['一个推理引擎', '一个向量数据库', '一个训练框架'] },
+      { id: 'lgg_cover', label: 'LangGraph 编排的东西', ask: 'LangGraph 编排的能力对应实验室哪些实验?', kind: 'choice', compute: () => ({ answer: 'Agent 主循环(想→行动→观察、防死循环)、工具调用、子 Agent 委派、规划(计划模式+Todo)、上下文压缩——正是「大模型项目实战」里那批 Agent harness 实验。库负责编排、实验讲原理', step: 0, evidence: 'Agent 主循环/工具调用/子Agent/规划/上下文压缩' }), distractors: () => ['卷积/池化/全连接', 'ICP/点云/SLAM', 'Clarke/Park/SVPWM'] },
+      { id: 'lgg_why', label: '为什么不用线性链', ask: '为什么复杂 Agent 用 LangGraph 而不是线性的链?', kind: 'choice', compute: () => ({ answer: '复杂 Agent 要循环(反复想-行动)、分支(按结果走不同路)、人审(中途让人确认)、断点续跑——这些线性链表达不了。图能精确控制流程、可持久化、可观测,还能防死循环、加子 Agent', step: 0, evidence: '需循环/分支/人审/续跑,链表达不了' }), distractors: () => ['图一定比链快', '链不能调用模型', '图不需要写代码'] },
+    ],
+  },
+  {
+    id: 'llamaindex', title: 'LlamaIndex · RAG 框架', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'llamaindex' }, entities: [], streams: [] },
+    facts: [
+      { id: 'li_what', label: 'LlamaIndex 是什么', ask: 'LlamaIndex 是干什么的?RAG 是什么流程?', kind: 'choice', compute: () => ({ answer: '专注 RAG(检索增强生成)的框架(MIT):把私有文档切块→向量化→存进向量库→按问题检索 top-k→拼进提示词喂给大模型,让它基于你的数据回答而不是瞎编。提供数据连接器/索引/检索器/查询引擎一整套', step: 0, evidence: '切块→向量化→检索 top-k→拼 prompt→生成' }), distractors: () => ['一个推理引擎', '一个训练框架', '一个电机控制库'] },
+      { id: 'li_why', label: 'RAG 为什么有用', ask: 'RAG(LlamaIndex)相比直接问大模型好在哪?', kind: 'choice', compute: () => ({ answer: '让模型基于检索到的你的真实数据回答,减少幻觉、能用私有/最新知识、还能给引用出处;不用重新训练模型就能"接上"外部知识。对应实验里的 RAG、检索打分', step: 0, evidence: '基于真实数据答、减幻觉、无需训练接外部知识' }), distractors: () => ['让模型跑得更快', '把模型变小', '不需要任何数据'] },
+      { id: 'li_stack', label: 'LlamaIndex 和向量库', ask: 'LlamaIndex 通常和什么搭配?和 LangGraph 分工?', kind: 'choice', compute: () => ({ answer: '搭配向量库(FAISS/Milvus/Chroma/Qdrant)存检索向量;LlamaIndex 专注 RAG/检索,LangGraph 专注 Agent 流程编排——常一起用(检索 + Agent)。它俩和 LangChain 功能有重叠、按需选型', step: 0, evidence: '配向量库;RAG 归它、Agent 编排归 LangGraph' }), distractors: () => ['它自带 GPU 训练', '它替代 PyTorch', '它是一个操作系统'] },
+    ],
+  },
+  {
     id: 'wildcard', title: '通配符匹配', kernel: wildcardKernel as Kernel<unknown>, doc: trivialDoc('wildcard'),
     facts: [
       {

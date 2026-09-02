@@ -7610,8 +7610,8 @@ const moveit: Experiment<LibraryState> = {
   ],
 }
 // 库层实验共用的导览逻辑（分段:特点/优缺点/覆盖/落地/小结）
-const mkLib = (id: string, title: string, subtitle: string, lib: string, paramsNote: string, bounds: string[]): Experiment<LibraryState> => ({
-  id, group: '软件库与框架', title, subtitle,
+const mkLib = (id: string, title: string, subtitle: string, lib: string, paramsNote: string, bounds: string[], group = '软件库与框架'): Experiment<LibraryState> => ({
+  id, group, title, subtitle,
   kernel: libraryKernel, defaultDoc: { kind: 'library', params: { lib }, entities: [], streams: [] }, params: [],
   paramsNote, bounds,
   tabs: [{ id: 'lib', label: '逐段翻' }], Stage: LibraryStage, whyInRail: true,
@@ -7695,6 +7695,80 @@ const simplefoc = mkLib('simplefoc', 'SimpleFOC · 无刷电机磁场定向控�
     '反向连回:FOC 电流环(Clarke→Park→PI→逆变换+SVPWM)↔FOC 磁场定向控制实验、级联位置→速度→电流三环↔PID',
     '稚晖君 Dummy-Robot 的 Ctrl-FOC-Lite 基于 SimpleFOC;DIY 机械臂/云台/力反馈的关节',
     '取舍:面向爱好者/中小功率非工业伺服级、Arduino 算力实时有限、高性能需搭好硬件'])
+// ── 大模型轨 · 软件库与框架 ──
+const LG = '大模型软件库与框架'
+const pytorch = mkLib('pytorch', 'PyTorch · 深度学习地基', '张量+自动求导+动态图，几乎所有大模型都在它上面写（库层）', 'pytorch',
+  '**软件库层** · PyTorch(BSD-3,PyTorch Foundation)= 深度学习事实标准框架:张量(GPU 加速)+ 自动求导 + 动态图 + nn 模块。你手推的前向传播、注意力、矩阵运算,写成代码就是几行 PyTorch;大模型训练/推理栈(Transformers/vLLM/DeepSpeed)全建在它上。2.x 的 torch.compile 图编译加速。反向连回:前向传播、手写注意力、多头注意力。逐段翻。',
+  ['PyTorch=深度学习事实标准(BSD-3);张量+GPU+自动求导(autograd)+动态图+nn 模块+分布式(DDP/FSDP)',
+    '几乎所有大模型代码的底座;Transformers/vLLM/DeepSpeed/LeRobot 都建在其上;torch.compile 图编译加速',
+    '反向连回:前向传播/张量运算、手写注意力、多头注意力(它是写这些的语言)',
+    '取舍:是通用框架非开箱推理服务(那要 vLLM)、大规模训练要配 DeepSpeed/Megatron'], LG)
+const transformers = mkLib('transformers', 'Hugging Face Transformers · 模型库', '几行代码加载/微调几十万预训练模型——用大模型的门户（库层）', 'transformers',
+  '**软件库层** · HF Transformers(Apache-2.0)= 把几十万预训练模型(GPT/LLaMA/Qwen/BERT)统一成一套 API,from_pretrained 几行加载/推理/微调;配 Tokenizers(BPE 分词)、PEFT(LoRA)、TRL(对齐)、Datasets。你实验里的注意力/多头/BPE/RoPE/RMSNorm/采样都是它的现成模块。反向连回:多头注意力/RoPE/RMSNorm/BPE/采样/束搜索。逐段翻。',
+  ['HF Transformers=模型库(Apache-2.0);几十万预训练模型统一 API(from_pretrained/generate)+Tokenizers+生态',
+    '反向连回:多头注意力/RoPE/RMSNorm、BPE 分词、采样/束搜索(都是它的现成模块)',
+    '生态:配 PEFT(LoRA 微调)、TRL(RLHF/DPO)、Datasets、Hub 共享;跨 PyTorch/JAX/TF',
+    '取舍:推理吞吐不如专用引擎(生产要 vLLM/TGI)、大而全依赖重、默认实现要配 FlashAttention 加速'], LG)
+const vllm = mkLib('vllm', 'vLLM · 高吞吐推理引擎', 'PagedAttention 把 KV 缓存当"虚拟内存分页"——高吞吐 LLM 服务（库层）', 'vllm',
+  '**软件库层** · vLLM(Apache-2.0,源自 UC Berkeley)= 主流高吞吐 LLM 推理/服务引擎。招牌 **PagedAttention**:把 KV 缓存像 OS 虚拟内存一样分块/按需分配/跨请求共享,消碎片、提吞吐;配连续批处理、分块预填充、投机解码、OpenAI 兼容服务。反向连回:PagedAttention/KV Cache/连续批处理/分块预填充/投机解码。逐段翻。',
+  ['vLLM=高吞吐 LLM 推理/服务引擎(Apache-2.0);招牌 PagedAttention(KV 缓存仿 OS 分页、分块共享消碎片)',
+    '反向连回:PagedAttention↔paged、KV Cache、连续批处理、分块预填充、投机解码',
+    '开箱 OpenAI 兼容服务、张量并行多卡、前缀缓存;社区大模型支持快',
+    '取舍:面向 GPU 服务(端侧看 llama.cpp)、单卡极致延迟不一定胜 TensorRT-LLM'], LG)
+const sglang = mkLib('sglang', 'SGLang · 结构化推理引擎', 'RadixAttention 用基数树自动复用 KV 缓存——RAG/多轮场景吞吐领先（库层）', 'sglang',
+  '**软件库层** · SGLang(Apache-2.0)= 高性能 LLM 服务引擎 + 结构化生成前端。核心 **RadixAttention**:用基数树按 token 前缀组织 KV 缓存、自动细粒度复用共享前缀(多轮/RAG/few-shot 特别快);前端 DSL 写受约束(JSON/正则)生成。反向连回:RadixAttention 前缀复用/KV Cache/连续批处理。逐段翻。',
+  ['SGLang=结构化 LLM 服务引擎(Apache-2.0);核心 RadixAttention(基数树按前缀复用 KV 缓存)',
+    '反向连回:RadixAttention↔radix、KV Cache、连续批处理',
+    '结构化/受约束生成一等公民(JSON/正则);RAG/多轮前缀重复场景吞吐大幅领先 vLLM',
+    '取舍:相对新、生态文档不如 vLLM 厚、收益依赖前缀重复场景'], LG)
+const tensorrtllm = mkLib('tensorrtllm', 'TensorRT-LLM · NVIDIA 极致推理', '把 LLM 编译成高度优化的 TensorRT 引擎——NVIDIA GPU 上通常最快（库层）', 'tensorrtllm',
+  '**软件库层** · TensorRT-LLM(Apache-2.0,NVIDIA)= 用 Python API 定义模型、编译成 TensorRT 引擎,在 NVIDIA GPU 上做极致优化推理(算子融合、量化 INT8/FP8/NVFP4、in-flight batching、张量/流水并行)。NVIDIA GPU 上通常吞吐/延迟最优(比 vLLM 高约 10-20%)。反向连回:量化/张量并行/推理引擎/FlashAttention。逐段翻。',
+  ['TensorRT-LLM=NVIDIA 极致推理库(Apache-2.0);模型编译成 TensorRT 引擎、算子融合+量化(FP8/NVFP4)+in-flight batching',
+    '反向连回:量化、张量并行/流水并行、推理引擎、FlashAttention 类核',
+    'NVIDIA GPU 上吞吐/延迟通常最优(高 vLLM 约 10-20%)、配 Triton 上生产',
+    '取舍:要编译引擎上手复杂、强绑 NVIDIA 硬件;vLLM 以 85% 性能换低得多的运维复杂度'], LG)
+const llamacpp = mkLib('llamacpp', 'llama.cpp · 端侧本地推理', 'C++ + GGUF 量化,不用 GPU 就在笔记本/手机上跑大模型（库层）', 'llamacpp',
+  '**软件库层** · llama.cpp(MIT,Georgi Gerganov)= 把大模型跑到普通设备(CPU/Apple Silicon/手机)的框架,基于自研 ggml 张量库、GGUF 格式 + 量化(Q4_K_M)大幅压内存,不用 GPU 也能跑 Llama/Qwen/Mistral。是端侧/本地 LLM 事实标准(Ollama 封装它)。反向连回:量化(GGUF)/KV Cache/采样。逐段翻。',
+  ['llama.cpp=端侧本地 LLM 框架(MIT);ggml 张量库+GGUF 量化(Q2~Q8)、不用 GPU、极致可移植(手机/树莓派/wasm)',
+    '反向连回:量化(GGUF)↔quant、KV Cache、采样策略',
+    '本地/端侧事实标准、Ollama/LM Studio 封装它;离线/隐私场景',
+    '取舍:吞吐不如 GPU 服务引擎、大模型高并发非强项、低档量化有精度损失、纯推理不训练'], LG)
+const flashattn = mkLib('flashattn', 'FlashAttention · IO 感知注意力内核', '分块进 SRAM + 在线 softmax——省显存又更快、还是精确注意力（库层）', 'flashattn',
+  '**软件库层** · FlashAttention(BSD-3,Tri Dao)= 注意力的高性能 GPU 内核:IO 感知(注意力分块在片上 SRAM 里算、不把 N×N 矩阵写回显存)+ 在线 softmax → 又快又省显存、且精确(不近似)。是现代大模型默认注意力实现;FA-2 翻倍/FA-3 Hopper/FA-4 Blackwell。反向连回:FlashAttention/Flash-Decoding/缩放点积掩码/手写注意力。逐段翻。',
+  ['FlashAttention=IO 感知精确注意力内核(BSD-3,Tri Dao);分块进 SRAM+在线 softmax、显存 O(N) 而非 O(N²)、精确不近似',
+    '反向连回:FlashAttention↔flash、Flash-Decoding↔flashdecode、缩放点积/掩码、手写注意力',
+    '现代大模型训练/推理默认;能训更长上下文;被 Transformers/vLLM/TensorRT-LLM 集成',
+    '取舍:是内核库要匹配 GPU 架构/CUDA、主要吃 NVIDIA、前沿版(FA-3/4)对新卡才最优'], LG)
+const megatron = mkLib('megatron', 'Megatron-LM · 并行训练引擎', 'NVIDIA 的张量/流水/专家并行参考实现——切开计算本身训超大模型（库层）', 'megatron',
+  '**软件库层** · Megatron-LM(Apache-2.0,NVIDIA)= 超大模型并行训练框架:当模型大到单卡放不下、ZeRO 也不够时靠切开计算本身来训。Megatron-Core 提供五种并行:张量 TP/流水 PP/数据 DP/专家 EP/上下文 CP,是 NeMo 及众多项目底层。反向连回:张量并行/流水并行/专家并行/MoE/集合通信。逐段翻。',
+  ['Megatron-LM=NVIDIA 并行训练引擎(Apache-2.0);Megatron-Core 五种并行 TP/PP/DP/EP/CP、切开计算训 >70B 大模型',
+    '反向连回:张量并行↔tensorpar、流水并行↔pp、专家并行↔ep、MoE、集合通信↔collective',
+    '超大模型/MoE 训练参考实现、NeMo 底座、社区广泛采用',
+    '取舍:门槛高配置复杂、强绑 NVIDIA 集群、偏训练非推理;常和 DeepSpeed 结合'], LG)
+const deepspeed = mkLib('deepspeed', 'DeepSpeed · 训练优化(ZeRO)', '微软 ZeRO 把优化器状态切开——单卡也能训大模型 + 卸载 + MoE（库层）', 'deepspeed',
+  '**软件库层** · DeepSpeed(Apache-2.0,Microsoft)= 大模型训练/推理优化库,招牌 **ZeRO(零冗余优化器)**:把优化器状态/梯度/参数分片到多卡(ZeRO-1/2/3)消冗余显存、让单卡放不下的模型也能训;还有 Offload/Infinity(卸载 CPU/NVMe)、MoE、DeepSpeed-Inference。常和 Megatron 结合。反向连回:MoE/KV 卸载/张量并行/集合通信。逐段翻。',
+  ['DeepSpeed=微软训练优化库(Apache-2.0);招牌 ZeRO(优化器状态/梯度/参数分片消冗余、平民也能训大模型)',
+    '反向连回:MoE、KV/状态卸载↔kvoffload、张量并行、集合通信',
+    'Offload/Infinity 卸载 CPU/NVMe 训超大模型;和 PyTorch/Transformers/Megatron 打通',
+    '取舍:配置项多有门槛、Offload 换来速度下降(带宽瓶颈)、偏训练侧'], LG)
+const peft = mkLib('peft', 'PEFT(LoRA) · 参数高效微调', '只训极少参数(LoRA)——消费级显卡也能微调大模型（库层）', 'peft',
+  '**软件库层** · PEFT(Apache-2.0,Hugging Face)= 参数高效微调:冻结大模型主体、只训极少新增参数。最有名 **LoRA**(权重旁挂低秩 A·B、只训 A/B);配 **QLoRA**(4-bit 量化基座 + LoRA)后消费级单卡就能微调几十亿模型。反向连回:量化(QLoRA)/维度规模。逐段翻。',
+  ['PEFT=参数高效微调库(Apache-2.0,HF);冻结主体只训少量参数;LoRA(低秩 A·B)、QLoRA(4-bit+LoRA)',
+    '反向连回:QLoRA 的量化↔quant、低秩适配的参数量↔维度/规模',
+    '消费级卡微调大模型;LoRA 权重小易分发切换;和 Transformers/TRL 无缝',
+    '取舍:冻结主体极端任务不如全量微调、秩/目标层要调、仍依赖好基座'], LG)
+const langgraph = mkLib('langgraph', 'LangGraph · Agent 编排', '把 Agent 写成"状态图"——可控/可循环/可人审的智能体编排（库层）', 'langgraph',
+  '**软件库层** · LangGraph(MIT,LangChain)= Agent 编排框架:把智能体流程写成有状态的图(节点=步骤/工具/模型、边=转移),支持循环/分支/人审/持久化,精确控制"想→调工具→观察→再想"主循环、防死循环、加子 Agent。反向连回:Agent 主循环/工具调用/子 Agent 委派/规划/上下文压缩。逐段翻。',
+  ['LangGraph=Agent 编排框架(MIT,LangChain);把 Agent 写成有状态图(循环/分支/人审/持久化)',
+    '反向连回:Agent 主循环↔reactagent、工具调用、子 Agent 委派、规划/Todo、上下文压缩',
+    '把 Agent 从黑箱链变成可控状态图;多智能体/人审/断点续跑;OpenMAIC 就用它',
+    '取舍:概念多学习曲线(图/状态/检查点)、抽象厚、轻量任务偏重'], LG)
+const llamaindex = mkLib('llamaindex', 'LlamaIndex · RAG 框架', '给大模型接上你的数据——检索增强生成(RAG)的编排框架（库层）', 'llamaindex',
+  '**软件库层** · LlamaIndex(MIT)= 专注 RAG(检索增强生成)的框架:私有文档切块→向量化→存向量库→检索 top-k→拼进提示词喂模型,让它基于你的数据答而非瞎编;提供数据连接器/索引/检索器/查询引擎,配各种向量库(FAISS/Milvus/Chroma)。反向连回:RAG/记忆检索打分。逐段翻。',
+  ['LlamaIndex=RAG 编排框架(MIT);切块→向量化→存向量库→检索 top-k→拼 prompt→生成',
+    '反向连回:RAG 检索增强生成↔rag、检索打分/排序↔记忆检索打分',
+    '连各种数据源和向量库(FAISS/Milvus/Qdrant);让模型基于私有数据答、减少幻觉',
+    '取舍:抽象多简单场景偏重、效果强依赖切块/检索/重排调优、和 LangChain 有重叠'], LG)
 const miniduck: Experiment<DuckState> = {
   id: 'miniduck', group: '具身项目实战', title: 'Open Duck Mini · 学会走路', subtitle: 'BD-X 迷你复刻的腿式 RL：相位参考步态 + 「模仿奖励」(≠模仿学习)；LeRobot 线收官',
   kernel: miniduckKernel, defaultDoc: { kind: 'miniduck', params: { mode: '带模仿奖励' }, entities: [], streams: [] },
@@ -7830,7 +7904,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, pinhole, pointcloud, stereo, handeye, vo, pnp, icp, slam, impedance, mpc, pid, rrt, rrtconnect, rrtstar, prm, potentialfield, chomp, trapezoid, gjk, dubins, dstarlite, mdp, qlearning, policygrad, ppo, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc, moveit, ros2, pinocchio, lerobotlib, mujoco, isaaclab, pcl, orbslam3, ros2control, nav2, openvla, simplefoc,
+  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, pinhole, pointcloud, stereo, handeye, vo, pnp, icp, slam, impedance, mpc, pid, rrt, rrtconnect, rrtstar, prm, potentialfield, chomp, trapezoid, gjk, dubins, dstarlite, mdp, qlearning, policygrad, ppo, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc, moveit, ros2, pinocchio, lerobotlib, mujoco, isaaclab, pcl, orbslam3, ros2control, nav2, openvla, simplefoc, pytorch, transformers, vllm, sglang, tensorrtllm, llamacpp, flashattn, megatron, deepspeed, peft, langgraph, llamaindex,
 ] as unknown as AnyExperiment[]
 
 /**
@@ -7990,7 +8064,7 @@ export const DISCIPLINES: Discipline[] = [
   {
     key: 'llm', title: '大模型', icon: '🧩', status: 'active',
     sub: 'Transformer → 推理引擎 · 求职',
-    groups: ['Transformer 原理', '大模型算法', '大模型推理', '大模型项目实战'],
+    groups: ['Transformer 原理', '大模型算法', '大模型推理', '大模型项目实战', '大模型软件库与框架'],
     guide: { from: '一次注意力', to: '大模型推理引擎', toIcon: '🤖' },
   },
   {
