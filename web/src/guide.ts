@@ -998,6 +998,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { stage: string; tTotal: number; isTrap: boolean }; return st.stage === 'done' ? '时间最优' : st.stage === 'time' ? `T=${st.tTotal}s` : st.stage === 'profile' ? (st.isTrap ? '梯形三段' : '三角两段') : st.stage === 'regime' ? (st.isTrap ? '梯形' : '三角') : st.stage === 'accel' ? '加速段' : '速度曲线' },
     try: [{ act: '切「长距离 D=10」', watch: 'D=10≥2·d_a=4 → 梯形：加速2m+匀速6m+减速2m，T=2·2+3=7s，达到 v_max=2。' }, { act: '切「短距离 D=3」', watch: 'D=3<4 → 三角：还没加到 v_max 就得减速，v_peak=√3≈1.73，T=2√3≈3.46s。' }, { act: '想 S 曲线', watch: '梯形的加速度是阶跃、会激振；S 曲线再限 jerk、更柔更抗振但稍慢。' }], terms: [],
   },
+  gjk: {
+    question: '运动规划每走一步都要问"机器人和障碍碰了吗"。GJK 怎么只靠支撑函数，就判两个凸形碰没碰？',
+    read: [{ at: '世界空间', is: '两凸形 A、B、当前支撑顶点(高亮)。', anchor: '.gk-svg' }, { at: 'Minkowski 空间', is: '原点 O、单纯形演化、搜索方向。', anchor: '.gk-mink' }, { at: '读数', is: 'a·d(≥0 越过原点)、结论。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { stage: string; scenLabel: string; iterNo: number; dir: number[]; a: number[]; sA: number[]; sB: number[]; adot: number; passed: boolean; simplex: number[][]; contained: boolean; collide: boolean | null }; return [
+      { k: '本步输入', v: st.stage === 'intro' ? `两凸形、场景 ${st.scenLabel}` : st.stage === 'done' ? `跑了 ${st.iterNo} 轮` : `第 ${st.iterNo} 轮、搜索方向 d=[${st.dir}]` },
+      { k: '判定规则', v: `两凸形碰 ⟺ 原点∈Minkowski 差 A⊖B；支撑点 a=support_A(d)−support_B(−d)；a·d<0→原点在外(不碰、停)；单纯形三角形含原点→碰。` },
+      { k: '本步结果', v: st.stage === 'intro' ? 'GJK：把碰撞判定变成"原点在不在 A⊖B 里"' : st.stage === 'support' ? `a=[${st.sA}]−[${st.sB}]=[${st.a}]、a·d=${st.adot} ${st.passed ? '≥0 越过原点' : '<0 → 不碰、停'}` : st.stage === 'simplex' ? `doSimplex→单纯形=[${st.simplex.map(p => `(${p})`).join(',')}]、方向指向原点` : st.stage === 'result' ? `三角形 [${st.simplex.map(p => `(${p})`).join(',')}] 含原点 → 碰` : `结论：${st.collide ? '两形相交(碰)' : '两形分离(不碰)'}（${st.iterNo} 轮）` },
+    ] },
+    verdict: (s: never) => { const st = s as { stage: string; iterNo: number; passed: boolean; contained: boolean; collide: boolean | null }; return st.stage === 'done' ? (st.collide ? '碰撞' : '不碰') : st.stage === 'result' && st.contained ? '含原点·碰' : st.stage === 'support' && !st.passed ? 'a·d<0 不碰' : st.stage === 'support' ? `第${st.iterNo}轮支撑点` : st.stage === 'simplex' ? 'doSimplex' : 'Minkowski 差' },
+    try: [{ act: '切「相交」', watch: '2 轮把原点围进三角形 [(1,2),(-5,-4),(1,-4)]、原点在内 → 碰。' }, { act: '切「分离」', watch: '第 2 轮朝 d=[72,0] 取支撑点、a·d=-144<0 → 最远都没越过原点 → 不碰、提前停。' }, { act: '看支撑函数', watch: '每轮只朝一个方向要一个最远点 support_A(d)−support_B(−d)、不用建整个 A⊖B。' }], terms: [],
+  },
   prm: {
     question: 'RRT 每次朝一个目标长一棵树。要在同一个固定环境里反复规划不同起终点，怎么才不用每次重来？',
     read: [{ at: '路图', is: '障碍+节点+边(灰=路图/红虚=被挡/绿=最短路)。', anchor: '.pm-svg' }, { at: '连边块', is: 'k 近邻+碰撞检测。', anchor: '.pm-r' }, { at: '结局横幅', is: '连通找到路/断开。', anchor: '.pm-out' }],

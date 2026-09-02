@@ -5885,3 +5885,29 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .pc-pca{border:1px solid color-mix(in srgb,var(--hit) 30%,var(--line));border-radius:8px;padding:8px 10px;background:color-mix(in srgb,var(--hit) 5%,transparent);font-size:var(--t-ui);line-height:1.7;font-variant-numeric:tabular-nums}
 .pc-tanc{color:var(--dim)}
 .pc-normc{color:var(--miss)}
+
+/* gjk · 碰撞检测(Minkowski 差 + 支撑函数 + 单纯形) */
+.scdn.gk-good{color:var(--hit)}
+.scdn.gk-bad{color:var(--miss)}
+.gk-panes{display:flex;gap:10px;flex-wrap:wrap}
+.gk-pane{flex:1 1 150px;min-width:150px}
+.gk-cap{font-size:var(--t-meta);color:var(--faint);margin-bottom:2px}
+.gk-svg{background:var(--sunk-1);border:1px solid var(--line);border-radius:8px}
+.gk-A{fill:color-mix(in srgb,var(--now) 18%,transparent);stroke:var(--now);stroke-width:1.5}
+.gk-B{fill:color-mix(in srgb,var(--miss) 16%,transparent);stroke:var(--miss);stroke-width:1.5}
+.gk-lbl{fill:var(--dim);font:9px var(--sans);font-weight:700}
+.gk-supA{fill:var(--now);stroke:var(--panel);stroke-width:1}
+.gk-supB{fill:var(--miss);stroke:var(--panel);stroke-width:1}
+.gk-mink{fill:color-mix(in srgb,var(--ink) 5%,transparent);stroke:var(--ghost);stroke-width:1;stroke-dasharray:3 2}
+.gk-simfill{fill:color-mix(in srgb,var(--now) 12%,transparent);stroke:var(--now);stroke-width:1.5}
+.gk-simfill-hit{fill:color-mix(in srgb,var(--miss) 22%,transparent);stroke:var(--miss);stroke-width:2}
+.gk-simline{stroke:var(--now);stroke-width:2}
+.gk-simpt{fill:var(--now)}
+.gk-anew{fill:var(--hit);stroke:var(--panel);stroke-width:1}
+.gk-anew-bad{fill:var(--miss);stroke:var(--panel);stroke-width:1}
+.gk-dir{stroke:var(--dim);stroke-width:1.5;stroke-dasharray:2 2}
+.gk-orig{stroke:var(--ink);stroke-width:1.5}
+.gk-origlbl{fill:var(--ink);font:8px var(--sans);font-weight:700}
+.gk-read{margin-top:8px;font-size:var(--t-ui);color:var(--dim);line-height:1.7;font-variant-numeric:tabular-nums}
+.gk-goodc{color:var(--hit)}
+.gk-badc{color:var(--miss)}

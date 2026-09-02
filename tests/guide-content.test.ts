@@ -369,6 +369,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { i: 1, step: 1, stage: 'voxel', ...base, showVoxel: true, showNbr: false, showCov: false, showPca: false, focus: '下采样' },
       b: { i: 4, step: 4, stage: 'pca', ...base, showVoxel: true, showNbr: true, showCov: true, showPca: true, focus: 'PCA 法线' },
     } })(),
+    gjk: (() => { const base = { scen: 'hit' as const, scenLabel: '相交(会碰)', A: [[1, 1], [4, 1], [4, 4], [1, 4]] as [number, number][], B: [[3, 2], [6, 2], [6, 5], [3, 5]] as [number, number][], mink: [[-5, -4], [1, -4], [1, 2], [-5, 2]] as [number, number][], collide: true, log: '' }; return {
+      doc: { kind: 'gjk', params: { scenario: '相交' }, entities: [], streams: [] },
+      a: { i: 1, step: 1, stage: 'support', ...base, iterNo: 1, dir: [-1, -2] as [number, number], a: [-5, -4] as [number, number], sA: [1, 1] as [number, number], sB: [6, 5] as [number, number], adot: 13, passed: true, simplex: [[1, 2], [-5, -4]] as [number, number][], contained: false, phase: 'run' as const, focus: '支撑点' },
+      b: { i: 5, step: 5, stage: 'done', ...base, iterNo: 2, dir: [0, 0] as [number, number], a: [0, 0] as [number, number], sA: [0, 0] as [number, number], sB: [0, 0] as [number, number], adot: 0, passed: true, simplex: [[1, 2], [-5, -4], [1, -4]] as [number, number][], contained: false, phase: 'done' as const, focus: '结论' },
+    } })(),
     particlefilter: (() => { const base = { mode: 'on', modeLabel: '重采样(标准)', z: 5.5, sigma: 1.5, particles: [{ pos: 2, w: 0.066, wn: 0.023 }, { pos: 4, w: 0.607, wn: 0.211 }, { pos: 5, w: 0.946, wn: 0.329 }, { pos: 6, w: 0.946, wn: 0.329 }, { pos: 8, w: 0.249, wn: 0.087 }, { pos: 9, w: 0.066, wn: 0.023 }], sumW: 2.88, neff: 3.72, N: 6, resampled: [4, 5, 5, 6, 6, 8], estimate: 5.4, estimateResampled: 5.67, log: '' }; return {
       doc: { kind: 'particlefilter', params: { resample: '重采样' }, entities: [], streams: [] },
       a: { i: 3, step: 3, stage: 'neff', ...base, showWeight: true, showNeff: true, showResample: false, phase: 'run' as const, focus: 'N_eff' },

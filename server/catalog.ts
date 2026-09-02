@@ -139,6 +139,7 @@ import { rrtstarKernel } from '../src/kernels/rrtstar.ts'
 import { potentialfieldKernel } from '../src/kernels/potentialfield.ts'
 import { chompKernel } from '../src/kernels/chomp.ts'
 import { trapezoidKernel } from '../src/kernels/trapezoid.ts'
+import { gjkKernel } from '../src/kernels/gjk.ts'
 import { prmKernel } from '../src/kernels/prm.ts'
 import { mdpKernel } from '../src/kernels/mdp.ts'
 import { qlearningKernel } from '../src/kernels/qlearning.ts'
@@ -3116,6 +3117,41 @@ export const CATALOG: CatalogEntry[] = [
         ask: '避障优先(k_obs=2)、q2 离障碍 0.6、d0=1，避障梯度大小=k_obs·(d0−dist) 是多少?', kind: 'number',
         compute: t => { const f = t as unknown as { gObs?: number[] }[]; const l = f.find(x => x.gObs && (x.gObs[0] !== 0 || x.gObs[1] !== 0)); const mag = l?.gObs ? Math.round(Math.sqrt(l.gObs[0]! ** 2 + l.gObs[1]! ** 2) * 10) / 10 : 0.8; return ({ answer: String(mag), step: 3, evidence: `k_obs·(d0−dist)=2·(1−0.6)=2·0.4=${mag}(把 q2 往下推这么多、离障碍越近推越猛)` }) },
         distractors: () => ['0.4', '0.2', '1.0', '2.0'],
+      },
+    ],
+  },
+  {
+    id: 'gjk', title: 'GJK 碰撞检测', kernel: gjkKernel as Kernel<unknown>, doc: trivialDoc('gjk'),
+    facts: [
+      {
+        id: 'gjk_core', label: 'GJK 本质在判什么',
+        ask: 'GJK 判两个凸形碰没碰,本质上是在判什么?', kind: 'choice',
+        compute: () => ({ answer: '原点在不在 Minkowski 差 A⊖B={a−b} 里。有个结论:两凸形相交 ⟺ 原点∈A⊖B(A、B 有公共点 p ⟺ p−p=原点∈A⊖B)。于是"两形碰不碰"变成"一个凸形含不含原点"', step: 1, evidence: '两凸形碰⟺原点∈A⊖B' }),
+        distractors: () => ['两形中心的距离小不小', '两形有没有公共顶点', '两形面积谁大'],
+      },
+      {
+        id: 'gjk_support', label: '支撑函数的作用',
+        ask: 'GJK 里的支撑函数 support(d) 是什么?为什么它让 GJK 高效?', kind: 'choice',
+        compute: () => ({ answer: 'support(shape,d)=沿方向 d 最远的顶点;A⊖B 在 d 上的最远点 a=support_A(d)−support_B(−d)。GJK 不显式构造整个 A⊖B(可能很大),每轮只朝一个方向要一个最远点、懒惰地围原点建单纯形,所以对任意凸形都快', step: 2, evidence: '朝一个方向要最远点、不建整个差集' }),
+        distractors: () => ['两形所有顶点两两求差、建出完整 A⊖B', '沿方向 d 最近的顶点', '形状的质心'],
+      },
+      {
+        id: 'gjk_exit', label: '不碰怎么提前判定',
+        ask: 'GJK 怎么在两形不碰时提前退出(不必建完整个差集)?', kind: 'choice',
+        compute: () => ({ answer: '每轮取支撑点 a 后判 a·d:若 a·d<0,说明沿当前方向(指向原点)"最远"都没越过原点 → 原点在 A⊖B 之外 → 两形不碰,立刻返回。这个提前退出是 GJK 高效的关键', step: 4, evidence: 'a·d<0→最远没越过原点→不碰、停' }),
+        distractors: () => ['单纯形凑够三个点还没含原点就停', '迭代固定 10 轮后停', '两形距离大于阈值就停'],
+      },
+      {
+        id: 'gjk_epa', label: '穿透深度怎么求',
+        ask: 'GJK 判出"碰了",还想知道"穿透多深/最小把它们分开要推多远",怎么办?', kind: 'choice',
+        compute: () => ({ answer: '接 EPA(Expanding Polytope Algorithm):从 GJK 结束时那个含原点的单纯形出发、朝表面不断加支撑点把多面体往外扩,逼近 A⊖B 的边界,求出原点到边界的最近距离=穿透深度、方向=最小平移向量(MTV)', step: 5, evidence: 'EPA 从含原点单纯形往外扩、求穿透深度/MTV' }),
+        distractors: () => ['GJK 自己就直接给出穿透深度', '再跑一次 GJK 交换 A、B', '穿透深度无法计算'],
+      },
+      {
+        id: 'gjk_num', label: '不碰时的 a·d',
+        ask: '分离场景第 2 轮朝 d=[72,0] 取支撑点 a=[-2,-1]，a·d 是多少?(<0 即判不碰)', kind: 'number',
+        compute: t => { const f = t as unknown as { stage?: string; passed?: boolean; adot?: number }[]; const l = f.find(x => x.stage === 'support' && x.passed === false); const v = l?.adot ?? -144; return ({ answer: String(v), step: 4, evidence: `a·d=(-2)·72+(-1)·0=${v}<0 → 沿 d 最远都没越过原点 → 不碰` }) },
+        distractors: numDistractors,
       },
     ],
   },

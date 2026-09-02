@@ -367,6 +367,7 @@ import { rrtstarKernel, type RRTSState } from '@engine/kernels/rrtstar.ts'
 import { potentialfieldKernel, type PotState } from '@engine/kernels/potentialfield.ts'
 import { trapezoidKernel, type TrapState } from '@engine/kernels/trapezoid.ts'
 import { chompKernel, type ChompState } from '@engine/kernels/chomp.ts'
+import { gjkKernel, type GjkState } from '@engine/kernels/gjk.ts'
 import { prmKernel, type PrmState } from '@engine/kernels/prm.ts'
 import { mdpKernel, type MdpState } from '@engine/kernels/mdp.ts'
 import { qlearningKernel, type QState } from '@engine/kernels/qlearning.ts'
@@ -410,6 +411,7 @@ import { RrtStarStage } from './stages/RrtStarStage.tsx'
 import { PotentialFieldStage } from './stages/PotentialFieldStage.tsx'
 import { TrapezoidStage } from './stages/TrapezoidStage.tsx'
 import { ChompStage } from './stages/ChompStage.tsx'
+import { GjkStage } from './stages/GjkStage.tsx'
 import { PrmStage } from './stages/PrmStage.tsx'
 import { MdpStage } from './stages/MdpStage.tsx'
 import { QlearningStage } from './stages/QlearningStage.tsx'
@@ -7032,6 +7034,33 @@ const chomp: Experiment<ChompState> = {
     { label: 'q2 更新后', value: s.showStep ? `(${s.q2New})` : '—', tone: s.showStep ? 'good' : undefined },
   ],
 }
+const gjk: Experiment<GjkState> = {
+  id: 'gjk', group: '运动规划', title: 'GJK 碰撞检测', subtitle: '两凸形碰不碰=原点在不在 Minkowski 差里；支撑函数懒惰围原点建单纯形',
+  kernel: gjkKernel, defaultDoc: { kind: 'gjk', params: { scenario: '相交' }, entities: [], streams: [] },
+  params: [{ key: 'scenario', label: '场景', kind: 'enum', options: ['相交', '分离'] }],
+  paramsNote: '运动规划每走一步都要问"机器人和障碍碰了吗"。GJK(Gilbert–Johnson–Keerthi)是**凸形碰撞检测**的标准算法,两招:①**Minkowski 差 A⊖B={a−b}**:两凸形相交 ⟺ **原点∈A⊖B**(把"碰不碰"变成"含不含原点");②**支撑函数 support(d)=沿方向 d 最远的顶点**:不显式建整个 A⊖B,每轮只朝一个方向要一个最远点 **a=support_A(d)−support_B(−d)**,懒惰地围原点建**单纯形**(2D 最多三角形)。每轮:朝当前方向(指向原点)取支撑点 a;若 **a·d<0**(最远都没越过原点)→ 原点在外、**不碰**、提前停;否则 a 加进单纯形、doSimplex 丢掉离原点远的点、方向重新指向原点;**三角形一旦含原点=碰**。本例两矩形 A=[1,1]~[4,4]:相交场景(B=[3,2]~[6,5])2 轮把原点围进三角形→碰;分离场景(B=[6,2]~[9,5])第 2 轮 a·d=−144<0→不碰。支撑点/单纯形/方向/Minkowski 差全现算。切「场景」对比。连「运动规划(碰撞检测是每步前提)/EPA(求穿透深度)/SAT」。详见讲解卡。',
+  bounds: [
+    'GJK 两招:①Minkowski 差 A⊖B(两凸形碰 ⟺ 原点∈A⊖B);②支撑函数 support(d)=沿 d 最远顶点(不显式建整个差集)',
+    '每轮朝指向原点的方向取支撑点 a=support_A(d)−support_B(−d),懒惰围原点建单纯形(2D 三角形);doSimplex 丢无用点、方向重新指向原点',
+    '两个出口:三角形含原点→碰;某轮 a·d<0(最远都没越过原点)→不碰、提前停(高效关键)',
+    '对任意凸形只需支撑函数(圆/胶囊/多面体都行)、无需预建差集;求穿透深度/最小平移向量接 EPA;凹形要先凸分解。是运动规划每步碰撞检测的常用底层。参考 GJK/EPA、SAT 分离轴',
+  ],
+  tabs: [{ id: 'gk', label: 'GJK 逐轮跑' }], Stage: GjkStage, whyInRail: true,
+  tone: s => (s.stage === 'done' ? (s.collide ? { key: 'bad', label: '碰撞' } : { key: 'good', label: '不碰' })
+    : s.stage === 'result' && s.contained ? { key: 'bad', label: '三角形含原点' }
+    : s.stage === 'support' && !s.passed ? { key: 'good', label: 'a·d<0 不碰' }
+    : s.stage === 'support' ? { key: 'idle', label: `第 ${s.iterNo} 轮支撑点` }
+    : s.stage === 'simplex' ? { key: 'idle', label: 'doSimplex' }
+    : { key: 'idle', label: 'Minkowski 差' }),
+  metric: s => (s.stage === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => (s.stage === 'done' ? (s.collide ? '碰' : '离') : s.stage === 'support' ? `${s.iterNo}` : s.stage === 'simplex' ? 'Δ' : 'G'),
+  readouts: s => [
+    { label: '场景', value: s.scenLabel },
+    { label: 'GJK 轮次', value: s.iterNo ? `第 ${s.iterNo} 轮` : '就绪' },
+    { label: 'a·d', value: (s.stage === 'support' || s.stage === 'simplex' || s.stage === 'result') ? `${s.adot}` : '—', tone: (s.stage === 'support' || s.stage === 'simplex' || s.stage === 'result') ? (s.passed ? undefined : 'good') : undefined },
+    { label: '结论', value: s.stage === 'done' ? (s.collide ? '碰撞' : '不碰') : s.contained ? '含原点·碰' : '—', tone: s.stage === 'done' ? (s.collide ? 'bad' : 'good') : undefined },
+  ],
+}
 const rrt: Experiment<RRTState> = {
   id: 'rrt', group: '运动规划', title: 'RRT 运动规划', subtitle: '采样式避障：随机长树绕障碍到终点',
   kernel: rrtKernel, defaultDoc: { kind: 'rrt', params: {}, entities: [], streams: [] }, params: [],
@@ -7487,7 +7516,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, pinhole, pointcloud, icp, slam, impedance, mpc, pid, rrt, rrtstar, prm, potentialfield, chomp, trapezoid, mdp, qlearning, policygrad, ppo, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
+  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, pinhole, pointcloud, icp, slam, impedance, mpc, pid, rrt, rrtstar, prm, potentialfield, chomp, trapezoid, gjk, mdp, qlearning, policygrad, ppo, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
 ] as unknown as AnyExperiment[]
 
 /**
