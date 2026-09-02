@@ -5911,3 +5911,27 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .gk-read{margin-top:8px;font-size:var(--t-ui);color:var(--dim);line-height:1.7;font-variant-numeric:tabular-nums}
 .gk-goodc{color:var(--hit)}
 .gk-badc{color:var(--miss)}
+
+/* stereo · 双目立体视觉(视差求深度) */
+.scdn.st-hot{color:var(--now)}
+.scdn.st-good{color:var(--hit)}
+.scdn.st-bad{color:var(--miss)}
+.st-svg{margin:6px 0;max-width:360px;background:var(--sunk-1);border:1px solid var(--line);border-radius:8px}
+.st-strip{fill:color-mix(in srgb,var(--ink) 5%,transparent);stroke:var(--line);stroke-width:1}
+.st-slbl{fill:var(--faint);font:8px var(--sans)}
+.st-cx{stroke:var(--ghost);stroke-width:1;stroke-dasharray:2 2}
+.st-cxlbl{fill:var(--faint);font:7px var(--sans)}
+.st-ptL{fill:var(--now);stroke:var(--panel);stroke-width:1}
+.st-ptR{fill:var(--miss);stroke:var(--panel);stroke-width:1}
+.st-pxlbl{fill:var(--dim);font:7.5px var(--mono)}
+.st-guide{stroke:var(--ghost);stroke-width:1;stroke-dasharray:2 2}
+.st-disp{stroke:var(--now);stroke-width:2}
+.st-displbl{fill:var(--now);font:8px var(--sans);font-weight:700}
+.st-flow{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+.st-blk{border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--panel-2);font-size:var(--t-ui);line-height:1.7;font-variant-numeric:tabular-nums}
+.st-blk.st-off{opacity:.4}
+.st-n{font-family:var(--mono);color:var(--now);font-weight:700;margin-right:6px}
+.st-prec{border:1px solid color-mix(in srgb,var(--miss) 30%,var(--line));border-radius:8px;padding:8px 10px;background:color-mix(in srgb,var(--miss) 5%,transparent);font-size:var(--t-ui);line-height:1.7;font-variant-numeric:tabular-nums}
+.st-hotc{color:var(--now)}
+.st-goodc{color:var(--hit)}
+.st-badc{color:var(--miss)}

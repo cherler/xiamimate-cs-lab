@@ -355,6 +355,7 @@ import { contactlcpKernel, type LcpState } from '@engine/kernels/contactlcp.ts'
 import { ekfKernel, type EkfState } from '@engine/kernels/ekf.ts'
 import { pinholeKernel, type PinState } from '@engine/kernels/pinhole.ts'
 import { pointcloudKernel, type CloudState } from '@engine/kernels/pointcloud.ts'
+import { stereoKernel, type StereoState } from '@engine/kernels/stereo.ts'
 import { particlefilterKernel, type PfState } from '@engine/kernels/particlefilter.ts'
 import { ukfKernel, type UkfState } from '@engine/kernels/ukf.ts'
 import { complementaryKernel, type CompState } from '@engine/kernels/complementary.ts'
@@ -399,6 +400,7 @@ import { ContactLcpStage } from './stages/ContactLcpStage.tsx'
 import { EkfStage } from './stages/EkfStage.tsx'
 import { PinholeStage } from './stages/PinholeStage.tsx'
 import { PointCloudStage } from './stages/PointCloudStage.tsx'
+import { StereoStage } from './stages/StereoStage.tsx'
 import { PfStage } from './stages/PfStage.tsx'
 import { UkfStage } from './stages/UkfStage.tsx'
 import { CompStage } from './stages/CompStage.tsx'
@@ -7132,6 +7134,33 @@ const pointcloud: Experiment<CloudState> = {
     { label: '法线(小λ特征向量)', value: s.showPca ? `[${s.normal}]` : '—', tone: s.showPca ? 'good' : undefined },
   ],
 }
+const stereo: Experiment<StereoState> = {
+  id: 'stereo', group: '机器人感知', title: '双目立体视觉 · 视差求深度', subtitle: '两个平行相机把针孔丢掉的深度找回来：视差 d=f·b/Z、深度 Z=f·b/d',
+  kernel: stereoKernel, defaultDoc: { kind: 'stereo', params: { depth: '近处' }, entities: [], streams: [] },
+  params: [{ key: 'depth', label: '物体远近', kind: 'enum', options: ['近处', '远处'] }],
+  paramsNote: '单个针孔相机把 3D 压成 2D、**丢了深度**(不同 Z、同 X/Z 投到同一像素、单目测不了绝对距离)。**双目(立体)** 用**两个平行相机**(相隔基线 b)找回深度:同一 3D 点在左右图横坐标不同,①左右投影 x_L=f·X/Z+cx、x_R=f·(X−b)/Z+cx;②**视差 d=x_L−x_R=f·b/Z**(∝1/Z、**近大远小**);③**深度 Z=f·b/d**(测出视差就得深度、逐像素→深度图);④**精度 ΔZ≈Z²/(f·b)·Δd ∝ Z²**(远处极不准、误差随距离平方涨)。本例 f=500px、b=0.1m:近处点(Z=2m)视差 25px、远处点(Z=5m)视差 10px、Z=f·b/d 现算还原;1px 视差误差 → 近处 ΔZ=0.08m、远处 0.5m(差 6.25 倍)。切「远近」对比视差与精度。全现算。连「针孔相机(逆问题)/对极几何(找对应)/ICP/SLAM」。详见讲解卡。',
+  bounds: [
+    '双目找回针孔丢的深度:左右两个平行相机(基线 b),同一点横坐标不同→视差里藏深度',
+    '视差 d=x_L−x_R=f·b/Z(∝1/Z、近大远小、和横坐标 X 无关);深度 Z=f·b/d(测视差就得深度、逐像素得深度图)',
+    '深度精度 ΔZ≈Z²/(f·b)·Δd ∝ Z²:远处极不准(误差随距离平方增长);加大基线 b/焦距 f/做亚像素视差可改善',
+    '找对应(左像素↔右像素):平行相机下对应点在同一行(极线水平);是被动深度相机(RealSense/ZED)/立体 SLAM 的地基。主动(结构光/ToF) vs 被动(双目);单目深度靠先验无绝对尺度',
+  ],
+  tabs: [{ id: 'st', label: '求深度逐步跑' }], Stage: StereoStage, whyInRail: true,
+  tone: s => (s.stage === 'done' ? { key: 'good', label: '视差→深度' }
+    : s.stage === 'precision' ? { key: 'bad', label: `ΔZ ∝ Z²` }
+    : s.stage === 'depth' ? { key: 'good', label: `Z=${s.Zrec}m` }
+    : s.stage === 'disparity' ? { key: 'idle', label: `视差 ${s.disp}px` }
+    : s.stage === 'project' ? { key: 'idle', label: '左右投影' }
+    : { key: 'idle', label: '双目' }),
+  metric: s => (s.stage === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => ({ intro: '双', project: '投', disparity: '差', depth: '深', precision: '精', done: '成' }[s.stage] ?? '·'),
+  readouts: s => [
+    { label: '场景', value: s.scenLabel },
+    { label: '视差 d', value: s.showDisp ? `${s.disp}px` : '—' },
+    { label: '深度 Z=f·b/d', value: s.showDepth ? `${s.Zrec}m（真 ${s.Ztrue}m）` : '—', tone: s.showDepth ? 'good' : undefined },
+    { label: '1px 深度误差 ΔZ', value: s.showPrec ? `±${s.dZ}m` : '—', tone: s.showPrec ? 'bad' : undefined },
+  ],
+}
 const icp: Experiment<ICPState> = {
   id: 'icp', group: '机器人感知', title: 'ICP 点云配准', subtitle: '迭代最近点：两片点云对齐求位姿',
   kernel: icpKernel, defaultDoc: { kind: 'icp', params: {}, entities: [], streams: [] }, params: [],
@@ -7516,7 +7545,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, pinhole, pointcloud, icp, slam, impedance, mpc, pid, rrt, rrtstar, prm, potentialfield, chomp, trapezoid, gjk, mdp, qlearning, policygrad, ppo, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
+  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, pinhole, pointcloud, stereo, icp, slam, impedance, mpc, pid, rrt, rrtstar, prm, potentialfield, chomp, trapezoid, gjk, mdp, qlearning, policygrad, ppo, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
 ] as unknown as AnyExperiment[]
 
 /**

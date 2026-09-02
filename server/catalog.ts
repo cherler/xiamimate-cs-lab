@@ -130,6 +130,7 @@ import { kalmanKernel } from '../src/kernels/kalman.ts'
 import { ekfKernel } from '../src/kernels/ekf.ts'
 import { pinholeKernel } from '../src/kernels/pinhole.ts'
 import { pointcloudKernel } from '../src/kernels/pointcloud.ts'
+import { stereoKernel } from '../src/kernels/stereo.ts'
 import { particlefilterKernel } from '../src/kernels/particlefilter.ts'
 import { ukfKernel } from '../src/kernels/ukf.ts'
 import { complementaryKernel } from '../src/kernels/complementary.ts'
@@ -2700,6 +2701,41 @@ export const CATALOG: CatalogEntry[] = [
         id: 'pc_num', label: '下采样后点数',
         ask: '8 个点做体素下采样、L=1(细)时下采样到几个点?(每个占用体素取质心)', kind: 'number',
         compute: t => { const f = t as unknown as { voxels?: unknown[]; L?: number }[]; const l = f.find(x => x.L === 1 && x.voxels); const v = l?.voxels?.length ?? 5; return ({ answer: String(v), step: 1, evidence: `L=1 网格下 8 点占 ${v} 个体素、每格取质心 → ${v} 个下采样点` }) },
+        distractors: numDistractors,
+      },
+    ],
+  },
+  {
+    id: 'stereo', title: '双目立体视觉 · 视差求深度', kernel: stereoKernel as Kernel<unknown>, doc: trivialDoc('stereo'),
+    facts: [
+      {
+        id: 'st_depth', label: '深度和视差的关系',
+        ask: '双目立体视觉里,深度 Z 和视差 d 是什么关系?', kind: 'choice',
+        compute: () => ({ answer: 'Z = f·b / d(f 焦距、b 基线、d 视差)。因为视差 d=f·b/Z、反过来就是 Z=f·b/d。视差越大越近、测出视差就得深度。标定好 f、b 后,逐像素测视差就得整幅深度图', step: 3, evidence: 'Z=f·b/d;视差越大越近' }),
+        distractors: () => ['Z=f·b·d,视差越大越远', 'Z 和视差无关、要另外测', 'Z=d/(f·b)'],
+      },
+      {
+        id: 'st_disp', label: '视差为什么∝1/Z',
+        ask: '视差 d=x_L−x_R 为什么只和深度有关、且近大远小?', kind: 'choice',
+        compute: () => ({ answer: 'x_L=f·X/Z+cx、x_R=f·(X−b)/Z+cx,相减 d=f·b/Z——横坐标 X 抵消了、只剩 f·b/Z,所以视差 ∝1/Z(近大远小、和 X 无关)。像手指凑到眼前左右眼差很大、看远山几乎没差', step: 2, evidence: 'd=f·b/Z、X 抵消、∝1/Z' }),
+        distractors: () => ['视差和横坐标 X 成正比', '视差是个常数、和深度无关', '视差∝Z、越远越大'],
+      },
+      {
+        id: 'st_prec', label: '为什么远处不准',
+        ask: '双目测深度为什么远处越来越不准?', kind: 'choice',
+        compute: () => ({ answer: '对 Z=f·b/d 求导:ΔZ≈(Z²/(f·b))·Δd,深度误差随距离的平方增长(∝Z²)。视差是离散像素、总有 ~1px 误差,近处 1px 只差几厘米、远处同样 1px 就差几十厘米。所以双目擅长近处、远处退化', step: 5, evidence: 'ΔZ∝Z²、远处误差随距离平方涨' }),
+        distractors: () => ['远处光线弱、噪声大而已', '远处视差大、反而更准', '和距离无关、都一样准'],
+      },
+      {
+        id: 'st_improve', label: '怎么测更远更准',
+        ask: '想让双目测得更远、更准,可以怎么做?', kind: 'choice',
+        compute: () => ({ answer: '加大基线 b 或焦距 f(都让同样深度的视差变大、精度提高),或做亚像素视差(把视差误差 Δd 压到 <1px)。因为 ΔZ≈Z²/(f·b)·Δd,增大 f·b、减小 Δd 都能降低深度误差。代价:大基线两图重叠区变小、近处盲区变大', step: 5, evidence: '加大 b/f 或亚像素视差(降 Δd)' }),
+        distractors: () => ['缩小基线 b', '缩短焦距 f', '把两个相机叠在一起'],
+      },
+      {
+        id: 'st_num', label: '还原深度',
+        ask: 'f=500px、基线 b=0.1m、测得视差 d=25px，深度 Z=f·b/d 是多少米?', kind: 'number',
+        compute: t => { const f = t as unknown as { disp?: number; Zrec?: number }[]; const l = f.find(x => x.disp === 25 && x.Zrec != null); const v = l?.Zrec ?? 2; return ({ answer: String(v), step: 3, evidence: `Z=f·b/d=500·0.1/25=50/25=${v}m` }) },
         distractors: numDistractors,
       },
     ],

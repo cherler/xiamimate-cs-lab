@@ -374,6 +374,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { i: 1, step: 1, stage: 'support', ...base, iterNo: 1, dir: [-1, -2] as [number, number], a: [-5, -4] as [number, number], sA: [1, 1] as [number, number], sB: [6, 5] as [number, number], adot: 13, passed: true, simplex: [[1, 2], [-5, -4]] as [number, number][], contained: false, phase: 'run' as const, focus: '支撑点' },
       b: { i: 5, step: 5, stage: 'done', ...base, iterNo: 2, dir: [0, 0] as [number, number], a: [0, 0] as [number, number], sA: [0, 0] as [number, number], sB: [0, 0] as [number, number], adot: 0, passed: true, simplex: [[1, 2], [-5, -4], [1, -4]] as [number, number][], contained: false, phase: 'done' as const, focus: '结论' },
     } })(),
+    stereo: (() => { const base = { scen: 'near' as const, scenLabel: '近处物体(Z=2m)', f: 500, b: 0.1, cx: 320, X: 0.3, Ztrue: 2, xL: 395, xR: 370, disp: 25, Zrec: 2, dZ: 0.08, dZnear: 0.08, dZfar: 0.5, log: '' }; return {
+      doc: { kind: 'stereo', params: { depth: '近处' }, entities: [], streams: [] },
+      a: { i: 2, step: 2, stage: 'disparity', ...base, showProj: true, showDisp: true, showDepth: false, showPrec: false, phase: 'run' as const, focus: '视差' },
+      b: { i: 3, step: 3, stage: 'depth', ...base, showProj: true, showDisp: true, showDepth: true, showPrec: false, phase: 'run' as const, focus: '深度' },
+    } })(),
     particlefilter: (() => { const base = { mode: 'on', modeLabel: '重采样(标准)', z: 5.5, sigma: 1.5, particles: [{ pos: 2, w: 0.066, wn: 0.023 }, { pos: 4, w: 0.607, wn: 0.211 }, { pos: 5, w: 0.946, wn: 0.329 }, { pos: 6, w: 0.946, wn: 0.329 }, { pos: 8, w: 0.249, wn: 0.087 }, { pos: 9, w: 0.066, wn: 0.023 }], sumW: 2.88, neff: 3.72, N: 6, resampled: [4, 5, 5, 6, 6, 8], estimate: 5.4, estimateResampled: 5.67, log: '' }; return {
       doc: { kind: 'particlefilter', params: { resample: '重采样' }, entities: [], streams: [] },
       a: { i: 3, step: 3, stage: 'neff', ...base, showWeight: true, showNeff: true, showResample: false, phase: 'run' as const, focus: 'N_eff' },

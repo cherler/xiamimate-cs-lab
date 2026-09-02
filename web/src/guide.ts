@@ -1086,6 +1086,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { stage: string; raw: unknown[]; voxels: unknown[]; normal: number[] }; return st.stage === 'done' ? '下采样+法线' : st.stage === 'pca' ? `法线 [${st.normal}]` : st.stage === 'covariance' ? '协方差 C' : st.stage === 'neighbors' ? 'k 近邻' : st.stage === 'voxel' ? `${st.raw.length}→${st.voxels.length}` : '原始点云' },
     try: [{ act: '切「粗 L=2」', watch: '网格变大、8 点只剩 2 个质心——L 越大越粗、点更少但细节丢更多。' }, { act: '切「细 L=1」', watch: '下采样到 5 个质心、保留更多结构。' }, { act: '看 PCA 一步', watch: 'λ大=0.687(切向)、λ小=0.013(法向)；最小特征值的特征向量 [−0.77,0.64] 就是法线、⊥斜面。' }], terms: [],
   },
+  stereo: {
+    question: '单个相机把 3D 压成 2D 就丢了深度，两个平行相机怎么把深度找回来？为什么远处测得越来越不准？',
+    read: [{ at: '左右图像条', is: '同一点在 x_L / x_R、横坐标差=视差。', anchor: '.st-svg' }, { at: '流程块', is: '①左右投影 ②视差 ③深度 ④精度。', anchor: '.st-blk' }, { at: '读数', is: '视差、深度 Z=fb/d、ΔZ。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { stage: string; f: number; b: number; X: number; Ztrue: number; xL: number; xR: number; disp: number; Zrec: number; dZ: number; dZnear: number; dZfar: number; scenLabel: string }; return [
+      { k: '本步输入', v: st.stage === 'intro' ? `${st.scenLabel}、f=${st.f}px、b=${st.b}m` : st.stage === 'project' ? `3D 点 X=${st.X}m、Z=${st.Ztrue}m` : st.stage === 'disparity' ? `x_L=${st.xL}、x_R=${st.xR}` : st.stage === 'depth' ? `视差 d=${st.disp}px` : `深度 Z=${st.Ztrue}m、1px 视差误差` },
+      { k: '判定规则', v: `左右投影 x_L=f·X/Z+cx、x_R=f·(X−b)/Z+cx；视差 d=x_L−x_R=f·b/Z（∝1/Z）；深度 Z=f·b/d；精度 ΔZ≈Z²/(f·b)·Δd ∝ Z²。` },
+      { k: '本步结果', v: st.stage === 'intro' ? '双目：把针孔丢掉的深度找回来' : st.stage === 'project' ? `x_L=${st.xL}px、x_R=${st.xR}px（右相机偏 b、点偏左）` : st.stage === 'disparity' ? `视差 d=${st.xL}−${st.xR}=${st.disp}px（∝1/Z、近大远小）` : st.stage === 'depth' ? `Z=f·b/d=${st.f}·${st.b}/${st.disp}=${st.Zrec}m（还原真实 ${st.Ztrue}m）` : `ΔZ=Z²/(f·b)=${st.dZ}m（近${st.dZnear}/远${st.dZfar}、远处∝Z²极不准）` },
+    ] },
+    verdict: (s: never) => { const st = s as { stage: string; disp: number; Zrec: number; dZ: number }; return st.stage === 'done' ? '视差→深度' : st.stage === 'precision' ? `ΔZ=±${st.dZ}m` : st.stage === 'depth' ? `Z=${st.Zrec}m` : st.stage === 'disparity' ? `视差${st.disp}px` : st.stage === 'project' ? '左右投影' : '双目' },
+    try: [{ act: '切「近处 Z=2m」', watch: '视差大(25px)、深度 Z=fb/d=2m、1px 误差只 ΔZ=0.08m——近处又准视差又大。' }, { act: '切「远处 Z=5m」', watch: '视差小(10px)、Z=5m、但 1px 误差 ΔZ=0.5m——远处极不准(ΔZ∝Z²)。' }, { act: '想找对应', watch: '平行相机下左右对应点在同一行(极线水平)、沿行块匹配即可。' }], terms: [],
+  },
   queryplan: {
     question: '同一个查询有好几条路可走，数据库优化器凭什么选其中一条？',
     read: [{ at: '候选路径', is: '每条访问路径的 type + 估扫描行数代价条。', anchor: '.qp-paths' }, { at: 'EXPLAIN', is: '末步选中路径的 type/key/rows。', anchor: '.qp-explain' }],
