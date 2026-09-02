@@ -3634,6 +3634,16 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .aic-go { align-self:flex-start; padding:5px 14px; font-size:12px; color:#fff;
   background:var(--now); border:none; border-radius:6px; cursor:pointer; }
 .aic-go:disabled { opacity:.55; cursor:default; }
+.aic-row { display:flex; align-items:center; gap:8px; }
+.aic-ghost { align-self:flex-start; padding:5px 12px; font-size:12px; color:var(--t-body);
+  background:transparent; border:1px solid var(--line); border-radius:6px; cursor:pointer; }
+.aic-ghost:hover:not(:disabled) { border-color:var(--now); color:var(--now); }
+.aic-ghost:disabled { opacity:.55; cursor:default; }
+/* 面试参考答案 */
+.aic-ref { padding:9px 11px; background:color-mix(in srgb, var(--hit) 7%, var(--sunk-1));
+  border:1px solid var(--line); border-left:3px solid var(--hit); border-radius:6px; }
+.aic-ref-tag { display:block; margin-bottom:5px; font-size:10.5px; color:var(--hit); font-weight:600; }
+.aic-ref-body { line-height:1.6; white-space:pre-wrap; color:var(--t-body); }
 .aic-err { color:var(--miss); font-size:12px; }
 
 /* 出题 */

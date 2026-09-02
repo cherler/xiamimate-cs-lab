@@ -72,7 +72,32 @@ function sysEvaluate(concluding: boolean, track = false): string {
     : '然后**追问更深一层**（一句话，往原理/边界/权衡上问），逼候选人再想。简短，别长篇大论、别把答案讲完。')
 }
 
+// 构建判卷地面真值块(单实验=要点+轨迹;整轨=跨主题要点池)。interview 和"看参考答案"共用。
+function buildGround(track: boolean, entry: CatalogEntry | null, expIds: string[] | undefined, scopeName: string): string {
+  return track
+    ? (() => { const kp = trackKeyPoints(expIds!); return `面试范围：${scopeName}，覆盖 ${kp.count} 个主题\n===== 判卷要点池（地面真值，含所属主题）=====\n${kp.text}\n=====` })()
+    : `实验：${entry!.title}\n===== 判卷要点（地面真值）=====\n${keyPoints(entry!)}\n===== 运行轨迹 =====\n${traceGist(entry!)}\n=====`
+}
+
 export type InterviewOptions = { expIds?: string[]; trackTitle?: string; history?: Turn[]; principal?: Principal; useLLM?: boolean }
+
+// 看参考答案:给面试官刚问的那道题一个**基于钉死要点**的参考答案(不是模型自由发挥,只用给定要点)。
+export async function interviewAnswer(expId: string, opts: InterviewOptions = {}): Promise<{ answer: string; billing: { metered: boolean; credits: number; tokens: number; note: string } }> {
+  const track = !!(opts.expIds && opts.expIds.length > 1)
+  const entry = track ? null : getEntry(expId)
+  if (!track && !entry) throw new Error(`未知实验：${expId}（可用：见 /lab/ai/experiments）`)
+  const history = opts.history ?? []
+  const lastQ = [...history].reverse().find(h => h.role === 'interviewer')?.text ?? '（上一题）'
+  if (opts.useLLM === false) return { answer: '（未调用大模型）参考答案见实验要点。', billing: { metered: false, credits: 0, tokens: 0, note: '未调用大模型' } }
+  const scopeName = track ? `${opts.trackTitle ?? '这条职业线'}（跨主题）` : entry!.title
+  const ground = buildGround(track, entry, opts.expIds, scopeName)
+  const system =
+    '你是资深技术面试官，现在给出这道面试题的**参考答案**。下面是判卷要点（地面真值）。' +
+    '请**只依据这些要点**组织答案：简洁、有条理（3~6 句或分点），点出关键机制/取舍，别引入要点之外的假设、别啰嗦、别复述题目。'
+  const prompt = `${ground}\n\n面试官刚问的问题：${lastQ}\n\n请给出参考答案。`
+  const r = await generate({ module: 'lab_ai', task: 'interview_answer', system, prompt, maxTokens: 500, provider: 'minimax', principal: opts.principal ?? null })
+  return { answer: r.text.trim(), billing: r.billing }
+}
 
 export async function interview(expId: string, opts: InterviewOptions = {}): Promise<InterviewResult> {
   const track = !!(opts.expIds && opts.expIds.length > 1)
@@ -89,9 +114,7 @@ export async function interview(expId: string, opts: InterviewOptions = {}): Pro
     return { expId, reply: first ? `（未调用大模型）关于「${scopeName}」，请谈谈你的理解。` : '（未调用大模型）收到。', round: answered, done: concluding, billing: { metered: false, credits: 0, tokens: 0, note: '未调用大模型' } }
   }
 
-  const ground = track
-    ? (() => { const kp = trackKeyPoints(opts.expIds!); return `面试范围：${scopeName}，覆盖 ${kp.count} 个主题\n===== 判卷要点池（地面真值，含所属主题）=====\n${kp.text}\n=====` })()
-    : `实验：${entry!.title}\n===== 判卷要点（地面真值）=====\n${keyPoints(entry!)}\n===== 运行轨迹 =====\n${traceGist(entry!)}\n=====`
+  const ground = buildGround(track, entry, opts.expIds, scopeName)
 
   let system: string, prompt: string
   if (first) {

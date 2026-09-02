@@ -273,20 +273,34 @@ function InterviewView({ expId }: { expId: string }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [done, setDone] = useState(false)
+  const [ref, setRef] = useState('')        // 参考答案(点"看参考答案"才拉)
+  const [refLoading, setRefLoading] = useState(false)
+
+  function bodyFor(nextHistory: Turn[]) {
+    return scope === 'track'
+      ? { expId, expIds: trackExpIdsOf(expId), trackTitle: trackTitleOf(expId), history: nextHistory }
+      : { expId, history: nextHistory }
+  }
 
   async function post(nextHistory: Turn[]) {
-    setLoading(true); setError('')
+    setLoading(true); setError(''); setRef('')     // 新问题来了，清掉上题的参考答案
     try {
-      const body = scope === 'track'
-        ? { expId, expIds: trackExpIdsOf(expId), trackTitle: trackTitleOf(expId), history: nextHistory }
-        : { expId, history: nextHistory }
-      const d = await postJSON<{ reply: string; done: boolean }>('/lab/ai/interview', body)
+      const d = await postJSON<{ reply: string; done: boolean }>('/lab/ai/interview', bodyFor(nextHistory))
       setHistory([...nextHistory, { role: 'interviewer', text: d.reply }])
       setDone(d.done)
     } catch (e) { setError((e as Error).message) } finally { setLoading(false) }
   }
 
-  function start() { setHistory([]); setDone(false); post([]) }
+  async function showRef() {
+    if (refLoading || ref) return
+    setRefLoading(true); setError('')
+    try {
+      const d = await postJSON<{ answer: string }>('/lab/ai/interview-answer', bodyFor(history))
+      setRef(d.answer)
+    } catch (e) { setError((e as Error).message) } finally { setRefLoading(false) }
+  }
+
+  function start() { setHistory([]); setDone(false); setRef(''); post([]) }
   function answer() {
     if (!input.trim() || loading || done) return
     const next: Turn[] = [...history, { role: 'candidate', text: input.trim() }]
@@ -317,13 +331,17 @@ function InterviewView({ expId }: { expId: string }) {
               ))}
               {loading && <div className="aic-msg interviewer"><span className="aic-msg-who">面试官</span><span className="aic-msg-text" style={{ opacity: .6 }}>思考中…</span></div>}
             </div>
+            {ref && <div className="aic-ref"><span className="aic-ref-tag">参考答案 · 由实验要点钉死</span><div className="aic-ref-body">{ref}</div></div>}
             {done
               ? <button className="aic-go" onClick={start}>再面一轮</button>
               : <>
                   <textarea className="aic-ta" value={input} placeholder="输入你的回答（⌘/Ctrl+Enter 提交）"
                     onChange={e => setInput(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) answer() }} />
-                  <button className="aic-go" disabled={loading || !input.trim()} onClick={answer}>{loading ? '面试官思考中…' : '回答'}</button>
+                  <div className="aic-row">
+                    <button className="aic-go" disabled={loading || !input.trim()} onClick={answer}>{loading ? '面试官思考中…' : '回答'}</button>
+                    {!ref && <button className="aic-ghost" disabled={refLoading || loading} onClick={showRef}>{refLoading ? '取参考答案…' : '看参考答案'}</button>}
+                  </div>
                 </>}
           </>}
       {error && <p className="aic-err">出错了：{error}</p>}
