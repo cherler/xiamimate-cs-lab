@@ -168,6 +168,16 @@ import { mqdesignKernel } from '../src/kernels/mqdesign.ts'
 // 与 registry 同源的预设常量：直接 import 保证 doc 逐字一致（引擎侧，无 React）。
 import { CRC_PRESETS, HAMMING_PRESETS, SUBNET_PRESETS, HUFF_PRESETS, BPLUS_PRESETS } from '../src/presets/sequences.ts'
 import { ROUTE_PRESETS } from '../src/presets/entities.ts'
+// 分片目录：大模型/算法/408 三轨的出题条目按职业线拆在 server/catalog/*.ts，这里汇总进 CATALOG。
+// 每个分片自带 kernel/doc/facts，doc 与 registry defaultDoc 逐字一致、答案由引擎 trace 真算（见 catalog-shared.ts）。
+import { LLM_INFER_A_ENTRIES } from './catalog/llm-infer-a.ts'
+import { LLM_INFER_B_ENTRIES } from './catalog/llm-infer-b.ts'
+import { TRANSFORMER_ENTRIES } from './catalog/transformer.ts'
+import { LLM_ALGO_ENTRIES } from './catalog/llm-algo.ts'
+import { DS_CLASSIC_ENTRIES } from './catalog/ds-classic.ts'
+import { ML_ENTRIES } from './catalog/ml.ts'
+import { DL_STATS_ENTRIES } from './catalog/dl-stats.ts'
+import { SYS408_ENTRIES } from './catalog/sys408.ts'
 
 // trace 的一帧就是内核的可见状态；出题只读字段，用宽松类型即可。
 type Frame = Record<string, unknown>
@@ -223,7 +233,8 @@ const dijkstraDoc: SimDocument = {
 
 const last = (t: Frame[]) => t[t.length - 1]!
 
-export const CATALOG: CatalogEntry[] = [
+// 主表核心条目（历史内联的 197 个）。三轨新增的 89 个在下方从分片汇总进最终 CATALOG。
+const CATALOG_CORE: CatalogEntry[] = [
   {
     id: 'binsearch',
     title: '二分查找',
@@ -4028,6 +4039,19 @@ export const CATALOG: CatalogEntry[] = [
       },
     ],
   },
+]
+
+// 最终目录 = 历史核心 + 三轨(大模型/算法/408)分片。分片各自 probe 过、id 与核心不重复。
+export const CATALOG: CatalogEntry[] = [
+  ...CATALOG_CORE,
+  ...LLM_INFER_A_ENTRIES,
+  ...LLM_INFER_B_ENTRIES,
+  ...TRANSFORMER_ENTRIES,
+  ...LLM_ALGO_ENTRIES,
+  ...DS_CLASSIC_ENTRIES,
+  ...ML_ENTRIES,
+  ...DL_STATS_ENTRIES,
+  ...SYS408_ENTRIES,
 ]
 
 const BY_ID = new Map(CATALOG.map(e => [e.id, e]))
