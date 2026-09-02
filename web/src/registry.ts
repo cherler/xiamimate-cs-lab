@@ -364,6 +364,7 @@ import { rrtKernel, type RRTState } from '@engine/kernels/rrt.ts'
 import { rrtstarKernel, type RRTSState } from '@engine/kernels/rrtstar.ts'
 import { potentialfieldKernel, type PotState } from '@engine/kernels/potentialfield.ts'
 import { trapezoidKernel, type TrapState } from '@engine/kernels/trapezoid.ts'
+import { prmKernel, type PrmState } from '@engine/kernels/prm.ts'
 import { quatKernel, type QuatState } from '@engine/kernels/quat.ts'
 import { trajectoryKernel, type TrajState } from '@engine/kernels/trajectory.ts'
 import { icpKernel, type ICPState } from '@engine/kernels/icp.ts'
@@ -399,6 +400,7 @@ import { RRTStage } from './stages/RRTStage.tsx'
 import { RrtStarStage } from './stages/RrtStarStage.tsx'
 import { PotentialFieldStage } from './stages/PotentialFieldStage.tsx'
 import { TrapezoidStage } from './stages/TrapezoidStage.tsx'
+import { PrmStage } from './stages/PrmStage.tsx'
 import { QuatStage } from './stages/QuatStage.tsx'
 import { TrajStage } from './stages/TrajStage.tsx'
 import { ICPStage } from './stages/ICPStage.tsx'
@@ -6962,6 +6964,33 @@ const trapezoid: Experiment<TrapState> = {
     { label: '总时间 T', value: s.showTime ? `${s.tTotal}s` : '—', tone: s.showTime ? 'good' : undefined },
   ],
 }
+const prm: Experiment<PrmState> = {
+  id: 'prm', group: '运动规划', title: 'PRM 概率路图', subtitle: '先撒点连成无碰路图、再图搜索；建一次路图答多次查询（多查询）',
+  kernel: prmKernel, defaultDoc: { kind: 'prm', params: { density: '够密' }, entities: [], streams: [] },
+  params: [{ key: 'density', label: '采样密度', kind: 'enum', options: ['够密', '太稀'] }],
+  paramsNote: '和「RRT」(单查询、朝一个目标长树)不同,PRM 是**多查询**:①**建图**:自由空间随机采样 N 个构型当节点,每个连 k 近邻——但**边要碰撞检测、穿过障碍的边丢掉**(碰撞检测最贵);②**查询**:起点/终点接入路图、用 Dijkstra/A* 搜最短路。建一次路图可**反复答不同起终点**的查询(适合固定环境反复规划)。本例最短的 B-D 边被障碍挡→路径绕障碍上方 S-A-C-D-G(9.48)。**难点=窄通道/采样密度**:采样太稀路图会**断开**、找不到路。切「采样密度」看够密(连通)vs 太稀(断开)。全现算。连「RRT(单查询)/A*·Dijkstra(图搜索)」。详见讲解卡。',
+  bounds: [
+    'PRM 两阶段:建图(采样自由构型当节点、连 k 近邻、边碰撞检测丢掉穿障的)+查询(起终点接入、Dijkstra/A* 搜路)',
+    'PRM 多查询(建一次路图答多次、适合固定环境反复规划) vs RRT 单查询(朝一目标长树、用完即弃);都概率完备',
+    '边的碰撞检测是最贵的一步;窄通道采样概率低→路图易断(采样太稀就找不到路,不是没路是没覆盖到)',
+    '对策:加采样/窄通道采样(桥采样、高斯采样)/PRM*(渐近最优、连接半径随 n 收缩)。连 RRT/RRT*、查询就是 A*·Dijkstra、路再配轨迹',
+  ],
+  tabs: [{ id: 'pm', label: 'PRM 逐步跑' }], Stage: PrmStage, whyInRail: true,
+  tone: s => (s.stage === 'done' ? { key: 'good', label: '建图+查询' }
+    : s.stage === 'outcome' ? (s.connected ? { key: 'good', label: '连通找到路' } : { key: 'bad', label: '断开无路' })
+    : s.stage === 'query' ? (s.connected ? { key: 'good', label: `路长 ${s.pathLen}` } : { key: 'bad', label: '无路' })
+    : s.stage === 'connect' ? { key: 'idle', label: `路图 ${s.roadmap.length} 边` }
+    : s.stage === 'sample' ? { key: 'idle', label: `${s.nodes.length} 节点` }
+    : { key: 'idle', label: '多查询' }),
+  metric: s => (s.stage === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => ({ intro: '图', sample: '采', connect: '连', query: '搜', outcome: '果', done: '成' }[s.stage] ?? '·'),
+  readouts: s => [
+    { label: '采样密度', value: s.densLabel },
+    { label: '路图边 / 被挡', value: s.showConnect ? `${s.roadmap.length} / ${s.edges.filter(e => e.blocked).length}` : '—' },
+    { label: '连通性', value: s.showOut ? (s.connected ? '连通' : '断开') : '—', tone: s.showOut ? (s.connected ? 'good' : 'bad') : undefined },
+    { label: '最短路', value: s.showQuery ? (s.connected ? `${s.path.join('→')}（${s.pathLen}）` : '无路') : '—' },
+  ],
+}
 const rrt: Experiment<RRTState> = {
   id: 'rrt', group: '运动规划', title: 'RRT 运动规划', subtitle: '采样式避障：随机长树绕障碍到终点',
   kernel: rrtKernel, defaultDoc: { kind: 'rrt', params: {}, entities: [], streams: [] }, params: [],
@@ -7254,7 +7283,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, icp, slam, impedance, mpc, pid, rrt, rrtstar, potentialfield, trapezoid, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
+  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, icp, slam, impedance, mpc, pid, rrt, rrtstar, prm, potentialfield, trapezoid, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
 ] as unknown as AnyExperiment[]
 
 /**

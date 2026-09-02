@@ -5702,3 +5702,27 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .tz-t{color:var(--now)}
 .tz-r{color:var(--miss)}
 .tz-hot2{color:var(--now)}
+
+/* prm · 概率路图 */
+.scdn.pm-good{color:var(--hit)}
+.scdn.pm-bad{color:var(--miss)}
+.scdn.pm-hot{color:var(--now)}
+.pm-svg{margin:6px 0;max-width:360px;background:var(--sunk-1);border:1px solid var(--line);border-radius:8px}
+.pm-obs{fill:color-mix(in srgb,var(--miss) 14%,transparent);stroke:color-mix(in srgb,var(--miss) 40%,var(--line));stroke-width:1}
+.pm-obst{fill:var(--miss);font:9px var(--sans);text-anchor:middle}
+.pm-edge{stroke:var(--line);stroke-width:1.5}
+.pm-blocked{stroke:var(--miss);stroke-width:1.2;stroke-dasharray:3 2;opacity:.6}
+.pm-path{stroke:var(--hit);stroke-width:2.6}
+.pm-node{fill:var(--dim)}
+.pm-start{fill:var(--now)}
+.pm-goal{fill:var(--hit)}
+.pm-lbl{fill:var(--ink);font:10px var(--sans);text-anchor:middle;font-weight:600}
+.pm-flow{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+.pm-blk{border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--panel-2);font-size:var(--t-ui);line-height:1.7;font-variant-numeric:tabular-nums}
+.pm-blk.pm-off{opacity:.4}
+.pm-n{font-family:var(--mono);color:var(--now);font-weight:700;margin-right:6px}
+.pm-g{color:var(--hit)}
+.pm-r{color:var(--miss)}
+.pm-out{border-radius:8px;padding:8px 10px;font-size:var(--t-ui);line-height:1.6}
+.pm-out.pm-oreach{background:color-mix(in srgb,var(--hit) 8%,transparent);border:1px solid color-mix(in srgb,var(--hit) 35%,var(--line))}
+.pm-out.pm-obad{background:color-mix(in srgb,var(--miss) 8%,transparent);border:1px solid color-mix(in srgb,var(--miss) 35%,var(--line))}

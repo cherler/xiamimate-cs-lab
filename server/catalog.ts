@@ -136,6 +136,7 @@ import { rrtKernel } from '../src/kernels/rrt.ts'
 import { rrtstarKernel } from '../src/kernels/rrtstar.ts'
 import { potentialfieldKernel } from '../src/kernels/potentialfield.ts'
 import { trapezoidKernel } from '../src/kernels/trapezoid.ts'
+import { prmKernel } from '../src/kernels/prm.ts'
 import { objectstoreKernel } from '../src/kernels/objectstore.ts'
 import { queryplanKernel } from '../src/kernels/queryplan.ts'
 import { wildcardKernel } from '../src/kernels/wildcard.ts'
@@ -2793,6 +2794,41 @@ export const CATALOG: CatalogEntry[] = [
         ask: 'PID 控制的 P、I、D 三项分别按什么量、起什么作用?', kind: 'choice',
         compute: () => ({ answer: 'P=Kp·e 按当前误差使劲(越远越使劲)；D=Kd·误差变化率提供阻尼(快到时反向刹车、防冲过头);I=Ki·误差累计消除稳态误差(顶掉重力等恒定扰动)。P管现在、I管过去累计、D管趋势', step: 14, evidence: '本例加 D=Kd·误差变化率(负=刹车)后，位置平稳收敛到目标不震荡' }),
         distractors: () => ['三项都按当前误差，只是系数不同', 'D 让响应更快、P 提供阻尼', 'I 提供阻尼、D 消除稳态误差'],
+      },
+    ],
+  },
+  {
+    id: 'prm', title: 'PRM 概率路图', kernel: prmKernel as Kernel<unknown>, doc: trivialDoc('prm'),
+    facts: [
+      {
+        id: 'prm_vs_rrt', label: 'PRM 和 RRT 的区别',
+        ask: 'PRM 和 RRT 最本质的区别是什么?', kind: 'choice',
+        compute: () => ({ answer: 'PRM 多查询:先建一张覆盖自由空间的路图、之后每次查询只在图上搜(建一次答多次、适合固定环境反复规划);RRT 单查询:每次朝一个目标从头长一棵树、用完即弃(增量、适合一次性/高维)。都概率完备', step: 1, evidence: '多查询(建路图)vs 单查询(长树)' }),
+        distractors: () => ['PRM 更快、RRT 更准', 'PRM 不需要碰撞检测', 'PRM 是最优的、RRT 不是'],
+      },
+      {
+        id: 'prm_phases', label: 'PRM 的两个阶段',
+        ask: 'PRM 的两个阶段分别做什么?', kind: 'choice',
+        compute: () => ({ answer: '①建图:自由空间采样节点、每个连 k 近邻、每条边碰撞检测(穿过障碍的丢掉)构成路图;②查询:起点/终点接入路图、用 Dijkstra/A* 在图上搜最短路。建图一次、查询多次', step: 1, evidence: '建图(采样+连边+碰撞检测)+查询(图搜索)' }),
+        distractors: () => ['①随机长树 ②回溯路径', '①梯度下降 ②收敛', '①栅格化 ②启发式搜索'],
+      },
+      {
+        id: 'prm_narrow', label: 'PRM 的核心难点',
+        ask: 'PRM 最容易出问题的地方是什么?怎么解决?', kind: 'choice',
+        compute: () => ({ answer: '窄通道/采样密度:窄通道(两障碍间的缝)采样命中概率极低、路图容易在那里断开、找不到路(不是没路、是没覆盖到)。对策:加采样、窄通道采样(桥采样 bridge sampling/高斯采样)、PRM*', step: 5, evidence: '采样太稀→路图断开;桥采样专补窄缝' }),
+        distractors: () => ['计算最短路太慢', '节点太多内存不够', '起点终点没法接入'],
+      },
+      {
+        id: 'prm_collision', label: '碰撞检测为何是瓶颈',
+        ask: 'PRM 里最耗时的部分是什么?为什么?', kind: 'choice',
+        compute: () => ({ answer: '边的碰撞检测(collision checking):建图时每对候选边都要检测连线是否无碰、节点一多检测次数爆炸,查询接入也要检测。是采样规划共同的瓶颈,工程上用层次包围盒/GJK 加速', step: 2, evidence: '每条候选边都要碰撞检测;节点多则爆炸' }),
+        distractors: () => ['随机采样本身', 'Dijkstra 图搜索', '起终点接入'],
+      },
+      {
+        id: 'prm_num', label: 'PRM 找到的最短路长',
+        ask: '本例障碍挡住最短的 B-D 边，PRM 绕障碍上方的路径 S-A-C-D-G 总长约为多少?(取整)', kind: 'number',
+        compute: t => { const f = t as unknown as { pathLen?: number; connected?: boolean }[]; const l = f.find(x => x.connected && x.pathLen) ?? f[f.length - 1] as unknown as { pathLen?: number }; const v = l?.pathLen != null ? Math.round(l.pathLen) : 9; return ({ answer: String(v), step: 3, evidence: `S-A(2.5)+A-C(2.24)+C-D(2.24)+D-G(2.5)=9.48≈${v};B-D 直连被障碍挡、只能绕上方` }) },
+        distractors: numDistractors,
       },
     ],
   },

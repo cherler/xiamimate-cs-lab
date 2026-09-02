@@ -987,6 +987,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { stage: string; tTotal: number; isTrap: boolean }; return st.stage === 'done' ? '时间最优' : st.stage === 'time' ? `T=${st.tTotal}s` : st.stage === 'profile' ? (st.isTrap ? '梯形三段' : '三角两段') : st.stage === 'regime' ? (st.isTrap ? '梯形' : '三角') : st.stage === 'accel' ? '加速段' : '速度曲线' },
     try: [{ act: '切「长距离 D=10」', watch: 'D=10≥2·d_a=4 → 梯形：加速2m+匀速6m+减速2m，T=2·2+3=7s，达到 v_max=2。' }, { act: '切「短距离 D=3」', watch: 'D=3<4 → 三角：还没加到 v_max 就得减速，v_peak=√3≈1.73，T=2√3≈3.46s。' }, { act: '想 S 曲线', watch: '梯形的加速度是阶跃、会激振；S 曲线再限 jerk、更柔更抗振但稍慢。' }], terms: [],
   },
+  prm: {
+    question: 'RRT 每次朝一个目标长一棵树。要在同一个固定环境里反复规划不同起终点，怎么才不用每次重来？',
+    read: [{ at: '路图', is: '障碍+节点+边(灰=路图/红虚=被挡/绿=最短路)。', anchor: '.pm-svg' }, { at: '连边块', is: 'k 近邻+碰撞检测。', anchor: '.pm-r' }, { at: '结局横幅', is: '连通找到路/断开。', anchor: '.pm-out' }],
+    step: (s: never) => { const st = s as { stage: string; densLabel: string; nodes: { id: string }[]; edges: { a: string; b: string; blocked: boolean }[]; roadmap: unknown[]; path: string[]; pathLen: number; connected: boolean }; const blk = st.edges.filter(e => e.blocked); return [
+      { k: '本步输入', v: st.stage === 'intro' ? `采样密度 ${st.densLabel}` : st.stage === 'sample' ? '自由空间' : st.stage === 'connect' ? `${st.nodes.length} 个节点` : st.stage === 'query' ? '起点 S、终点 G' : '路图连通性' },
+      { k: '判定规则', v: `建图:采样节点→连 k 近邻→边碰撞检测(穿障丢掉);查询:起终点接入→Dijkstra 搜最短路;采样太稀路图会断开。` },
+      { k: '本步结果', v: st.stage === 'intro' ? 'PRM:建一次路图、答多次查询(多查询)' : st.stage === 'sample' ? `撒 ${st.nodes.length} 个无碰节点` : st.stage === 'connect' ? `${blk.length} 条穿障被挡(${blk.map(e => `${e.a}-${e.b}`).join('、') || '无'})、保留路图 ${st.roadmap.length} 条` : st.stage === 'query' ? (st.connected ? `最短路 ${st.path.join('→')}(长 ${st.pathLen})` : 'S、G 断开、找不到路') : st.connected ? `连通、复用同一路图答多查询` : `断开、要加采样(窄通道问题)` },
+    ] },
+    verdict: (s: never) => { const st = s as { stage: string; connected: boolean; pathLen: number }; return st.stage === 'done' ? '建图+查询' : st.stage === 'outcome' ? (st.connected ? '连通' : '断开') : st.stage === 'query' ? (st.connected ? `路长${st.pathLen}` : '无路') : st.stage === 'connect' ? '连k近邻' : st.stage === 'sample' ? '采样' : '多查询' },
+    try: [{ act: '切「够密」', watch: '6 节点、路图连通；最短的 B-D 被障碍挡 → 绕上方 S-A-C-D-G，长 9.48。' }, { act: '切「太稀」', watch: '少了障碍上方的 C，路图在障碍附近断成两块 → S 到不了 G，要加采样。' }, { act: '想 vs RRT', watch: 'PRM 多查询(建一次路图答多次)；RRT 单查询(每次朝一目标重长树)。' }], terms: [],
+  },
   queryplan: {
     question: '同一个查询有好几条路可走，数据库优化器凭什么选其中一条？',
     read: [{ at: '候选路径', is: '每条访问路径的 type + 估扫描行数代价条。', anchor: '.qp-paths' }, { at: 'EXPLAIN', is: '末步选中路径的 type/key/rows。', anchor: '.qp-explain' }],

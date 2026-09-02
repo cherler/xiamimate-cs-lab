@@ -389,6 +389,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { i: 2, step: 2, stage: 'regime', ...base, showAccel: true, showRegime: true, showProfile: false, showTime: false, phase: 'run' as const, focus: '判形' },
       b: { i: 4, step: 4, stage: 'time', ...base, showAccel: true, showRegime: true, showProfile: true, showTime: true, phase: 'run' as const, focus: '总时间' },
     } })(),
+    prm: (() => { const edges = [{ a: 'S', b: 'A', len: 2.5, blocked: false }, { a: 'S', b: 'B', len: 2.12, blocked: false }, { a: 'A', b: 'B', len: 3, blocked: false }, { a: 'A', b: 'C', len: 2.24, blocked: false }, { a: 'C', b: 'D', len: 2.24, blocked: false }, { a: 'D', b: 'G', len: 2.5, blocked: false }, { a: 'B', b: 'D', len: 5, blocked: true }]; const base = { dens: 'dense', densLabel: '够密(连通)', nodes: [{ id: 'S', x: 1, y: 2.5 }, { id: 'A', x: 3, y: 4 }, { id: 'B', x: 3, y: 1 }, { id: 'C', x: 5, y: 5 }, { id: 'D', x: 7, y: 4 }, { id: 'G', x: 9, y: 2.5 }], obstacle: { x0: 4, y0: 1, x1: 6, y1: 4 }, edges, roadmap: edges.filter(e => !e.blocked), path: ['S', 'A', 'C', 'D', 'G'], pathLen: 9.48, connected: true, log: '' }; return {
+      doc: { kind: 'prm', params: { density: '够密' }, entities: [], streams: [] },
+      a: { i: 2, step: 2, stage: 'connect', ...base, showSample: true, showConnect: true, showQuery: false, showOut: false, phase: 'run' as const, focus: '连边' },
+      b: { i: 3, step: 3, stage: 'query', ...base, showSample: true, showConnect: true, showQuery: true, showOut: false, phase: 'run' as const, focus: '查询' },
+    } })(),
     queryplan: {
       doc: { kind: 'queryplan', params: {}, entities: [], streams: [] },
       a: { step: 1, op: 'path', query: 'q', revealed: 1, cur: 0, chosen: -1, paths: [{ name: '全表扫描', type: 'ALL', key: '—', rows: 10000, note: 'x' }, { name: '走 idx(city)', type: 'ref', key: 'idx_city', rows: 500, note: 'x' }, { name: '走 idx(age)', type: 'range', key: 'idx_age', rows: 6000, note: 'x' }], phase: 'run', focus: '候选路径：全表扫描（type=ALL，估扫 10000 行）' },
