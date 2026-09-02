@@ -53,7 +53,7 @@ export function numDistractors(answer: string): string[] {
   const seen = new Set<string>([answer]); const out: string[] = []
   for (const d of deltas) {
     const v = a + d
-    if (isInt && v < 0) continue          // 整数多是计数，去负
+    if (isInt && a >= 0 && v < 0) continue // 非负整数多是计数，去负；答案本身为负(如点积)则允许负干扰项
     const s = fmt(v)
     if (seen.has(s) || Number(s) === a) continue
     seen.add(s); out.push(s)

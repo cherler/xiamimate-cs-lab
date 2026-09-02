@@ -178,6 +178,8 @@ import { DS_CLASSIC_ENTRIES } from './catalog/ds-classic.ts'
 import { ML_ENTRIES } from './catalog/ml.ts'
 import { DL_STATS_ENTRIES } from './catalog/dl-stats.ts'
 import { SYS408_ENTRIES } from './catalog/sys408.ts'
+// 数值题通用干扰项：与分片共用同一份（整数 ±1/±2、小数按精度相对扰动、负答案允许负干扰项）。
+import { numDistractors } from './catalog-shared.ts'
 
 // trace 的一帧就是内核的可见状态；出题只读字段，用宽松类型即可。
 type Frame = Record<string, unknown>
@@ -201,14 +203,6 @@ export type CatalogEntry = {
   kernel: Kernel<unknown>
   doc: SimDocument
   facts: Fact[]
-}
-
-// ── 数值题通用干扰项：答案 ±1/±2，去重、去负、去与答案相同 ──
-function numDistractors(answer: string): string[] {
-  const a = Number(answer)
-  const cand = [a + 1, a - 1, a + 2, a - 2, a + 3].filter(v => v >= 0 && v !== a)
-  const uniq = [...new Set(cand)].map(String).filter(v => v !== answer)
-  return uniq.slice(0, 3)
 }
 
 // ── 各实验的 defaultDoc（与 web/src/registry.ts 对应；只需 kernel 读得到的字段） ──
@@ -744,7 +738,7 @@ const CATALOG_CORE: CatalogEntry[] = [
         ask: '银行家算法：给定各进程的 Max 与 Allocation、可用资源，判断当前系统是否处于安全状态?',
         kind: 'choice',
         compute: t => ({ answer: last(t).act === 'safe' ? '安全' : '不安全', step: t.length - 1, evidence: String(last(t).log ?? '') }),
-        distractors: answer => (answer === '安全' ? ['不安全'] : ['安全']),
+        distractors: answer => (answer === '安全' ? ['不安全（找不到安全序列）', '已经死锁'] : ['安全（存在安全序列）', '已经死锁']),
       },
       {
         id: 'first_proc', label: '安全序列中第一个执行的进程',
@@ -1937,7 +1931,7 @@ const CATALOG_CORE: CatalogEntry[] = [
       {
         id: 'pb_frameworks', label: '为什么 CLAUDE.md 当独立 user 消息',
         ask: 'Claude Code 为什么把 CLAUDE.md 当独立 user 消息放系统提示之后、而不塞进 system?', kind: 'choice',
-        compute: () => ({ answer: '为了不动那段可缓存前缀(system+tools)——把可能变的项目指令放后面，系统提示前缀保持稳定、持续命中缓存。DeepSeek 把运行时快照当单独消息注入同理', step: 5, evidence: '护可缓存前缀，和 KV 缓存/上下文压缩(重放系统提示保前缀)同源' }),
+        compute: () => ({ answer: '为了不动那段可缓存前缀(system+tools)——把可能变的项目指令放后面，系统提示前缀保持稳定、持续命中缓存。DeepSeek 把运行时快照当单独消息注入同理', step: 4, evidence: '护可缓存前缀，和 KV 缓存/上下文压缩(重放系统提示保前缀)同源' }),
         distractors: () => ['因为 system 放不下', '因为 user 消息模型更重视', '纯粹是历史遗留、没原因'],
       },
     ],
@@ -2383,7 +2377,7 @@ const CATALOG_CORE: CatalogEntry[] = [
       {
         id: 'rnea_building', label: 'RNEA 是哪些算法的构件',
         ask: 'RNEA 除了直接算逆动力学,还是哪些算法的构件?', kind: 'choice',
-        compute: () => ({ answer: '①计算力矩控制的 Cq̇+G 前馈=一次 RNEA(令 q̈=q̈_d+Kd ė+Kp e);②CRBA 组质量矩阵 M:对每关节 j 调 RNEA(q̈=eⱼ、q̇=0、g=0)读出 M 的第 j 列;③ABA 正向动力学也是同套空间递归的延伸', step: 5, evidence: 'RNEA 是逆动力学基元,被控制和正向动力学复用' }),
+        compute: () => ({ answer: '①计算力矩控制的 Cq̇+G 前馈=一次 RNEA(令 q̈=q̈_d+Kd ė+Kp e);②CRBA 组质量矩阵 M:对每关节 j 调 RNEA(q̈=eⱼ、q̇=0、g=0)读出 M 的第 j 列;③ABA 正向动力学也是同套空间递归的延伸', step: 4, evidence: 'RNEA 是逆动力学基元,被控制和正向动力学复用' }),
         distractors: () => ['只能算逆动力学、别的用不上', '是 SLAM 的构件', '是路径规划的构件'],
       },
       {
@@ -2607,7 +2601,7 @@ const CATALOG_CORE: CatalogEntry[] = [
       {
         id: 'ukf_family', label: '滤波家族怎么选',
         ask: 'KF/EKF/UKF/粒子滤波这个贝叶斯滤波家族，怎么选?', kind: 'choice',
-        compute: () => ({ answer: '线性→卡尔曼 KF;弱非线性/要快→EKF(雅可比);强非线性/难求导→UKF(sigma 点、免求导、捕捉曲率);多峰/非高斯(如全局定位)→粒子滤波(一堆样本)。KF/EKF/UKF 都是单高斯(单峰)、PF 能表任意分布', step: 6, evidence: '单峰高斯(KF/EKF/UKF)vs 多峰样本(PF)' }),
+        compute: () => ({ answer: '线性→卡尔曼 KF;弱非线性/要快→EKF(雅可比);强非线性/难求导→UKF(sigma 点、免求导、捕捉曲率);多峰/非高斯(如全局定位)→粒子滤波(一堆样本)。KF/EKF/UKF 都是单高斯(单峰)、PF 能表任意分布', step: 5, evidence: '单峰高斯(KF/EKF/UKF)vs 多峰样本(PF)' }),
         distractors: () => ['永远用粒子滤波最准', '永远用 EKF 最快最好', '它们完全等价、随便选'],
       },
       {
@@ -2712,7 +2706,7 @@ const CATALOG_CORE: CatalogEntry[] = [
       {
         id: 'pc_why', label: '为什么要算法线',
         ask: '配准/建图前为什么要给每个点算表面法线?', kind: 'choice',
-        compute: () => ({ answer: '点到面(point-to-plane)ICP 的误差要用法线(比点到点收敛快)、法向一致性用来剔除外点/错匹配、曲面重建和抓取姿态也都要法线。法线是点云几何的基本局部特征', step: 6, evidence: '点到面 ICP、剔外点、重建/抓取都要法线' }),
+        compute: () => ({ answer: '点到面(point-to-plane)ICP 的误差要用法线(比点到点收敛快)、法向一致性用来剔除外点/错匹配、曲面重建和抓取姿态也都要法线。法线是点云几何的基本局部特征', step: 5, evidence: '点到面 ICP、剔外点、重建/抓取都要法线' }),
         distractors: () => ['为了给点云上色', '为了压缩点云体积', '法线只是可视化好看、算法不用'],
       },
       {
@@ -2788,7 +2782,7 @@ const CATALOG_CORE: CatalogEntry[] = [
       {
         id: 'he_eih', label: 'eye-in-hand vs eye-to-hand',
         ask: 'eye-in-hand 和 eye-to-hand 有什么区别?', kind: 'choice',
-        compute: () => ({ answer: 'eye-in-hand=相机装在手腕/夹爪上、跟着手一起动(本实验就是,方程 AX=XB 求相机↔夹爪);eye-to-hand=相机固定在外面看着机器人(求相机↔机器人基座)。两者方程形式类似、但 X 的含义和数据采法不同', step: 6, evidence: 'in-hand相机在手上动、to-hand相机在外固定' }),
+        compute: () => ({ answer: 'eye-in-hand=相机装在手腕/夹爪上、跟着手一起动(本实验就是,方程 AX=XB 求相机↔夹爪);eye-to-hand=相机固定在外面看着机器人(求相机↔机器人基座)。两者方程形式类似、但 X 的含义和数据采法不同', step: 5, evidence: 'in-hand相机在手上动、to-hand相机在外固定' }),
         distractors: () => ['一个用单目、一个用双目', 'eye-to-hand 不需要标定', '只是叫法不同、完全一样'],
       },
     ],
@@ -3052,13 +3046,13 @@ const CATALOG_CORE: CatalogEntry[] = [
       {
         id: 'ppo_why', label: 'PPO 为何成主力',
         ask: 'PPO 相比 REINFORCE / TRPO 为什么成了主力?', kind: 'choice',
-        compute: () => ({ answer: '比 TRPO(复杂的二阶信任域)简单得多、效果相当;比 REINFORCE 稳、超参不敏感,而且裁剪限制了更新幅度、同一批数据可跑多个 epoch(样本效率更高、不像 REINFORCE 用完即扔)。配 actor-critic+GAE 算优势', step: 6, evidence: '简单+稳+可多epoch复用batch' }),
+        compute: () => ({ answer: '比 TRPO(复杂的二阶信任域)简单得多、效果相当;比 REINFORCE 稳、超参不敏感,而且裁剪限制了更新幅度、同一批数据可跑多个 epoch(样本效率更高、不像 REINFORCE 用完即扔)。配 actor-critic+GAE 算优势', step: 5, evidence: '简单+稳+可多epoch复用batch' }),
         distractors: () => ['因为它是 off-policy、能复用所有旧数据', '因为它不需要优势函数', '因为它只能用于离散动作'],
       },
       {
         id: 'ppo_miniduck', label: 'PPO 和 miniduck 的关系',
         ask: 'PPO 和 miniduck(Open Duck Mini)是什么关系?', kind: 'choice',
-        compute: () => ({ answer: 'miniduck 用 Brax PPO 在 MuJoCo 里学走路:动作是连续的关节位置残差,PPO 的优势里就是那套 velocity tracking + imitation(相位参考步态)奖励。PPO 是它的训练算法', step: 6, evidence: 'miniduck=Brax PPO 学腿式locomotion;连续关节残差' }),
+        compute: () => ({ answer: 'miniduck 用 Brax PPO 在 MuJoCo 里学走路:动作是连续的关节位置残差,PPO 的优势里就是那套 velocity tracking + imitation(相位参考步态)奖励。PPO 是它的训练算法', step: 5, evidence: 'miniduck=Brax PPO 学腿式locomotion;连续关节残差' }),
         distractors: () => ['无关、miniduck 用模仿学习', 'miniduck 用值迭代', 'PPO 只能用于机械臂不能用于腿'],
       },
       {
@@ -3087,13 +3081,13 @@ const CATALOG_CORE: CatalogEntry[] = [
       {
         id: 'pg_ac', label: '基线引向什么',
         ask: '把基线做成一个学出来的 V(s)，策略梯度就变成了什么?', kind: 'choice',
-        compute: () => ({ answer: 'actor-critic:actor 是策略 π_θ、critic 学值 V(s) 当基线,用优势 A=G−V(s)(或 TD 优势)更新 actor。PPO、SAC 都是 actor-critic 的变体', step: 6, evidence: 'actor=策略、critic=V 基线;PPO/SAC 是其变体' }),
+        compute: () => ({ answer: 'actor-critic:actor 是策略 π_θ、critic 学值 V(s) 当基线,用优势 A=G−V(s)(或 TD 优势)更新 actor。PPO、SAC 都是 actor-critic 的变体', step: 5, evidence: 'actor=策略、critic=V 基线;PPO/SAC 是其变体' }),
         distractors: () => ['Q-learning', '值迭代', '蒙特卡洛树搜索'],
       },
       {
         id: 'pg_onpolicy', label: '为何 on-policy 且要 PPO',
         ask: 'REINFORCE 是 on-policy 还是 off-policy?它有什么痛点、怎么解决?', kind: 'choice',
-        compute: () => ({ answer: 'on-policy:必须用当前策略采的数据更新、用完即扔(样本效率低)。痛点是更新步子难调:太大一步可能把策略更新崩坏、太小又慢。PPO 用裁剪的替代目标把每次更新限制在信任域(新旧策略别差太多),稳且样本利用更好(miniduck 用的就是 PPO)', step: 6, evidence: 'on-policy;步子难调→PPO 裁剪限信任域' }),
+        compute: () => ({ answer: 'on-policy:必须用当前策略采的数据更新、用完即扔(样本效率低)。痛点是更新步子难调:太大一步可能把策略更新崩坏、太小又慢。PPO 用裁剪的替代目标把每次更新限制在信任域(新旧策略别差太多),稳且样本利用更好(miniduck 用的就是 PPO)', step: 5, evidence: 'on-policy;步子难调→PPO 裁剪限信任域' }),
         distractors: () => ['off-policy、可复用旧数据', '没有痛点、直接可用', '用更大的学习率就行'],
       },
       {
@@ -3163,7 +3157,7 @@ const CATALOG_CORE: CatalogEntry[] = [
       {
         id: 'mdp_vq', label: 'V 和 Q 的区别',
         ask: '值函数 V(s) 和 Q(s,a) 有什么区别?为什么 Q 更常用?', kind: 'choice',
-        compute: () => ({ answer: 'V(s)是状态值、Q(s,a)是状态-动作值(在 s 做 a、之后最优的回报)。Q 更常用:argmax_a Q(s,a) 直接给出策略、不需要转移模型 P;用 V 选动作还得知道 P 才能算下个状态', step: 6, evidence: 'Q 选动作免模型;V 选动作要 P' }),
+        compute: () => ({ answer: 'V(s)是状态值、Q(s,a)是状态-动作值(在 s 做 a、之后最优的回报)。Q 更常用:argmax_a Q(s,a) 直接给出策略、不需要转移模型 P;用 V 选动作还得知道 P 才能算下个状态', step: 5, evidence: 'Q 选动作免模型;V 选动作要 P' }),
         distractors: () => ['V 和 Q 完全等价', 'V 是动作值、Q 是状态值', 'Q 只用于有模型情形'],
       },
       {
@@ -3233,7 +3227,7 @@ const CATALOG_CORE: CatalogEntry[] = [
       {
         id: 'trap_scurve', label: 'S 曲线比梯形好在哪',
         ask: 'S 曲线相比梯形速度曲线好在哪?代价是什么?', kind: 'choice',
-        compute: () => ({ answer: '梯形曲线的加速度是阶跃(瞬间从0跳到a_max)、会激起振动冲击;S 曲线再限制 jerk(加速度的变化率),让加速度也平滑升降→运动更柔、对机械和负载更友好。代价是稍慢、更复杂(七段式)', step: 6, evidence: 'S 曲线限 jerk、抗振;梯形加速度阶跃' }),
+        compute: () => ({ answer: '梯形曲线的加速度是阶跃(瞬间从0跳到a_max)、会激起振动冲击;S 曲线再限制 jerk(加速度的变化率),让加速度也平滑升降→运动更柔、对机械和负载更友好。代价是稍慢、更复杂(七段式)', step: 5, evidence: 'S 曲线限 jerk、抗振;梯形加速度阶跃' }),
         distractors: () => ['S 曲线更快、无任何代价', 'S 曲线不需要 v_max/a_max', 'S 曲线是直线、最简单'],
       },
       {
@@ -3262,13 +3256,13 @@ const CATALOG_CORE: CatalogEntry[] = [
       {
         id: 'chomp_localmin', label: 'CHOMP 的死穴',
         ask: 'CHOMP 有什么死穴?怎么缓解?', kind: 'choice',
-        compute: () => ({ answer: '局部极小(和势场一样、梯度下降会卡住、障碍布局刁钻时优化不出可行轨迹)。缓解:从多条不同初始轨迹分别优化取最好,或先用 RRT 出一条可行初值、再用 CHOMP 平滑(全局管能到、优化管好走)', step: 6, evidence: '局部极小;多初值或先RRT出初值' }),
+        compute: () => ({ answer: '局部极小(和势场一样、梯度下降会卡住、障碍布局刁钻时优化不出可行轨迹)。缓解:从多条不同初始轨迹分别优化取最好,或先用 RRT 出一条可行初值、再用 CHOMP 平滑(全局管能到、优化管好走)', step: 5, evidence: '局部极小;多初值或先RRT出初值' }),
         distractors: () => ['没有死穴、总能找到最优', '计算太慢是唯一问题', '只能用于二维'],
       },
       {
         id: 'chomp_covariant', label: '协变是什么意思',
         ask: 'CHOMP 名字里的"协变(covariant)"指什么?', kind: 'choice',
-        compute: () => ({ answer: '用一个度量矩阵 A(编码轨迹平滑度)做更新、而不是朴素欧氏梯度——让更新和轨迹的参数化无关、更稳、避免只有个别路点抖动。是 CHOMP 更新更平顺的关键', step: 6, evidence: '用度量A更新、非欧氏梯度、参数化无关' }),
+        compute: () => ({ answer: '用一个度量矩阵 A(编码轨迹平滑度)做更新、而不是朴素欧氏梯度——让更新和轨迹的参数化无关、更稳、避免只有个别路点抖动。是 CHOMP 更新更平顺的关键', step: 5, evidence: '用度量A更新、非欧氏梯度、参数化无关' }),
         distractors: () => ['指轨迹随时间变化', '指多个机器人协同', '指梯度取协方差'],
       },
       {
@@ -3338,7 +3332,7 @@ const CATALOG_CORE: CatalogEntry[] = [
       {
         id: 'du_rs', label: 'Reeds-Shepp 的区别',
         ask: 'Reeds-Shepp 曲线和 Dubins 曲线最主要的区别是什么?', kind: 'choice',
-        compute: () => ({ answer: 'Reeds-Shepp 允许车倒车(有前进也有后退段),是 Dubins(只前进)的推广、词的种类更多(含后退共 48 种情形)。停车、狭窄空间掉头等需要倒车的场景用 Reeds-Shepp;只前进的场景用 Dubins', step: 6, evidence: 'Reeds-Shepp 可倒车、Dubins 只前进' }),
+        compute: () => ({ answer: 'Reeds-Shepp 允许车倒车(有前进也有后退段),是 Dubins(只前进)的推广、词的种类更多(含后退共 48 种情形)。停车、狭窄空间掉头等需要倒车的场景用 Reeds-Shepp;只前进的场景用 Dubins', step: 5, evidence: 'Reeds-Shepp 可倒车、Dubins 只前进' }),
         distractors: () => ['Reeds-Shepp 不需要最小转弯半径', 'Reeds-Shepp 用于机械臂、Dubins 用于车', '两者完全一样、只是名字不同'],
       },
       {
@@ -3373,7 +3367,7 @@ const CATALOG_CORE: CatalogEntry[] = [
       {
         id: 'pf_fix', label: '局部极小怎么救',
         ask: '势场法卡在局部极小，有哪些解法?', kind: 'choice',
-        compute: () => ({ answer: '①随机扰动:卡住时给个随机推力跳出;②导航函数:构造保证只有目标一个极小的势场(优雅但难构造);③和全局规划结合(最常用):RRT/A* 出无碰全局路、势场只在附近做局部平滑避障——全局管不卡住、势场管实时反应', step: 6, evidence: '扰动/导航函数/配全局规划(RRT)' }),
+        compute: () => ({ answer: '①随机扰动:卡住时给个随机推力跳出;②导航函数:构造保证只有目标一个极小的势场(优雅但难构造);③和全局规划结合(最常用):RRT/A* 出无碰全局路、势场只在附近做局部平滑避障——全局管不卡住、势场管实时反应', step: 5, evidence: '扰动/导航函数/配全局规划(RRT)' }),
         distractors: () => ['加大引力系数就行', '换个初始位置重试', '无解、只能放弃势场法'],
       },
       {
@@ -3402,13 +3396,13 @@ const CATALOG_CORE: CatalogEntry[] = [
       {
         id: 'rrts_radius', label: '邻域半径为何收缩',
         ask: 'RRT* 的邻域半径 r 为什么不用固定值、而是随节点数收缩?', kind: 'choice',
-        compute: () => ({ answer: 'r 按 (γ·log n/n)^(1/d) 随节点数 n 收缩:节点越多、半径越小。这样既保证渐近最优的理论性质,又不至于节点多了每步要查一大堆邻居(平衡最优性和计算量)', step: 6, evidence: 'r∝(γ·log n/n)^(1/d);平衡最优与开销' }),
+        compute: () => ({ answer: 'r 按 (γ·log n/n)^(1/d) 随节点数 n 收缩:节点越多、半径越小。这样既保证渐近最优的理论性质,又不至于节点多了每步要查一大堆邻居(平衡最优性和计算量)', step: 5, evidence: 'r∝(γ·log n/n)^(1/d);平衡最优与开销' }),
         distractors: () => ['半径固定就够了、不用收缩', '半径应该随节点增多而增大', '半径和最优性无关、随便取'],
       },
       {
         id: 'rrts_cost', label: 'RRT* 的代价',
         ask: 'RRT* 相比 RRT 有什么代价?怎么加速?', kind: 'choice',
-        compute: () => ({ answer: '每步要查邻域、算多条代价、还可能重连,比 RRT 慢、每步开销大,而且收敛到最优较慢(初期解也绕)。加速:Informed RRT*(找到初解后只在包住起终点的椭球内采样)、RRT*-Connect、BIT* 等', step: 6, evidence: '慢+初解绕;Informed RRT* 加速收敛' }),
+        compute: () => ({ answer: '每步要查邻域、算多条代价、还可能重连,比 RRT 慢、每步开销大,而且收敛到最优较慢(初期解也绕)。加速:Informed RRT*(找到初解后只在包住起终点的椭球内采样)、RRT*-Connect、BIT* 等', step: 5, evidence: '慢+初解绕;Informed RRT* 加速收敛' }),
         distractors: () => ['没有代价、RRT* 全面更快', '只是内存多一点、速度一样', 'RRT* 反而更省内存'],
       },
       {
