@@ -43,7 +43,7 @@ async function postJSON<T>(path: string, body: unknown): Promise<T> {
   return data as T
 }
 
-type Mode = 'quiz' | 'ask' | 'review' | 'interview' | 'debate'
+type Mode = 'quiz' | 'ask' | 'review' | 'interview'
 type Turn = { role: 'interviewer' | 'candidate'; text: string }
 
 export function AiCompanion({ expId }: { expId: string }) {
@@ -73,19 +73,18 @@ export function AiCompanion({ expId }: { expId: string }) {
         <button className={mode === 'ask' ? 'on' : ''} onClick={() => setMode('ask')}>答疑</button>
         <button className={mode === 'review' ? 'on' : ''} onClick={() => setMode('review')}>复习</button>
         <button className={mode === 'interview' ? 'on' : ''} onClick={() => setMode('interview')}>面试</button>
-        <button className={mode === 'debate' ? 'on' : ''} onClick={() => setMode('debate')}>反驳</button>
       </div>
       {mode === 'quiz' && <QuizView expId={expId} />}
       {mode === 'ask' && <AskView expId={expId} />}
       {mode === 'review' && <ReviewView expId={expId} />}
       {mode === 'interview' && <InterviewView expId={expId} />}
-      {mode === 'debate' && <DebateView expId={expId} />}
     </div>
   )
 }
 
 // ── 出题 ──
 function QuizView({ expId }: { expId: string }) {
+  const [sub, setSub] = useState<'normal' | 'debate'>('normal')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [qs, setQs] = useState<Question[] | null>(null)
@@ -99,8 +98,17 @@ function QuizView({ expId }: { expId: string }) {
     } catch (e) { setError((e as Error).message) } finally { setLoading(false) }
   }
 
+  const subtabs = (
+    <div className="aic-subtabs">
+      <button className={sub === 'normal' ? 'on' : ''} onClick={() => setSub('normal')}>常规题</button>
+      <button className={sub === 'debate' ? 'on' : ''} onClick={() => setSub('debate')}>反驳同学</button>
+    </div>
+  )
+  if (sub === 'debate') return <>{subtabs}<DebateView expId={expId} /></>
+
   return (
     <div className="aic-body">
+      {subtabs}
       <button className="aic-go" disabled={loading} onClick={gen}>{loading ? '出题中…' : qs ? '换一组' : '出一组题'}</button>
       {error && <p className="aic-err">出错了：{error}</p>}
       {qs?.map((q, qi) => {
