@@ -369,6 +369,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { i: 1, step: 1, stage: 'voxel', ...base, showVoxel: true, showNbr: false, showCov: false, showPca: false, focus: '下采样' },
       b: { i: 4, step: 4, stage: 'pca', ...base, showVoxel: true, showNbr: true, showCov: true, showPca: true, focus: 'PCA 法线' },
     } })(),
+    rrtconnect: (() => { const base = { W: 10, start: { x: 1, y: 1 }, goal: { x: 9, y: 9 }, obstacles: [{ x0: 2.5, y0: 3, x1: 7, y1: 6.5 }], treeS: [{ x: 1, y: 1, parent: -1 }, { x: 2, y: 2, parent: 0 }, { x: 2.5, y: 2, parent: 1 }], treeG: [{ x: 9, y: 9, parent: -1 }, { x: 8, y: 8, parent: 0 }], extendS: true, sample: { x: 3, y: 2 }, qnew: { x: 2.5, y: 2 }, rejected: 1, found: false, log: '' }; return {
+      doc: { kind: 'rrtconnect', params: {}, entities: [], streams: [] },
+      a: { i: 1, step: 1, phase: 'grow' as const, op: 'extend' as const, ...base, connectPath: null, connected: false, path: null, focus: 'EXTEND' },
+      b: { i: 2, step: 2, phase: 'grow' as const, op: 'connect' as const, ...base, connectPath: [{ x: 8, y: 8 }, { x: 7, y: 7 }], connected: false, path: null, focus: 'CONNECT' },
+    } })(),
     dubins: (() => { const base = { scen: 'up' as const, scenLabel: '终点朝上(90°)', headingDeg: 90, start: [0, 0, 0] as [number, number, number], goal: [3, 2, 1.571] as [number, number, number], rho: 1, words: { LSL: 3.807, RSR: 15.996, LSR: 9.821, RSL: 10.064 } as Record<'LSL' | 'RSR' | 'LSR' | 'RSL', number | null>, bestType: 'LSL' as const, t: 0.464, p: 2.236, q: 1.107, len: 3.807, segs: 'LSL', pathPts: [[0, 0], [3, 2]] as [number, number][], c1: [0, 1] as [number, number], c2: [2, 2] as [number, number], log: '' }; return {
       doc: { kind: 'dubins', params: { heading: '朝上' }, entities: [], streams: [] },
       a: { i: 2, step: 2, stage: 'words', ...base, showCircles: true, showWords: true, showBest: false, showPath: false, phase: 'run' as const, focus: '四词' },

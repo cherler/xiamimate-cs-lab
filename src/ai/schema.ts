@@ -398,6 +398,7 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   lerobot: {},
   pid: {},
   rrt: {},
+  rrtconnect: {},
   wildcard: {},
   blockingqueue: {},
   regex: {},

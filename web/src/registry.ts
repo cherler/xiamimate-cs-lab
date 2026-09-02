@@ -373,6 +373,7 @@ import { trapezoidKernel, type TrapState } from '@engine/kernels/trapezoid.ts'
 import { chompKernel, type ChompState } from '@engine/kernels/chomp.ts'
 import { gjkKernel, type GjkState } from '@engine/kernels/gjk.ts'
 import { dubinsKernel, type DubinsState } from '@engine/kernels/dubins.ts'
+import { rrtconnectKernel, type RRTCState } from '@engine/kernels/rrtconnect.ts'
 import { prmKernel, type PrmState } from '@engine/kernels/prm.ts'
 import { mdpKernel, type MdpState } from '@engine/kernels/mdp.ts'
 import { qlearningKernel, type QState } from '@engine/kernels/qlearning.ts'
@@ -422,6 +423,7 @@ import { TrapezoidStage } from './stages/TrapezoidStage.tsx'
 import { ChompStage } from './stages/ChompStage.tsx'
 import { GjkStage } from './stages/GjkStage.tsx'
 import { DubinsStage } from './stages/DubinsStage.tsx'
+import { RrtConnectStage } from './stages/RrtConnectStage.tsx'
 import { PrmStage } from './stages/PrmStage.tsx'
 import { MdpStage } from './stages/MdpStage.tsx'
 import { QlearningStage } from './stages/QlearningStage.tsx'
@@ -7098,6 +7100,31 @@ const dubins: Experiment<DubinsState> = {
     { label: '三段(转+直+转)', value: s.showBest ? `${s.t}+${s.p}+${s.q}` : '—' },
   ],
 }
+const rrtconnect: Experiment<RRTCState> = {
+  id: 'rrtconnect', group: '运动规划', title: 'RRT-Connect 双向规划', subtitle: '起点树+终点树同时长、EXTEND 迈步 + CONNECT 贪心连接：MoveIt/OMPL 默认',
+  kernel: rrtconnectKernel, defaultDoc: { kind: 'rrtconnect', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '单树 RRT 从起点一棵树慢慢长到终点。**RRT-Connect** 是加速版、也是 **MoveIt/OMPL 机械臂规划的默认**:①**两棵树**——一棵从起点、一棵从终点;②**EXTEND**——随机采样、让当前树朝采样点**迈一步**得 q_new(撞障碍就丢);③**CONNECT(贪心)**——让**另一棵树朝 q_new 连续迈步(一次走一串、不是一步)**、直到够到 q_new(相遇)或撞障碍停;④两树相遇 → 从相遇点回溯、**拼出起点→终点整条路**,没相遇就**交换两树**再来。双向+贪心让搜索快得多(两头对着挖)。同样**概率完备、不最优**(路径要后处理平滑)。本例 10×10 世界、中央障碍、起点(1,1)↔终点(9,9)、固定种子可复现:两树各绕障碍一侧、CONNECT 接上、拼出 12 段路径。采样/最近点/迈步/贪心连接/碰撞全真算。连「RRT(单树)/RRT*(最优)/PRM(多查询)/Dubins(车上两点转移)」。详见讲解卡。',
+  bounds: [
+    'RRT-Connect:双向两棵树(起点树+终点树)+贪心 CONNECT;是 MoveIt/OMPL 机械臂规划默认',
+    'EXTEND:采样、当前树朝采样点迈一步得 q_new(撞障碍丢);CONNECT:另一棵树朝 q_new 连续迈步(一次走一串)直到够到或撞障碍',
+    '两树相遇→回溯拼出完整路径;没相遇→交换两树再来。双向+贪心比单树 RRT 快很多',
+    '概率完备但不最优(路径歪、要后处理平滑或双向 RRT*);高维关节空间照用。连 RRT/RRT*/PRM/Dubins',
+  ],
+  tabs: [{ id: 'rc', label: '双向长树' }], Stage: RrtConnectStage, whyInRail: true,
+  tone: s => (s.phase === 'done' ? { key: 'good', label: '两树相遇' }
+    : s.op === 'reject' ? { key: 'bad', label: 'EXTEND 撞障碍' }
+    : s.op === 'connect' ? { key: 'idle', label: 'CONNECT 未接上' }
+    : s.op === 'extend' ? { key: 'idle', label: `EXTEND ${s.extendS ? '起点' : '终点'}树` }
+    : { key: 'idle', label: '双向搜索' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 21)),
+  tickLabel: s => (s.phase === 'done' ? '接' : s.op === 'reject' ? '丢' : s.op === 'connect' ? 'C' : s.op === 'extend' ? 'E' : 'RC'),
+  readouts: s => [
+    { label: '起点树 / 终点树', value: `${s.treeS.length} / ${s.treeG.length} 节点` },
+    { label: '本步', value: s.op === 'extend' ? `EXTEND ${s.extendS ? '起点' : '终点'}树` : s.op === 'connect' ? `CONNECT ${s.extendS ? '终点' : '起点'}树` : s.op === 'reject' ? 'EXTEND 撞障碍' : s.op === 'summary' ? '两树相遇' : '就绪' },
+    { label: '丢弃', value: `${s.rejected}`, tone: s.rejected > 0 ? 'bad' : undefined },
+    { label: '路径', value: s.path ? `${s.path.length - 1} 段` : '—', tone: s.found ? 'good' : undefined },
+  ],
+}
 const rrt: Experiment<RRTState> = {
   id: 'rrt', group: '运动规划', title: 'RRT 运动规划', subtitle: '采样式避障：随机长树绕障碍到终点',
   kernel: rrtKernel, defaultDoc: { kind: 'rrt', params: {}, entities: [], streams: [] }, params: [],
@@ -7661,7 +7688,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, pinhole, pointcloud, stereo, handeye, vo, pnp, icp, slam, impedance, mpc, pid, rrt, rrtstar, prm, potentialfield, chomp, trapezoid, gjk, dubins, mdp, qlearning, policygrad, ppo, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
+  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, pinhole, pointcloud, stereo, handeye, vo, pnp, icp, slam, impedance, mpc, pid, rrt, rrtconnect, rrtstar, prm, potentialfield, chomp, trapezoid, gjk, dubins, mdp, qlearning, policygrad, ppo, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
 ] as unknown as AnyExperiment[]
 
 /**

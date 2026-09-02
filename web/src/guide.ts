@@ -1020,6 +1020,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { stage: string; bestType: string; len: number }; return st.stage === 'done' ? `最优 ${st.bestType}` : st.stage === 'segments' ? `${st.bestType} 三段` : st.stage === 'best' ? `${st.bestType}=${st.len}` : st.stage === 'words' ? '四词算长度' : st.stage === 'circles' ? '转向圆' : '非完整约束' },
     try: [{ act: '切「终点朝上」', watch: '最优 LSL：左转0.464→直2.236→左转1.107，总长 3.807。' }, { act: '切「终点朝下」', watch: '同起终位置、只改朝向，最优就变 LSR：1.571→直1→右转3.142，总长 5.712。' }, { act: '看转向圆', watch: '起/终各有左右两个半径 R 的圆；一条 CSC=起点某圆→公切线直线→终点某圆。' }], terms: [],
   },
+  rrtconnect: {
+    question: '单树 RRT 从起点慢慢长到终点。怎么用两棵树两头对着挖、把规划加速？',
+    read: [{ at: '世界图', is: '绿=起点树、红=终点树、q_new/CONNECT 高亮、相遇后拼路径。', anchor: '.fk-svg' }, { at: '读数', is: '两树节点数、本步 EXTEND/CONNECT。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { op: string; phase: string; extendS: boolean; treeS: unknown[]; treeG: unknown[]; qnew: { x: number; y: number } | null; connectPath: { x: number; y: number }[] | null; rejected: number; path: { x: number; y: number }[] | null }; return [
+      { k: '本步输入', v: st.op === 'intro' ? '起点树、终点树各一个根' : st.op === 'extend' ? `EXTEND ${st.extendS ? '起点' : '终点'}树、一个采样点` : st.op === 'connect' ? `q_new=(${st.qnew?.x},${st.qnew?.y})、另一棵树最近节点` : st.op === 'reject' ? '迈步撞障碍/出界' : '两树相遇点' },
+      { k: '判定规则', v: `EXTEND：当前树朝采样点迈一步得 q_new（撞障碍丢）；CONNECT：另一棵树朝 q_new 连续迈步直到够到（相遇）或撞障碍；相遇拼路径、否则交换两树。` },
+      { k: '本步结果', v: st.op === 'intro' ? '双向两棵树 + 贪心 CONNECT' : st.op === 'extend' ? `${st.extendS ? '起点' : '终点'}树加 q_new=(${st.qnew?.x},${st.qnew?.y})、共 ${st.extendS ? st.treeS.length : st.treeG.length} 节点` : st.op === 'connect' ? `CONNECT 贪心走了 ${(st.connectPath?.length ?? 1) - 1} 步、没够到 q_new → 交换两树` : st.op === 'reject' ? `EXTEND 撞障碍、丢弃并交换（累计丢 ${st.rejected}）` : `CONNECT 够到 q_new、两树相遇 → 拼出 ${(st.path?.length ?? 1) - 1} 段路径 ✓` },
+    ] },
+    verdict: (s: never) => { const st = s as { phase: string; op: string; extendS: boolean }; return st.phase === 'done' ? '两树相遇' : st.op === 'reject' ? 'EXTEND 撞障碍' : st.op === 'connect' ? 'CONNECT 未接上' : st.op === 'extend' ? `EXTEND ${st.extendS ? '起点' : '终点'}树` : '双向搜索' },
+    try: [{ act: '看 EXTEND', watch: '当前树朝采样点迈一步得 q_new，撞障碍就丢、交换两树。' }, { act: '看 CONNECT', watch: '另一棵树朝 q_new 连续迈步(一次走一串、不是一步)——这就是它比单树 RRT 快的原因。' }, { act: '看相遇', watch: 'CONNECT 够到 q_new、两树接上，从相遇点回溯拼出起点→终点整条路。' }], terms: [],
+  },
   prm: {
     question: 'RRT 每次朝一个目标长一棵树。要在同一个固定环境里反复规划不同起终点，怎么才不用每次重来？',
     read: [{ at: '路图', is: '障碍+节点+边(灰=路图/红虚=被挡/绿=最短路)。', anchor: '.pm-svg' }, { at: '连边块', is: 'k 近邻+碰撞检测。', anchor: '.pm-r' }, { at: '结局横幅', is: '连通找到路/断开。', anchor: '.pm-out' }],

@@ -6039,3 +6039,18 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .pn-n{font-family:var(--mono);color:var(--now);font-weight:700;margin-right:6px}
 .pn-goodc{color:var(--hit)}
 .pn-badc{color:var(--miss)}
+
+/* rrtconnect · 双向 RRT-Connect */
+.scdn.rc-sc{color:var(--hit)}
+.scdn.rc-gc{color:var(--miss)}
+.rc-edgeS{stroke:color-mix(in srgb,var(--hit) 55%,transparent);stroke-width:1.4}
+.rc-edgeG{stroke:color-mix(in srgb,var(--miss) 55%,transparent);stroke-width:1.4}
+.rc-nodeS{fill:var(--hit)}
+.rc-nodeG{fill:var(--miss)}
+.rc-path{stroke:var(--now);stroke-width:3;stroke-linejoin:round}
+.rc-connect{stroke:var(--now);stroke-width:2;stroke-dasharray:4 2}
+.rc-sample{fill:var(--dim)}
+.rc-qnew{fill:none;stroke:var(--now);stroke-width:2}
+.rc-start{fill:var(--hit)}
+.rc-goal{fill:none;stroke:var(--miss);stroke-width:2}
+.rc-goal.hit{fill:var(--miss)}

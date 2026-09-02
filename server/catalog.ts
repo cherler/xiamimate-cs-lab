@@ -139,6 +139,7 @@ import { ukfKernel } from '../src/kernels/ukf.ts'
 import { complementaryKernel } from '../src/kernels/complementary.ts'
 import { pidKernel } from '../src/kernels/pid.ts'
 import { rrtKernel } from '../src/kernels/rrt.ts'
+import { rrtconnectKernel } from '../src/kernels/rrtconnect.ts'
 import { rrtstarKernel } from '../src/kernels/rrtstar.ts'
 import { potentialfieldKernel } from '../src/kernels/potentialfield.ts'
 import { chompKernel } from '../src/kernels/chomp.ts'
@@ -3419,6 +3420,41 @@ export const CATALOG: CatalogEntry[] = [
         ask: 'RRT 找到的路径是不是最短/最优的？它的理论保证是什么?', kind: 'choice',
         compute: () => ({ answer: 'RRT 概率完备(采样够多迟早找到一条可行路)，但不最优——随机采样长出的路径歪歪扭扭、通常不是最短的，要后处理平滑，或用 RRT*(边长树边重接父节点)求近似最优', step: 19, evidence: '本例回溯出的 8 段路径能到终点但不是最短；换种子路径还不一样' }),
         distractors: () => ['RRT 保证找到最短路径', 'RRT 既不完备也无任何保证', 'RRT 总是找到唯一的一条路'],
+      },
+    ],
+  },
+  {
+    id: 'rrtconnect', title: 'RRT-Connect 双向规划', kernel: rrtconnectKernel as Kernel<unknown>, doc: trivialDoc('rrtconnect'),
+    facts: [
+      {
+        id: 'rc_fast', label: 'RRT-Connect 为什么快',
+        ask: 'RRT-Connect 相比单树 RRT 主要快在哪?', kind: 'choice',
+        compute: () => ({ answer: '两个改动:①双向——一棵树从起点长、一棵从终点长,两头对着挖、搜索空间对半分;②贪心 CONNECT——让另一棵树朝对方新节点连续迈步(一次走一串、不是一步)、直奔过去。所以通常比单树 RRT 快好几倍,是 MoveIt/OMPL 机械臂规划默认', step: 1, evidence: '双向两棵树 + 贪心 CONNECT(一次走一串)' }),
+        distractors: () => ['用了更快的随机数生成器', '不做碰撞检测所以快', '把障碍预先算出来避开'],
+      },
+      {
+        id: 'rc_extend', label: 'EXTEND 和 CONNECT 的区别',
+        ask: 'RRT-Connect 里 EXTEND 和 CONNECT 有什么区别?', kind: 'choice',
+        compute: () => ({ answer: 'EXTEND 是当前树朝随机采样点只迈一步得到 q_new(撞障碍就丢);CONNECT 是让另一棵树朝这个 q_new 连续迈步、一路走到够到 q_new(相遇)或撞障碍才停。CONNECT 的贪心一次走一串,是加速关键', step: 2, evidence: 'EXTEND 迈一步、CONNECT 连续迈步到够到或撞障碍' }),
+        distractors: () => ['两个一样、都只迈一步', 'EXTEND 走一串、CONNECT 走一步', 'CONNECT 是做碰撞检测'],
+      },
+      {
+        id: 'rc_meet', label: '两树怎么拼出路径',
+        ask: 'RRT-Connect 里两棵树相遇后怎么得到完整路径?', kind: 'choice',
+        compute: () => ({ answer: 'CONNECT 让一棵树够到另一棵树的新节点 q_new,两树在此相遇;从相遇点分别沿各自的父指针回溯到起点树根和终点树根,把两段拼起来就是起点→终点的完整路径。没相遇就交换两棵树继续', step: 3, evidence: '相遇点分别回溯到两树根、拼接' }),
+        distractors: () => ['随便连一条直线', '只用起点树、终点树丢掉', '重新从头搜一遍'],
+      },
+      {
+        id: 'rc_optimal', label: 'RRT-Connect 最优吗',
+        ask: 'RRT-Connect 找到的路径是最优的吗?', kind: 'choice',
+        compute: () => ({ answer: '不是。和 RRT 一样概率完备(采样够多迟早找到可行路)但不最优——拼出的路径歪歪扭扭、不是最短,要后处理平滑,或用双向的 RRT*-Connect/BIT* 求近似最优', step: 4, evidence: '概率完备但不最优、路径要平滑' }),
+        distractors: () => ['是、保证最短路径', '既不完备也无保证', '总是找到唯一一条路'],
+      },
+      {
+        id: 'rc_use', label: 'RRT-Connect 用在哪',
+        ask: 'RRT-Connect 典型用在哪?', kind: 'choice',
+        compute: () => ({ answer: '机械臂在高维关节空间(6/7 维)的运动规划,是 MoveIt/OMPL 的默认规划器;适合起点终点位形都已知、要快速找一条可行路的场景。车式机器人用时,两点之间的迈步/连接要换成满足转弯半径的 Dubins/Reeds-Shepp 曲线', step: 4, evidence: 'MoveIt/OMPL 默认、机械臂关节空间规划' }),
+        distractors: () => ['给点云做配准', '数据库查询优化', '相机标定'],
       },
     ],
   },
