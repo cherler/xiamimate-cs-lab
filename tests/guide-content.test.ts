@@ -394,6 +394,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { i: 2, step: 2, stage: 'connect', ...base, showSample: true, showConnect: true, showQuery: false, showOut: false, phase: 'run' as const, focus: '连边' },
       b: { i: 3, step: 3, stage: 'query', ...base, showSample: true, showConnect: true, showQuery: true, showOut: false, phase: 'run' as const, focus: '查询' },
     } })(),
+    mdp: (() => { const iters = [{ A: 0, B: 0, C: 0, G: 0 }, { A: 0, B: 0, C: 1, G: 0 }, { A: 0, B: 0.9, C: 1, G: 0 }, { A: 0.81, B: 0.9, C: 1, G: 0 }, { A: 0.81, B: 0.9, C: 1, G: 0 }]; const base = { gam: 'far', gamLabel: '远视 γ=0.9', gamma: 0.9, states: ['A', 'B', 'C', 'G'], iters, vFinal: { A: 0.81, B: 0.9, C: 1, G: 0 }, policy: { A: '→', B: '→', C: '→' }, nIters: 4, bkC: { right: 1, left: 0, pick: 1 }, log: '' }; return {
+      doc: { kind: 'mdp', params: { gamma: '远视' }, entities: [], streams: [] },
+      a: { i: 3, step: 3, stage: 'iterate', ...base, showComp: true, showBellman: true, showIter: true, showConv: false, phase: 'run' as const, focus: '值迭代' },
+      b: { i: 4, step: 4, stage: 'converge', ...base, showComp: true, showBellman: true, showIter: true, showConv: true, phase: 'run' as const, focus: '收敛' },
+    } })(),
     queryplan: {
       doc: { kind: 'queryplan', params: {}, entities: [], streams: [] },
       a: { step: 1, op: 'path', query: 'q', revealed: 1, cur: 0, chosen: -1, paths: [{ name: '全表扫描', type: 'ALL', key: '—', rows: 10000, note: 'x' }, { name: '走 idx(city)', type: 'ref', key: 'idx_city', rows: 500, note: 'x' }, { name: '走 idx(age)', type: 'range', key: 'idx_age', rows: 6000, note: 'x' }], phase: 'run', focus: '候选路径：全表扫描（type=ALL，估扫 10000 行）' },

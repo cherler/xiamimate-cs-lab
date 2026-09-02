@@ -5726,3 +5726,30 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .pm-out{border-radius:8px;padding:8px 10px;font-size:var(--t-ui);line-height:1.6}
 .pm-out.pm-oreach{background:color-mix(in srgb,var(--hit) 8%,transparent);border:1px solid color-mix(in srgb,var(--hit) 35%,var(--line))}
 .pm-out.pm-obad{background:color-mix(in srgb,var(--miss) 8%,transparent);border:1px solid color-mix(in srgb,var(--miss) 35%,var(--line))}
+
+/* mdp · 贝尔曼值迭代 */
+.scdn.md-hot{color:var(--now)}
+.md-svg{margin:6px 0;max-width:340px}
+.md-arrow{stroke:var(--dim);stroke-width:1.5}
+.md-albl{fill:var(--hit);font:9px var(--mono);text-anchor:middle}
+.md-node{fill:var(--panel-2);stroke:var(--now);stroke-width:1.5}
+.md-goal{fill:color-mix(in srgb,var(--hit) 20%,var(--panel-2));stroke:var(--hit);stroke-width:1.5}
+.md-nlbl{fill:var(--ink);font:11px var(--sans);text-anchor:middle;font-weight:700}
+.md-val{fill:var(--dim);font:9px var(--mono);text-anchor:middle}
+.md-val.md-vhot{fill:var(--now);font-weight:700}
+.md-pol{fill:var(--hit);font:11px var(--sans);text-anchor:middle;font-weight:700}
+.md-gt{fill:var(--hit);font:9px var(--sans);text-anchor:middle}
+.md-flow{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+.md-blk{border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--panel-2);font-size:var(--t-ui);line-height:1.7;font-variant-numeric:tabular-nums}
+.md-blk.md-off{opacity:.4}
+.md-n{font-family:var(--mono);color:var(--now);font-weight:700;margin-right:6px}
+.md-g{color:var(--hit)}
+.md-itbox{border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--panel-2)}
+.md-ith{font:var(--t-meta) var(--sans);color:var(--faint);margin-bottom:5px}
+.md-ittable{border-collapse:collapse;width:100%;font-size:var(--t-ui);font-variant-numeric:tabular-nums}
+.md-ittable th,.md-ittable td{border:1px solid var(--line);padding:2px 10px;text-align:right}
+.md-ittable th{background:var(--sunk-1);color:var(--dim);font-weight:600;font-size:var(--t-meta)}
+.md-ittable td:first-child,.md-ittable th:first-child{text-align:left;font-family:var(--mono);color:var(--faint)}
+.md-ittable td.md-changed{background:color-mix(in srgb,var(--now) 12%,transparent);color:var(--now);font-weight:700}
+.md-ittable tr.md-final td{border-color:color-mix(in srgb,var(--hit) 30%,var(--line))}
+.md-conv{border:1px solid color-mix(in srgb,var(--hit) 30%,var(--line));border-radius:8px;padding:8px 10px;background:color-mix(in srgb,var(--hit) 5%,transparent);font-size:var(--t-ui);line-height:1.6}

@@ -998,6 +998,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { stage: string; connected: boolean; pathLen: number }; return st.stage === 'done' ? '建图+查询' : st.stage === 'outcome' ? (st.connected ? '连通' : '断开') : st.stage === 'query' ? (st.connected ? `路长${st.pathLen}` : '无路') : st.stage === 'connect' ? '连k近邻' : st.stage === 'sample' ? '采样' : '多查询' },
     try: [{ act: '切「够密」', watch: '6 节点、路图连通；最短的 B-D 被障碍挡 → 绕上方 S-A-C-D-G，长 9.48。' }, { act: '切「太稀」', watch: '少了障碍上方的 C，路图在障碍附近断成两块 → S 到不了 G，要加采样。' }, { act: '想 vs RRT', watch: 'PRM 多查询(建一次路图答多次)；RRT 单查询(每次朝一目标重长树)。' }], terms: [],
   },
+  mdp: {
+    question: '强化学习怎么衡量"一个状态有多好"？贝尔曼方程和值迭代在算什么？',
+    read: [{ at: '状态链', is: 'A→B→C→G，每状态的值 V 和策略。', anchor: '.md-svg' }, { at: '值迭代表', is: '每次扫描后的 V，值从 G 往回传。', anchor: '.md-ittable' }, { at: '收敛框', is: 'V*=γ^步数·1、最优策略。', anchor: '.md-conv' }],
+    step: (s: never) => { const st = s as { stage: string; gamLabel: string; gamma: number; iters: Record<string, number>[]; vFinal: Record<string, number>; policy: Record<string, string>; nIters: number; bkC: { left: number } }; return [
+      { k: '本步输入', v: st.stage === 'intro' ? `折扣 ${st.gamLabel}` : st.stage === 'components' ? '状态/动作/奖励/γ' : st.stage === 'bellman' ? '状态 C 的邻居值' : st.stage === 'iterate' ? '反复扫描' : '收敛的 V' },
+      { k: '判定规则', v: `MDP⟨S,A,P,R,γ⟩、最大化 Σγ^t r_t；贝尔曼 V*(s)=max_a[R+γV*(s')]；值迭代反复备份直到收敛；argmax 得最优策略。` },
+      { k: '本步结果', v: st.stage === 'intro' ? 'V(s)=期望折扣回报、满足贝尔曼' : st.stage === 'components' ? `链 A→B→C→G、C→G 得 +1、γ=${st.gamma}` : st.stage === 'bellman' ? `V(C)=max(→1+γ·0, ←0+γ·V(B))=max(1,${st.bkC.left})=1` : st.stage === 'iterate' ? `值从 G 往回传:iter1 C=${st.iters[1]?.C}、iter2 B=${st.iters[2]?.B}、iter3 A=${st.iters[3]?.A}` : `收敛 V*=[${st.vFinal.A},${st.vFinal.B},${st.vFinal.C}]、策略全 →（V=γ^步数·1）` },
+    ] },
+    verdict: (s: never) => { const st = s as { stage: string; vFinal: Record<string, number> }; return st.stage === 'done' ? 'V=max[R+γV]' : st.stage === 'converge' ? `V*(A)=${st.vFinal.A}` : st.stage === 'iterate' ? '值往回传' : st.stage === 'bellman' ? '贝尔曼备份' : st.stage === 'components' ? 'MDP五要素' : 'RL地基' },
+    try: [{ act: '切「远视 γ=0.9」', watch: '值从 G 往回传：C=1、B=0.9、A=0.81(γ²)，远处 +1 也看重。' }, { act: '切「短视 γ=0.5」', watch: 'V=[0.25,0.5,1]，γ 小、远处 +1 折得狠、更顾眼前。' }, { act: '看值迭代表', watch: '每扫一次、值往回传一格：iter1 C、iter2 B、iter3 A，然后收敛。' }], terms: [],
+  },
   queryplan: {
     question: '同一个查询有好几条路可走，数据库优化器凭什么选其中一条？',
     read: [{ at: '候选路径', is: '每条访问路径的 type + 估扫描行数代价条。', anchor: '.qp-paths' }, { at: 'EXPLAIN', is: '末步选中路径的 type/key/rows。', anchor: '.qp-explain' }],

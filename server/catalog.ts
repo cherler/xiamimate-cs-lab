@@ -137,6 +137,7 @@ import { rrtstarKernel } from '../src/kernels/rrtstar.ts'
 import { potentialfieldKernel } from '../src/kernels/potentialfield.ts'
 import { trapezoidKernel } from '../src/kernels/trapezoid.ts'
 import { prmKernel } from '../src/kernels/prm.ts'
+import { mdpKernel } from '../src/kernels/mdp.ts'
 import { objectstoreKernel } from '../src/kernels/objectstore.ts'
 import { queryplanKernel } from '../src/kernels/queryplan.ts'
 import { wildcardKernel } from '../src/kernels/wildcard.ts'
@@ -2794,6 +2795,41 @@ export const CATALOG: CatalogEntry[] = [
         ask: 'PID 控制的 P、I、D 三项分别按什么量、起什么作用?', kind: 'choice',
         compute: () => ({ answer: 'P=Kp·e 按当前误差使劲(越远越使劲)；D=Kd·误差变化率提供阻尼(快到时反向刹车、防冲过头);I=Ki·误差累计消除稳态误差(顶掉重力等恒定扰动)。P管现在、I管过去累计、D管趋势', step: 14, evidence: '本例加 D=Kd·误差变化率(负=刹车)后，位置平稳收敛到目标不震荡' }),
         distractors: () => ['三项都按当前误差，只是系数不同', 'D 让响应更快、P 提供阻尼', 'I 提供阻尼、D 消除稳态误差'],
+      },
+    ],
+  },
+  {
+    id: 'mdp', title: 'MDP · 贝尔曼值迭代', kernel: mdpKernel as Kernel<unknown>, doc: trivialDoc('mdp'),
+    facts: [
+      {
+        id: 'mdp_bellman', label: '贝尔曼最优方程在说什么',
+        ask: '贝尔曼最优方程 V*(s)=max_a[R+γV*(s\')] 在说什么?', kind: 'choice',
+        compute: () => ({ answer: '一个状态的值=选最好的动作、拿到即时奖励 R + 折扣 γ 后的下一个状态的值。它是递归的(自己的值用邻居的值定义),表达"最优地走下去能拿多少折扣回报"', step: 3, evidence: 'V=即时奖励+折扣未来值;取 max 动作' }),
+        distractors: () => ['一个状态的值=所有动作奖励的平均', '一个状态的值=离目标的欧氏距离', '一个状态的值=转移概率之和'],
+      },
+      {
+        id: 'mdp_valueiter', label: '值迭代怎么收敛',
+        ask: '值迭代是怎么求出最优值的?值怎么传播?', kind: 'choice',
+        compute: () => ({ answer: '反复做贝尔曼备份 V_{k+1}(s)=max_a[R+γV_k(s\')] 直到不再变。值像水波从目标状态往回扩散:第1次紧挨目标的状态变、第2次再往回一格……每扫一次信息往回传一格,收敛后 argmax 得最优策略', step: 4, evidence: '值从目标往回传;iter1 C=1、iter2 B=γ、iter3 A=γ²' }),
+        distractors: () => ['从起点往目标正向传播', '一次扫描就得到最优', '随机更新直到稳定'],
+      },
+      {
+        id: 'mdp_gamma', label: '折扣 γ 的作用',
+        ask: 'MDP 里的折扣 γ 是干什么的?γ 大和小有什么区别?', kind: 'choice',
+        compute: () => ({ answer: 'γ∈[0,1) 折扣未来奖励(累积回报 Σγ^t r_t),让近期奖励更值钱、也保证无穷步和收敛。γ 越大越远视(远处奖励也看重、本例 A=γ²=0.81)、越小越短视(只顾眼前、γ=0.5 时 A 只值 0.25)', step: 5, evidence: 'V=γ^步数·奖励;γ 大远视、小短视' }),
+        distractors: () => ['γ 是学习率、控制更新快慢', 'γ 是探索率', 'γ 只是防止除零'],
+      },
+      {
+        id: 'mdp_vq', label: 'V 和 Q 的区别',
+        ask: '值函数 V(s) 和 Q(s,a) 有什么区别?为什么 Q 更常用?', kind: 'choice',
+        compute: () => ({ answer: 'V(s)是状态值、Q(s,a)是状态-动作值(在 s 做 a、之后最优的回报)。Q 更常用:argmax_a Q(s,a) 直接给出策略、不需要转移模型 P;用 V 选动作还得知道 P 才能算下个状态', step: 6, evidence: 'Q 选动作免模型;V 选动作要 P' }),
+        distractors: () => ['V 和 Q 完全等价', 'V 是动作值、Q 是状态值', 'Q 只用于有模型情形'],
+      },
+      {
+        id: 'mdp_num', label: 'A 状态的最优值',
+        ask: '4 状态链 A→B→C→G、C→G 得 +1、γ=0.9，值迭代收敛后 V*(A) 约为多少?(两位小数)', kind: 'number',
+        compute: t => { const f = t as unknown as { vFinal?: Record<string, number> }[]; const l = f.find(x => x.vFinal && x.vFinal.A); const v = l?.vFinal?.A != null ? Math.round(l.vFinal.A * 100) / 100 : 0.81; return ({ answer: String(v), step: 5, evidence: `A 离 G 有 3 步、V(A)=γ³?不,C→G才有奖励:V(A)=γ²·1=0.9²=${v}(A→B→C 两步折扣、C 拿 +1)` }) },
+        distractors: () => ['0.9', '1.0', '0.5', '0.25'],
       },
     ],
   },

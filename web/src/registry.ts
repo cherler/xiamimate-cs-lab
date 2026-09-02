@@ -365,6 +365,7 @@ import { rrtstarKernel, type RRTSState } from '@engine/kernels/rrtstar.ts'
 import { potentialfieldKernel, type PotState } from '@engine/kernels/potentialfield.ts'
 import { trapezoidKernel, type TrapState } from '@engine/kernels/trapezoid.ts'
 import { prmKernel, type PrmState } from '@engine/kernels/prm.ts'
+import { mdpKernel, type MdpState } from '@engine/kernels/mdp.ts'
 import { quatKernel, type QuatState } from '@engine/kernels/quat.ts'
 import { trajectoryKernel, type TrajState } from '@engine/kernels/trajectory.ts'
 import { icpKernel, type ICPState } from '@engine/kernels/icp.ts'
@@ -401,6 +402,7 @@ import { RrtStarStage } from './stages/RrtStarStage.tsx'
 import { PotentialFieldStage } from './stages/PotentialFieldStage.tsx'
 import { TrapezoidStage } from './stages/TrapezoidStage.tsx'
 import { PrmStage } from './stages/PrmStage.tsx'
+import { MdpStage } from './stages/MdpStage.tsx'
 import { QuatStage } from './stages/QuatStage.tsx'
 import { TrajStage } from './stages/TrajStage.tsx'
 import { ICPStage } from './stages/ICPStage.tsx'
@@ -7042,6 +7044,34 @@ const slam: Experiment<SLAMState> = {
   ],
 }
 
+// ── 具身智能 · 机器人强化学习 ──
+const mdp: Experiment<MdpState> = {
+  id: 'mdp', group: '机器人强化学习', title: 'MDP · 贝尔曼值迭代', subtitle: '强化学习地基：V(s)=max_a[R+γV(s′)]，值从目标一步步往回传',
+  kernel: mdpKernel, defaultDoc: { kind: 'mdp', params: { gamma: '远视' }, entities: [], streams: [] },
+  params: [{ key: 'gamma', label: '折扣 γ', kind: 'enum', options: ['远视', '短视'] }],
+  paramsNote: '强化学习把问题建成 **MDP=⟨S 状态,A 动作,P 转移,R 奖励,γ 折扣⟩**,目标最大化**累积折扣回报 Σγ^t r_t**。**值函数** V(s)=从该状态出发的期望折扣回报,满足**贝尔曼(最优)方程 V\\*(s)=max_a[R+γV\\*(s\')]**(值=选最好动作、即时奖励+折扣下个状态值)。**值迭代**:反复做贝尔曼备份直到收敛。本例确定性 4 状态链 A→B→C→G(C→G 得 +1),**值从目标 G 一步步往回传**(iter1 C=1、iter2 B=γ、iter3 A=γ²);收敛后 argmax 得最优策略(全朝 G)。切「折扣 γ」看 0.9 远视/0.5 短视怎么改变对未来的看重(V=γ^步数·1)。全现算。连「Q-learning(免模型)/PPO/miniduck」。详见讲解卡。',
+  bounds: [
+    'MDP=⟨S,A,P,R,γ⟩、目标最大化累积折扣回报 Σγ^t r_t;值函数 V(s)=期望折扣回报',
+    '贝尔曼最优方程 V*(s)=max_a[R+γV*(s\')]:值=即时奖励+折扣后下个状态值;值迭代反复备份收敛、值从目标往回传',
+    '收敛后 argmax 得最优策略;V=γ^(到目标步数)·奖励,γ 越大越远视(看重远期)、越小越短视',
+    'V(s) vs Q(s,a)(Q 更常用、argmax Q 直接给策略免模型);有模型(值迭代要知 P/R)vs 免模型(Q-learning 从经验学)。连 PPO/SAC/miniduck。参考:Sutton&Barto',
+  ],
+  tabs: [{ id: 'md', label: '值迭代逐步跑' }], Stage: MdpStage, whyInRail: true,
+  tone: s => (s.stage === 'done' ? { key: 'good', label: 'V=max[R+γV]' }
+    : s.stage === 'converge' ? { key: 'good', label: `V*=[${s.vFinal.A},${s.vFinal.B},${s.vFinal.C}]` }
+    : s.stage === 'iterate' ? { key: 'idle', label: '值往回传' }
+    : s.stage === 'bellman' ? { key: 'idle', label: '贝尔曼备份' }
+    : s.stage === 'components' ? { key: 'idle', label: 'MDP 五要素' }
+    : { key: 'idle', label: 'RL 地基' }),
+  metric: s => (s.stage === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => ({ intro: 'M', components: '素', bellman: '备', iterate: '迭', converge: '敛', done: '成' }[s.stage] ?? '·'),
+  readouts: s => [
+    { label: '折扣 γ', value: `${s.gamma}（${s.gamLabel.split(' ')[0]}）` },
+    { label: '收敛扫描次数', value: s.showIter ? `${s.nIters}` : '—' },
+    { label: 'V*(A,B,C)', value: s.showConv ? `[${s.vFinal.A}, ${s.vFinal.B}, ${s.vFinal.C}]` : '—', tone: s.showConv ? 'good' : undefined },
+    { label: '最优策略 π*', value: s.showConv ? `A${s.policy.A} B${s.policy.B} C${s.policy.C}` : '—' },
+  ],
+}
 // ── 具身智能 · 具身学习 ──
 const bc: Experiment<BCState> = {
   id: 'bc', group: '具身学习', title: '模仿学习 · 行为克隆', subtitle: '从专家示范学策略；分布漂移→复合误差',
@@ -7283,7 +7313,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, icp, slam, impedance, mpc, pid, rrt, rrtstar, prm, potentialfield, trapezoid, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
+  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, icp, slam, impedance, mpc, pid, rrt, rrtstar, prm, potentialfield, trapezoid, mdp, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
 ] as unknown as AnyExperiment[]
 
 /**
@@ -7455,7 +7485,7 @@ export const DISCIPLINES: Discipline[] = [
     sub: '机器人学 → 感知 · 控制 · 规划 → 具身智能',
     // 从零到具身智能工程师：机器人学基础(运动学/雅可比)→感知(卡尔曼/SLAM)→控制(PID/力控)
     // →规划(RRT)→具身学习(模仿/RL/VLA)→开源实战(LeRobot/MuJoCo)。分组随实验增量补齐。
-    groups: ['机器人学基础', '刚体动力学', '机器人感知', '机器人控制', '运动规划', '具身学习', '具身项目实战'],
+    groups: ['机器人学基础', '刚体动力学', '机器人感知', '机器人控制', '运动规划', '机器人强化学习', '具身学习', '具身项目实战'],
     guide: { from: '一次关节转动', to: '具身智能工程师', toIcon: '🦾' },
   },
   {
