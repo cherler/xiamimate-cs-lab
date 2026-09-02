@@ -374,6 +374,7 @@ import { chompKernel, type ChompState } from '@engine/kernels/chomp.ts'
 import { gjkKernel, type GjkState } from '@engine/kernels/gjk.ts'
 import { dubinsKernel, type DubinsState } from '@engine/kernels/dubins.ts'
 import { rrtconnectKernel, type RRTCState } from '@engine/kernels/rrtconnect.ts'
+import { dstarliteKernel, type DStarState } from '@engine/kernels/dstarlite.ts'
 import { prmKernel, type PrmState } from '@engine/kernels/prm.ts'
 import { mdpKernel, type MdpState } from '@engine/kernels/mdp.ts'
 import { qlearningKernel, type QState } from '@engine/kernels/qlearning.ts'
@@ -424,6 +425,7 @@ import { ChompStage } from './stages/ChompStage.tsx'
 import { GjkStage } from './stages/GjkStage.tsx'
 import { DubinsStage } from './stages/DubinsStage.tsx'
 import { RrtConnectStage } from './stages/RrtConnectStage.tsx'
+import { DStarLiteStage } from './stages/DStarLiteStage.tsx'
 import { PrmStage } from './stages/PrmStage.tsx'
 import { MdpStage } from './stages/MdpStage.tsx'
 import { QlearningStage } from './stages/QlearningStage.tsx'
@@ -7125,6 +7127,32 @@ const rrtconnect: Experiment<RRTCState> = {
     { label: '路径', value: s.path ? `${s.path.length - 1} 段` : '—', tone: s.found ? 'good' : undefined },
   ],
 }
+const dstarlite: Experiment<DStarState> = {
+  id: 'dstarlite', group: '运动规划', title: 'D* Lite 增量重规划', subtitle: '地图变了只局部修复旧计划、不从头重搜：g/rhs + 只重算受影响的格',
+  kernel: dstarliteKernel, defaultDoc: { kind: 'dstarlite', params: {}, entities: [], streams: [] }, params: [],
+  paramsNote: '机器人在**部分已知/动态**地图里走,边走边用传感器发现新障碍。每次都从头 A* / Dijkstra 重搜太浪费。**D* Lite(Koenig & Likhachev)** 是增量式重规划:改动只让**局部失效、只修那一小块**。核心两量:**g(s)**=已知从起点到 s 的最优代价;**rhs(s)**=一步前瞻 min_邻居(g+边权)(起点 rhs=0);**局部一致** g=rhs。边权一变,受影响格 g≠rhs(不一致)→进优先队列、只重算这些格及其下游、其余 g 原样复用。本例 7×5 栅格、起点(0,2)→终点(6,2)、四连通(此处 h=0=增量 Dijkstra、加 h>0 即 A* 制导的 D* Lite):初次规划算出整张 g 表、直穿第 2 行(代价 6、展开 35 格);(3,2) 突然变障碍 → 只有 4 格受影响、增量修复只展开 6 格、新路绕第 3 行(代价 8);从头重搜要 34 格——地图越大改动越局部、优势越夸张。g/rhs/展开全真算。连「A*(启发式)/RRT(采样式)/SLAM(边走边建图触发重规划)」。详见讲解卡。',
+  bounds: [
+    'D* Lite:增量式重规划,地图变了只局部修复旧计划、不从头重搜;g(从起点最优代价)、rhs(一步前瞻 min 邻居 g+边权)、局部一致 g=rhs',
+    '边权变→受影响格 g≠rhs(不一致)→优先队列→只重算这些格及下游、其余 g 原样复用',
+    '本例(3,2)变障碍:只 4 格 g 变、增量修复展开 6 格(从头重搜 34)、新路代价 6→8;地图越大改动越局部、省得越多',
+    '机器人边走边发现障碍(接 SLAM)用它省巨量计算,动态/未知环境导航标准(火星车、field D*)。h>0 即 A* 制导;vs LPA*(起点会动+km 项)。参考 Koenig & Likhachev 2002',
+  ],
+  tabs: [{ id: 'ds', label: '增量重规划' }], Stage: DStarLiteStage, whyInRail: true,
+  tone: s => (s.stage === 'done' ? { key: 'good', label: `增量 ${s.expInc} vs 从头 ${s.expFull}` }
+    : s.stage === 'compare' ? { key: 'good', label: `复用 ${s.reused} 格` }
+    : s.stage === 'repair' ? { key: 'good', label: `只修 ${s.changed.length} 格` }
+    : s.stage === 'change' ? { key: 'bad', label: '障碍出现在路上' }
+    : s.stage === 'initial' ? { key: 'idle', label: `代价 ${s.gGoal}` }
+    : { key: 'idle', label: '增量重规划' }),
+  metric: s => (s.stage === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => ({ intro: 'D', initial: '规', change: '障', repair: '修', compare: '比', done: '成' }[s.stage] ?? '·'),
+  readouts: s => [
+    { label: '终点 g（路径代价）', value: `${s.gGoal}` },
+    { label: '受影响格数', value: s.showChanged ? `${s.changed.length}` : '—', tone: s.showChanged ? undefined : undefined },
+    { label: '增量修复展开', value: s.showChanged ? `${s.expInc} 格` : '—', tone: s.showChanged ? 'good' : undefined },
+    { label: '从头重搜展开', value: s.showChanged ? `${s.expFull} 格` : '—', tone: s.showChanged ? 'bad' : undefined },
+  ],
+}
 const rrt: Experiment<RRTState> = {
   id: 'rrt', group: '运动规划', title: 'RRT 运动规划', subtitle: '采样式避障：随机长树绕障碍到终点',
   kernel: rrtKernel, defaultDoc: { kind: 'rrt', params: {}, entities: [], streams: [] }, params: [],
@@ -7688,7 +7716,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, pinhole, pointcloud, stereo, handeye, vo, pnp, icp, slam, impedance, mpc, pid, rrt, rrtconnect, rrtstar, prm, potentialfield, chomp, trapezoid, gjk, dubins, mdp, qlearning, policygrad, ppo, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
+  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, pinhole, pointcloud, stereo, handeye, vo, pnp, icp, slam, impedance, mpc, pid, rrt, rrtconnect, rrtstar, prm, potentialfield, chomp, trapezoid, gjk, dubins, dstarlite, mdp, qlearning, policygrad, ppo, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
 ] as unknown as AnyExperiment[]
 
 /**

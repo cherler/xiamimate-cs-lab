@@ -1031,6 +1031,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { phase: string; op: string; extendS: boolean }; return st.phase === 'done' ? '两树相遇' : st.op === 'reject' ? 'EXTEND 撞障碍' : st.op === 'connect' ? 'CONNECT 未接上' : st.op === 'extend' ? `EXTEND ${st.extendS ? '起点' : '终点'}树` : '双向搜索' },
     try: [{ act: '看 EXTEND', watch: '当前树朝采样点迈一步得 q_new，撞障碍就丢、交换两树。' }, { act: '看 CONNECT', watch: '另一棵树朝 q_new 连续迈步(一次走一串、不是一步)——这就是它比单树 RRT 快的原因。' }, { act: '看相遇', watch: 'CONNECT 够到 q_new、两树接上，从相遇点回溯拼出起点→终点整条路。' }], terms: [],
   },
+  dstarlite: {
+    question: '机器人边走边发现新障碍。每发现一个就从头重新规划太浪费——怎么只"修"旧计划受影响的那一小块？',
+    read: [{ at: '栅格 g 表', is: '每格数字=从起点到该格的最优代价；障碍✕、路径高亮。', anchor: '.ds-svg' }, { at: '受影响格', is: '增量修复中 g 值变了的格（橙色高亮）。', anchor: '.ds-chg' }, { at: '读数', is: '增量展开 vs 从头重搜。', anchor: '.scdim' }],
+    step: (s: never) => { const st = s as { stage: string; gGoal: number; expInit: number; changed: string[]; expInc: number; expFull: number; reused: number }; return [
+      { k: '本步输入', v: st.stage === 'intro' ? '会变的地图、g/rhs 两个量' : st.stage === 'initial' ? '起点(0,2)→终点(6,2)' : st.stage === 'change' ? '(3,2) 变障碍、正在路上' : st.stage === 'repair' ? '受影响格进优先队列' : '增量 vs 从头' },
+      { k: '判定规则', v: `g=从起点最优代价、rhs=一步前瞻 min(邻居 g)+边权、局部一致 g=rhs；边权变→受影响格 g≠rhs→只重算它们及下游、其余复用。` },
+      { k: '本步结果', v: st.stage === 'intro' ? 'D* Lite：局部修复、不从头重搜' : st.stage === 'initial' ? `算出整张 g 表、最短路代价 ${st.gGoal}（展开 ${st.expInit} 格）` : st.stage === 'change' ? '路断了：(3,2) 及依赖它的格变得局部不一致(g≠rhs)' : st.stage === 'repair' ? `只 ${st.changed.length} 格 g 变、增量修复展开 ${st.expInc} 格、新路绕行` : `增量 ${st.expInc} 格 vs 从头 ${st.expFull} 格、复用 ${st.reused} 格` },
+    ] },
+    verdict: (s: never) => { const st = s as { stage: string; changed: string[]; expInc: number; expFull: number; reused: number }; return st.stage === 'done' ? `增量 ${st.expInc} vs 从头 ${st.expFull}` : st.stage === 'compare' ? `复用 ${st.reused} 格` : st.stage === 'repair' ? `只修 ${st.changed.length} 格` : st.stage === 'change' ? '障碍出现在路上' : st.stage === 'initial' ? '初次规划' : '增量重规划' },
+    try: [{ act: '看初次规划', watch: '每格算出从起点的最优代价 g，最短路直穿第 2 行、代价 6。' }, { act: '看障碍出现', watch: '(3,2) 变障碍，只有它和依赖它的 (4,2)/(5,2)/(6,2) 变得不一致。' }, { act: '看增量修复', watch: '只重算 4 格(展开 6)、其余 30 格 g 值复用；从头重搜要 34——地图越大差越多。' }], terms: [],
+  },
   prm: {
     question: 'RRT 每次朝一个目标长一棵树。要在同一个固定环境里反复规划不同起终点，怎么才不用每次重来？',
     read: [{ at: '路图', is: '障碍+节点+边(灰=路图/红虚=被挡/绿=最短路)。', anchor: '.pm-svg' }, { at: '连边块', is: 'k 近邻+碰撞检测。', anchor: '.pm-r' }, { at: '结局横幅', is: '连通找到路/断开。', anchor: '.pm-out' }],

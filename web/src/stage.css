@@ -6054,3 +6054,24 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .rc-start{fill:var(--hit)}
 .rc-goal{fill:none;stroke:var(--miss);stroke-width:2}
 .rc-goal.hit{fill:var(--miss)}
+
+/* dstarlite · 增量重规划(栅格 g 表) */
+.scdn.ds-hot{color:var(--now)}
+.scdn.ds-good{color:var(--hit)}
+.scdn.ds-bad{color:var(--miss)}
+.ds-svg{margin:6px 0;background:var(--sunk-1);border:1px solid var(--line);border-radius:8px}
+.ds-cell{fill:var(--panel-2);stroke:var(--line);stroke-width:1}
+.ds-path{fill:color-mix(in srgb,var(--now) 14%,var(--panel-2));stroke:var(--line);stroke-width:1}
+.ds-chg{fill:color-mix(in srgb,var(--now) 26%,transparent);stroke:var(--now);stroke-width:1.4}
+.ds-obs{fill:color-mix(in srgb,var(--ink) 45%,transparent);stroke:var(--line);stroke-width:1}
+.ds-g{fill:var(--dim);font:11px var(--mono);text-anchor:middle}
+.ds-g.ds-gchg{fill:var(--now);font-weight:700}
+.ds-x{fill:var(--panel);font:12px var(--sans);text-anchor:middle;font-weight:700}
+.ds-pline{stroke:var(--now);stroke-width:2.5;stroke-linejoin:round;opacity:.85}
+.ds-start{fill:none;stroke:var(--hit);stroke-width:2.5}
+.ds-goal{fill:none;stroke:var(--miss);stroke-width:2.5}
+.ds-blockmark{fill:none;stroke:var(--miss);stroke-width:2;stroke-dasharray:3 2}
+.ds-legend{display:flex;flex-wrap:wrap;gap:12px;align-items:center;font-size:var(--t-meta);color:var(--faint);margin-top:4px}
+.ds-hotc{color:var(--now)}
+.ds-goodc{color:var(--hit)}
+.ds-badc{color:var(--miss)}

@@ -399,6 +399,7 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   pid: {},
   rrt: {},
   rrtconnect: {},
+  dstarlite: {},
   wildcard: {},
   blockingqueue: {},
   regex: {},

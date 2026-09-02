@@ -369,6 +369,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { i: 1, step: 1, stage: 'voxel', ...base, showVoxel: true, showNbr: false, showCov: false, showPca: false, focus: '下采样' },
       b: { i: 4, step: 4, stage: 'pca', ...base, showVoxel: true, showNbr: true, showCov: true, showPca: true, focus: 'PCA 法线' },
     } })(),
+    dstarlite: (() => { const gB = [[2, 3, 4, 5, 6, 7, 8], [1, 2, 3, 4, 5, 6, 7], [0, 1, 2, 3, 4, 5, 6], [1, 2, 3, 4, 5, 6, 7], [2, 3, 4, 5, 6, 7, 8]] as (number | null)[][]; const gA = [[2, 3, 4, 5, 6, 7, 8], [1, 2, 3, 4, 5, 6, 7], [0, 1, 2, null, 6, 7, 8], [1, 2, 3, 4, 5, 6, 7], [2, 3, 4, 5, 6, 7, 8]] as (number | null)[][]; const base = { W: 7, H: 5, start: [0, 2] as [number, number], goal: [6, 2] as [number, number], block: [3, 2] as [number, number], expInit: 35, expInc: 6, expFull: 34, reused: 30, log: '' }; return {
+      doc: { kind: 'dstarlite', params: {}, entities: [], streams: [] },
+      a: { i: 1, step: 1, stage: 'initial' as const, ...base, grid: gB, path: [[0, 2], [1, 2], [2, 2], [3, 2], [4, 2], [5, 2], [6, 2]] as [number, number][], obstacleOn: false, changed: [], showChanged: false, gGoal: 6, phase: 'run' as const, focus: '初次规划' },
+      b: { i: 3, step: 3, stage: 'repair' as const, ...base, grid: gA, path: [[0, 2], [0, 3], [1, 3], [2, 3], [3, 3], [4, 3], [4, 2], [5, 2], [6, 2]] as [number, number][], obstacleOn: true, changed: ['3,2', '4,2', '5,2', '6,2'], showChanged: true, gGoal: 8, phase: 'run' as const, focus: '增量修复' },
+    } })(),
     rrtconnect: (() => { const base = { W: 10, start: { x: 1, y: 1 }, goal: { x: 9, y: 9 }, obstacles: [{ x0: 2.5, y0: 3, x1: 7, y1: 6.5 }], treeS: [{ x: 1, y: 1, parent: -1 }, { x: 2, y: 2, parent: 0 }, { x: 2.5, y: 2, parent: 1 }], treeG: [{ x: 9, y: 9, parent: -1 }, { x: 8, y: 8, parent: 0 }], extendS: true, sample: { x: 3, y: 2 }, qnew: { x: 2.5, y: 2 }, rejected: 1, found: false, log: '' }; return {
       doc: { kind: 'rrtconnect', params: {}, entities: [], streams: [] },
       a: { i: 1, step: 1, phase: 'grow' as const, op: 'extend' as const, ...base, connectPath: null, connected: false, path: null, focus: 'EXTEND' },

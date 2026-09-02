@@ -140,6 +140,7 @@ import { complementaryKernel } from '../src/kernels/complementary.ts'
 import { pidKernel } from '../src/kernels/pid.ts'
 import { rrtKernel } from '../src/kernels/rrt.ts'
 import { rrtconnectKernel } from '../src/kernels/rrtconnect.ts'
+import { dstarliteKernel } from '../src/kernels/dstarlite.ts'
 import { rrtstarKernel } from '../src/kernels/rrtstar.ts'
 import { potentialfieldKernel } from '../src/kernels/potentialfield.ts'
 import { chompKernel } from '../src/kernels/chomp.ts'
@@ -3455,6 +3456,41 @@ export const CATALOG: CatalogEntry[] = [
         ask: 'RRT-Connect 典型用在哪?', kind: 'choice',
         compute: () => ({ answer: '机械臂在高维关节空间(6/7 维)的运动规划,是 MoveIt/OMPL 的默认规划器;适合起点终点位形都已知、要快速找一条可行路的场景。车式机器人用时,两点之间的迈步/连接要换成满足转弯半径的 Dubins/Reeds-Shepp 曲线', step: 4, evidence: 'MoveIt/OMPL 默认、机械臂关节空间规划' }),
         distractors: () => ['给点云做配准', '数据库查询优化', '相机标定'],
+      },
+    ],
+  },
+  {
+    id: 'dstarlite', title: 'D* Lite 增量重规划', kernel: dstarliteKernel as Kernel<unknown>, doc: trivialDoc('dstarlite'),
+    facts: [
+      {
+        id: 'ds_idea', label: 'D* Lite 省在哪',
+        ask: 'D* Lite 相比"每次从头 A* 重搜",主要省在哪?', kind: 'choice',
+        compute: () => ({ answer: '地图变了(发现新障碍)时,只让改动局部失效、只重算受影响的少数格及其下游,其余格子的 g 值原样复用(增量);不像从头 A* 把整张图重搜一遍。地图越大、改动越局部,省得越多', step: 3, evidence: '只重算受影响格、其余 g 复用(增量)' }),
+        distractors: () => ['用了更快的优先队列', '不需要启发式函数', '把地图压缩了'],
+      },
+      {
+        id: 'ds_grhs', label: 'g 和 rhs 是什么',
+        ask: 'D* Lite 里 g(s) 和 rhs(s) 分别是什么?', kind: 'choice',
+        compute: () => ({ answer: 'g(s)=目前已知的从起点到 s 的最优代价;rhs(s)=一步前瞻=min over 邻居(g(邻居)+边权)(起点 rhs=0)。rhs 是"根据邻居现在的 g,我应该是多少"。g=rhs 时该格局部一致(信息最新)', step: 2, evidence: 'g=已知最优代价、rhs=一步前瞻、g=rhs 一致' }),
+        distractors: () => ['g 是启发式、rhs 是真实代价', 'g 是行、rhs 是列', '都是随机初值'],
+      },
+      {
+        id: 'ds_consistent', label: '局部一致与不一致',
+        ask: '"局部一致"是什么?边权变化时会发生什么?', kind: 'choice',
+        compute: () => ({ answer: '局部一致 = g(s)=rhs(s)(该格信息最新)。某条边权重变了(冒出障碍),紧挨的格子发现 g≠rhs(不一致、信息过时)→进优先队列;算法只处理不一致的格、让它们重新一致,涟漪只往受影响下游传', step: 3, evidence: 'g=rhs 一致;边权变→受影响格不一致→进队列' }),
+        distractors: () => ['一致就是所有格 g 都相等', '边权变要把所有格清零重来', '不一致的格直接删掉'],
+      },
+      {
+        id: 'ds_use', label: 'D* Lite 用在哪',
+        ask: 'D* Lite 典型用在什么场景?', kind: 'choice',
+        compute: () => ({ answer: '机器人在部分已知/动态的地图里导航:边走边用传感器发现新障碍(接 SLAM),用 D* Lite 每步只局部修复计划、不必从头重规划,省巨量计算。火星车、送餐/扫地机器人、动态环境导航都用它(及 field D* 等变体)', step: 4, evidence: '动态/未知环境导航、边走边发现障碍' }),
+        distractors: () => ['静态已知地图的一次性规划', '图像分类', '机械臂力控'],
+      },
+      {
+        id: 'ds_vs_lpa', label: 'D* Lite 和 A* 的关系',
+        ask: 'D* Lite 和 A* 是什么关系?', kind: 'choice',
+        compute: () => ({ answer: 'D* Lite 是 A* 的增量式版本:同样可以用启发式 h 制导搜索(h=0 时退化成增量 Dijkstra),但它在地图变化时能复用上次的结果只做局部修复,而 A* 每次都从头搜。它建立在 LPA* 之上、再加起点会移动的补偿(km 项)', step: 4, evidence: 'A* 的增量版、可用 h 制导、复用旧结果局部修' }),
+        distractors: () => ['和 A* 无关、是采样式的', 'D* Lite 不用代价、只看方向', 'A* 是 D* Lite 的特例、更强'],
       },
     ],
   },
