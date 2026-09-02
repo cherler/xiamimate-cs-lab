@@ -359,6 +359,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { i: 3, step: 3, stage: 'jacobian', ...base, showPred: true, showMeas: true, showJac: true, showUpd: false, phase: 'run' as const, focus: '雅可比' },
       b: { i: 4, step: 4, stage: 'update', ...base, showPred: true, showMeas: true, showJac: true, showUpd: true, phase: 'run' as const, focus: '更新' },
     } })(),
+    pinhole: (() => { const base = { dist: 'on', distLabel: '有径向畸变(桶形)', P: [3, 2, 5] as [number, number, number], fx: 500, fy: 500, cx: 320, cy: 240, k1: 0.2, k2: 0.05, xn: 0.6, yn: 0.4, r2v: 0.52, uIdeal: 620, vIdeal: 440, xd: 0.67, yd: 0.45, uDist: 655.26, vDist: 463.5, shift: 42.37, log: '' }; return {
+      doc: { kind: 'pinhole', params: { distort: '有畸变' }, entities: [], streams: [] },
+      a: { i: 2, step: 2, stage: 'intrinsic', ...base, showPersp: true, showIntr: true, showDist: false, showResult: false, phase: 'run' as const, focus: '内参' },
+      b: { i: 3, step: 3, stage: 'distortion', ...base, showPersp: true, showIntr: true, showDist: true, showResult: false, phase: 'run' as const, focus: '畸变' },
+    } })(),
     particlefilter: (() => { const base = { mode: 'on', modeLabel: '重采样(标准)', z: 5.5, sigma: 1.5, particles: [{ pos: 2, w: 0.066, wn: 0.023 }, { pos: 4, w: 0.607, wn: 0.211 }, { pos: 5, w: 0.946, wn: 0.329 }, { pos: 6, w: 0.946, wn: 0.329 }, { pos: 8, w: 0.249, wn: 0.087 }, { pos: 9, w: 0.066, wn: 0.023 }], sumW: 2.88, neff: 3.72, N: 6, resampled: [4, 5, 5, 6, 6, 8], estimate: 5.4, estimateResampled: 5.67, log: '' }; return {
       doc: { kind: 'particlefilter', params: { resample: '重采样' }, entities: [], streams: [] },
       a: { i: 3, step: 3, stage: 'neff', ...base, showWeight: true, showNeff: true, showResample: false, phase: 'run' as const, focus: 'N_eff' },

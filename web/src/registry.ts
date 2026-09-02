@@ -353,6 +353,7 @@ import { fwddynKernel, type FwdState } from '@engine/kernels/fwddyn.ts'
 import { computedtorqueKernel, type CtcState } from '@engine/kernels/computedtorque.ts'
 import { contactlcpKernel, type LcpState } from '@engine/kernels/contactlcp.ts'
 import { ekfKernel, type EkfState } from '@engine/kernels/ekf.ts'
+import { pinholeKernel, type PinState } from '@engine/kernels/pinhole.ts'
 import { particlefilterKernel, type PfState } from '@engine/kernels/particlefilter.ts'
 import { ukfKernel, type UkfState } from '@engine/kernels/ukf.ts'
 import { complementaryKernel, type CompState } from '@engine/kernels/complementary.ts'
@@ -393,6 +394,7 @@ import { FwdDynStage } from './stages/FwdDynStage.tsx'
 import { ComputedTorqueStage } from './stages/ComputedTorqueStage.tsx'
 import { ContactLcpStage } from './stages/ContactLcpStage.tsx'
 import { EkfStage } from './stages/EkfStage.tsx'
+import { PinholeStage } from './stages/PinholeStage.tsx'
 import { PfStage } from './stages/PfStage.tsx'
 import { UkfStage } from './stages/UkfStage.tsx'
 import { CompStage } from './stages/CompStage.tsx'
@@ -7016,6 +7018,33 @@ const rrt: Experiment<RRTState> = {
   ],
 }
 
+const pinhole: Experiment<PinState> = {
+  id: 'pinhole', group: '机器人感知', title: '针孔相机 · 投影与畸变', subtitle: '3D 点→2D 像素：透视除以深度 + 内参 K + 径向畸变',
+  kernel: pinholeKernel, defaultDoc: { kind: 'pinhole', params: { distort: '有畸变' }, entities: [], streams: [] },
+  params: [{ key: 'distort', label: '畸变', kind: 'enum', options: ['有畸变', '无畸变'] }],
+  paramsNote: '针孔相机把 3D 点映到 2D 像素:**u=K·[R|t]·X**。①**外参[R|t]** 世界→相机 ②**透视**归一化 x_n=X/Z、y_n=Y/Z(**除以深度**、近大远小、单张图丢深度)③**内参 K** u=fx·x_n+cx、v=fy·y_n+cy(fx,fy 焦距[像素]、cx,cy 主点≈图心)④**径向畸变** r²=x_n²+y_n²、x_d=x_n(1+k1 r²+k2 r⁴)(桶形/枕形、**离中心越远越弯**)。本例 X=(3,2,5)、fx=fy=500、主点(320,240)、k1=0.2/k2=0.05:无畸变像素 (620,440);有畸变 (655,464)、偏 42px。**标定**=拍棋盘格从已知 3D↔2D 反求 K 和畸变系数(张正友法)、用图前先去畸变。切「畸变」对比。全现算。连「ICP/SLAM/手眼标定/6D位姿(都要相机模型)」。详见讲解卡。',
+  bounds: [
+    '针孔 u=K[R|t]X:外参世界→相机、透视 x_n=X/Z(除以深度、近大远小、丢深度)、内参 K→像素、径向畸变',
+    '内参 fx,fy 焦距(像素)+cx,cy 主点;透视投影非线性(除法)、单张图不同 Z 同 X/Z 投到同一像素(丢深度)',
+    '径向畸变 x_d=x_n(1+k1 r²+k2 r⁴):离中心越远越弯(桶形/枕形)、边缘明显中心几乎不变;用图前去畸变',
+    '标定(张正友法):拍棋盘格、从已知 3D↔2D 反求 K 和畸变系数。是视觉几何地基:ICP/SLAM 反投影、立体视觉求深度、6D位姿/手眼标定都要 K',
+  ],
+  tabs: [{ id: 'ph', label: '投影逐步跑' }], Stage: PinholeStage, whyInRail: true,
+  tone: s => (s.stage === 'done' ? { key: 'good', label: '透视+内参+畸变' }
+    : s.stage === 'result' ? (s.dist === 'on' ? { key: 'bad', label: `偏 ${s.shift}px` } : { key: 'good', label: '理想像素' })
+    : s.stage === 'distortion' ? { key: 'idle', label: '径向畸变' }
+    : s.stage === 'intrinsic' ? { key: 'idle', label: '内参 K' }
+    : s.stage === 'perspective' ? { key: 'idle', label: '除以深度' }
+    : { key: 'idle', label: '3D→2D' }),
+  metric: s => (s.stage === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => ({ intro: '投', perspective: '透', intrinsic: 'K', distortion: '畸', result: '果', done: '成' }[s.stage] ?? '·'),
+  readouts: s => [
+    { label: '畸变', value: s.distLabel },
+    { label: '归一化 x_n,y_n', value: s.showPersp ? `${s.xn}, ${s.yn}` : '—' },
+    { label: '理想像素', value: s.showIntr ? `(${s.uIdeal}, ${s.vIdeal})` : '—' },
+    { label: '最终像素', value: s.showResult ? (s.dist === 'on' ? `(${s.uDist}, ${s.vDist}) 偏${s.shift}px` : `(${s.uIdeal}, ${s.vIdeal})`) : '—', tone: s.showResult ? (s.dist === 'on' ? 'bad' : 'good') : undefined },
+  ],
+}
 const icp: Experiment<ICPState> = {
   id: 'icp', group: '机器人感知', title: 'ICP 点云配准', subtitle: '迭代最近点：两片点云对齐求位姿',
   kernel: icpKernel, defaultDoc: { kind: 'icp', params: {}, entities: [], streams: [] }, params: [],
@@ -7400,7 +7429,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, icp, slam, impedance, mpc, pid, rrt, rrtstar, prm, potentialfield, trapezoid, mdp, qlearning, policygrad, ppo, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
+  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, pinhole, icp, slam, impedance, mpc, pid, rrt, rrtstar, prm, potentialfield, trapezoid, mdp, qlearning, policygrad, ppo, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
 ] as unknown as AnyExperiment[]
 
 /**

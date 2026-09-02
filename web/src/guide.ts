@@ -1042,6 +1042,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { stage: string; clipped: boolean; Lclip: number; r: number }; return st.stage === 'done' ? '裁剪限信任域' : st.stage === 'effect' ? (st.clipped ? '裁剪拦住' : '正常更新') : st.stage === 'clip' ? `L^clip=${st.Lclip}` : st.stage === 'surrogate' ? 'L=r·A' : st.stage === 'ratio' ? `r=${st.r}` : '限步' },
     try: [{ act: '切「大步 r=1.5」', watch: 'r=1.5>1+ε=1.2 → 裁剪触发、L^clip 封在 1.2、梯度0，过大更新被拦住。' }, { act: '切「小步 r=1.1」', watch: 'r=1.1 在 [0.8,1.2] 内、不裁剪，L^clip=r·A=1.1，正常更新。' }, { act: '看 L^clip 曲线', watch: 'A>0 时曲线在 r=1+ε 处变平，平的地方没梯度=PPO 的信任域。' }], terms: [],
   },
+  pinhole: {
+    question: '相机怎么把一个 3D 点变成一张图上的像素？为什么图像边缘的直线会拍弯？',
+    read: [{ at: '像平面图', is: '主点、理想像素、畸变像素+偏移。', anchor: '.ph-svg' }, { at: '透视块', is: 'x_n=X/Z 除以深度。', anchor: '.ph-blk' }, { at: '畸变块', is: 'x_d=x_n(1+k1r²+k2r⁴)。', anchor: '.ph-r' }],
+    step: (s: never) => { const st = s as { stage: string; distLabel: string; dist: string; P: number[]; fx: number; cx: number; xn: number; yn: number; r2v: number; uIdeal: number; vIdeal: number; uDist: number; vDist: number; shift: number }; return [
+      { k: '本步输入', v: st.stage === 'intro' ? `3D 点 (${st.P})、畸变 ${st.distLabel}` : st.stage === 'perspective' ? `深度 Z=${st.P[2]}` : st.stage === 'intrinsic' ? `归一化 (${st.xn},${st.yn})、fx=${st.fx}、cx=${st.cx}` : st.stage === 'distortion' ? `r²=${st.r2v}` : '理想 vs 畸变像素' },
+      { k: '判定规则', v: `透视 x_n=X/Z、y_n=Y/Z(除以深度)；内参 u=fx·x_n+cx、v=fy·y_n+cy；径向畸变 x_d=x_n(1+k1 r²+k2 r⁴)；标定反求参数。` },
+      { k: '本步结果', v: st.stage === 'intro' ? '针孔:3D→2D、核心是除以深度' : st.stage === 'perspective' ? `x_n=X/Z=${st.xn}、y_n=${st.yn}（近大远小、丢深度）` : st.stage === 'intrinsic' ? `内参→理想像素 (${st.uIdeal}, ${st.vIdeal})` : st.stage === 'distortion' ? `畸变→(${st.uDist}, ${st.vDist})、偏 ${st.shift}px（边缘明显）` : st.dist === 'on' ? `有畸变像素 (${st.uDist},${st.vDist})、用前去畸变` : `无畸变像素 (${st.uIdeal},${st.vIdeal})` },
+    ] },
+    verdict: (s: never) => { const st = s as { stage: string; dist: string; shift: number; uIdeal: number }; return st.stage === 'done' ? '透视+内参+畸变' : st.stage === 'result' ? (st.dist === 'on' ? `偏${st.shift}px` : '理想像素') : st.stage === 'distortion' ? '径向畸变' : st.stage === 'intrinsic' ? '内参K' : st.stage === 'perspective' ? '除以深度' : '3D→2D' },
+    try: [{ act: '切「有畸变」', watch: '边缘点被径向畸变从 (620,440) 推到 (655,464)、偏 42px——离中心越远越弯。' }, { act: '切「无畸变」', watch: '理想针孔：像素就是 (620,440)、直线还是直线。' }, { act: '想标定', watch: 'fx,fy,cx,cy,k1,k2 从拍棋盘格、已知 3D↔2D 反求(张正友法)。' }], terms: [],
+  },
   queryplan: {
     question: '同一个查询有好几条路可走，数据库优化器凭什么选其中一条？',
     read: [{ at: '候选路径', is: '每条访问路径的 type + 估扫描行数代价条。', anchor: '.qp-paths' }, { at: 'EXPLAIN', is: '末步选中路径的 type/key/rows。', anchor: '.qp-explain' }],

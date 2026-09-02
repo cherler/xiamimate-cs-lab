@@ -128,6 +128,7 @@ import { vlaKernel } from '../src/kernels/vla.ts'
 import { lerobotKernel } from '../src/kernels/lerobot.ts'
 import { kalmanKernel } from '../src/kernels/kalman.ts'
 import { ekfKernel } from '../src/kernels/ekf.ts'
+import { pinholeKernel } from '../src/kernels/pinhole.ts'
 import { particlefilterKernel } from '../src/kernels/particlefilter.ts'
 import { ukfKernel } from '../src/kernels/ukf.ts'
 import { complementaryKernel } from '../src/kernels/complementary.ts'
@@ -2627,6 +2628,41 @@ export const CATALOG: CatalogEntry[] = [
         ask: '本例 6 个粒子、权重集中在中间几个，有效样本数 N_eff=1/Σw² 约为多少?(一位小数，满值为 6)', kind: 'number',
         compute: t => { const f = t as unknown as { neff?: number }[]; const l = f.find(x => x.neff != null); const v = l?.neff != null ? Math.round(l.neff * 10) / 10 : 3.7; return ({ answer: String(v), step: 3, evidence: `N_eff=1/Σw²≈${v}(满值 6);权重集中让它从 6 掉下来、接近 N/2=3 阈值` }) },
         distractors: () => ['6.0', '1.0', '5.5', '2.0'],
+      },
+    ],
+  },
+  {
+    id: 'pinhole', title: '针孔相机 · 投影与畸变', kernel: pinholeKernel as Kernel<unknown>, doc: trivialDoc('pinhole'),
+    facts: [
+      {
+        id: 'pin_perspective', label: '投影最关键的一步',
+        ask: '针孔相机把 3D 点 (X,Y,Z) 投到像素，最关键的一步是什么?', kind: 'choice',
+        compute: () => ({ answer: '除以深度 Z:透视投影 x_n=X/Z、y_n=Y/Z。同样大的东西 Z 越大(越远)投影越小=近大远小;这一步是非线性的(除法),也是单张图丢深度的原因(不同 Z、同 X/Z 投到同一像素、单目测不了绝对尺度)', step: 2, evidence: '除以深度=近大远小、丢深度' }),
+        distractors: () => ['乘以焦距', '加上畸变系数', '旋转到相机坐标系'],
+      },
+      {
+        id: 'pin_intrinsic', label: '内参是什么',
+        ask: '相机内参 K 里的 fx,fy,cx,cy 分别是什么?', kind: 'choice',
+        compute: () => ({ answer: 'fx,fy 是焦距(像素单位),把归一化坐标放大到像素;cx,cy 是主点(光轴与像平面的交点、≈图像中心)。像素 u=fx·x_n+cx、v=fy·y_n+cy。K=[[fx,0,cx],[0,fy,cy],[0,0,1]]', step: 3, evidence: 'fx,fy 焦距;cx,cy 主点' }),
+        distractors: () => ['fx,fy 是畸变系数、cx,cy 是位姿', 'fx,fy 是图像宽高、cx,cy 是深度', '都是外参'],
+      },
+      {
+        id: 'pin_distortion', label: '径向畸变的特点',
+        ask: '径向畸变 x_d=x_n(1+k1 r²+k2 r⁴) 有什么特点?', kind: 'choice',
+        compute: () => ({ answer: '离图像中心(主点)越远、r 越大、畸变越明显(桶形/枕形):图像边缘的直线被拍弯、中心几乎不变。这是真镜头非理想造成的,用图前要去畸变把像素纠回理想针孔位置', step: 4, evidence: 'r 越大越弯;边缘明显中心不变' }),
+        distractors: () => ['所有像素均匀偏移', '离中心越近越弯', '和焦距无关的常数偏移'],
+      },
+      {
+        id: 'pin_calib', label: '相机标定怎么做',
+        ask: '相机内参和畸变系数是怎么求出来的(标定)?', kind: 'choice',
+        compute: () => ({ answer: '拍多张棋盘格:棋盘格角点的 3D 位置已知、在图上检测到对应的 2D 像素,用一堆已知 3D↔2D 对应反求 fx,fy,cx,cy,k1,k2(张正友标定法最常用)。标定是所有视觉测量的前提', step: 4, evidence: '棋盘格已知3D↔2D反求;张正友法' }),
+        distractors: () => ['从相机说明书直接读', '用深度传感器测', '不需要标定、假设理想针孔'],
+      },
+      {
+        id: 'pin_num', label: '理想像素坐标',
+        ask: '相机系点 X=(3,2,5)、fx=500、cx=320，无畸变时像素 u=fx·(X/Z)+cx 是多少?', kind: 'number',
+        compute: t => { const f = t as unknown as { uIdeal?: number }[]; const l = f.find(x => x.uIdeal != null); const v = l?.uIdeal != null ? Math.round(l.uIdeal) : 620; return ({ answer: String(v), step: 3, evidence: `x_n=3/5=0.6、u=500·0.6+320=${v}(透视除以深度再乘焦距加主点)` }) },
+        distractors: numDistractors,
       },
     ],
   },

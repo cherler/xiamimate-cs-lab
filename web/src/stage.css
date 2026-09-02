@@ -5820,3 +5820,27 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .pp-eff{border-radius:8px;padding:8px 10px;font-size:var(--t-ui);line-height:1.6}
 .pp-eff.pp-eclip{background:color-mix(in srgb,var(--miss) 8%,transparent);border:1px solid color-mix(in srgb,var(--miss) 35%,var(--line))}
 .pp-eff.pp-enorm{background:color-mix(in srgb,var(--hit) 8%,transparent);border:1px solid color-mix(in srgb,var(--hit) 35%,var(--line))}
+
+/* pinhole · 针孔相机 */
+.scdn.ph-hot{color:var(--now)}
+.scdn.ph-good{color:var(--hit)}
+.scdn.ph-bad{color:var(--miss)}
+.ph-svg{margin:6px 0;max-width:340px}
+.ph-img{fill:var(--sunk-1);stroke:var(--line);stroke-width:1}
+.ph-imgt{fill:var(--faint);font:8px var(--sans)}
+.ph-axis{stroke:var(--dim);stroke-width:1.2}
+.ph-cxlbl{fill:var(--dim);font:8px var(--mono)}
+.ph-ideal{fill:var(--now)}
+.ph-ideallbl{fill:var(--now);font:8px var(--sans);text-anchor:end}
+.ph-shift{stroke:var(--miss);stroke-width:1.2;stroke-dasharray:2 2}
+.ph-dist{fill:var(--miss)}
+.ph-distlbl{fill:var(--miss);font:8px var(--mono)}
+.ph-flow{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+.ph-blk{border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--panel-2);font-size:var(--t-ui);line-height:1.7;font-variant-numeric:tabular-nums}
+.ph-blk.ph-off{opacity:.4}
+.ph-n{font-family:var(--mono);color:var(--now);font-weight:700;margin-right:6px}
+.ph-sub{display:block;font:var(--t-meta) var(--sans);color:var(--faint);margin-top:2px;font-style:normal}
+.ph-h{color:var(--now)}
+.ph-r{color:var(--miss)}
+.ph-result{border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--panel-2);font-size:var(--t-ui);line-height:1.6}
+.ph-cal{color:var(--faint);font-size:.9em}
