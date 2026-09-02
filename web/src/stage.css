@@ -5844,3 +5844,26 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .ph-r{color:var(--miss)}
 .ph-result{border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--panel-2);font-size:var(--t-ui);line-height:1.6}
 .ph-cal{color:var(--faint);font-size:.9em}
+
+/* chomp · 轨迹优化 */
+.scdn.cm-hot{color:var(--hit)}
+.scdn.cm-bad{color:var(--miss)}
+.cm-svg{margin:6px 0;max-width:340px;background:var(--sunk-1);border:1px solid var(--line);border-radius:8px}
+.cm-infl{fill:color-mix(in srgb,var(--miss) 5%,transparent);stroke:color-mix(in srgb,var(--miss) 25%,transparent);stroke-width:1;stroke-dasharray:3 3}
+.cm-obs{fill:var(--miss)}
+.cm-obst{fill:var(--miss);font:9px var(--sans)}
+.cm-traj0{stroke:var(--ghost);stroke-width:1.5;stroke-dasharray:3 2}
+.cm-traj1{stroke:var(--hit);stroke-width:2.2}
+.cm-wp{fill:var(--dim)}
+.cm-end{fill:var(--now)}
+.cm-q2new{fill:var(--hit)}
+.cm-garrow{stroke:var(--miss);stroke-width:2}
+.cm-glbl{fill:var(--miss);font:8px var(--sans)}
+.cm-flow{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+.cm-blk{border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--panel-2);font-size:var(--t-ui);line-height:1.7;font-variant-numeric:tabular-nums}
+.cm-blk.cm-off{opacity:.4}
+.cm-n{font-family:var(--mono);color:var(--now);font-weight:700;margin-right:6px}
+.cm-r{color:var(--miss)}
+.cm-r2{color:var(--miss)}
+.cm-h{color:var(--hit)}
+.cm-step{border:1px solid color-mix(in srgb,var(--hit) 30%,var(--line));border-radius:8px;padding:8px 10px;background:color-mix(in srgb,var(--hit) 5%,transparent);font-size:var(--t-ui);line-height:1.6}

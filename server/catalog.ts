@@ -136,6 +136,7 @@ import { pidKernel } from '../src/kernels/pid.ts'
 import { rrtKernel } from '../src/kernels/rrt.ts'
 import { rrtstarKernel } from '../src/kernels/rrtstar.ts'
 import { potentialfieldKernel } from '../src/kernels/potentialfield.ts'
+import { chompKernel } from '../src/kernels/chomp.ts'
 import { trapezoidKernel } from '../src/kernels/trapezoid.ts'
 import { prmKernel } from '../src/kernels/prm.ts'
 import { mdpKernel } from '../src/kernels/mdp.ts'
@@ -3044,6 +3045,41 @@ export const CATALOG: CatalogEntry[] = [
         ask: '走 D=10m、v_max=2m/s、a_max=1m/s²，梯形速度曲线的总时间 T 是多少?(秒)', kind: 'number',
         compute: t => { const f = t as unknown as { tTotal?: number; isTrap?: boolean }[]; const l = f.find(x => x.isTrap) ?? f[f.length - 1] as unknown as { tTotal?: number }; const v = l?.tTotal != null ? Math.round(l.tTotal) : 7; return ({ answer: String(v), step: 4, evidence: `t_a=2s、d_a=2m、匀速 d_c=10−4=6m、t_c=3s → T=2·2+3=${v}s` }) },
         distractors: numDistractors,
+      },
+    ],
+  },
+  {
+    id: 'chomp', title: 'CHOMP 轨迹优化', kernel: chompKernel as Kernel<unknown>, doc: trivialDoc('chomp'),
+    facts: [
+      {
+        id: 'chomp_what', label: 'CHOMP 属于哪一类规划',
+        ask: 'CHOMP 属于哪一类运动规划?和 RRT 最大的不同?', kind: 'choice',
+        compute: () => ({ answer: '优化式规划:把整条轨迹 ξ=[q_1..q_n] 当变量、定义代价 U=平滑项+避障项、梯度下降 ξ←ξ−α∇U。RRT 是采样式、出的是几何折线还要再平滑;CHOMP 直接产出平滑、避障、可执行的轨迹', step: 1, evidence: '优化整条轨迹 vs 采样长树' }),
+        distractors: () => ['采样式、和 RRT 一样随机长树', '搜索式、和 A* 一样栅格搜', '反应式、和势场一样只看眼前'],
+      },
+      {
+        id: 'chomp_grad', label: 'CHOMP 的两个梯度',
+        ask: 'CHOMP 代价的梯度有哪两个分量?各干什么?', kind: 'choice',
+        compute: () => ({ answer: '避障梯度:把落在障碍影响半径 d0 内的路点沿远离障碍方向推(大小∝d0−dist、越近越猛);平滑梯度:把每个路点拉向左右邻居的中点(Laplacian、∝2q_i−q_{i−1}−q_{i+1}、惩罚急转)。两者合起来梯度下降', step: 3, evidence: '避障推离+平滑拉向邻居中点' }),
+        distractors: () => ['一个算速度、一个算加速度', '一个正向、一个反向传播', '只有避障梯度、没有平滑'],
+      },
+      {
+        id: 'chomp_localmin', label: 'CHOMP 的死穴',
+        ask: 'CHOMP 有什么死穴?怎么缓解?', kind: 'choice',
+        compute: () => ({ answer: '局部极小(和势场一样、梯度下降会卡住、障碍布局刁钻时优化不出可行轨迹)。缓解:从多条不同初始轨迹分别优化取最好,或先用 RRT 出一条可行初值、再用 CHOMP 平滑(全局管能到、优化管好走)', step: 6, evidence: '局部极小;多初值或先RRT出初值' }),
+        distractors: () => ['没有死穴、总能找到最优', '计算太慢是唯一问题', '只能用于二维'],
+      },
+      {
+        id: 'chomp_covariant', label: '协变是什么意思',
+        ask: 'CHOMP 名字里的"协变(covariant)"指什么?', kind: 'choice',
+        compute: () => ({ answer: '用一个度量矩阵 A(编码轨迹平滑度)做更新、而不是朴素欧氏梯度——让更新和轨迹的参数化无关、更稳、避免只有个别路点抖动。是 CHOMP 更新更平顺的关键', step: 6, evidence: '用度量A更新、非欧氏梯度、参数化无关' }),
+        distractors: () => ['指轨迹随时间变化', '指多个机器人协同', '指梯度取协方差'],
+      },
+      {
+        id: 'chomp_num', label: '避障优先的梯度大小',
+        ask: '避障优先(k_obs=2)、q2 离障碍 0.6、d0=1，避障梯度大小=k_obs·(d0−dist) 是多少?', kind: 'number',
+        compute: t => { const f = t as unknown as { gObs?: number[] }[]; const l = f.find(x => x.gObs && (x.gObs[0] !== 0 || x.gObs[1] !== 0)); const mag = l?.gObs ? Math.round(Math.sqrt(l.gObs[0]! ** 2 + l.gObs[1]! ** 2) * 10) / 10 : 0.8; return ({ answer: String(mag), step: 3, evidence: `k_obs·(d0−dist)=2·(1−0.6)=2·0.4=${mag}(把 q2 往下推这么多、离障碍越近推越猛)` }) },
+        distractors: () => ['0.4', '0.2', '1.0', '2.0'],
       },
     ],
   },

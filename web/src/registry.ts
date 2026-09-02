@@ -365,6 +365,7 @@ import { rrtKernel, type RRTState } from '@engine/kernels/rrt.ts'
 import { rrtstarKernel, type RRTSState } from '@engine/kernels/rrtstar.ts'
 import { potentialfieldKernel, type PotState } from '@engine/kernels/potentialfield.ts'
 import { trapezoidKernel, type TrapState } from '@engine/kernels/trapezoid.ts'
+import { chompKernel, type ChompState } from '@engine/kernels/chomp.ts'
 import { prmKernel, type PrmState } from '@engine/kernels/prm.ts'
 import { mdpKernel, type MdpState } from '@engine/kernels/mdp.ts'
 import { qlearningKernel, type QState } from '@engine/kernels/qlearning.ts'
@@ -406,6 +407,7 @@ import { RRTStage } from './stages/RRTStage.tsx'
 import { RrtStarStage } from './stages/RrtStarStage.tsx'
 import { PotentialFieldStage } from './stages/PotentialFieldStage.tsx'
 import { TrapezoidStage } from './stages/TrapezoidStage.tsx'
+import { ChompStage } from './stages/ChompStage.tsx'
 import { PrmStage } from './stages/PrmStage.tsx'
 import { MdpStage } from './stages/MdpStage.tsx'
 import { QlearningStage } from './stages/QlearningStage.tsx'
@@ -7001,6 +7003,33 @@ const prm: Experiment<PrmState> = {
     { label: '最短路', value: s.showQuery ? (s.connected ? `${s.path.join('→')}（${s.pathLen}）` : '无路') : '—' },
   ],
 }
+const chomp: Experiment<ChompState> = {
+  id: 'chomp', group: '运动规划', title: 'CHOMP 轨迹优化', subtitle: '把整条轨迹当变量、梯度下降降"平滑+避障"代价；优化式规划',
+  kernel: chompKernel, defaultDoc: { kind: 'chomp', params: { weight: '避障优先' }, entities: [], streams: [] },
+  params: [{ key: 'weight', label: '代价权重', kind: 'enum', options: ['避障优先', '平滑优先'] }],
+  paramsNote: '和 RRT/A*(采样/搜索)不同,CHOMP 是**优化式规划**:把整条轨迹 ξ=[q_1..q_n] 当变量、定义**代价 U=平滑项+避障项**、做**梯度下降** ξ←ξ−α∇U。**避障梯度**把靠近障碍(影响半径 d0 内)的路点往外推(∝(d0−dist)·远离方向);**平滑梯度**把每点拉向邻居中点(Laplacian、∝2q_i−q_{i−1}−q_{i+1}、直线上=0)。本例 5 路点直线 S(0,0)→G(4,0)穿过障碍(2,0.6)旁,中点 q2=(2,0)离障碍0.6<d0=1、被避障梯度往下推:**避障优先**(k_obs=2)推到(2,−0.8)、**平滑优先**(k_obs=0.5)只到(2,−0.2)(更直但擦障碍)。迭代→整条平滑绕过。**局部极小**(同势场)是死穴、常先 RRT 出初值再 CHOMP。切「权重」对比。全现算。连「轨迹规划/RRT/势场法」。详见讲解卡。',
+  bounds: [
+    'CHOMP 优化式规划:整条轨迹当变量、代价 U=平滑项+避障项、梯度下降 ξ←ξ−α∇U',
+    '避障梯度∝(d0−dist)·远离方向(推离障碍、越近越猛);平滑梯度=邻居中点−q_i(Laplacian、拉平、直线上=0)',
+    '协变(covariant):用度量矩阵 A(平滑度)做更新、非朴素欧氏梯度、更稳;死穴=局部极小(同势场、常多初值或先 RRT 出初值)',
+    'vs 采样(RRT)/搜索(A*)/反应(势场):优化直接产出平滑可执行轨迹。RRT 可当 CHOMP 初值;和 STOMP(采样)/TrajOpt(序列凸)同类。参考:Zucker CHOMP',
+  ],
+  tabs: [{ id: 'cm', label: '轨迹优化逐步跑' }], Stage: ChompStage, whyInRail: true,
+  tone: s => (s.stage === 'done' ? { key: 'good', label: '平滑+避障下降' }
+    : s.stage === 'step' ? { key: 'good', label: `q2→(${s.q2New})` }
+    : s.stage === 'smooth' ? { key: 'idle', label: '平滑梯度' }
+    : s.stage === 'obstacle' ? { key: 'bad', label: '避障梯度' }
+    : s.stage === 'traj' ? { key: 'idle', label: '初始直线' }
+    : { key: 'idle', label: '优化轨迹' }),
+  metric: s => (s.stage === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
+  tickLabel: s => ({ intro: '优', traj: '直', obstacle: '避', smooth: '平', step: '降', done: '成' }[s.stage] ?? '·'),
+  readouts: s => [
+    { label: '代价权重', value: s.wLabel },
+    { label: 'q2 离障碍', value: s.showTraj ? `${s.distToObs}（d0=${s.d0}）` : '—', tone: s.showTraj && s.distToObs < s.d0 ? 'bad' : undefined },
+    { label: '避障 / 平滑梯度', value: s.showSmooth ? `[${s.gObs}] / [${s.gSmooth}]` : (s.showObs ? `[${s.gObs}] / —` : '—') },
+    { label: 'q2 更新后', value: s.showStep ? `(${s.q2New})` : '—', tone: s.showStep ? 'good' : undefined },
+  ],
+}
 const rrt: Experiment<RRTState> = {
   id: 'rrt', group: '运动规划', title: 'RRT 运动规划', subtitle: '采样式避障：随机长树绕障碍到终点',
   kernel: rrtKernel, defaultDoc: { kind: 'rrt', params: {}, entities: [], streams: [] }, params: [],
@@ -7429,7 +7458,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, pinhole, icp, slam, impedance, mpc, pid, rrt, rrtstar, prm, potentialfield, trapezoid, mdp, qlearning, policygrad, ppo, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
+  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, pinhole, icp, slam, impedance, mpc, pid, rrt, rrtstar, prm, potentialfield, chomp, trapezoid, mdp, qlearning, policygrad, ppo, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc,
 ] as unknown as AnyExperiment[]
 
 /**

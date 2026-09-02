@@ -389,6 +389,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       a: { i: 3, step: 3, stage: 'total', ...base, showAtt: true, showRep: true, showTotal: true, showOut: false, phase: 'run' as const, focus: '合力' },
       b: { i: 4, step: 4, stage: 'outcome', ...base, showAtt: true, showRep: true, showTotal: true, showOut: true, phase: 'run' as const, focus: '结局' },
     } })(),
+    chomp: (() => { const base = { w: 'avoid', wLabel: '避障优先(k_obs=2)', kObs: 2, d0: 1, alpha: 1, obs: [2, 0.6] as [number, number], traj: [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0]] as [number, number][], distToObs: 0.6, gObs: [0, -0.8] as [number, number], gSmooth: [0, 0] as [number, number], q2New: [2, -0.8] as [number, number], trajNew: [[0, 0], [1, 0], [2, -0.8], [3, 0], [4, 0]] as [number, number][], log: '' }; return {
+      doc: { kind: 'chomp', params: { weight: '避障优先' }, entities: [], streams: [] },
+      a: { i: 2, step: 2, stage: 'obstacle', ...base, showTraj: true, showObs: true, showSmooth: false, showStep: false, phase: 'run' as const, focus: '避障梯度' },
+      b: { i: 4, step: 4, stage: 'step', ...base, showTraj: true, showObs: true, showSmooth: true, showStep: true, phase: 'run' as const, focus: '下降' },
+    } })(),
     trapezoid: (() => { const base = { dist: 'long', distLabel: '长距离 D=10（梯形）', D: 10, vMax: 2, aMax: 1, tA: 2, dA: 2, isTrap: true, vPeak: 2, dCruise: 6, tCruise: 3, tTotal: 7, log: '' }; return {
       doc: { kind: 'trapezoid', params: { distance: '长距离' }, entities: [], streams: [] },
       a: { i: 2, step: 2, stage: 'regime', ...base, showAccel: true, showRegime: true, showProfile: false, showTime: false, phase: 'run' as const, focus: '判形' },

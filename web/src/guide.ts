@@ -976,6 +976,17 @@ export const GUIDES: Record<string, Guide> = {
     verdict: (s: never) => { const st = s as { stage: string; stuck: boolean; fMag: number }; return st.stage === 'done' ? '引力+斥力' : st.stage === 'outcome' ? (st.stuck ? '卡局部极小' : '绕过到达') : st.stage === 'total' ? `|F|=${st.fMag}` : st.stage === 'repulsive' ? '斥力' : st.stage === 'attractive' ? '引力' : '势场' },
     try: [{ act: '切「障碍正中」', watch: '引力(+x 5.43)和斥力(−x 5.37)几乎抵消、合力仅 0.06≈0，机器人卡在离目标 5.43 的假谷——局部极小。' }, { act: '切「障碍偏侧」', watch: '斥力有横向分量(y −0.19)，合力 [5.74,−0.19] 把机器人往障碍旁带、绕过到达。' }, { act: '想怎么救', watch: '局部极小靠随机扰动/导航函数/配全局规划(RRT 出全局路、势场只做局部避障)解决。' }], terms: [],
   },
+  chomp: {
+    question: 'RRT/A* 出的是折线路径。CHOMP 换个思路：把整条轨迹当变量、直接"优化"成又平滑又避障，怎么做？',
+    read: [{ at: '轨迹图', is: '初始直线(虚)/更新后曲线(绿)+障碍+影响圈。', anchor: '.cm-svg' }, { at: '避障梯度块', is: '推离障碍。', anchor: '.cm-r2' }, { at: '下降块', is: 'q2 挪到新位置。', anchor: '.cm-h' }],
+    step: (s: never) => { const st = s as { stage: string; wLabel: string; w: string; kObs: number; d0: number; distToObs: number; gObs: number[]; gSmooth: number[]; q2New: number[] }; return [
+      { k: '本步输入', v: st.stage === 'intro' ? `权重 ${st.wLabel}` : st.stage === 'traj' ? '初始直线 5 路点' : st.stage === 'obstacle' ? `q2 离障碍 ${st.distToObs}、d0=${st.d0}` : st.stage === 'smooth' ? 'q2 与邻居' : '两个梯度' },
+      { k: '判定规则', v: `U=平滑项+避障项；避障梯度∝(d0−dist)·远离方向；平滑梯度=邻居中点−q_i；下降 ξ←ξ−α∇U。` },
+      { k: '本步结果', v: st.stage === 'intro' ? 'CHOMP:整条轨迹梯度下降(平滑+避障)' : st.stage === 'traj' ? `中点 q2 离障碍 ${st.distToObs}<d0=${st.d0}、代价高` : st.stage === 'obstacle' ? `避障梯度=[${st.gObs}]（往下推离障碍、k_obs=${st.kObs}）` : st.stage === 'smooth' ? `平滑梯度=[${st.gSmooth}]（直线上=0、被推偏后才出现带邻居跟随）` : `下降一步 q2→(${st.q2New})（${st.w === 'avoid' ? '避障优先推得狠' : '平滑优先推得轻'}）、代价降` },
+    ] },
+    verdict: (s: never) => { const st = s as { stage: string; q2New: number[] }; return st.stage === 'done' ? '平滑+避障下降' : st.stage === 'step' ? `q2→(${st.q2New})` : st.stage === 'smooth' ? '平滑梯度' : st.stage === 'obstacle' ? '避障梯度' : st.stage === 'traj' ? '初始直线' : '优化轨迹' },
+    try: [{ act: '切「避障优先」', watch: 'k_obs=2、避障梯度[0,−0.8]、q2 推到(2,−0.8)、明显绕开障碍。' }, { act: '切「平滑优先」', watch: 'k_obs=0.5、q2 只到(2,−0.2)、更直但擦障碍。' }, { act: '想局部极小', watch: '梯度下降会卡局部极小(同势场)，常先 RRT 出可行初值再 CHOMP 平滑。' }], terms: [],
+  },
   trapezoid: {
     question: '规划出"走哪条路"之后，电机怎么知道每一刻该走多快？梯形速度曲线怎么算总时间？',
     read: [{ at: 'v(t) 图', is: '速度-时间曲线：梯形或三角。', anchor: '.tz-svg' }, { at: '判形块', is: 'D vs 2·d_a → 梯形/三角。', anchor: '.tz-t' }, { at: '读数', is: '加速段、形态、总时间。', anchor: '.scdim' }],
