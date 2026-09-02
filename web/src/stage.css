@@ -3676,7 +3676,9 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .aic-msg.interviewer .aic-msg-who { color:var(--now); }
 .aic-msg.candidate .aic-msg-who { color:var(--hit); }
 .aic-msg-text { font-size:12.5px; line-height:1.55; white-space:pre-wrap; color:var(--ink); }
-.aic-cite { display:inline-flex; align-items:center; gap:6px; margin:2px 0 6px; padding:3px 9px; border-radius:20px; background:color-mix(in srgb, var(--hit) 8%, transparent); border:1px solid color-mix(in srgb, var(--hit) 40%, var(--line)); font-size:11px; }
+.aic-cite { display:inline-flex; align-items:center; gap:6px; align-self:flex-start; margin:2px 0 6px; padding:3px 9px; border-radius:20px; background:color-mix(in srgb, var(--hit) 8%, transparent); border:1px solid color-mix(in srgb, var(--hit) 40%, var(--line)); font-size:11px; font-family:inherit; text-align:left; }
+.aic-cite.clickable { cursor:pointer; }
+.aic-cite.clickable:hover { background:color-mix(in srgb, var(--hit) 18%, transparent); border-color:var(--hit); }
 .aic-cite-tag { font-weight:700; color:var(--hit); }
 .aic-cite-text { color:var(--dim); font-family:var(--mono); }
 

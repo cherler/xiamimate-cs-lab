@@ -25,7 +25,7 @@ function trackTitleOf(expId: string): string {
 
 type Question = {
   factId: string; question: string; options: string[]; correctIndex: number
-  explanation: string; provenance: { engineAnswer: string; phrasedBy: 'llm' | 'fallback' }
+  explanation: string; provenance: { engineAnswer: string; phrasedBy: 'llm' | 'fallback'; sourceStep?: number; evidence?: string }
 }
 type Card = { front: string; back: string; source: 'engine' | 'llm' }
 type ReviewPack = { title: string; summary: string; factCards: Card[]; conceptCards: Card[] }
@@ -59,7 +59,7 @@ async function postJSON<T>(path: string, body: unknown): Promise<T> {
 type Mode = 'quiz' | 'ask' | 'review' | 'interview'
 type Turn = { role: 'interviewer' | 'candidate'; text: string }
 
-export function AiCompanion({ expId }: { expId: string }) {
+export function AiCompanion({ expId, onCite }: { expId: string; onCite?: (step: number) => void }) {
   const [supported, setSupported] = useState<boolean | null>(null)
   const [mode, setMode] = useState<Mode>('quiz')
 
@@ -87,7 +87,7 @@ export function AiCompanion({ expId }: { expId: string }) {
         <button className={mode === 'review' ? 'on' : ''} onClick={() => setMode('review')}>复习</button>
         <button className={mode === 'interview' ? 'on' : ''} onClick={() => setMode('interview')}>面试</button>
       </div>
-      {mode === 'quiz' && <QuizView expId={expId} />}
+      {mode === 'quiz' && <QuizView expId={expId} onCite={onCite} />}
       {mode === 'ask' && <AskView expId={expId} />}
       {mode === 'review' && <ReviewView expId={expId} />}
       {mode === 'interview' && <InterviewView expId={expId} />}
@@ -95,8 +95,21 @@ export function AiCompanion({ expId }: { expId: string }) {
   )
 }
 
+// 引用小标签：点一下把舞台跳回引擎算出这个值的那一步（citation chip，可点回溯）
+function CiteChip({ step, label, evidence, onCite }: { step: number; label?: string; evidence?: string; onCite?: (s: number) => void }) {
+  const clickable = !!onCite && step != null
+  return (
+    <button className={`aic-cite${clickable ? ' clickable' : ''}`} disabled={!clickable}
+      title={clickable ? `${evidence ?? ''}${evidence ? '　' : ''}点击跳到第 ${step} 步` : evidence}
+      onClick={() => clickable && onCite!(step)}>
+      <span className="aic-cite-tag">依据</span>
+      <span className="aic-cite-text">{label ? label + ' · ' : ''}第 {step} 步 · 引擎钉死{clickable ? ' ↩ 回溯' : ''}</span>
+    </button>
+  )
+}
+
 // ── 出题 ──
-function QuizView({ expId }: { expId: string }) {
+function QuizView({ expId, onCite }: { expId: string; onCite?: (step: number) => void }) {
   const [sub, setSub] = useState<'normal' | 'debate'>('normal')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -117,7 +130,7 @@ function QuizView({ expId }: { expId: string }) {
       <button className={sub === 'debate' ? 'on' : ''} onClick={() => setSub('debate')}>反驳同学</button>
     </div>
   )
-  if (sub === 'debate') return <>{subtabs}<DebateView expId={expId} /></>
+  if (sub === 'debate') return <>{subtabs}<DebateView expId={expId} onCite={onCite} /></>
 
   return (
     <div className="aic-body">
@@ -146,11 +159,14 @@ function QuizView({ expId }: { expId: string }) {
               })}
             </div>
             {answered && (
-              <p className="aic-explain">
-                {chosen === q.correctIndex ? '✓ 对了。' : `✗ 正确答案：${q.options[q.correctIndex]}。`}
-                {' '}{q.explanation}
-                <span className="aic-prov">答案由引擎钉死{q.provenance.phrasedBy === 'llm' ? '，题面由大模型改写' : ''}</span>
-              </p>
+              <>
+                <p className="aic-explain">
+                  {chosen === q.correctIndex ? '✓ 对了。' : `✗ 正确答案：${q.options[q.correctIndex]}。`}
+                  {' '}{q.explanation}
+                  <span className="aic-prov">答案由引擎钉死{q.provenance.phrasedBy === 'llm' ? '，题面由大模型改写' : ''}</span>
+                </p>
+                {q.provenance.sourceStep != null && <CiteChip step={q.provenance.sourceStep} evidence={q.provenance.evidence} onCite={onCite} />}
+              </>
             )}
           </div>
         )
@@ -295,7 +311,7 @@ function InterviewView({ expId }: { expId: string }) {
 
 // ── 反驳（会反驳的 AI 同学，选择题版：同学抛错主张，你选能驳倒 TA 的那句） ──
 type DebateData = { factId: string; claim: string; options: string[]; correctIndex: number; answer: string; provenance: { label: string; step: number; evidence: string } }
-function DebateView({ expId }: { expId: string }) {
+function DebateView({ expId, onCite }: { expId: string; onCite?: (step: number) => void }) {
   const [data, setData] = useState<DebateData | null>(null)
   const [picked, setPicked] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
@@ -334,10 +350,7 @@ function DebateView({ expId }: { expId: string }) {
                 <p className="aic-explain">
                   {picked === data.correctIndex ? '✓ 驳倒了！同学：哦……好像真是我错了。' : `✗ 没驳到点上。正解：${data.answer}。同学：看吧，你也没搞对。`}
                 </p>
-                <div className="aic-cite" title={data.provenance.evidence}>
-                  <span className="aic-cite-tag">依据</span>
-                  <span className="aic-cite-text">{data.provenance.label}（第 {data.provenance.step} 步 · 引擎钉死）</span>
-                </div>
+                <CiteChip step={data.provenance.step} label={data.provenance.label} evidence={data.provenance.evidence} onCite={onCite} />
                 <button className="aic-go" onClick={start}>换个点再辩</button>
               </>
             )}

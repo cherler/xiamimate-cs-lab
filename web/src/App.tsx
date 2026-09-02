@@ -1067,7 +1067,7 @@ export default function App() {
             <button className="aipanel-x" onClick={() => setAiOpen(false)} title="关闭（Esc）">✕</button>
           </div>
           <div className="aipanel-body">
-            <AiCompanion expId={exp.id} />
+            <AiCompanion expId={exp.id} onCite={(step) => { seek(step); setAiOpen(false) }} />
           </div>
         </div>
       </div>
