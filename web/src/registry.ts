@@ -7647,6 +7647,54 @@ const lerobotlib = mkLib('lerobotlib', 'LeRobot · 端到端机器人学习库',
     '目标=把"采数据→训策略→上真机"整条流水线降到人人能跑;低成本真机(SO-101 几百刀)、HF Hub 共享数据/模型',
     '内容覆盖反向连回:ACT↔动作分块时序集成、数据管线↔delta_timestamps/归一化、遥操作↔主从遥操作、BC/Diffusion Policy',
     '取舍:模仿学习为主(数据质量定上限)、偏研究入门、依赖重。接前沿 VLA(π0 等)到低成本真机上跑'])
+const mujoco = mkLib('mujoco', 'MuJoCo · 接触物理引擎', '接触丰富、又快又准的物理引擎：机器人 RL/控制研究的头号仿真器（库层）', 'mujoco',
+  '**软件库层** · MuJoCo(Multi-Joint dynamics with Contact,Google DeepMind,Apache-2.0)= 通用物理引擎,主打**接触丰富**的刚体动力学(接触当凸优化、大步长稳、给解析导数),用 MJCF 描述模型;**MJX** 走 JAX 在 GPU/TPU 大规模并行、把 RL 训练加速几个数量级。学界机器人控制/RL 的默认仿真器。反向连回:接触动力学↔摩擦锥、正向动力学↔仿真一步、RL↔PPO/miniduck。逐段翻。',
+  ['MuJoCo=接触丰富的通用物理引擎(Apache-2.0,DeepMind);接触当凸优化、大步长稳、给一阶解析导数;MJCF 模型;MJX(JAX GPU/TPU)并行 RL',
+    '学界机器人控制/强化学习默认仿真器;dm_control/Brax/Playground 生态',
+    '反向连回:接触动力学↔摩擦锥 LCP、正向动力学(仿真一步)、大规模 PPO 训练↔Open Duck Mini',
+    '取舍:精于动力学与学术评测,渲染/感知逼真度不如 Isaac Sim;偏研究不偏工业数字孪生'])
+const isaaclab = mkLib('isaaclab', 'Isaac Lab · GPU 机器人学习框架', 'NVIDIA GPU 大规模并行训策略、主打 sim-to-real（建在 Isaac Sim 上，库层）', 'isaaclab',
+  '**软件库层** · Isaac Lab(NVIDIA,BSD-3-Clause)= 建在 Isaac Sim(Omniverse 高保真/照片级仿真)之上的**机器人学习框架**,主打**GPU 大规模并行**训策略(RL/模仿/规划)、逼真渲染+传感器仿真、sim-to-real。和 MuJoCo 互补(它强在规模与逼真感知)。反向连回:大规模 RL↔PPO/miniduck、策略/VLA 训练、感知合成数据↔点云。逐段翻。',
+  ['Isaac Lab=NVIDIA GPU 机器人学习框架(BSD-3,建在 Isaac Sim/Omniverse);数千环境并行、照片级渲染+传感器仿真、sim-to-real',
+    '适合机器人基座模型/RL 策略/复杂交互;和 rl_games/RSL-RL、VLA 训练打通',
+    '反向连回:大规模并行 PPO↔miniduck、VLA/BC 训练、RGB-D/点云合成数据↔点云预处理',
+    '取舍:强依赖 NVIDIA GPU/Omniverse 栈、体量大门槛高;轻量验证不如 MuJoCo/PyBullet'])
+const pcl = mkLib('pcl', 'PCL · 点云处理库', '点云处理的老牌标准库：滤波/配准/分割/特征一整套（库层）', 'pcl',
+  '**软件库层** · PCL(Point Cloud Library,BSD-3-Clause)= 2D/3D 点云处理的老牌标准库:滤波(体素下采样/离群点)、特征(法线估计 PCA)、配准(ICP 及变体)、分割、曲面重建一整套,模块化、ROS 深度集成。反向连回:体素下采样/法线估计↔点云预处理、ICP↔ICP 点云配准。逐段翻。',
+  ['PCL=点云处理老牌标准库(BSD-3);滤波/特征/配准/分割/重建一整套、模块化、ROS 集成',
+    '反向连回:体素下采样 + 法线估计(PCA)↔点云预处理实验、ICP 及变体↔ICP 点云配准实验',
+    '几乎所有感知项目都用它(RTAB-Map 等 SLAM 大量依赖 PCL)',
+    '取舍:C++ 为主编译重、偏经典几何(深度学习点云要另找)、更现代/Python 可看 Open3D'])
+const orbslam3 = mkLib('orbslam3', 'ORB-SLAM3 · 视觉惯性 SLAM', '精度标杆的视觉/视觉惯性 SLAM：特征点 + 光束平差 + 回环（库层）', 'orbslam3',
+  '**软件库层** · ORB-SLAM3(GPL-3.0,萨拉戈萨大学)= 精度标杆的视觉/视觉惯性 SLAM,支持单目/双目/RGB-D + IMU + 多地图。核心:ORB 特征匹配→对极几何求相对运动→PnP 重定位→光束平差(BA)优化位姿+地图点→回环检测闭合漂移。反向连回:对极几何/VO、PnP、SLAM 回环。⚠️GPL-3.0 商业慎用。逐段翻。',
+  ['ORB-SLAM3=精度标杆视觉/视觉惯性 SLAM(GPL-3.0);单目/双目/RGB-D+IMU+多地图;ORB 特征+光束平差 BA+回环(DBoW2)',
+    '反向连回:前端对极几何↔视觉里程计、重定位↔PnP、回环+位姿图优化↔SLAM 回环校正',
+    '模式全、精度高、研究基线常用;AR/无人机/移动机器人定位建图',
+    '取舍:⚠️GPL-3.0 有传染性(商业闭源慎用);稀疏特征法(稠密要另配)、纯旋转/低纹理/动态场景退化'])
+const ros2control = mkLib('ros2control', 'ros2_control · 实时控制框架', 'ROS 2 的硬件抽象 + 控制器管理器：把规划的轨迹执行到电机（库层）', 'ros2control',
+  '**软件库层** · ros2_control(Apache-2.0)= ROS 2 实时控制框架:把硬件(真机/仿真)抽象成统一接口,控制器管理器在实时循环里加载/切换控制器(关节轨迹/PID/力控…),把上层规划(如 MoveIt 的轨迹)执行到底层电机。反向连回:PID、阻抗/力控、关节轨迹↔轨迹规划/梯形曲线。逐段翻。',
+  ['ros2_control=ROS 2 实时控制框架(Apache-2.0);硬件抽象(HardwareInterface)+控制器管理器(实时循环热插拔控制器)',
+    '是"规划→执行"标准中间层:收 MoveIt 的关节轨迹、插值下发到硬件;sim 与真机同一套控制器',
+    '反向连回:PID 控制器↔PID、力控/导纳↔阻抗力控、关节轨迹控制器↔轨迹规划/梯形速度曲线',
+    '取舍:概念多配置繁、硬实时依赖 RT 内核、和 ROS 强耦合'])
+const nav2 = mkLib('nav2', 'Nav2 · 移动机器人导航栈', 'ROS 2 自主导航：行为树 + 代价图 + 规划/控制插件（MoveIt 的移动版，库层）', 'nav2',
+  '**软件库层** · Nav2(Navigation 2,Apache-2.0)= ROS 2 移动机器人自主导航标准栈:行为树编排、代价图(含膨胀层)、全局规划器(NavFn=Dijkstra/A*、Smac=混合 A*+Reeds-Shepp/Dubins、Theta*)、局部控制器(DWB、MPPI)、恢复行为。是 MoveIt 的"移动版"。反向连回:Smac↔Dubins、膨胀层↔人工势场、MPPI↔MPC、全局重规划↔D* Lite。逐段翻。',
+  ['Nav2=ROS 2 移动机器人自主导航栈(Apache-2.0);行为树+代价图+全局规划器(NavFn/Smac/Theta*)+局部控制器(DWB/MPPI)+恢复',
+    '反向连回:Smac 混合 A*(含 Reeds-Shepp/Dubins)↔Dubins、膨胀层代价图↔人工势场、MPPI↔MPC、全局重规划↔D* Lite',
+    'MoveIt 管机械臂、Nav2 管移动底盘;扫地机/送餐/AGV/巡检的导航',
+    '取舍:配置庞大(yaml+BT)调参门槛高、偏 2D/2.5D、依赖定位(AMCL/SLAM)'])
+const openvla = mkLib('openvla', 'OpenVLA · 视觉-语言-动作基座模型', '开源 VLA(7B)：看图听指令直接出动作，Open X-Embodiment 训练（库层）', 'openvla',
+  '**软件库层** · OpenVLA(MIT)= 开源视觉-语言-动作基座模型(7B):图+指令→机器人动作;视觉 DINOv2+SigLIP、语言 Llama 2,在 Open X-Embodiment 97 万条真机演示上训练,动作离散成 token 自回归生成。反向连回:动作 token 化↔VLA、模仿学习↔BC/ACT、生成式策略↔Diffusion Policy。逐段翻。',
+  ['OpenVLA=开源视觉-语言-动作基座模型(MIT,7B);DINOv2+SigLIP 视觉+Llama 2 语言,Open X-Embodiment 97 万演示训练',
+    '动作离散成 token 由语言模型自回归生成(和 ACT 动作分块同思路);可 LoRA 微调、OFT/FAST 加速',
+    '反向连回:动作 token 化↔VLA、模仿学习↔BC/ACT、扩散式策略邻居↔Diffusion Policy',
+    '取舍:7B 算力高实时性要优化、动作离散有精度取舍;π0/RDT/GR00T 是同类。配 LeRobot 上真机'])
+const simplefoc = mkLib('simplefoc', 'SimpleFOC · 无刷电机磁场定向控制', '几行 Arduino 代码搞定无刷电机 FOC——最亲民的 FOC 库（库层，关节驱动最底层）', 'simplefoc',
+  '**软件库层** · SimpleFOC(Arduino-FOC,MIT)= 最亲民的开源磁场定向控制(FOC)库,给无刷(BLDC)/步进电机做平滑力矩/速度/位置控制,把 Clarke/Park/SVPWM/电流环封成几行 Arduino 代码。反向连回:FOC 电流环↔FOC 磁场定向控制、级联 PID↔PID。是机器人关节驱动最底层的一环。逐段翻。',
+  ['SimpleFOC=最亲民的开源 FOC 库(MIT,Arduino/PlatformIO);BLDC/步进的力矩/速度/位置控制,把 Clarke/Park/SVPWM/电流环封装好',
+    '反向连回:FOC 电流环(Clarke→Park→PI→逆变换+SVPWM)↔FOC 磁场定向控制实验、级联位置→速度→电流三环↔PID',
+    '稚晖君 Dummy-Robot 的 Ctrl-FOC-Lite 基于 SimpleFOC;DIY 机械臂/云台/力反馈的关节',
+    '取舍:面向爱好者/中小功率非工业伺服级、Arduino 算力实时有限、高性能需搭好硬件'])
 const miniduck: Experiment<DuckState> = {
   id: 'miniduck', group: '具身项目实战', title: 'Open Duck Mini · 学会走路', subtitle: 'BD-X 迷你复刻的腿式 RL：相位参考步态 + 「模仿奖励」(≠模仿学习)；LeRobot 线收官',
   kernel: miniduckKernel, defaultDoc: { kind: 'miniduck', params: { mode: '带模仿奖励' }, entities: [], streams: [] },
@@ -7782,7 +7830,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, pinhole, pointcloud, stereo, handeye, vo, pnp, icp, slam, impedance, mpc, pid, rrt, rrtconnect, rrtstar, prm, potentialfield, chomp, trapezoid, gjk, dubins, dstarlite, mdp, qlearning, policygrad, ppo, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc, moveit, ros2, pinocchio, lerobotlib,
+  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, pinhole, pointcloud, stereo, handeye, vo, pnp, icp, slam, impedance, mpc, pid, rrt, rrtconnect, rrtstar, prm, potentialfield, chomp, trapezoid, gjk, dubins, dstarlite, mdp, qlearning, policygrad, ppo, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc, moveit, ros2, pinocchio, lerobotlib, mujoco, isaaclab, pcl, orbslam3, ros2control, nav2, openvla, simplefoc,
 ] as unknown as AnyExperiment[]
 
 /**

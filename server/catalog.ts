@@ -3600,6 +3600,70 @@ export const CATALOG: CatalogEntry[] = [
     ],
   },
   {
+    id: 'mujoco', title: 'MuJoCo · 接触物理引擎', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'mujoco' }, entities: [], streams: [] },
+    facts: [
+      { id: 'mj_what', label: 'MuJoCo 是什么', ask: 'MuJoCo 是什么?名字什么意思?', kind: 'choice', compute: () => ({ answer: 'MuJoCo=Multi-Joint dynamics with Contact,通用物理引擎,主打接触丰富的刚体动力学,广泛用于机器人/生物力学/机器学习。Google DeepMind 2022 开源(Apache-2.0)。是学界机器人控制/RL 的默认仿真器', step: 0, evidence: '接触丰富的通用物理引擎、DeepMind Apache-2.0' }), distractors: () => ['一个深度学习框架', '一个 SLAM 建图库', '一个机器人操作系统'] },
+      { id: 'mj_contact', label: 'MuJoCo 的接触处理', ask: 'MuJoCo 在接触动力学上的特点是什么?', kind: 'choice', compute: () => ({ answer: '把接触建成凸优化问题(软/弹性接触),大步长也稳定、还能给一阶解析导数(利于最优控制/可微仿真)。这也是它比很多引擎更适合控制与 RL 的原因', step: 0, evidence: '接触当凸优化、大步长稳、给解析导数' }), distractors: () => ['完全刚性硬接触、不给导数', '不处理接触、只做自由飞行', '用神经网络预测接触'] },
+      { id: 'mj_mjx', label: 'MJX 是什么', ask: 'MuJoCo 的 MJX 是干什么的?', kind: 'choice', compute: () => ({ answer: 'MJX 是 MuJoCo 的 JAX 版实现,能在 GPU/TPU 上大规模并行仿真(数千环境),把强化学习训练加速几个数量级。和 Brax 生态一起做大规模 RL', step: 0, evidence: 'JAX 版、GPU/TPU 并行、加速 RL' }), distractors: () => ['MuJoCo 的图形界面', 'MuJoCo 的机器人硬件', 'MuJoCo 的移动 App'] },
+    ],
+  },
+  {
+    id: 'isaaclab', title: 'Isaac Lab · GPU 机器人学习框架', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'isaaclab' }, entities: [], streams: [] },
+    facts: [
+      { id: 'il_what', label: 'Isaac Lab 是什么', ask: 'Isaac Lab 是什么?和 Isaac Sim 什么关系?', kind: 'choice', compute: () => ({ answer: 'NVIDIA 开源的机器人学习框架(BSD-3),建在 Isaac Sim(Omniverse 上的高保真/照片级仿真平台)之上,主打 GPU 大规模并行训机器人策略(RL/模仿/规划)、sim-to-real', step: 0, evidence: 'NVIDIA GPU 机器人学习框架、建在 Isaac Sim 上' }), distractors: () => ['一个独立于 GPU 的 CPU 仿真器', '一个点云处理库', 'NVIDIA 的操作系统'] },
+      { id: 'il_vs_mujoco', label: 'Isaac Lab vs MuJoCo', ask: 'Isaac Lab 和 MuJoCo 各自强在哪?', kind: 'choice', compute: () => ({ answer: 'Isaac Lab 强在 GPU 大规模并行(数千环境)、照片级渲染 + 传感器仿真、sim-to-real 与产业生态;MuJoCo 强在接触动力学精度与学术评测、轻量。感知/规模选 Isaac、接触/算法评测选 MuJoCo', step: 0, evidence: 'Isaac=规模/逼真感知/sim2real、MuJoCo=接触精度/轻量' }), distractors: () => ['两者完全一样', 'MuJoCo 更逼真、Isaac 更轻量', 'Isaac Lab 不支持 GPU'] },
+      { id: 'il_use', label: 'Isaac Lab 用在哪', ask: 'Isaac Lab 典型用途?', kind: 'choice', compute: () => ({ answer: '机器人基座模型/RL 策略的大规模训练、sim-to-real 迁移、复杂交互与感知任务;和 rl_games/RSL-RL、VLA 训练打通(如 GR00T 的仿真训练)。局限:强依赖 NVIDIA GPU/Omniverse、体量大', step: 0, evidence: '大规模 RL/基座模型训练、sim-to-real;依赖 NVIDIA GPU' }), distractors: () => ['给单片机写电机固件', '数据库查询优化', '网页前端开发'] },
+    ],
+  },
+  {
+    id: 'pcl', title: 'PCL · 点云处理库', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'pcl' }, entities: [], streams: [] },
+    facts: [
+      { id: 'pcl_what', label: 'PCL 是什么', ask: 'PCL(Point Cloud Library)是干什么的?', kind: 'choice', compute: () => ({ answer: '2D/3D 点云处理的老牌开源标准库(BSD-3):滤波(体素下采样/离群点)、特征(法线估计)、配准(ICP)、分割、曲面重建一整套,模块化、ROS 深度集成。几乎所有感知项目都用它', step: 0, evidence: '点云处理老牌标准库、滤波/特征/配准/分割' }), distractors: () => ['一个物理仿真器', '一个强化学习库', '一个电机驱动'] },
+      { id: 'pcl_cover', label: 'PCL 对应的实验', ask: 'PCL 的哪些模块对应实验室「点云预处理」和「ICP」?', kind: 'choice', compute: () => ({ answer: '滤波模块的体素下采样、特征模块的法线估计(PCA)对应「点云预处理」实验;配准模块的 ICP(点到点/点到面等变体)对应「ICP 点云配准」实验。库是工程实现、实验是原理', step: 0, evidence: '体素下采样/法线估计↔点云预处理、ICP↔ICP 配准' }), distractors: () => ['卷积和注意力', 'TCP 拥塞控制', 'B+ 树索引'] },
+      { id: 'pcl_limit', label: 'PCL 的局限', ask: 'PCL 有什么局限?', kind: 'choice', compute: () => ({ answer: 'C++ 为主、编译重、上手门槛高;偏经典几何算法,深度学习点云(如 PointNet)要另找;部分模块 API 老、维护慢。更现代/Python 友好可看 Open3D', step: 0, evidence: 'C++重/偏经典几何/API老;现代可看 Open3D' }), distractors: () => ['不能处理 3D 只能 2D', '闭源收费', '只能在 GPU 上跑'] },
+    ],
+  },
+  {
+    id: 'orbslam3', title: 'ORB-SLAM3 · 视觉惯性 SLAM', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'orbslam3' }, entities: [], streams: [] },
+    facts: [
+      { id: 'orb_what', label: 'ORB-SLAM3 是什么', ask: 'ORB-SLAM3 是什么?', kind: 'choice', compute: () => ({ answer: '精度标杆的开源视觉/视觉惯性 SLAM 库(GPL-3.0),支持单目/双目/RGB-D + IMU + 多地图。用 ORB 特征点做前端、光束平差做后端、词袋做回环', step: 0, evidence: '视觉/视觉惯性 SLAM、ORB 特征+BA+回环、GPL-3.0' }), distractors: () => ['一个物理仿真器', '一个点云滤波库', '一个电机控制固件'] },
+      { id: 'orb_pipe', label: 'ORB-SLAM3 的流程', ask: 'ORB-SLAM3 前后端的核心步骤,对应实验室哪些实验?', kind: 'choice', compute: () => ({ answer: 'ORB 特征匹配→对极几何求相对运动(↔视觉里程计)→PnP 重定位(↔PnP)→光束平差优化位姿+地图点→回环检测闭合漂移(↔SLAM 回环校正)。正是我们感知实验里的那几步', step: 0, evidence: '对极几何↔VO、PnP↔重定位、回环↔SLAM 校正' }), distractors: () => ['卷积→池化→全连接', 'Clarke→Park→SVPWM', '生产者→队列→消费者'] },
+      { id: 'orb_gpl', label: 'ORB-SLAM3 的许可注意', ask: '用 ORB-SLAM3 要注意什么许可问题?', kind: 'choice', compute: () => ({ answer: '它是 GPL-3.0,有传染性——把它链进闭源商业产品要非常小心(可能被要求开源)。研究/开源用没问题,商用要评估许可或找 BSD/Apache 的替代', step: 0, evidence: 'GPL-3.0 传染性、商业闭源慎用' }), distractors: () => ['MIT 随便用', '闭源收费软件', '公有领域无任何限制'] },
+    ],
+  },
+  {
+    id: 'ros2control', title: 'ros2_control · 实时控制框架', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'ros2control' }, entities: [], streams: [] },
+    facts: [
+      { id: 'rc_what', label: 'ros2_control 是什么', ask: 'ros2_control 是干什么的?', kind: 'choice', compute: () => ({ answer: 'ROS 2 的实时控制框架(Apache-2.0):把硬件(真机/仿真)抽象成统一接口,控制器管理器在实时循环里加载/切换控制器(关节轨迹/PID/力控),把上层规划的轨迹执行到底层电机。是"规划→执行"的标准中间层', step: 0, evidence: '硬件抽象+控制器管理器、规划→执行中间层' }), distractors: () => ['一个运动规划算法', '一个 SLAM 库', '一个仿真渲染器'] },
+      { id: 'rc_cover', label: 'ros2_control 的控制器', ask: 'ros2_control 里的控制器对应实验室哪些实验?', kind: 'choice', compute: () => ({ answer: 'PID 控制器↔「PID 控制」、力控/导纳控制器↔「阻抗/力控」、关节轨迹控制器(插值下发)↔「轨迹规划/梯形速度曲线」。它把 MoveIt 出的轨迹执行到硬件', step: 0, evidence: 'PID/力控/关节轨迹控制器↔对应控制实验' }), distractors: () => ['A* 和 Dijkstra', 'RSA 和 AES', 'BPE 和分词'] },
+      { id: 'rc_pos', label: 'ros2_control 的位置', ask: 'ros2_control 在机器人软件栈里处于什么位置?', kind: 'choice', compute: () => ({ answer: '在"规划"和"电机"之间:上接 MoveIt/Nav2 等规划出的轨迹/命令,下接硬件接口写到电机;sim 与真机用同一套控制器。再往下的电流环是 SimpleFOC 那类', step: 0, evidence: '规划与电机之间、sim/真机通用、下接电流环' }), distractors: () => ['最上层的任务规划', '最底层的电流环 PWM', '和控制无关的可视化'] },
+    ],
+  },
+  {
+    id: 'nav2', title: 'Nav2 · 移动机器人导航栈', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'nav2' }, entities: [], streams: [] },
+    facts: [
+      { id: 'nav_what', label: 'Nav2 是什么', ask: 'Nav2 是什么?和 MoveIt 分工?', kind: 'choice', compute: () => ({ answer: 'ROS 2 移动机器人自主导航标准栈(Apache-2.0):行为树编排 + 代价图 + 全局规划器(NavFn/Smac/Theta*) + 局部控制器(DWB/MPPI) + 恢复行为。MoveIt 管机械臂、Nav2 管移动底盘', step: 0, evidence: '移动导航栈、行为树+代价图+规划+控制;MoveIt 管臂' }), distractors: () => ['管机械臂运动规划(那是 MoveIt)', '一个物理引擎', '一个电机驱动'] },
+      { id: 'nav_cover', label: 'Nav2 对应的实验', ask: 'Nav2 的哪些组件对应实验室的规划实验?', kind: 'choice', compute: () => ({ answer: 'Smac 混合 A* 规划器用 Reeds-Shepp/Dubins 处理车式非完整约束↔「Dubins 曲线」;代价图膨胀层=障碍斥力↔「人工势场法」;MPPI 局部控制↔「MPC」;地图变化全局重规划↔「D* Lite」', step: 0, evidence: 'Smac↔Dubins、膨胀层↔势场、MPPI↔MPC、重规划↔D*Lite' }), distractors: () => ['卷积/注意力/Transformer', 'ICP/点云/SLAM', 'RSA/AES/HMAC'] },
+      { id: 'nav_limit', label: 'Nav2 的局限', ask: 'Nav2 有什么局限?', kind: 'choice', compute: () => ({ answer: '配置庞大(一堆 yaml + 行为树)、调参门槛高;偏 2D/2.5D 平面导航(3D/腿足要另做);依赖定位(AMCL/SLAM);动态密集环境仍具挑战', step: 0, evidence: '配置庞大调参难、偏 2D、依赖定位' }), distractors: () => ['只能仿真上不了真机', '不支持避障', '闭源收费'] },
+    ],
+  },
+  {
+    id: 'openvla', title: 'OpenVLA · 视觉-语言-动作基座模型', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'openvla' }, entities: [], streams: [] },
+    facts: [
+      { id: 'ov_what', label: 'OpenVLA 是什么', ask: 'OpenVLA 是什么?', kind: 'choice', compute: () => ({ answer: '开源视觉-语言-动作(VLA)基座模型(MIT,7B):输入相机图 + 语言指令,直接输出机器人动作。视觉用 DINOv2+SigLIP、语言用 Llama 2,在 Open X-Embodiment 97 万条真机演示上训练', step: 0, evidence: '开源 VLA 基座(7B)、图+指令→动作' }), distractors: () => ['一个物理仿真器', '一个 SLAM 库', '一个电机控制库'] },
+      { id: 'ov_action', label: 'VLA 怎么出动作', ask: 'OpenVLA 是怎么把"图+指令"变成动作的?', kind: 'choice', compute: () => ({ answer: '把连续动作离散化成 token,由语言模型自回归生成(和 ACT 的动作分块是同一思路)。这样能复用大语言模型的架构与预训练能力。局限:离散化有精度/频率取舍', step: 0, evidence: '动作离散成 token 自回归生成(似 ACT)' }), distractors: () => ['直接解析求逆运动学', '查表匹配预设动作', '随机采样动作'] },
+      { id: 'ov_deploy', label: 'OpenVLA 上真机', ask: 'OpenVLA 这类 VLA 上真机有什么挑战?怎么落地?', kind: 'choice', compute: () => ({ answer: '7B 模型推理算力高、实时性要靠 OFT/FAST 等加速;还要解决控制频率、安全、标定。落地常配 LeRobot 接到低成本真机;π0/RDT/GR00T 是同类', step: 0, evidence: '算力高要加速、配 LeRobot 上真机' }), distractors: () => ['无需任何数据即可零成本部署', '只能在仿真里跑', '不需要相机'] },
+    ],
+  },
+  {
+    id: 'simplefoc', title: 'SimpleFOC · 无刷电机磁场定向控制', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'simplefoc' }, entities: [], streams: [] },
+    facts: [
+      { id: 'sf_what', label: 'SimpleFOC 是什么', ask: 'SimpleFOC 是干什么的?', kind: 'choice', compute: () => ({ answer: '最亲民的开源磁场定向控制(FOC)库(MIT,Arduino/PlatformIO),给无刷(BLDC)/步进电机做平滑的力矩/速度/位置控制,把 Clarke/Park/SVPWM/电流环封成几行代码。是机器人关节驱动最底层一环', step: 0, evidence: 'Arduino FOC 库、BLDC/步进力矩/速度/位置控制' }), distractors: () => ['一个运动规划框架', '一个 SLAM 库', '一个深度学习库'] },
+      { id: 'sf_cover', label: 'SimpleFOC 对应的实验', ask: 'SimpleFOC 内部算法对应实验室哪些实验?', kind: 'choice', compute: () => ({ answer: 'FOC 电流环(Clarke→Park→两个 PI→逆变换+SVPWM)↔「FOC 磁场定向控制」实验;级联位置→速度→电流三环↔「PID 控制」。稚晖君 Dummy-Robot 的 Ctrl-FOC-Lite 就基于 SimpleFOC', step: 0, evidence: 'FOC 电流环↔FOC 实验、级联环↔PID' }), distractors: () => ['A*/Dijkstra 寻路', 'ICP 点云配准', '注意力机制'] },
+      { id: 'sf_limit', label: 'SimpleFOC 的定位', ask: 'SimpleFOC 适合什么场景?不适合什么?', kind: 'choice', compute: () => ({ answer: '适合爱好者/创客/教育/中小功率(DIY 机械臂、云台、力反馈);不是工业伺服级,Arduino 生态算力/实时有限、高转速吃紧、高性能要搭好硬件(电流采样/驱动)', step: 0, evidence: '爱好者/中小功率;非工业伺服级、算力实时有限' }), distractors: () => ['大规模工业伺服首选', '只能控直流有刷电机', '不需要任何传感器'] },
+    ],
+  },
+  {
     id: 'wildcard', title: '通配符匹配', kernel: wildcardKernel as Kernel<unknown>, doc: trivialDoc('wildcard'),
     facts: [
       {
