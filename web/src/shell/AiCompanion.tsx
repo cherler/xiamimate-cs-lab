@@ -9,6 +9,19 @@
  * 后端目前只接了部分实验（见 /lab/ai/experiments）；没接的给一句友好提示，不报错。
  */
 import { useEffect, useState } from 'react'
+import { EXPERIMENTS, DISCIPLINE_OF_GROUP } from '../registry.ts'
+
+// 当前实验所在职业线的全部实验 id（用于「整轨面试」跨主题抽题；后端会自动过滤没接 catalog 的）
+function trackExpIdsOf(expId: string): string[] {
+  const exp = EXPERIMENTS.find(e => e.id === expId)
+  const disc = exp && DISCIPLINE_OF_GROUP[exp.group]
+  if (!disc) return [expId]
+  return EXPERIMENTS.filter(e => DISCIPLINE_OF_GROUP[e.group] === disc).map(e => e.id)
+}
+function trackTitleOf(expId: string): string {
+  const exp = EXPERIMENTS.find(e => e.id === expId)
+  return (exp && DISCIPLINE_OF_GROUP[exp.group]?.title) ?? '这条职业线'
+}
 
 type Question = {
   factId: string; question: string; options: string[]; correctIndex: number
@@ -216,6 +229,7 @@ function ReviewView({ expId }: { expId: string }) {
 
 // ── 面试（模拟面试官，多轮对话） ──
 function InterviewView({ expId }: { expId: string }) {
+  const [scope, setScope] = useState<'one' | 'track'>('one')
   const [history, setHistory] = useState<Turn[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -225,7 +239,10 @@ function InterviewView({ expId }: { expId: string }) {
   async function post(nextHistory: Turn[]) {
     setLoading(true); setError('')
     try {
-      const d = await postJSON<{ reply: string; done: boolean }>('/lab/ai/interview', { expId, history: nextHistory })
+      const body = scope === 'track'
+        ? { expId, expIds: trackExpIdsOf(expId), trackTitle: trackTitleOf(expId), history: nextHistory }
+        : { expId, history: nextHistory }
+      const d = await postJSON<{ reply: string; done: boolean }>('/lab/ai/interview', body)
       setHistory([...nextHistory, { role: 'interviewer', text: d.reply }])
       setDone(d.done)
     } catch (e) { setError((e as Error).message) } finally { setLoading(false) }
@@ -243,8 +260,14 @@ function InterviewView({ expId }: { expId: string }) {
     <div className="aic-body">
       {history.length === 0
         ? <>
-            <p className="aic-hint">AI 当<b>面试官</b>，就本实验的知识点面你：问 → 你答 → 它点评+追问，几轮后给评分。答案由实验要点<b>钉死</b>当判据，它挑得出你哪里没答到。</p>
-            <button className="aic-go" disabled={loading} onClick={start}>{loading ? '面试官准备中…' : '开始模拟面试'}</button>
+            <div className="aic-subtabs">
+              <button className={scope === 'one' ? 'on' : ''} onClick={() => setScope('one')}>本实验</button>
+              <button className={scope === 'track' ? 'on' : ''} onClick={() => setScope('track')}>整轨（{trackTitleOf(expId)}）</button>
+            </div>
+            <p className="aic-hint">{scope === 'one'
+              ? <>AI 当<b>面试官</b>，就<b>本实验</b>面你：问 → 你答 → 点评+追问，几轮后给评分。答案由实验要点<b>钉死</b>当判据，挑得出你哪里没答到。</>
+              : <>AI 当<b>面试官</b>，覆盖<b>整条「{trackTitleOf(expId)}」职业线</b>跨主题面你：每轮换一个知识点考广度，几轮后给评分。判据由这条线各实验要点<b>钉死</b>——像真面试那样不只问一个点。</>}</p>
+            <button className="aic-go" disabled={loading} onClick={start}>{loading ? '面试官准备中…' : scope === 'track' ? '开始整轨面试' : '开始模拟面试'}</button>
           </>
         : <>
             <div className="aic-chat">
