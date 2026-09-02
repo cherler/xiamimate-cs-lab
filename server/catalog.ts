@@ -3531,6 +3531,75 @@ export const CATALOG: CatalogEntry[] = [
     ],
   },
   {
+    id: 'ros2', title: 'ROS 2 · 机器人通信中间件', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'ros2' }, entities: [], streams: [] },
+    facts: [
+      {
+        id: 'ros_what', label: 'ROS 2 是什么',
+        ask: 'ROS 2 是操作系统吗?它到底是什么?', kind: 'choice',
+        compute: () => ({ answer: '不是真正的操作系统,而是机器人软件的通信中间件 + 工具生态:把系统拆成一堆节点(小进程),节点间靠话题(发布订阅)、服务(请求响应)、动作(长任务)通信,底层走 DDS。几乎所有机器人软件(MoveIt/Nav2/Autoware)都建在它上面', step: 0, evidence: '通信中间件+工具生态、非真OS、DDS' }),
+        distractors: () => ['一个像 Ubuntu 那样的操作系统', '一个物理仿真器', '一个机器人硬件品牌'],
+      },
+      {
+        id: 'ros_comm', label: 'ROS 2 的通信方式',
+        ask: 'ROS 2 里节点之间怎么通信?', kind: 'choice',
+        compute: () => ({ answer: '三种:话题(topic)发布-订阅(多对多、解耦,如传感器流)、服务(service)请求-响应(短同步调用)、动作(action)带反馈可取消的长任务(如"导航到某点")。底层由 DDS 传输、带 QoS/多机/安全', step: 0, evidence: '话题pub/sub + 服务 + 动作,底层 DDS' }),
+        distractors: () => ['只能通过共享内存', '全靠一个中心服务器转发(像 ROS 1 的 master)', '直接函数调用、不能跨进程'],
+      },
+      {
+        id: 'ros_vs1', label: 'ROS 2 相比 ROS 1',
+        ask: 'ROS 2 相比 ROS 1 主要改进了什么?', kind: 'choice',
+        compute: () => ({ answer: '完全重写:用 DDS 替代中心 master(去单点、支持多机组网)、支持实时、生产级可靠、内置安全(SROS2)。但仍非硬实时——kHz 电机控制环还得下到 MCU / micro-ROS / RT 层。许可 Apache-2.0', step: 0, evidence: 'DDS去master+实时+多机+安全;仍非硬实时' }),
+        distractors: () => ['只是换了个名字、没变化', 'ROS 2 变成了闭源商业软件', 'ROS 2 去掉了 Python 支持'],
+      },
+    ],
+  },
+  {
+    id: 'pinocchio', title: 'Pinocchio · 刚体动力学库', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'pinocchio' }, entities: [], streams: [] },
+    facts: [
+      {
+        id: 'pin_what', label: 'Pinocchio 是什么',
+        ask: 'Pinocchio 库是干什么的?', kind: 'choice',
+        compute: () => ({ answer: '刚体动力学算法的高性能实现:正/逆运动学、正/逆动力学(RNEA/ABA)、质量矩阵(CRBA)、雅可比,以及这些量的解析导数。是机器人动力学计算的"心脏",Crocoddyl/Stack-of-Tasks 等上层控制库都建在它上面。BSD-2 许可、INRIA 维护', step: 0, evidence: '刚体动力学算法库(RNEA/ABA/CRBA)+解析导数' }),
+        distractors: () => ['一个运动规划框架', '一个深度学习库', '一个相机驱动'],
+      },
+      {
+        id: 'pin_deriv', label: 'Pinocchio 的杀手锏',
+        ask: 'Pinocchio 相比一般动力学计算,最突出的能力是什么?', kind: 'choice',
+        compute: () => ({ answer: '它不仅算动力学量,还给出这些量对 q/q̇/τ 的解析导数(analytical derivatives)。MPC、最优控制、轨迹优化都要梯度,有了解析导数就又快又准,这是 Pinocchio 成为控制/优化底座的关键。加上模板+代码生成、速度极快', step: 0, evidence: '给解析导数(MPC/优化必需)、极快' }),
+        distractors: () => ['自带图形界面', '内置强化学习训练', '能直接控制电机'],
+      },
+      {
+        id: 'pin_cover', label: 'Pinocchio 实现的算法',
+        ask: 'Pinocchio 内部实现的经典动力学算法有哪些?(对应实验室哪些实验)', kind: 'choice',
+        compute: () => ({ answer: 'RNEA(递归牛顿-欧拉逆动力学)、ABA(Articulated-Body 正向动力学)、CRBA(Composite-Rigid-Body 质量矩阵)——正是实验室「刚体动力学」组里 rnea/dyneom/fwddyn 这些手推过的算法。库把它们工程化,原理在实验里', step: 0, evidence: 'RNEA/ABA/CRBA=刚体动力学实验的工程化' }),
+        distractors: () => ['卷积和注意力', '快速傅里叶变换', 'A* 和 Dijkstra'],
+      },
+    ],
+  },
+  {
+    id: 'lerobotlib', title: 'LeRobot · 端到端机器人学习库', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'lerobot' }, entities: [], streams: [] },
+    facts: [
+      {
+        id: 'lr_what', label: 'LeRobot 是什么',
+        ask: 'LeRobot 库是干什么的?', kind: 'choice',
+        compute: () => ({ answer: 'Hugging Face 的端到端机器人学习库(以模仿学习为主):标准数据集格式(LeRobotDataset)、一批策略实现(ACT/Diffusion Policy/TDMPC/VLA)、低成本真机支持(SO-100/SO-101/ALOHA)。目标是把"采数据→训策略→上真机"降到人人能跑。Apache-2.0、PyTorch', step: 0, evidence: 'HF 端到端机器人学习库:数据+策略+真机' }),
+        distractors: () => ['一个机器人仿真物理引擎', '一个 SLAM 建图库', '一个电机驱动固件'],
+      },
+      {
+        id: 'lr_cover', label: 'LeRobot 内部机制',
+        ask: 'LeRobot 内部用到的机制,对应实验室哪些实验?', kind: 'choice',
+        compute: () => ({ answer: 'ACT(动作分块+时序集成)、delta_timestamps(时序窗口)、数据集归一化、主从遥操作采数据——正是实验室「具身学习/项目实战」里 actte/deltats/normstats/teleop 这些实验拆的机制。库是"用法"、实验是"原理"', step: 0, evidence: 'ACT/delta_timestamps/归一化/遥操作=具身学习实验' }),
+        distractors: () => ['B+ 树和 LSM 树', 'TCP 拥塞控制', 'RSA 和 AES 加密'],
+      },
+      {
+        id: 'lr_paradigm', label: 'LeRobot 的学习范式与局限',
+        ask: 'LeRobot 主要走什么学习范式?有什么局限?', kind: 'choice',
+        compute: () => ({ answer: '以模仿学习为主:靠人遥操作采示范数据、训策略克隆动作,所以数据质量决定上限;偏研究/入门,工业级鲁棒性/安全还要自己补,依赖也重(PyTorch 全家桶)。优势是低成本真机(SO-101)+ 开箱即用 + HF 生态共享', step: 0, evidence: '模仿学习为主、数据质量定上限、偏入门' }),
+        distractors: () => ['纯强化学习、不需要任何数据', '只做仿真、上不了真机', '只支持百万美元级工业机器人'],
+      },
+    ],
+  },
+  {
     id: 'wildcard', title: '通配符匹配', kernel: wildcardKernel as Kernel<unknown>, doc: trivialDoc('wildcard'),
     facts: [
       {

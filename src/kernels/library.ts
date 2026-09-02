@@ -59,6 +59,67 @@ const LIBS: Record<string, LibProfile> = {
     projects: ['Franka Emika Panda(MoveIt 官方教程机械臂)', 'Universal Robots UR 系列(工业协作臂)', 'Fetch / PR2 等研究平台', '工业拾取/装配、桌面抓取 pipeline 的规划底座'],
     seeAlso: '建在「ROS 2」通信框架之上;移动底盘导航看「Nav2」;数据驱动的学习式操作看「LeRobot」',
   },
+  ros2: {
+    name: 'ROS 2', tagline: '机器人的"操作系统"——节点图 + 发布订阅通信中间件', license: 'Apache-2.0', lang: 'C++ / Python(rclcpp / rclpy)', latest: '最新 LTS: Jazzy Jalisco(2024-05 发布,支持到 2029-05)', maintainer: 'Open Robotics / OSRF + 社区',
+    whatIs: 'ROS 2 不是真正的操作系统,而是**机器人软件的通信中间件 + 工具生态**:把系统拆成一堆**节点(node)**小进程,节点之间靠**话题(topic)发布-订阅**、**服务(service)请求-响应**、**动作(action)长任务**通信;底层走 **DDS**(数据分发服务,带实时/多机/安全)。相比 ROS 1 完全重写——解决实时、多机器人组网、生产级可靠、安全。几乎所有机器人软件(MoveIt / Nav2 / Autoware)都骑在它上面,是整个机器人栈的**通信底座**。',
+    features: [
+      { t: '节点图 + 发布订阅', d: '系统=一堆节点小进程,靠命名话题 pub/sub 解耦通信' },
+      { t: '服务 / 动作', d: '服务=请求-响应(短);动作=可反馈可取消的长任务(如"走到那儿")' },
+      { t: 'DDS 中间件', d: '底层传输,自带 QoS(可靠性/时效)、多机组网、安全(SROS2)' },
+      { t: 'TF 坐标变换树', d: '维护各坐标系(基座/关节/相机)间的实时变换,查询任意两系关系' },
+      { t: 'colcon + 包生态', d: '构建工具 + 海量现成包(驱动/算法/工具),即插即用' },
+    ],
+    pros: ['机器人软件的事实标准、生态巨大(驱动/算法/工具一堆现成)', '模块化:节点即插即用、语言/机器进程解耦', 'DDS 带实时、多机、安全,面向生产', '多语言(C++/Python),工具链全(RViz/rosbag/ros2 CLI)'],
+    cons: ['概念多、学习曲线陡', 'DDS 网络/QoS 配置与调试麻烦', '非硬实时:kHz 电机环还得下到 MCU/RT 层(micro-ROS)', '版本/发行版碎片、整体量级重'],
+    coverage: [
+      { mod: 'TF 坐标变换', d: '各坐标系间的位姿变换、四元数表示', links: [{ label: '位姿与四元数', exp: 'quat' }] },
+      { mod: '(承载算法库的底座)', d: '规划/导航/感知算法本身在 MoveIt / Nav2 等包里、都建在 ROS 2 上', links: [{ label: 'MoveIt 见「软件库」', exp: 'moveit' }] },
+    ],
+    projects: ['工业机械臂 / 移动机器人 / 无人机 / 服务机器人的通用软件底座', 'MoveIt 2(机械臂规划)、Nav2(移动导航)都建在其上', 'Autoware(开源自动驾驶栈)基于 ROS 2', '各大厂/实验室机器人的中间件首选'],
+    seeAlso: '机械臂规划看「MoveIt 2」、移动导航看「Nav2」、仿真看「Gazebo」、MCU 端看「micro-ROS」',
+  },
+  pinocchio: {
+    name: 'Pinocchio', tagline: '快到飞起的刚体动力学库(还给解析导数)——机器人动力学的心脏', license: 'BSD-2-Clause', lang: 'C++(Python 绑定 pin)', latest: 'Pinocchio 3.x', maintainer: 'Stack-of-Tasks / INRIA + 社区',
+    whatIs: 'Pinocchio 是**刚体动力学算法**的高性能实现:正/逆运动学、正/逆动力学、雅可比、质量矩阵,以及这些量的**解析导数**(优化/MPC 必需)。它把我们「刚体动力学」实验里手推的那几套算法——**RNEA(递归牛顿-欧拉逆动力学)、ABA(正向动力学)、CRBA(质量矩阵)**——做成了工业级的库。是 Crocoddyl、Stack-of-Tasks、Humanoid Path Planner 等一堆上层控制/规划库的公共底座。',
+    features: [
+      { t: '正/逆运动学 FK/IK', d: '关节角 ↔ 各连杆位姿、几何/解析雅可比' },
+      { t: '逆动力学 RNEA', d: '给定 q,q̇,q̈ 算所需力矩 τ,两次递归扫描 O(n)' },
+      { t: '正向动力学 ABA', d: '给定力矩算加速度 q̈,Articulated-Body 算法' },
+      { t: '质量矩阵 CRBA', d: 'Composite-Rigid-Body 算惯性矩阵 M(q)' },
+      { t: '解析导数', d: '动力学量对 q/q̇/τ 的导数——MPC/轨迹优化的关键,别人少有' },
+    ],
+    pros: ['极快(C++ 模板 + 可代码生成)', '给解析导数——MPC/最优控制/轨迹优化的关键', '刚体动力学算法一整套齐全', '是上层控制库(Crocoddyl/SoT)的公共底座', 'BSD-2 宽松好用'],
+    cons: ['偏底层:是"算子库"不是开箱系统、要自己搭', 'C++ 为主、上手需要功底', '只管动力学(碰撞/规划/感知不归它)', '学术味重、文档偏专业'],
+    coverage: [
+      { mod: '逆动力学 RNEA', d: '递归牛顿-欧拉、两次扫描 O(n)', links: [{ label: '递归牛顿-欧拉 RNEA', exp: 'rnea' }] },
+      { mod: '运动方程 M/C/G', d: '质量矩阵 + 科氏/离心 + 重力', links: [{ label: '机械臂运动方程', exp: 'dyneom' }] },
+      { mod: '正向动力学 ABA', d: '力矩→加速度、仿真一步', links: [{ label: '正向动力学', exp: 'fwddyn' }] },
+      { mod: '雅可比 / 运动学', d: '关节速度↔末端速度、FK', links: [{ label: '雅可比', exp: 'jacobian' }, { label: '正运动学 FK', exp: 'fk' }] },
+      { mod: '基于动力学的控制', d: '计算力矩/反馈线性化', links: [{ label: '计算力矩控制', exp: 'computedtorque' }] },
+    ],
+    projects: ['人形 / 四足机器人的全身控制与 MPC(配 Crocoddyl / OCS2)', 'Stack-of-Tasks 分层全身控制', '腿足运动生成与实时优化', '几乎所有需要快速动力学 + 导数的控制/规划研究'],
+    seeAlso: '最优控制/DDP 看「Crocoddyl」、机械臂规划看「MoveIt 2」、仿真里的动力学看「MuJoCo」',
+  },
+  lerobot: {
+    name: 'LeRobot', tagline: 'Hugging Face 的端到端机器人学习库——数据/策略/真机一条龙', license: 'Apache-2.0', lang: 'Python(PyTorch)', latest: '活跃迭代中', maintainer: 'Hugging Face + 社区',
+    whatIs: 'LeRobot 把**机器人学习**(以模仿学习为主)做成像 🤗 transformers 那样开箱即用:标准**数据集格式**(LeRobotDataset)、一批**策略实现**(ACT、Diffusion Policy、TDMPC、VLA/π0 等)、**真机支持**(SO-100/SO-101 低成本臂、Koch、ALOHA)。目标是把"采数据 → 训策略 → 上真机"整条流水线降到人人能跑。我们「具身学习/项目实战」那批实验(ACT 动作分块、delta_timestamps、归一化、遥操作)拆的就是它内部的机制。',
+    features: [
+      { t: 'LeRobotDataset 数据格式', d: '标准化的机器人示范数据(低维存 parquet、图像存 mp4),HF Hub 共享' },
+      { t: '策略库', d: 'ACT(动作分块)、Diffusion Policy、TDMPC、VLA/π0 等开箱实现' },
+      { t: '真机接口', d: 'SO-100/SO-101 低成本臂、Koch、ALOHA,遥操作采数据' },
+      { t: '训练 / 回放 pipeline', d: '采集→训练→评估→上真机一条龙,配 HF 生态' },
+    ],
+    pros: ['端到端开箱即用(数据到真机)', '低成本真机(SO-101 几百刀就能搭)', '策略实现现成(ACT/DP/VLA 不用自己写)', 'HF 生态:数据/模型 Hub 一键共享', 'Apache 宽松、社区活跃'],
+    cons: ['以模仿学习为主:要采示范数据、数据质量定上限', '真机品类还在扩、偏研究/入门', '工业级部署还要自己补(鲁棒性/安全)', '依赖重(PyTorch 全家桶)'],
+    coverage: [
+      { mod: 'ACT 策略', d: '动作分块 + 时序集成治复合误差', links: [{ label: 'ACT 动作分块', exp: 'actte' }] },
+      { mod: '数据管线', d: 'delta_timestamps 时序窗口 + 数据集归一化', links: [{ label: 'delta_timestamps', exp: 'deltats' }, { label: '数据集归一化', exp: 'normstats' }] },
+      { mod: '遥操作采数据', d: 'SO-101 主从同构臂直接抄关节角', links: [{ label: '主从遥操作', exp: 'teleop' }] },
+      { mod: '其它策略', d: '行为克隆 / Diffusion Policy / VLA', links: [{ label: '模仿学习 BC', exp: 'bc' }, { label: 'Diffusion Policy', exp: 'diffpolicy' }, { label: 'LeRobot×SO-101', exp: 'lerobot' }] },
+    ],
+    projects: ['SO-101 低成本机械臂抓取/操作', 'ALOHA 双臂精细操作复现', '社区共享的真机数据集 + 模仿学习策略', '把前沿 VLA(π0 等)接到低成本真机上跑'],
+    seeAlso: '底层动力学看「Pinocchio」、VLA 基座模型看「OpenVLA」、仿真训练看「Isaac Lab / MuJoCo」',
+  },
 }
 
 export const libraryKernel: Kernel<LibraryState> = {

@@ -7609,6 +7609,44 @@ const moveit: Experiment<LibraryState> = {
     { label: '覆盖理论实验', value: `${s.coverage.flatMap(c => c.links).length} 个`, tone: s.section === 'coverage' || s.section === 'done' ? 'good' : undefined },
   ],
 }
+// 库层实验共用的导览逻辑（分段:特点/优缺点/覆盖/落地/小结）
+const mkLib = (id: string, title: string, subtitle: string, lib: string, paramsNote: string, bounds: string[]): Experiment<LibraryState> => ({
+  id, group: '软件库与框架', title, subtitle,
+  kernel: libraryKernel, defaultDoc: { kind: 'library', params: { lib }, entities: [], streams: [] }, params: [],
+  paramsNote, bounds,
+  tabs: [{ id: 'lib', label: '逐段翻' }], Stage: LibraryStage, whyInRail: true,
+  tone: s => (s.section === 'done' ? { key: 'good', label: '库层小结' }
+    : s.section === 'coverage' ? { key: 'good', label: '反向连回实验' }
+    : s.section === 'proscons' ? { key: 'idle', label: '优缺点' }
+    : s.section === 'projects' ? { key: 'idle', label: '落地项目' }
+    : { key: 'idle', label: '特点介绍' }),
+  metric: s => Math.max(0, (s.step + 1) / 5),
+  tickLabel: s => ({ intro: '特', proscons: '优', coverage: '覆', projects: '落', done: '结' }[s.section] ?? '·'),
+  readouts: s => [
+    { label: '库/框架', value: s.name },
+    { label: '许可', value: s.license },
+    { label: '当前段', value: ({ intro: '特点介绍', proscons: '优缺点剖析', coverage: '内容覆盖', projects: '落地项目', done: '小结' } as Record<string, string>)[s.section] ?? '—' },
+    { label: '覆盖理论实验', value: `${s.coverage.flatMap(c => c.links).length} 个`, tone: s.section === 'coverage' || s.section === 'done' ? 'good' : undefined },
+  ],
+})
+const ros2 = mkLib('ros2', 'ROS 2 · 机器人通信中间件', '机器人的"操作系统"：节点图 + 发布订阅 + DDS，几乎所有机器人软件的通信底座（库层）', 'ros2',
+  '**软件库层** · ROS 2 = 机器人软件的**通信中间件 + 工具生态**(不是真操作系统)。系统拆成一堆**节点**小进程,靠**话题 pub/sub、服务、动作**通信,底层走 **DDS**(带实时/多机/安全);相比 ROS 1 完全重写。MoveIt/Nav2/Autoware 都建在它上面。许可 Apache-2.0、最新 LTS Jazzy(支持到 2029)。它是"承载算法库的底座"——算法本身在上层包里。逐段翻:特点→优缺点→覆盖→落地。',
+  ['ROS 2=机器人软件通信中间件+工具生态(Apache-2.0,OSRF 维护);节点图+话题 pub/sub+服务+动作,底层 DDS',
+    '相比 ROS 1 重写:实时、多机组网、生产级可靠、安全(SROS2);非硬实时(kHz 电机环下到 MCU/micro-ROS)',
+    '几乎所有机器人软件的通信底座:MoveIt(机械臂)、Nav2(移动导航)、Autoware(自动驾驶)都建在其上',
+    '取舍:生态巨大/模块化,但概念多、DDS 配置调试烦、量级重。TF 坐标变换↔位姿与四元数'])
+const pinocchio = mkLib('pinocchio', 'Pinocchio · 刚体动力学库', '快到飞起的刚体动力学(RNEA/ABA/CRBA)+ 解析导数：机器人动力学的心脏（库层）', 'pinocchio',
+  '**软件库层** · Pinocchio = **刚体动力学算法**的高性能实现:正/逆运动学、正/逆动力学、雅可比、质量矩阵,以及这些量的**解析导数**(MPC/优化必需)。它把我们「刚体动力学」实验手推的 **RNEA(逆动力学)、ABA(正向动力学)、CRBA(质量矩阵)** 做成了工业级库,是 Crocoddyl/Stack-of-Tasks 等上层控制库的公共底座。许可 BSD-2-Clause、INRIA/Stack-of-Tasks 维护。逐段翻。',
+  ['Pinocchio=刚体动力学算法高性能实现(BSD-2,INRIA/SoT);FK/IK、逆动力学 RNEA、正向动力学 ABA、质量矩阵 CRBA、雅可比',
+    '杀手锏=给解析导数(动力学量对 q/q̇/τ 的导数),MPC/最优控制/轨迹优化的关键;极快(模板+代码生成)',
+    '内容覆盖反向连回:RNEA↔递归牛顿-欧拉、M/C/G↔机械臂运动方程、ABA↔正向动力学、雅可比/FK、计算力矩控制',
+    '取舍:是"算子库"不是开箱系统、偏底层需 C++ 功底、只管动力学。是 Crocoddyl/SoT/腿足 MPC 的底座'])
+const lerobotlib = mkLib('lerobotlib', 'LeRobot · 端到端机器人学习库', 'Hugging Face 的机器人学习库：标准数据集 + 策略(ACT/DP/VLA)+ 低成本真机一条龙（库层）', 'lerobot',
+  '**软件库层** · LeRobot = Hugging Face 把**机器人学习**(以模仿学习为主)做成像 transformers 那样开箱即用:标准**数据集格式** LeRobotDataset、一批**策略**(ACT/Diffusion Policy/TDMPC/VLA)、**真机支持**(SO-100/SO-101 低成本臂、ALOHA)。把"采数据→训策略→上真机"降到人人能跑。我们「具身学习/项目实战」那批实验拆的就是它内部机制。许可 Apache-2.0。逐段翻。',
+  ['LeRobot=HF 端到端机器人学习库(Apache-2.0,PyTorch);LeRobotDataset 数据格式+策略库(ACT/DP/TDMPC/VLA)+真机(SO-101/ALOHA)',
+    '目标=把"采数据→训策略→上真机"整条流水线降到人人能跑;低成本真机(SO-101 几百刀)、HF Hub 共享数据/模型',
+    '内容覆盖反向连回:ACT↔动作分块时序集成、数据管线↔delta_timestamps/归一化、遥操作↔主从遥操作、BC/Diffusion Policy',
+    '取舍:模仿学习为主(数据质量定上限)、偏研究入门、依赖重。接前沿 VLA(π0 等)到低成本真机上跑'])
 const miniduck: Experiment<DuckState> = {
   id: 'miniduck', group: '具身项目实战', title: 'Open Duck Mini · 学会走路', subtitle: 'BD-X 迷你复刻的腿式 RL：相位参考步态 + 「模仿奖励」(≠模仿学习)；LeRobot 线收官',
   kernel: miniduckKernel, defaultDoc: { kind: 'miniduck', params: { mode: '带模仿奖励' }, entities: [], streams: [] },
@@ -7744,7 +7782,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, pinhole, pointcloud, stereo, handeye, vo, pnp, icp, slam, impedance, mpc, pid, rrt, rrtconnect, rrtstar, prm, potentialfield, chomp, trapezoid, gjk, dubins, dstarlite, mdp, qlearning, policygrad, ppo, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc, moveit,
+  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, pinhole, pointcloud, stereo, handeye, vo, pnp, icp, slam, impedance, mpc, pid, rrt, rrtconnect, rrtstar, prm, potentialfield, chomp, trapezoid, gjk, dubins, dstarlite, mdp, qlearning, policygrad, ppo, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc, moveit, ros2, pinocchio, lerobotlib,
 ] as unknown as AnyExperiment[]
 
 /**
