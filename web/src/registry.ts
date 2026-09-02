@@ -7837,6 +7837,80 @@ const gensim = mkLib('gensim', 'gensim · 主题模型与词向量', 'Word2Vec /
     '反向连回:词向量 Word2Vec(它是 word2vec 原产地、"国王−男人+女人≈王后")',
     '无监督挖文本语义、能流式处理大语料、教学首选',
     '⚠️取舍:LGPL-2.1 比 BSD/MIT 严(商用评估)、经典方法为主(上下文向量看 Transformers)、非端到端 NLP(看 spaCy)'], AG)
+// ── 408 地基 · 系统与工具 ──
+const TG = '系统与工具'
+const linux = mkLib('linux', 'Linux 内核 · 操作系统内核', '调度/虚拟内存/文件系统/网络栈的活教材——OS 原理的工业级真代码（系统层）', 'linux',
+  '**系统与工具层** · Linux 内核(GPL-2.0)= 世界最重要的开源 OS 内核:进程调度(CFS/EEVDF)、虚拟内存(分页/缺页/页替换)、文件系统(inode/位图/日志)、并发(信号量/死锁避免)、网络栈全在里面。你「操作系统」组的实验(调度/缺页/磁盘/银行家/inode/位图/分区/信号量)在它里都有工业级实现。是学 OS 从原理到真代码的桥。逐段翻。',
+  ['Linux 内核=开源 OS 内核(GPL-2.0);调度+虚拟内存+文件系统+并发+网络栈的工业级实现',
+    '反向连回:调度器/缺页/虚拟内存/inode/位图/分区/磁盘/信号量/银行家——OS 组几乎全覆盖',
+    'OS 原理的活教材(真代码)、生态无敌(服务器/手机/嵌入式)、可裁剪可插模块',
+    '取舍:代码庞大门槛高、GPL-2.0 传染(改内核要开源)、开发要配 QEMU/GDB'], TG)
+const gcc = mkLib('gcc', 'GCC · GNU 编译器套件', '把 C/C++ 源码翻成机器码——预处理→编译→汇编→链接（系统层）', 'gcc',
+  '**系统与工具层** · GCC(GPLv3+运行时库例外)= 经典开源编译器套件:源码经预处理→编译(语法/优化/生成汇编)→汇编→链接变成机器码。它把「组成原理」的加减/乘法/浮点/表达式真正生成出来(gcc -S 看汇编)。是"高级语言如何变成机器指令"的窗口、几乎所有 C/C++ 项目的地基。逐段翻。',
+  ['GCC=开源编译器套件(GPLv3+运行时例外);预处理→编译→汇编→链接、多语言多架构、优化(-O2/O3/SIMD)',
+    '反向连回:生成加法/减法/乘法/浮点的机器级指令、编译前端的表达式求值',
+    '是"源码→机器码"的活教材(gcc -S 看汇编)、生态无处不在',
+    '取舍:报错历史上不如 Clang 友好、大项目编译慢、内部庞大'], TG)
+const gdb = mkLib('gdb', 'GDB · GNU 调试器', '运行时透视程序——断点/单步/看寄存器/内存/栈帧（系统层）', 'gdb',
+  '**系统与工具层** · GDB(GPLv3+)= 经典开源调试器:断点、单步、看寄存器/内存/栈帧/变量、反汇编、远程调试(配 QEMU 调内核)。它把「组成原理」讲的"寄存器/内存/栈/机器指令"变成看得见能拨动的东西——真看到函数调用怎么压栈。配 GCC(-g)、QEMU 是系统编程必备。逐段翻。',
+  ['GDB=开源调试器(GPLv3+);断点/单步/看寄存器内存栈帧/反汇编/远程调试(配 QEMU 调内核)',
+    '把运行时机器状态变可见可调——把「组成原理」的寄存器/内存/栈"看得见"(工具基石)',
+    '和 GCC(-g)/QEMU 无缝、系统编程与逆向必备',
+    '取舍:命令行门槛(有 TUI/IDE 前端)、优化代码调试信息会跳、需 -g'], TG)
+const qemu = mkLib('qemu', 'QEMU · 整机模拟器', '在软件里跑一台"虚拟计算机"(CPU/内存/外设)——学 OS/体系结构神器（系统层）', 'qemu',
+  '**系统与工具层** · QEMU(GPL-2.0)= 开源整机模拟/虚拟化:软件模拟整台计算机(CPU 指令翻译/内存/磁盘/网卡),能启动完整 OS(配 KVM 硬件加速)。把「组成原理」的流水线/缓存/虚拟内存/机器指令放到可观察可调试(配 GDB)环境跑。学 OS/体系结构、开发内核(xv6/Linux)的标准平台。逐段翻。',
+  ['QEMU=整机模拟/虚拟化(GPL-2.0);模拟 CPU/内存/磁盘/外设启动完整 OS、多架构、配 KVM 加速',
+    '反向连回:缓存/流水线(CPU 执行)、虚拟内存(MMU/分页模拟)',
+    '整机可观察可调试(配 GDB 调内核)、云虚拟化底座、学 OS/体系结构神器',
+    '取舍:纯模拟慢(要 KVM)、配置门槛、周期级精确要 gem5'], TG)
+const wireshark = mkLib('wireshark', 'Wireshark · 网络抓包分析', '把每个数据包逐字段拆开——亲眼看 TCP 握手/重传/校验（系统层）', 'wireshark',
+  '**系统与工具层** · Wireshark(GPL-2.0+)= 最流行的网络抓包分析工具:抓下每个包逐层逐字段解析(以太网→IP→TCP→HTTP),亲眼看 TCP 三次握手、序号确认、重传、窗口、CRC 校验、子网寻址怎么在线路上发生。你「计算机网络」组的实验(TCP/握手/子网/CRC/ARQ)能抓真实包对照。学协议从课本到真流量的桥。逐段翻。',
+  ['Wireshark=网络抓包分析事实标准(GPL-2.0+);逐层解析几千种协议+显示过滤+Follow TCP Stream+专家信息',
+    '反向连回:TCP/三次握手(序号确认重传窗口)、子网划分、CRC 校验',
+    '协议分析/故障排查/安全分析神器、跨平台',
+    '取舍:抓真实流量需权限/合规、大流量要过滤、加密流量要密钥、深用需协议背景'], TG)
+const nginx = mkLib('nginx', 'nginx · 高性能 Web 服务器', '事件驱动 + epoll 扛海量并发连接——网络与 OS 交汇的活样本（系统层）', 'nginx',
+  '**系统与工具层** · nginx(BSD-2)= 高性能 Web 服务器/反向代理/负载均衡:事件驱动+异步非阻塞(epoll/kqueue),单机扛海量并发连接(C10K 的答案)。它是「网络」+「操作系统」交汇处的样本——处理 TCP/HTTP 靠 OS 的 IO 多路复用(epoll,和进程调度/事件循环相通)。互联网基建最常见的一块。逐段翻。',
+  ['nginx=高性能 Web 服务器/反向代理(BSD-2);事件驱动+epoll 异步非阻塞、单机扛海量并发(C10K)',
+    '反向连回:TCP 连接/三次握手、IO 多路复用 epoll(和进程调度/事件循环相通)',
+    'Web/代理/负载均衡/缓存/限流一把梭、稳定可靠、互联网基建标配',
+    '取舍:复杂动态逻辑不如应用服务器、配置有学习曲线、依赖 OS 的 epoll'], TG)
+const redis = mkLib('redis', 'Redis · 内存数据结构服务器', '哈希/跳表/集合当服务用——一座数据结构博物馆（系统层，⚠️许可变更）', 'redis',
+  '**系统与工具层** · Redis(⚠️ AGPLv3/SSPLv1/RSALv2 三重许可)= 高性能内存数据结构服务器:string/hash/list/set/zset(跳表)/bitmap 当网络服务用,常做缓存/排行榜/队列。内部是数据结构博物馆——哈希表(渐进 rehash)、跳表、LRU/LFU 淘汰(和页替换同思路)。反向连回:哈希表、页替换(LRU)。⚠️2024 从 BSD 改 source-available,Redis 8(2025)加回 AGPLv3、商用要看清。逐段翻。',
+  ['Redis=内存数据结构服务器(⚠️AGPLv3/SSPLv1/RSALv2);丰富数据结构(哈希/跳表/集合)+持久化+淘汰策略',
+    '反向连回:哈希表(渐进式 rehash)、页替换 LRU/LFU(内存满淘汰、和缺页同思路)',
+    '极快(内存+单线程事件循环)、缓存/排行/队列/限流/分布式锁',
+    '⚠️取舍:许可变更(source-available/AGPL,商用评估;BSD 分叉是 Valkey)、内存贵、单线程核心'], TG)
+const sqlite = mkLib('sqlite', 'SQLite · 嵌入式数据库', '一个文件、一段 B 树,部署最广的数据库——B 树落盘的活样本（系统层）', 'sqlite',
+  '**系统与工具层** · SQLite(公有领域)= 世界部署最广的数据库引擎(手机/浏览器/OS 里都有):嵌入式、零配置、单文件关系数据库,整库就是一个 .db 文件。存储引擎核心是 B 树/B+ 树(表和索引都是 B 树)——正是你「数据结构」的 btree/bplus。SQL+事务(ACID)+WAL 俱全。理解"数据库怎么把 B 树落到磁盘文件"的最佳样本。许可公有领域。逐段翻。',
+  ['SQLite=部署最广的嵌入式数据库(公有领域);单文件+零配置+B 树存储+完整 SQL+ACID 事务+WAL',
+    '反向连回:B 树/B+ 树(表和索引都是 B 树)、哈希/查找',
+    'B 树落盘的活教材、极稳(海量测试)、可移植无服务进程',
+    '取舍:高并发写不如客户端-服务器 DB(单写者)、不适合海量分布式(看 Postgres/MySQL)'], TG)
+const git = mkLib('git', 'Git · 分布式版本控制', '内容寻址 + 有向无环图 + 哈希——数据结构的杰作（系统层）', 'git',
+  '**系统与工具层** · Git(GPL-2.0)= 世界主流分布式版本控制,也是数据结构杰作:内部是内容寻址对象库——文件/目录/提交按内容 SHA 哈希寻址(改一点哈希就变),提交连成有向无环图 DAG(父指针),分支是指针。反向连回:哈希、拓扑排序(DAG)。理解 Git 对象模型=把哈希+DAG+内容寻址串一遍。逐段翻。',
+  ['Git=分布式版本控制(GPL-2.0);内容寻址对象(SHA 哈希)+提交 DAG(父指针)+轻量分支+zlib 压缩去重',
+    '反向连回:哈希表(内容寻址)、拓扑排序(提交 DAG);内容去重和布隆/压缩思路相通',
+    '版本控制事实标准、对象模型优雅、生态无敌(GitHub/GitLab)',
+    '取舍:命令多心智门槛、大二进制不友好(要 LFS)、GPL-2.0'], TG)
+const docker = mkLib('docker', 'Docker · 容器', '命名空间 + cgroups + 联合文件系统"打包隔离环境"——OS 隔离活样本（系统层）', 'docker',
+  '**系统与工具层** · Docker(Apache-2.0,moby 引擎)= 主流容器平台:把应用+依赖打包成镜像在隔离环境跑。不是虚拟机,直接用 Linux 内核原语——namespaces(隔离进程/网络/文件视图)+cgroups(限 CPU/内存)+overlayfs(镜像分层)。是「操作系统」隔离/资源管理的活样本。反向连回:cgroups↔调度、overlayfs↔inode/文件系统。逐段翻。',
+  ['Docker=容器平台(Apache-2.0,moby;Desktop 另有商业条款);用 Linux 内核 namespaces+cgroups+overlayfs 做隔离',
+    '反向连回:cgroups 资源限制(和调度/配额相关)、联合文件系统 overlayfs(和 inode/文件系统相关)',
+    '环境一致、轻量(共享内核比 VM 省)、部署标准、生态巨大(对接 Kubernetes)',
+    '取舍:共享内核隔离弱于虚拟机、强依赖 Linux 原语、Desktop 有商业授权(引擎开源)'], TG)
+const xv6 = mkLib('xv6', 'xv6 · 教学操作系统', 'MIT 几千行代码读懂一个真 OS——学 OS 的最佳真代码教材（系统层）', 'xv6',
+  '**系统与工具层** · xv6(MIT)= MIT OS 课(6.S081)的教学操作系统:几千行、能真跑的类 Unix 内核(RISC-V + QEMU),麻雀虽小五脏俱全——进程/调度、系统调用、虚拟内存(分页)、陷阱中断、文件系统(inode/日志)、锁。Linux 太大读不动,xv6 正好。反向连回:调度、缺页、inode。学 OS 的最佳真代码教材。逐段翻。',
+  ['xv6=MIT 教学操作系统(MIT 许可);几千行能真跑的类 Unix 内核(RISC-V+QEMU),涵盖进程/内存/FS/锁',
+    '反向连回:进程调度、缺页/虚拟内存、inode+日志文件系统',
+    '小到能完整读懂一个真 OS、可编译运行调试、教学一流(6.S081)',
+    '取舍:教学用非生产内核、功能精简(无网络栈)、要 RISC-V/QEMU 环境'], TG)
+const curl = mkLib('curl', 'curl · 网络客户端', '无处不在的命令行/库——把 HTTP 等协议请求发出去（系统层）', 'curl',
+  '**系统与工具层** · curl(curl License,MIT/X 派生)= 部署量最大的软件之一(几乎每台设备里):命令行 + 库 libcurl,把 HTTP(S)/FTP 等几十种协议请求发出去。它是「网络」的客户端侧样本——一次 curl 背后就是 DNS→TCP 三次握手→TLS 握手→HTTP 请求响应(curl -v 看全过程)。理解"客户端怎么发起一次网络请求"最直接的工具。逐段翻。',
+  ['curl=网络客户端(curl License,MIT 派生);命令行+libcurl 库、HTTP(S)/FTP 等几十种协议、部署量最大之一',
+    '反向连回:一次请求=DNS→TCP 三次握手→TLS→HTTP(curl -v 看握手和头)',
+    '协议全、命令行/库两用、调 API 首选、学网络客户端侧神器',
+    '取舍:是客户端不做服务端(那是 nginx)、选项极多、复杂交互不如专用 HTTP 库'], TG)
 const miniduck: Experiment<DuckState> = {
   id: 'miniduck', group: '具身项目实战', title: 'Open Duck Mini · 学会走路', subtitle: 'BD-X 迷你复刻的腿式 RL：相位参考步态 + 「模仿奖励」(≠模仿学习)；LeRobot 线收官',
   kernel: miniduckKernel, defaultDoc: { kind: 'miniduck', params: { mode: '带模仿奖励' }, entities: [], streams: [] },
@@ -7972,7 +8046,7 @@ export const EXPERIMENTS = [
   radix, paged, kvcache, batching, flash, specdec, roofline, tensorpar, collective, chunkprefill, kvoffload, linattn, engram, flashdecode, dpattn, ep, pp, engine,
   matmul, layout, softmax, attention, scaledmask, bayes, xent, jl, maxent, clt, lln, graddesc, residual, lowrank, condnum, scale, ortho, hopfield, induction, dotsim, rope, rmsnorm, mha, llmsize, sampling, bpe, quant, moe, forward,
   linreg, logreg, dtree, gbdt, svm, pca, kmeans, knn, pagerank, qlearn, recsys, conv, backprop, perceptron, pooling, rnn, lstm, wordvec, norm, gcn, diffusion, gan, beam, rag, selfconsist, bestofn, tot, mcts, binsearch, nqueens, unionfind, heap, quicksort, mergesort, fastpow, astar, collision,
-  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, pinhole, pointcloud, stereo, handeye, vo, pnp, icp, slam, impedance, mpc, pid, rrt, rrtconnect, rrtstar, prm, potentialfield, chomp, trapezoid, gjk, dubins, dstarlite, mdp, qlearning, policygrad, ppo, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc, moveit, ros2, pinocchio, lerobotlib, mujoco, isaaclab, pcl, orbslam3, ros2control, nav2, openvla, simplefoc, pytorch, transformers, vllm, sglang, tensorrtllm, llamacpp, flashattn, megatron, deepspeed, peft, langgraph, llamaindex, numpy, pandas, scipy, matplotlib, sklearn, xgboost, jax, opencv, statsmodels, networkx, gensim,
+  fk, dyneom, rnea, fwddyn, computedtorque, contactlcp, ik, jacobian, quat, trajectory, kalman, ekf, particlefilter, ukf, complementary, pinhole, pointcloud, stereo, handeye, vo, pnp, icp, slam, impedance, mpc, pid, rrt, rrtconnect, rrtstar, prm, potentialfield, chomp, trapezoid, gjk, dubins, dstarlite, mdp, qlearning, policygrad, ppo, bc, diffpolicy, vla, lerobot, actte, deltats, normstats, teleop, miniduck, foc, moveit, ros2, pinocchio, lerobotlib, mujoco, isaaclab, pcl, orbslam3, ros2control, nav2, openvla, simplefoc, pytorch, transformers, vllm, sglang, tensorrtllm, llamacpp, flashattn, megatron, deepspeed, peft, langgraph, llamaindex, numpy, pandas, scipy, matplotlib, sklearn, xgboost, jax, opencv, statsmodels, networkx, gensim, linux, gcc, gdb, qemu, wireshark, nginx, redis, sqlite, git, docker, xv6, curl,
 ] as unknown as AnyExperiment[]
 
 /**
@@ -8120,7 +8194,7 @@ export const DISCIPLINES: Discipline[] = [
   {
     key: 'base', title: '408 基础', icon: '🎓', status: 'active',
     sub: '数据结构·组成·OS·网络 —— 考研与所有岗位的地基',
-    groups: ['数据结构', '计算机组成原理', '操作系统', '计算机网络'],
+    groups: ['数据结构', '计算机组成原理', '操作系统', '计算机网络', '系统与工具'],
     guide: { from: '一次内存访问', to: '吃透 408 四门', toIcon: '🎓' },
   },
   // 后端轨已下线(2026-09-02 用户只保留 408/算法/大模型/具身四轨);实验仍在 EXPERIMENTS 里、

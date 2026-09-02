@@ -3848,6 +3848,102 @@ export const CATALOG: CatalogEntry[] = [
     ],
   },
   {
+    id: 'linux', title: 'Linux 内核 · 操作系统内核', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'linux' }, entities: [], streams: [] },
+    facts: [
+      { id: 'lx_what', label: 'Linux 内核是什么', ask: 'Linux 内核负责哪些核心工作?', kind: 'choice', compute: () => ({ answer: '操作系统内核(GPL-2.0):进程调度、虚拟内存(分页/缺页/页替换)、文件系统(inode/位图/日志)、并发原语(信号量/锁/死锁避免)、网络栈。你「操作系统」组实验讲的原理在它里都有工业级真实现', step: 0, evidence: '调度/虚拟内存/文件系统/并发/网络栈' }), distractors: () => ['一个编译器', '一个数据库', '一个网页服务器'] },
+      { id: 'lx_cover', label: 'Linux 对应的实验', ask: 'Linux 内核对应实验室「操作系统」组哪些实验?', kind: 'choice', compute: () => ({ answer: '进程调度、缺页/页替换、虚拟内存、inode/位图/分区(文件系统)、磁盘寻道、信号量、银行家(死锁避免)——OS 组几乎全覆盖。库是工业实现、实验讲原理', step: 0, evidence: '调度/缺页/inode/信号量/银行家等 OS 实验' }), distractors: () => ['卷积和注意力', 'RRT 和 Dubins', 'B 树和哈希'] },
+      { id: 'lx_gpl', label: 'Linux 的许可', ask: 'Linux 内核用什么许可?意味着什么?', kind: 'choice', compute: () => ({ answer: 'GPL-2.0(only,有传染性):改动内核代码并分发,要以 GPL 开源那部分。用户空间程序通过系统调用用内核不受影响(有 syscall 例外)。这也是内核驱动开源生态的原因', step: 0, evidence: 'GPL-2.0 传染;改内核分发要开源' }), distractors: () => ['MIT 随便用', '闭源商业软件', '公有领域'] },
+    ],
+  },
+  {
+    id: 'gcc', title: 'GCC · GNU 编译器套件', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'gcc' }, entities: [], streams: [] },
+    facts: [
+      { id: 'gc_steps', label: 'GCC 编译四步', ask: 'GCC 把源码变成可执行程序经过哪几步?', kind: 'choice', compute: () => ({ answer: '预处理(展开宏/头文件)→编译(语法分析+优化+生成汇编)→汇编(汇编→机器码目标文件)→链接(合并目标+库成可执行文件)。gcc -S 可看编译到的汇编', step: 0, evidence: '预处理→编译→汇编→链接' }), distractors: () => ['直接一步变成机器码', '解释执行不编译', '先运行再编译'] },
+      { id: 'gc_cover', label: 'GCC 对应的实验', ask: 'GCC 生成的机器指令对应实验室哪些「组成原理」实验?', kind: 'choice', compute: () => ({ answer: '加法/减法、乘法、浮点表示的机器级运算(GCC 把高级语言的算术编译成这些指令),以及编译前端的表达式求值(语法分析)。它把「组成原理」的运算真正生成出来', step: 0, evidence: '加减/乘法/浮点/表达式' }), distractors: () => ['TCP 和握手', 'ICP 和 SLAM', 'PageRank 和 A*'] },
+      { id: 'gc_license', label: 'GCC 许可与你的程序', ask: 'GCC 是 GPLv3,那你用它编出来的程序也要开源吗?', kind: 'choice', compute: () => ({ answer: '不用。GCC 本身是 GPLv3,但它有"运行时库例外(GCC Runtime Library Exception)",让你编出来的程序不被 GPL 传染——可以闭源商用。改 GCC 本身才受 GPL 约束', step: 0, evidence: 'GPLv3+运行时例外、编出的程序不传染' }), distractors: () => ['要,编出的程序必须 GPL', 'GCC 是闭源的', '完全没有许可'] },
+    ],
+  },
+  {
+    id: 'gdb', title: 'GDB · GNU 调试器', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'gdb' }, entities: [], streams: [] },
+    facts: [
+      { id: 'gd_what', label: 'GDB 是什么', ask: 'GDB 能做什么?', kind: 'choice', compute: () => ({ answer: '调试器(GPLv3+):让程序停在断点、单步执行、查看和修改寄存器/内存/变量/调用栈、反汇编、远程调试(配 QEMU 调内核)、分析 core dump。把「组成原理」的寄存器/内存/栈变成看得见能拨动的东西', step: 0, evidence: '断点/单步/看寄存器内存栈/反汇编/远程' }), distractors: () => ['编译源码', '发送网络请求', '管理数据库'] },
+      { id: 'gd_use', label: 'GDB 怎么配合用', ask: 'GDB 通常和什么一起用?', kind: 'choice', compute: () => ({ answer: '配 GCC(编译时加 -g 生成调试信息)、配 QEMU(远程调试操作系统内核/嵌入式)。GCC 编译、GDB 调试、QEMU 提供运行环境,是系统编程的经典工具三件套', step: 0, evidence: '配 GCC -g、配 QEMU 调内核' }), distractors: () => ['和 Photoshop', '和 Excel', '和浏览器'] },
+      { id: 'gd_see', label: 'GDB 让你看见什么', ask: 'GDB 对理解「计算机组成原理」有什么帮助?', kind: 'choice', compute: () => ({ answer: '它把课本上抽象的寄存器、内存地址、函数调用栈、机器指令,变成运行时能实际观察的东西——你能真看到变量在内存哪个地址、函数调用怎么压栈、指令一条条怎么执行。是"看得见的组成原理"', step: 0, evidence: '寄存器/内存/栈/指令运行时可见' }), distractors: () => ['帮你写更快的算法', '帮你画图表', '帮你训练模型'] },
+    ],
+  },
+  {
+    id: 'qemu', title: 'QEMU · 整机模拟器', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'qemu' }, entities: [], streams: [] },
+    facts: [
+      { id: 'qm_what', label: 'QEMU 是什么', ask: 'QEMU 是干什么的?', kind: 'choice', compute: () => ({ answer: '整机模拟/虚拟化器(GPL-2.0):在软件里模拟出一整台计算机(CPU 指令翻译、内存、磁盘、网卡、外设),能启动完整操作系统,配 Linux KVM 可做接近原生的硬件加速虚拟化', step: 0, evidence: '软件模拟整台计算机、启动完整 OS、配 KVM' }), distractors: () => ['一个编译器', '一个抓包工具', '一个数据库'] },
+      { id: 'qm_use', label: 'QEMU 学 OS 的价值', ask: 'QEMU 为什么是学操作系统/开发内核的标准平台?', kind: 'choice', compute: () => ({ answer: '它把整机放到一个可观察、可调试(配 GDB 单步调内核)的环境里跑,改内核不会搞崩真机、还能跨架构。学 OS、跑 xv6、开发/调试 Linux 内核都在它上面', step: 0, evidence: '整机可观察可调试、配 GDB 调内核、跑 xv6' }), distractors: () => ['因为它最快', '因为它是图形界面', '因为它自带编译器'] },
+      { id: 'qm_cover', label: 'QEMU 对应的实验', ask: 'QEMU 模拟的机器涉及实验室哪些「组成原理」概念?', kind: 'choice', compute: () => ({ answer: 'CPU 指令执行(缓存、流水线)、内存管理单元 MMU(虚拟内存/分页)——它把这些组成原理概念放到可跑可调的整机里。纯模拟慢、配 KVM 才快', step: 0, evidence: '缓存/流水线/虚拟内存(MMU)' }), distractors: () => ['TCP 握手和子网', '词向量和注意力', 'B 树和哈希'] },
+    ],
+  },
+  {
+    id: 'wireshark', title: 'Wireshark · 网络抓包分析', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'wireshark' }, entities: [], streams: [] },
+    facts: [
+      { id: 'ws_what', label: 'Wireshark 是什么', ask: 'Wireshark 是干什么的?', kind: 'choice', compute: () => ({ answer: '网络抓包分析工具(GPL-2.0+):抓下网卡上的每个数据包,逐层逐字段解析(以太网→IP→TCP→HTTP…),让你亲眼看到协议在线路上怎么运作。是网络故障排查、协议开发、安全分析的事实标准', step: 0, evidence: '抓包逐层解析、看协议真实运作' }), distractors: () => ['一个 Web 服务器', '一个编译器', '一个数据库'] },
+      { id: 'ws_cover', label: 'Wireshark 对应的实验', ask: 'Wireshark 能对照实验室「计算机网络」组哪些实验?', kind: 'choice', compute: () => ({ answer: 'TCP(拥塞/可靠、序号确认重传窗口)、三次握手、子网划分、CRC 校验——你能抓真实的包对照实验里的原理看:握手的 SYN/ACK、重传、校验字段都在包里', step: 0, evidence: 'TCP/三次握手/子网/CRC' }), distractors: () => ['缺页和页替换', '卷积和池化', 'B 树和哈希'] },
+      { id: 'ws_use', label: 'Wireshark 的价值', ask: 'Wireshark 对学网络协议有什么独特价值?', kind: 'choice', compute: () => ({ answer: '把课本上抽象的协议变成"看得见的真流量":你能实际抓到 TCP 三次握手的三个包、看到重传和窗口变化、逐字段拆开每个包。学协议从"背 RFC"变成"看真包"', step: 0, evidence: '协议从课本变可见的真实流量' }), distractors: () => ['帮你写更快的代码', '帮你训练模型', '帮你管理内存'] },
+    ],
+  },
+  {
+    id: 'nginx', title: 'nginx · 高性能 Web 服务器', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'nginx' }, entities: [], streams: [] },
+    facts: [
+      { id: 'ng_what', label: 'nginx 是什么', ask: 'nginx 是干什么的?靠什么扛高并发?', kind: 'choice', compute: () => ({ answer: '高性能 Web 服务器/反向代理/负载均衡(BSD-2):靠事件驱动 + 异步非阻塞(epoll/kqueue)架构,单进程用 IO 多路复用管海量连接,单机就能扛住高并发(经典 C10K 问题的答案)', step: 0, evidence: '事件驱动+epoll 异步非阻塞、扛高并发' }), distractors: () => ['靠为每个连接开一个线程', '靠更快的 CPU', '靠更大的内存'] },
+      { id: 'ng_epoll', label: 'nginx 和 OS 的关系', ask: 'nginx 的高并发和操作系统哪个机制相关?', kind: 'choice', compute: () => ({ answer: 'IO 多路复用(epoll):一个线程用 epoll 同时盯着成千上万个连接,谁有数据就处理谁,不用一连接一线程。这和 OS 的事件通知、进程调度/事件循环相通——是「网络」和「操作系统」的交汇', step: 0, evidence: 'epoll IO 多路复用、和调度/事件循环相通' }), distractors: () => ['和文件系统 inode', '和 CPU 缓存', '和浮点运算'] },
+      { id: 'ng_role', label: 'nginx vs curl', ask: 'nginx 和 curl 在网络里分别是什么角色?', kind: 'choice', compute: () => ({ answer: 'nginx 是服务端(接收并响应请求的 Web 服务器),curl 是客户端(发起请求)。一次网络请求:curl 发出 → 经 TCP 握手 → nginx 接收响应。抓包看两边靠 Wireshark', step: 0, evidence: 'nginx 服务端、curl 客户端' }), distractors: () => ['两者都是客户端', '两者都是抓包工具', '两者是同一个东西'] },
+    ],
+  },
+  {
+    id: 'redis', title: 'Redis · 内存数据结构服务器', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'redis' }, entities: [], streams: [] },
+    facts: [
+      { id: 'rd_what', label: 'Redis 是什么', ask: 'Redis 是干什么的?为什么快?', kind: 'choice', compute: () => ({ answer: '内存数据结构服务器(C 写):把字符串/哈希/列表/集合/有序集合(跳表)/位图等当网络服务用,常做缓存/排行榜/队列。快在数据全在内存 + 单线程事件循环(无锁竞争)。内部是一座数据结构博物馆', step: 0, evidence: '内存数据结构服务器、单线程事件循环、极快' }), distractors: () => ['一个关系数据库(存磁盘)', '一个编译器', '一个 Web 服务器'] },
+      { id: 'rd_cover', label: 'Redis 对应的实验', ask: 'Redis 内部结构对应实验室哪些概念?', kind: 'choice', compute: () => ({ answer: '哈希表(渐进式 rehash,对应「数据结构」哈希)、有序集合用跳表、以及内存满时的 LRU/LFU 淘汰(和「操作系统」页替换 LRU 同思路)。它是这些数据结构的工程范本', step: 0, evidence: '哈希表(rehash)、LRU 淘汰(和页替换同思路)' }), distractors: () => ['TCP 握手和 CRC', '卷积和注意力', '梯度下降和反向传播'] },
+      { id: 'rd_license', label: 'Redis 许可变更', ask: 'Redis 的许可这几年发生了什么?用要注意什么?', kind: 'choice', compute: () => ({ answer: '2024 从宽松的 BSD 改成 source-available(SSPLv1/RSALv2),一度不再是 OSI 开源;Redis 8(2025)又加回 AGPLv3 作为可选,现在是三重许可。商用/云服务要看清条款;社区拉了个 BSD 分叉叫 Valkey', step: 0, evidence: '2024 BSD→source-available、Redis 8 加回 AGPLv3;分叉 Valkey' }), distractors: () => ['一直是 MIT 没变', '一直是公有领域', '变成了完全闭源收费'] },
+    ],
+  },
+  {
+    id: 'sqlite', title: 'SQLite · 嵌入式数据库', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'sqlite' }, entities: [], streams: [] },
+    facts: [
+      { id: 'sq_what', label: 'SQLite 是什么', ask: 'SQLite 有什么特别?为什么部署最广?', kind: 'choice', compute: () => ({ answer: '嵌入式、零配置、单文件的关系数据库(公有领域):整个库就是磁盘上一个 .db 文件,随程序进程跑、不用单独的服务器。因为小、稳、无依赖,被嵌进手机/浏览器/操作系统/飞机——是部署量最大的数据库', step: 0, evidence: '单文件+零配置+嵌入式、部署最广' }), distractors: () => ['需要独立服务器进程', '只能在云上跑', '是内存数据库不落盘'] },
+      { id: 'sq_cover', label: 'SQLite 的存储结构', ask: 'SQLite 的存储引擎核心是什么数据结构?对应哪个实验?', kind: 'choice', compute: () => ({ answer: 'B 树/B+ 树:表和索引都用 B 树组织、页式存储到文件。正是「数据结构」里的 B 树/B+ 树实验。SQLite 是"B 树怎么落到磁盘文件"的最佳活样本', step: 0, evidence: 'B 树/B+ 树存储、对应 btree/bplus 实验' }), distractors: () => ['哈希表(全内存)', '链表', '红黑树内存索引'] },
+      { id: 'sq_license', label: 'SQLite 许可', ask: 'SQLite 的许可是什么?', kind: 'choice', compute: () => ({ answer: '公有领域(Public Domain)——没有版权限制,想怎么用怎么用(商用/闭源都行、无需署名)。这在开源里少见,也是它能嵌进一切的原因之一', step: 0, evidence: '公有领域、无任何许可限制' }), distractors: () => ['GPL 传染', 'AGPL 云限制', '商业收费'] },
+    ],
+  },
+  {
+    id: 'git', title: 'Git · 分布式版本控制', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'git' }, entities: [], streams: [] },
+    facts: [
+      { id: 'gt_what', label: 'Git 的内部模型', ask: 'Git 内部是怎么存东西的?', kind: 'choice', compute: () => ({ answer: '内容寻址对象库:每个文件(blob)/目录(tree)/提交(commit)都按内容的 SHA 哈希寻址——改一点内容哈希就变;提交靠父指针连成有向无环图(DAG),分支只是指向某个提交的指针。是一个漂亮的数据结构设计', step: 0, evidence: '内容寻址(SHA 哈希)+提交 DAG+分支是指针' }), distractors: () => ['按文件名和时间戳存', '存每次改动的差异行号', '存整个项目的多份完整拷贝'] },
+      { id: 'gt_cover', label: 'Git 对应的实验', ask: 'Git 的设计对应实验室哪些数据结构?', kind: 'choice', compute: () => ({ answer: '哈希(内容寻址,改内容→新哈希,类似哈希表/指纹)、拓扑排序(提交的有向无环图 DAG,log 就是拓扑序);内容去重/压缩和布隆/压缩思路相通。理解 Git = 把哈希+DAG 串一遍', step: 0, evidence: '哈希(内容寻址)、拓扑排序(提交 DAG)' }), distractors: () => ['TCP 和握手', '卷积和池化', '调度和缺页'] },
+      { id: 'gt_dist', label: 'Git 为什么分布式', ask: 'Git 的"分布式"体现在哪?', kind: 'choice', compute: () => ({ answer: '每个克隆(clone)都是包含完整历史的完整仓库,可以离线提交/查历史/建分支,不依赖中心服务器;需要时再和别人同步(push/pull)。这和集中式(SVN,必须连服务器)不同', step: 0, evidence: '每个克隆是完整仓库、可离线、去中心' }), distractors: () => ['必须连中心服务器才能提交', '只在云端存代码', '不能建分支'] },
+    ],
+  },
+  {
+    id: 'docker', title: 'Docker · 容器', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'docker' }, entities: [], streams: [] },
+    facts: [
+      { id: 'dk_what', label: 'Docker 是什么', ask: 'Docker 容器和虚拟机有什么本质不同?', kind: 'choice', compute: () => ({ answer: '容器不是虚拟机:它不虚拟一整台机器,而是直接用宿主 Linux 内核的原语——namespaces(隔离进程/网络/文件视图)+cgroups(限 CPU/内存)+overlayfs(镜像分层)——把应用装进一个隔离环境。共享内核,所以比 VM 轻', step: 0, evidence: '用内核 namespaces+cgroups+overlayfs、共享内核' }), distractors: () => ['和虚拟机一样虚拟整台机器', '是一种新的 CPU', '是一个编译器'] },
+      { id: 'dk_cover', label: 'Docker 对应的 OS 概念', ask: 'Docker 用到的 Linux 内核机制对应实验室哪些 OS 概念?', kind: 'choice', compute: () => ({ answer: 'cgroups 限制 CPU/内存配额(和进程调度/资源管理相关)、overlayfs 联合文件系统(和 inode/文件系统相关)。理解容器 = 理解 OS 的隔离与资源管理', step: 0, evidence: 'cgroups↔调度/配额、overlayfs↔文件系统/inode' }), distractors: () => ['TCP 拥塞控制', '浮点表示', '词向量'] },
+      { id: 'dk_license', label: 'Docker 的开源与商业', ask: 'Docker 的开源和商业怎么区分?', kind: 'choice', compute: () => ({ answer: '底层容器引擎(moby 项目)是 Apache-2.0 开源;而 Docker Desktop(桌面客户端)对较大企业有商业授权条款。用引擎/CLI 一般没问题,企业用 Desktop 要看授权', step: 0, evidence: 'moby 引擎 Apache-2.0、Desktop 有商业条款' }), distractors: () => ['完全免费无任何限制', '完全闭源收费', '是 GPL 传染'] },
+    ],
+  },
+  {
+    id: 'xv6', title: 'xv6 · 教学操作系统', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'xv6' }, entities: [], streams: [] },
+    facts: [
+      { id: 'xv_what', label: 'xv6 是什么', ask: 'xv6 是什么?为什么用它学 OS?', kind: 'choice', compute: () => ({ answer: 'MIT 为操作系统课(6.S081)写的教学操作系统(MIT 许可):一个几千行、能真编译运行的类 Unix 内核(RISC-V + QEMU)。Linux 几千万行读不动,xv6 小到能完整读懂,却涵盖进程/调度/内存/文件系统/锁', step: 0, evidence: '几千行能真跑的教学类 Unix 内核' }), distractors: () => ['一个生产级服务器内核', '一个编译器', '一个数据库'] },
+      { id: 'xv_cover', label: 'xv6 覆盖的 OS 概念', ask: 'xv6 里能读到实验室哪些 OS 实验的完整实现?', kind: 'choice', compute: () => ({ answer: '进程调度(上下文切换)、虚拟内存(分页/缺页)、inode + 日志的文件系统——「操作系统」组实验的原理,在 xv6 里是完整、可编译运行的最小真实现。是从"原理"到"真代码"的最短路径', step: 0, evidence: '调度/缺页/inode 的完整可运行实现' }), distractors: () => ['TCP 和子网', '卷积和注意力', 'B 树和哈希'] },
+      { id: 'xv_vs', label: 'xv6 vs Linux', ask: '学 OS 用 xv6 还是 Linux?', kind: 'choice', compute: () => ({ answer: '先 xv6 后 Linux:xv6 小(几千行)、能完整读懂 OS 骨架,适合入门;Linux 是生产内核(几千万行、功能全但门槛极高),xv6 打好基础后再看 Linux 的工业实现', step: 0, evidence: 'xv6 入门读懂骨架、Linux 工业实现' }), distractors: () => ['xv6 更适合生产部署', 'Linux 更适合教学入门', '两者完全一样'] },
+    ],
+  },
+  {
+    id: 'curl', title: 'curl · 网络客户端', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'curl' }, entities: [], streams: [] },
+    facts: [
+      { id: 'cl_what', label: 'curl 是什么', ask: 'curl 是干什么的?', kind: 'choice', compute: () => ({ answer: '网络客户端(curl License,MIT 派生):命令行工具 + 库 libcurl,把 HTTP(S)/FTP 等几十种协议的请求发出去、拿回响应。是部署量最大的软件之一(几乎每台设备/汽车/手机里都有),调 API/下载/自动化脚本首选', step: 0, evidence: '命令行+libcurl、多协议客户端、部署量最大' }), distractors: () => ['一个 Web 服务器', '一个抓包工具', '一个数据库'] },
+      { id: 'cl_cover', label: 'curl 一次请求发生什么', ask: '一次 `curl https://...` 背后经历了什么?对应哪个实验?', kind: 'choice', compute: () => ({ answer: 'DNS 解析 → TCP 三次握手 → TLS 握手 → 发 HTTP 请求 → 收响应。curl -v 能看到握手和头的全过程。对应「计算机网络」的三次握手、TCP——它是网络的"客户端侧"活样本', step: 0, evidence: 'DNS→TCP 握手→TLS→HTTP;对应握手/TCP' }), distractors: () => ['直接读本地文件', '只是画个图', '编译一段代码'] },
+      { id: 'cl_role', label: 'curl 的角色', ask: 'curl 在网络里是什么角色?配合谁?', kind: 'choice', compute: () => ({ answer: '客户端(发起请求),对应的服务端是 nginx 那类 Web 服务器;要看它俩之间线路上的包,用 Wireshark 抓。curl 发 → 握手 → nginx 收响应 → Wireshark 看全过程', step: 0, evidence: '客户端;服务端 nginx、抓包 Wireshark' }), distractors: () => ['服务端', '抓包分析器', '编译器'] },
+    ],
+  },
+  {
     id: 'wildcard', title: '通配符匹配', kernel: wildcardKernel as Kernel<unknown>, doc: trivialDoc('wildcard'),
     facts: [
       {
