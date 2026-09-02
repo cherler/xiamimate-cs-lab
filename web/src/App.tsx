@@ -614,6 +614,14 @@ export default function App() {
     })
     .filter(([, list]) => list && list.length > 0)
 
+  //  目录编号：给每个实验一个「本学科内的顺序号」，跨组连续 01,02,03…
+  //  不再用全局 EXPERIMENTS 下标(会跳号:同组里蹦出 05→42→180,且新增实验后更乱、还会超过 2 位数撑破徽标)。
+  let __navSeq = 0
+  const navRows = activeGroups.map(([group, list]) => ({
+    group,
+    items: list.map(e => ({ e, soft: e.group !== group, num: ++__navSeq })),
+  }))
+
   //  当前学科的实验集合（含软链），用来把"N 个实验 / 进度"按学科统计（跟顶条切换）。
   const discExpIds = useMemo(() => {
     const ids = new Set<string>()
@@ -764,12 +772,10 @@ export default function App() {
             🗺️ <b>{activeDiscObj.title}地图</b>：从 {activeDiscObj.guide.from} 到 {activeDiscObj.guide.toIcon}{activeDiscObj.guide.to}
           </div>
 
-          {activeGroups.length > 0 ? activeGroups.map(([group, list]) => (
+          {navRows.length > 0 ? navRows.map(({ group, items }) => (
             <div key={group}>
               <div className="grp">{group}</div>
-              {list.map((e) => {
-                const soft = e.group !== group   // 软链接：真身在别的子模块，这里是借来的入口
-                return (
+              {items.map(({ e, soft, num }) => (
                   <button
                     key={e.id}
                     className={`${e.id === expId ? 'on' : ''} ${soft ? 'soft' : ''}`}
@@ -777,12 +783,11 @@ export default function App() {
                     aria-current={e.id === expId}
                     title={soft ? `软链接：真身在「${e.group}」，这里是一个导航入口` : undefined}
                   >
-                    <span className="n">{String(EXPERIMENTS.indexOf(e) + 1).padStart(2, '0')}</span>
+                    <span className="n">{String(num).padStart(2, '0')}</span>
                     <span>{e.title}</span>
                     {soft && <span className="softmark" aria-hidden>↗</span>}
                   </button>
-                )
-              })}
+              ))}
             </div>
           )) : (
             <div className="navsoon">
