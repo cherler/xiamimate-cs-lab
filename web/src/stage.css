@@ -915,6 +915,23 @@
 .tvempty{color:var(--faint);font-size:var(--t-body);padding:20px 0}
 .tvcap{margin:8px 0 0;font-size:var(--t-ui);color:var(--faint)}
 
+/* ── 树族仪表级升级(共享 TreeView)：结点材质 + 焦点脉冲 + 状态平滑亮起 ── */
+.tvnode{ width:38px; height:38px;
+  background:linear-gradient(180deg,var(--panel),color-mix(in srgb,var(--ink) 5%,var(--panel)));
+  border:1.5px solid var(--line); box-shadow:0 2px 4px rgba(20,32,42,.08),inset 0 1px 0 rgba(255,255,255,.55) }
+.tvnode.focus{ border-color:var(--now); z-index:3; transform:translate(-50%,-50%) scale(1.1);
+  background:linear-gradient(180deg,color-mix(in srgb,var(--now) 13%,var(--panel)),color-mix(in srgb,var(--now) 28%,var(--panel)));
+  animation:gv-pulse 1.5s ease-in-out infinite }
+.tvnode.picked{ border-color:var(--now);
+  background:linear-gradient(180deg,color-mix(in srgb,var(--now) 14%,var(--panel)),color-mix(in srgb,var(--now) 28%,var(--panel))) }
+.tvnode.merged{ border-color:var(--hit);
+  background:linear-gradient(180deg,color-mix(in srgb,var(--hit) 14%,var(--panel)),color-mix(in srgb,var(--hit) 28%,var(--panel)));
+  box-shadow:0 2px 7px color-mix(in srgb,var(--hit) 22%,transparent) }
+.tvnode.merged b{ color:var(--hit) }
+.tvnode.pivot{ border-color:var(--miss);
+  background:linear-gradient(180deg,color-mix(in srgb,var(--miss) 12%,var(--panel)),color-mix(in srgb,var(--miss) 24%,var(--panel))) }
+.tvedge{ stroke:var(--line); stroke-width:1.8 }
+
 /* ═══ AVL 四种失衡 ═══ */
 .rotgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px}
 .rotcard{border:1px solid var(--line);border-radius:5px;padding:9px 11px;background:var(--sunk-1);
@@ -2137,14 +2154,14 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 }
 
 /* SVG 图/树：结点与边的填充、描边、透明度 */
-.stagewrap .gedge, .stagewrap .gedge line, .stagewrap .tvnode,
+.stagewrap .gedge, .stagewrap .gedge line, .stagewrap .tvedge,
 .stagewrap .gvwrap circle, .stagewrap .gvwrap line, .stagewrap .gvwrap path,
 .stagewrap .tvbox circle, .stagewrap .tvbox line {
   transition: fill var(--anim), stroke var(--anim), stroke-width var(--anim), opacity var(--anim);
 }
 /* HTML 结点/边权标签不是 SVG，fill/stroke 不管用——它们的背景/描边/光环/位移要单独过渡，
-   否则图算法每步的"点亮/确定"都是啪地跳(图族"静止"的病根)。 */
-.stagewrap .gnode, .stagewrap .gvlab {
+   否则图/树算法每步的"点亮/确定"都是啪地跳(图族与树族"静止"的病根)。 */
+.stagewrap .gnode, .stagewrap .gvlab, .stagewrap .tvnode {
   transition: background var(--anim), border-color var(--anim), box-shadow var(--anim),
               transform var(--anim), color var(--anim);
 }
