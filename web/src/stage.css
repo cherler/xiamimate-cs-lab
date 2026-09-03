@@ -4802,6 +4802,7 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .fk-axis{stroke:var(--line);stroke-width:1.5}
 .fk-link{stroke:var(--now);stroke-width:5;stroke-linecap:round}
 .fk-link.now{stroke:var(--hit)}
+.fk-link.alt{stroke:var(--f-tag)}   /* IK 第二支解(肘朝上)=蓝,和第一支(琥珀)区分 */
 .fk-joint{fill:var(--panel);stroke:var(--dim);stroke-width:2}
 .fk-joint.base{fill:var(--ink);stroke:var(--ink)}
 .fk-joint.tip{fill:var(--now);stroke:var(--now)}

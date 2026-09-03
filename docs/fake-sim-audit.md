@@ -27,14 +27,14 @@ RL/控制/物理:qlearn qlearning mdp ppo policygrad pid mpc impedance kalman ek
 ### B. 假仿真·可换轴(FAKE-SWEEP)——**该改,像 softmax**
 轴其实是"把一个函数分幕",真正在变的是某个**参数**,该把它当轴、播放=扫描它。
 **B1 破的(轴是"步骤/计算阶段"、参数藏在侧栏)——高优先:**
-- **sampling** 采样解码旋钮台(temp/top-k/top-p)——**softmax 的亲兄弟**,该扫某个旋钮看候选集怎么变
-- ✅**quant** 权重量化——已换轴:位宽 int8→int2 扫描(commit 待填)
-- **ik** 二连杆逆解——扫**目标点**看两解/可达边界(子代理确认)
+- ✅**sampling** 采样解码——已换轴:top-p 从紧到松扫描,看核长大(commit 869a2d6)
+- ✅**quant** 权重量化——已换轴:位宽 int8→int2 扫描,看精度换显存(commit 3305c01)
+- ✅**ik** 二连杆逆解——已换轴:目标距离 r 由近到远扫描,多解→奇异(r=L1+L2 合并)→无解(commit 待填)
 - **jacobian** 雅可比——扫**关节角 θ2** 看 det→0 奇异逼近(子代理确认)
 - **inode** i 节点寻址——扫**逻辑块号** 看直接→一/二/三级间接跨界(子代理确认)
-- **residual** 残差=梯度高速路——扫**深度** 看无残差时梯度消失
-- **maxent** 最大熵——扫**约束 μ** 看分布形状
 - **hashaval** 雪崩——扫**输入扰动** 看输出翻转≈一半(子代理确认)
+- ~~residual~~ **实为 REAL(误判)**:细读内核=梯度沿层倒传的真递归(gradPlain*=factor、两条曲线随层累积),是真过程,不动。归 A。
+- ~~maxent~~ **实为 B2(误判)**:内核 MUS=[3.5..5.5] 本就是"扫约束 μ"、每帧重算最大熵分布,结构已对;顶多把轴标签/舞台打磨,不用换轴。
 **B2 已经是正确扫描形态(轴就是参数)——结构没问题,顶多把舞台做得像 softmax 那样"看它形变":**
 condnum(κ) clt(样本数n) lln(撒点n) ortho(维度d) scale(维度d) dotsim(夹角θ) roofline(批大小)
   jl(投影维K) linattn(序列N) lowrank(秩k) rope(位置) llmsize(规模/seq·子代理) joins(表规模·子代理) birthday(人数)

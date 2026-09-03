@@ -11,8 +11,7 @@ const rad = (d: number) => (d * Math.PI) / 180
 const r2 = (n: number) => Math.round(n * 1000) / 1000
 
 export function IKStage({ state }: StageProps<IKState>) {
-  const { phase, op, L1, L2, target, r, reachLo, reachHi, reachable, cosTheta2, solutions, curBranch, focus } = state
-  const done = phase === 'done'
+  const { L1, L2, target, r, reachLo, reachHi, reachable, cosTheta2, solutions, curBranch, focus } = state
 
   // 从每个解的 th1 重建臂：[基座, 肘, 末端]
   const armOf = (s: { th1: number; checkX: number; checkY: number }) => [
@@ -30,7 +29,7 @@ export function IKStage({ state }: StageProps<IKState>) {
         <div className="scdim">
           <div className="scdk"><span className={`scdn ${reachable ? '' : 'sk-neg'}`}>{r}</span><span className="scdl">目标距离 r（可达 [{reachLo},{reachHi}]）</span></div>
           <div className="scdk"><span className="scdn">{cosTheta2}</span><span className="scdl">cosθ2</span></div>
-          <div className="scdk"><span className="scdn hot">{solutions.length}</span><span className="scdl">已求出解</span></div>
+          <div className="scdk"><span className={`scdn ${solutions.length >= 2 ? 'hot' : 'sk-neg'}`}>{solutions.length}</span><span className="scdl">解数 · 肘上/肘下</span></div>
         </div>
 
         <div className="fk-wrap">
@@ -42,15 +41,14 @@ export function IKStage({ state }: StageProps<IKState>) {
             {reachLo > 0 && <circle cx={sx(0)} cy={sy(0)} r={reachLo * SCALE} className="ik-reach" />}
             <line x1={sx(XMIN)} y1={sy(0)} x2={sx(XMAX)} y2={sy(0)} className="fk-axis" />
             <line x1={sx(0)} y1={sy(YMIN)} x2={sx(0)} y2={sy(YMAX)} className="fk-axis" />
-            {/* 两支解的臂：当前支实线，其余支虚影 */}
+            {/* 两支解同屏画出：肘朝下=琥珀、肘朝上=蓝（奇异合并时只剩一支） */}
             {solutions.map((s, si) => {
               const arm = armOf(s)
-              const isCur = si === curBranch
               return (
-                <g key={'arm' + si} className={isCur ? '' : 'ik-ghost'}>
+                <g key={'arm' + si}>
                   {arm.slice(0, -1).map((p, i) => {
                     const q = arm[i + 1]!
-                    return <line key={i} x1={sx(p.x)} y1={sy(p.y)} x2={sx(q.x)} y2={sy(q.y)} className={`fk-link ${isCur ? 'now' : ''}`} />
+                    return <line key={i} x1={sx(p.x)} y1={sy(p.y)} x2={sx(q.x)} y2={sy(q.y)} className={`fk-link ${si === 0 ? '' : 'alt'}`} />
                   })}
                   {arm.map((p, i) => <circle key={'c' + i} cx={sx(p.x)} cy={sy(p.y)} r={i === 1 ? 5 : 4} className={`fk-joint ${i === 0 ? 'base' : ''}`} />)}
                 </g>
@@ -83,9 +81,11 @@ export function IKStage({ state }: StageProps<IKState>) {
           </div>
         </div>
 
-        {done
-          ? <p className="scnote">两组解都对：<b>肘朝下 (0°,90°)</b> 和 <b>肘朝上 (90°,−90°)</b>，两种姿势够到同一点 (2,2)——这就是 IK 的<b>多解</b>。对比 FK 唯一解：IK 可能多解、<b>无解</b>(够不到)、<b>奇异</b>(伸直时退化)。选哪组看约束(避障/关节限位)；多轴臂用数值 IK(雅可比迭代)。<b>回代 FK</b> 是 IK 必做的验证。</p>
-          : <p className="scnote" style={{ opacity: .85 }}>{focus}。{phase === 'reach' ? '先看目标距离 r 是否落在可达圆环 [|L1−L2|, L1+L2] 内——超出就够不到、无解。' : phase === 'cosine' ? '余弦定理算 cosθ2，±acos 的正负两支就是肘上/肘下两种姿势。' : phase === 'solve' ? '解出一组角后，正着走一遍 FK 回代验证末端确实落到目标。' : 'IK 是 FK 的反问题：给目标反求关节角，可能多解或无解。'}</p>}
+        <p className="scnote" style={{ opacity: reachable ? 1 : .95 }}>{focus}。{
+          !reachable ? '目标超出可达圆环 [|L1−L2|, L1+L2]——手臂伸直也够不到，这就是 IK 的无解。'
+            : solutions.length === 1 ? '目标正好在最大伸展处 r=L1+L2：θ2=0、两支解合并成一个——这就是奇异，手臂瞬间丢一个自由度、J⁻¹ 爆炸。'
+              : '琥珀=肘朝下、蓝=肘朝上，两种姿势够到同一点——IK 的多解。把目标拉远它俩会靠拢，到最大伸展合并，再远就无解。对比 FK 唯一解：IK 可能多解/无解/奇异，选哪组看约束(避障/关节限位)；多轴臂用数值 IK。'
+        }</p>
       </div>
     </div>
   )

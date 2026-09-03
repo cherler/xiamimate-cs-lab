@@ -6657,14 +6657,14 @@ const contactlcp: Experiment<LcpState> = {
   ],
 }
 const ik: Experiment<IKState> = {
-  id: 'ik', group: '机器人学基础', title: '逆运动学 IK', subtitle: '末端目标 → 关节角：多解(肘上/肘下)、可无解',
+  id: 'ik', group: '机器人学基础', title: '逆运动学 IK', subtitle: '目标由近到远扫描：多解→奇异→无解',
   kernel: ikKernel, defaultDoc: { kind: 'ik', params: {}, entities: [], streams: [] }, params: [],
-  paramsNote: 'FK 的反问题、机器人干活的核心：给末端要去的目标点，反求各关节该转几度。二连杆 L1=L2=2、目标 (2,2)：先判可达(r 落在 [|L1−L2|,L1+L2] 内)，再用余弦定理求肘角 θ2=±acos(...)（±两支=肘上/肘下两姿势），最后两组解都回代 FK 验证落到 (2,2)。角度全真算。',
-  bounds: ['IK=FK反问题:给末端反求关节角;可能多解/无解(够不到)/奇异——这正是它比FK难的地方', '可达性:r=√(x²+y²)须落在[|L1−L2|,L1+L2];本例r=2.828∈[0,4]够得到,(4.5,0)则无解', '余弦定理:cosθ2=(x²+y²−L1²−L2²)/(2L1L2);θ2=±acos → 肘朝下(0°,90°)/肘朝上(90°,−90°)两解', '每组解回代FK验证末端落到目标;多轴臂用数值IK(雅可比迭代)'],
+  paramsNote: 'IK 不是一步步算的仿真，是个函数：末端目标 → 关节角。真正在变的是目标位置——这里把轴换成"目标沿 45° 射线由近到远扫描"，按 ▶ 播放就看两组解(肘上/肘下)怎么随距离靠拢、到最大伸展 r=L1+L2 合并成一个(奇异)、再远就够不到(无解)。二连杆余弦定理闭式解:cosθ2=(x²+y²−L1²−L2²)/(2L1L2)，θ2=±acos(±两支=肘上/肘下)。',
+  bounds: ['IK=FK反问题:给末端反求关节角;可能多解/无解(够不到)/奇异——这正是它比FK难的地方', '轴是目标距离 r 扫描(沿45°射线):每步是该目标下的完整反解,不是计算中间步', '可达性:r=√(x²+y²)须落在[|L1−L2|,L1+L2]=[0,4];r>4 无解', '余弦定理:θ2=±acos(...) → 肘上/肘下两解;r=4 时 θ2=0 两支合并(奇异);每组回代FK验证'],
   tabs: [{ id: 'design', label: '几何反解' }], Stage: IKStage, whyInRail: true,
-  tone: s => (s.phase === 'done' ? { key: 'good', label: `${s.solutions.length} 组解` } : !s.reachable ? { key: 'bad', label: '无解' } : { key: 'idle', label: s.phase === 'reach' ? '判可达' : s.phase === 'cosine' ? '余弦定理' : s.phase === 'solve' ? '解出一支' : '就绪' }),
-  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 5)),
-  tickLabel: s => (s.phase === 'done' ? '解' : s.op === 'branch' ? '支' : s.phase === 'reach' ? '达' : s.phase === 'cosine' ? 'θ' : 'IK'),
+  tone: s => (!s.reachable ? { key: 'bad', label: '无解' } : s.solutions.length === 1 ? { key: 'bad', label: '奇异·1 解' } : { key: 'good', label: `${s.solutions.length} 组解` }),
+  metric: s => Math.min(1, s.r / (s.reachHi || 4)),
+  tickLabel: s => `r=${s.r}`,
   readouts: s => [
     { label: '目标距离 r', value: `${s.r}`, tone: s.reachable ? undefined : 'bad' },
     { label: '可达范围', value: `[${s.reachLo}, ${s.reachHi}]`, tone: s.reachable ? 'good' : 'bad' },

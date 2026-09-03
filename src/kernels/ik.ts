@@ -42,68 +42,56 @@ export type IKState = {
 type Frame = Omit<IKState, 'i'>
 
 const L1 = 2, L2 = 2
-const TARGET: Pt = { x: 2, y: 2 }
 
 export const ikKernel: Kernel<IKState> = {
   kind: 'ik',
   compile(_doc: SimDocument): CompiledModel<IKState> {
-    const frames: Frame[] = []
-    const push = (f: Omit<Frame, 'step' | 'L1' | 'L2' | 'target' | 'reachLo' | 'reachHi'>) =>
-      frames.push({ step: frames.length, L1, L2, target: TARGET, reachLo: Math.abs(L1 - L2), reachHi: L1 + L2, ...f })
-
-    const r = r2(Math.hypot(TARGET.x, TARGET.y))
     const reachHi = L1 + L2, reachLo = Math.abs(L1 - L2)
-    const reachable = r <= reachHi + 1e-9 && r >= reachLo - 1e-9
-    const c2 = r2((TARGET.x * TARGET.x + TARGET.y * TARGET.y - L1 * L1 - L2 * L2) / (2 * L1 * L2))
 
-    // —— 开场 ——
-    push({
-      phase: 'intro', op: 'intro', r, reachable, cosTheta2: c2, solutions: [], curBranch: -1, armPts: null,
-      focus: 'IK 是 FK 的反问题：给末端目标反求关节角，可能多解/无解',
-      log: `**逆运动学 IK：末端目标 → 关节角**\n和 FK（关节角→末端，唯一解）相反：**给末端要去的点，反求各关节转几度**。这是机器人干活的核心，但更难——**可能多解、无解(够不到)、或奇异**。\n二连杆平面臂有几何闭式解（余弦定理）。本例 L1=L2=${L1}、目标 **(${TARGET.x}, ${TARGET.y})**，一步步反解。`,
-    })
+    //  IK 不是"一步步算"的仿真——它是个函数：末端目标 → 关节角。真正在**变**的是目标位置。
+    //  轴换成"目标沿 45° 射线由近到远扫描":看两组解(肘上/肘下)怎么随距离靠拢、到最大伸展 r=L1+L2
+    //  合并成一个(奇异)、再远就够不到(无解)。这才是"一个状态在发生变化"。
+    const R_SWEEP = [1.0, 2.0, 2.83, 3.5, 3.9, 4.0, 4.5]
 
-    // —— 可达性 ——
-    push({
-      phase: 'reach', op: 'reach', r, reachable, cosTheta2: c2, solutions: [], curBranch: -1, armPts: null,
-      focus: `可达性：r=${r} 落在 [${reachLo}, ${reachHi}] 内 → ${reachable ? '够得到' : '够不到'}`,
-      log: `**第一步：够得到吗？**\n目标到基座距离 r = √(${TARGET.x}²+${TARGET.y}²) = **${r}**。二连杆能到的范围是 **[|L1−L2|, L1+L2] = [${reachLo}, ${reachHi}]**（伸直到 ${reachHi}、最多缩到 ${reachLo}）。\nr=${r} 在范围内 → **够得到** ✓。（若目标是 (4.5, 0)，r=4.5 > ${reachHi} → 无解，手臂伸直也够不到——这就是 IK 的"无解"。）`,
-    })
+    const at = (rTarget: number): Frame => {
+      const txf = rTarget / Math.SQRT2, tyf = rTarget / Math.SQRT2   // 全精度算,只在展示时四舍五入
+      const tx = r2(txf), ty = r2(tyf)
+      const r = r2(rTarget)
+      const reachable = rTarget <= reachHi + 1e-9 && rTarget >= reachLo - 1e-9
+      const c2raw = (rTarget * rTarget - L1 * L1 - L2 * L2) / (2 * L1 * L2)
+      const c2 = r2(Math.max(-1, Math.min(1, c2raw)))
+      const solutions: Sol[] = []
+      if (reachable) {
+        const mag = Math.acos(Math.max(-1, Math.min(1, c2raw)))
+        const signs = mag < 0.03 ? [1] : [1, -1]        // 伸直到底:两支解合并成一个(奇异)
+        for (const sign of signs) {
+          const th2 = sign * mag
+          const th1 = Math.atan2(tyf, txf) - Math.atan2(L2 * Math.sin(th2), L1 + L2 * Math.cos(th2))
+          const checkX = r2(L1 * Math.cos(th1) + L2 * Math.cos(th1 + th2))
+          const checkY = r2(L1 * Math.sin(th1) + L2 * Math.sin(th1 + th2))
+          const valid = Math.abs(checkX - tx) < 0.01 && Math.abs(checkY - ty) < 0.01
+          solutions.push({ branch: sign > 0 ? '肘朝下 (elbow-down)' : '肘朝上 (elbow-up)', th1: deg(th1), th2: deg(th2), checkX, checkY, valid })
+        }
+      }
+      const n = solutions.length
+      const th2mag = reachable ? deg(Math.acos(Math.max(-1, Math.min(1, c2raw)))) : 0
+      return {
+        step: 0, phase: 'done', op: 'summary', L1, L2, target: { x: tx, y: ty }, r, reachLo, reachHi, reachable,
+        cosTheta2: c2, solutions, curBranch: -1, armPts: null,
+        focus: reachable ? `目标 (${tx},${ty})、r=${r}：${n === 1 ? '奇异,两支合并' : `θ2=±${th2mag}°,两组解`}` : `目标 (${tx},${ty})、r=${r}>${reachHi}:无解`,
+        log: reachable
+          ? (n === 1
+            ? `目标 (${tx}, ${ty})、r=**${r}=最大伸展 ${reachHi}**：cosθ2=${c2} → θ2=0，**两支解合并成一个(奇异)** —— 手臂完全伸直，瞬间丢一个自由度，J⁻¹ 会爆炸。`
+            : `目标 (${tx}, ${ty})、r=${r} ∈ [${reachLo}, ${reachHi}]：cosθ2=${c2} → θ2=±${th2mag}°，**两组解**(肘朝下/肘朝上)都精确够到同一点——这就是 IK 多解。回代 FK 都落到目标 ✓。`)
+          : `目标 (${tx}, ${ty})、r=**${r} > ${reachHi}**：超出可达范围 [${reachLo}, ${reachHi}]，**无解** —— 手臂伸直也够不到。这就是 IK 的"无解"。`,
+      }
+    }
 
-    // —— 余弦定理求肘角 ——
-    push({
-      phase: 'cosine', op: 'cosine', r, reachable, cosTheta2: c2, solutions: [], curBranch: -1, armPts: null,
-      focus: `余弦定理：cosθ2 = ${c2} → θ2 = ±acos(${c2}) = ±90°（两支）`,
-      log: `**第二步：余弦定理求肘关节 θ2**\ncosθ2 = (x²+y²−L1²−L2²)/(2·L1·L2) = (${TARGET.x * TARGET.x + TARGET.y * TARGET.y}−${L1 * L1}−${L2 * L2})/(2·${L1}·${L2}) = **${c2}**。\nθ2 = **±acos(${c2}) = ±90°** —— 注意这个 **±**：正负两支就是**两种姿势**（肘朝下 / 肘朝上），这是 IK 多解的来源。分别解出各自的肩角 θ1。`,
-    })
+    const frames: Frame[] = R_SWEEP.map(at)
 
-    // —— 两支解 ——
-    const solutions: Sol[] = []
-    const branches: { sign: number; name: string }[] = [{ sign: 1, name: '肘朝下 (elbow-down)' }, { sign: -1, name: '肘朝上 (elbow-up)' }]
-    branches.forEach((br, idx) => {
-      const th2 = br.sign * Math.acos(Math.max(-1, Math.min(1, c2)))
-      const th1 = Math.atan2(TARGET.y, TARGET.x) - Math.atan2(L2 * Math.sin(th2), L1 + L2 * Math.cos(th2))
-      const checkX = r2(L1 * Math.cos(th1) + L2 * Math.cos(th1 + th2))
-      const checkY = r2(L1 * Math.sin(th1) + L2 * Math.sin(th1 + th2))
-      const valid = Math.abs(checkX - TARGET.x) < 1e-6 && Math.abs(checkY - TARGET.y) < 1e-6
-      const t1 = deg(th1), t2 = deg(th2)
-      const elbow: Pt = { x: r2(L1 * Math.cos(th1)), y: r2(L1 * Math.sin(th1)) }
-      solutions.push({ branch: br.name, th1: t1, th2: t2, checkX, checkY, valid })
-      const last = idx === branches.length - 1
-      push({
-        phase: last ? 'done' : 'solve', op: last ? 'summary' : 'branch', r, reachable, cosTheta2: c2,
-        solutions: solutions.map(s => ({ ...s })), curBranch: idx, armPts: [{ x: 0, y: 0 }, elbow, { x: checkX, y: checkY }],
-        focus: `解 ${idx + 1}（${br.name}）：θ1=${t1}°、θ2=${t2}° → 回代 FK = (${checkX}, ${checkY}) ${valid ? '✓' : '✗'}`,
-        log: last
-          ? `**解 2：${br.name}**\nθ2 = ${t2}°（取负支），θ1 = atan2(${TARGET.y},${TARGET.x}) − atan2(...) = **${t1}°**。肘落在 (${elbow.x}, ${elbow.y})。\n**回代 FK 验证**：末端 = (${checkX}, ${checkY}) = 目标 ✓。\n\n**两组解都对**：(θ1=${solutions[0]!.th1}°,θ2=${solutions[0]!.th2}°) 肘朝下 和 (θ1=${t1}°,θ2=${t2}°) 肘朝上，**两种姿势够到同一点 (${TARGET.x},${TARGET.y})**——这就是 IK 的"多解"。\n\n**要点**：IK vs FK——FK 唯一解、纯累加；IK 可能**多解**(肘上/肘下)、**无解**(够不到)、**奇异**(伸直时雅可比退化、瞬间失去一个自由度)。选哪组解看约束(避障、关节限位、连续性)。二连杆有闭式解；关节多了(6/7 轴)一般用**数值 IK**(雅可比迭代、阻尼最小二乘)。这套是机械臂抓取、机器狗迈步落足、遥操作的核心。回代 FK 验证是 IK 必做的一步——反解出来必须能正着走回去。`
-          : `**解 1：${br.name}**\nθ2 = ${t2}°（取正支），θ1 = atan2(${TARGET.y},${TARGET.x}) − atan2(L2·sinθ2, L1+L2·cosθ2) = **${t1}°**。肘落在 (${elbow.x}, ${elbow.y})。\n**回代 FK 验证**：把这组角正着走一遍 FK，末端 = (${checkX}, ${checkY}) = 目标 ✓。再看另一支（肘朝上）。`,
-      })
-    })
-
-    const base0: Frame = { phase: 'intro', op: 'intro', step: -1, L1, L2, target: TARGET, r, reachLo, reachHi, reachable, cosTheta2: c2, solutions: [], curBranch: -1, armPts: null, focus: '', log: '' }
     return {
-      axis: { kind: 'step', label: 'IK 步' },
-      initial: () => ({ i: -1, ...base0 }),
+      axis: { kind: 'step', label: '目标距离 r' },
+      initial: () => ({ ...at(1.0), i: -1, log: '按 ▶ 把目标从近拉到远：看 IK 的两组解(肘上/肘下)怎么随距离靠拢，到最大伸展 r=L1+L2 合并成一个(奇异)，再远就够不到(无解)。IK 是 FK 的反问题——可能多解/无解/奇异。' }),
       describe: s => s.log,
       step(prev) { const b = prev ?? this.initial(); const idx = b.i + 1; if (idx >= frames.length) return null; return { state: { i: idx, ...frames[idx]! }, done: idx === frames.length - 1 } },
     }
