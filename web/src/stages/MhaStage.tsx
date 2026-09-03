@@ -4,11 +4,17 @@ import type { StageProps } from '../types.ts'
 import { rich } from '../shell/rich.tsx'
 
 export function MhaStage({ state }: StageProps<MhaState>) {
-  const { heads, kvHeads, map, focus, kvRatio } = state
+  const { variant, heads, kvHeads, map, focus, kvRatio } = state
   return (
     <div className="card">
       <h3>多头注意力 <span className="hint">query 头共享 KV 头 → KV 缓存变小</span></h3>
       <div className="body">
+        {/* 变体是主角:大数条摆 变体 / query头→KV头 / KV缓存占比,一眼看出 MHA→GQA→MQA 怎么省 */}
+        <div className="scdim">
+          <div className="scdk"><span className="scdn hot">{variant}</span><span className="scdl">变体</span></div>
+          <div className="scdk"><span className="scdn">{heads} → {kvHeads}</span><span className="scdl">query头 → KV头</span></div>
+          <div className="scdk"><span className="scdn good">{Math.round(kvRatio * 100)}%</span><span className="scdl">KV 缓存 · 越小越省</span></div>
+        </div>
         <div className="mhwrap">
           <div className="mhrow">
             <span className="mhlab">query 头</span>
