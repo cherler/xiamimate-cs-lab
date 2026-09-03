@@ -6674,14 +6674,14 @@ const ik: Experiment<IKState> = {
 }
 
 const jacobian: Experiment<JacoState> = {
-  id: 'jacobian', group: '机器人学基础', title: '雅可比矩阵', subtitle: '关节速度↔末端速度；det=0 奇异丢自由度',
+  id: 'jacobian', group: '机器人学基础', title: '雅可比矩阵', subtitle: 'θ2 扫描：det=L1L2sinθ2 → 0 逼近奇异',
   kernel: jacobianKernel, defaultDoc: { kind: 'jacobian', params: {}, entities: [], streams: [] }, params: [],
-  paramsNote: 'FK/IK 求位置之上的速度层：关节以什么角速度转、末端就以什么线速度动，矩阵就是雅可比 J（末端 x,y 对关节 θ 的偏导）。ẋ=Jθ̇ 正着算末端速度、θ̇=J⁻¹ẋ 反着做速度层 IK。det(J)=L1L2 sinθ2，手臂伸直(θ2=0)时 det=0 奇异、丢自由度、J⁻¹ 爆炸。矩阵/速度全真算。',
-  bounds: ['雅可比 J=∂(末端x,y)/∂(关节θ1,θ2);ẋ=Jθ̇ 关节速度线性映成末端速度', 'J每一列=只转该关节时末端往哪动;任意末端速度=两列线性组合', 'det(J)=L1·L2·sinθ2;≠0可逆→能反解(速度层IK,沿直线走/力控)', 'θ2=0伸直或180°对折→det=0奇异,两列平行,末端丢一个自由度,J⁻¹爆炸;工程绕开或用阻尼最小二乘'],
+  paramsNote: '雅可比不是一步步算的仿真，是个函数：构型 → J/det。真正在变的是关节角 θ2——这里把轴换成"θ2 从 90° 扫到 0°(手臂由弯到伸直)"，按 ▶ 播放看 det(J)=L1·L2·sinθ2 一路缩到 0：伸直(θ2=0)即奇异、两列平行、末端丢一个自由度、J⁻¹ 爆炸。J=末端(x,y)对关节θ的偏导，ẋ=Jθ̇ 正着算末端速度、θ̇=J⁻¹ẋ 反着做速度层 IK。',
+  bounds: ['雅可比 J=∂(末端x,y)/∂(关节θ1,θ2);ẋ=Jθ̇ 关节速度线性映成末端速度', '轴是 θ2 扫描(90°→0°,θ1 固定 30°):每步是该构型下的完整 J/det,不是计算中间步', 'det(J)=L1·L2·sinθ2;≠0可逆→能反解(速度层IK,沿直线走/力控)', 'θ2=0伸直或180°对折→det=0奇异,两列平行,末端丢一个自由度,J⁻¹爆炸;工程绕开或用阻尼最小二乘'],
   tabs: [{ id: 'design', label: '速度映射' }], Stage: JacobianStage, whyInRail: true,
-  tone: s => (s.singular ? { key: 'bad', label: '奇异' } : s.phase === 'done' ? { key: 'good', label: '可逆' } : { key: 'idle', label: s.phase === 'build' ? '求 J' : s.phase === 'apply' ? '速度映射' : s.phase === 'det' ? '判可逆' : '就绪' }),
-  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 6)),
-  tickLabel: s => (s.singular ? '奇' : s.phase === 'done' ? '毕' : s.op === 'apply' ? 'v' : s.op === 'build' ? 'J' : s.op === 'det' ? 'd' : '雅'),
+  tone: s => (s.singular ? { key: 'bad', label: '奇异 det=0' } : s.det < 1 ? { key: 'bad', label: `将奇异 det=${s.det}` } : { key: 'good', label: `可逆 det=${s.det}` }),
+  metric: s => Math.max(0, Math.min(1, 1 - Math.abs(s.det) / (s.L1 * s.L2))),
+  tickLabel: s => `θ2=${s.theta2}°`,
   readouts: s => [
     { label: '当前构型', value: `θ=[${s.theta1}°,${s.theta2}°]` },
     { label: 'det(J)', value: `${s.det}`, tone: s.singular ? 'bad' : 'good' },

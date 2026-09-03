@@ -30,7 +30,7 @@ RL/控制/物理:qlearn qlearning mdp ppo policygrad pid mpc impedance kalman ek
 - ✅**sampling** 采样解码——已换轴:top-p 从紧到松扫描,看核长大(commit 869a2d6)
 - ✅**quant** 权重量化——已换轴:位宽 int8→int2 扫描,看精度换显存(commit 3305c01)
 - ✅**ik** 二连杆逆解——已换轴:目标距离 r 由近到远扫描,多解→奇异(r=L1+L2 合并)→无解(commit 待填)
-- **jacobian** 雅可比——扫**关节角 θ2** 看 det→0 奇异逼近(子代理确认)
+- ✅**jacobian** 雅可比——已换轴:θ2 从 90°→0° 扫描,det=L1L2sinθ2→0 逼近奇异
 - **inode** i 节点寻址——扫**逻辑块号** 看直接→一/二/三级间接跨界(子代理确认)
 - **hashaval** 雪崩——扫**输入扰动** 看输出翻转≈一半(子代理确认)
 - ~~residual~~ **实为 REAL(误判)**:细读内核=梯度沿层倒传的真递归(gradPlain*=factor、两条曲线随层累积),是真过程,不动。归 A。
