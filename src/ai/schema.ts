@@ -229,7 +229,7 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   expr: { expr: 'string' },
   radix: { requests: 'string', budget: 'number' },
   paged: { schedule: 'string', blockSize: 'number', totalBlocks: 'number' },
-  softmax: { temperature: 'number', logits: 'string' },
+  softmax: { logits: 'string' },
   attention: { sentence: 'string' },
   llmsize: { model: 'string', dtype: 'string', seq: 'number' },
   sampling: { temperature: 'number', topK: 'number', topP: 'number', logits: 'string' },

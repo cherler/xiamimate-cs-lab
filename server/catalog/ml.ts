@@ -203,20 +203,20 @@ export const ML_ENTRIES: CatalogEntry[] = [
   // ── softmax 与温度：logits → 概率 ──
   {
     id: 'softmax', title: 'softmax 与温度', kernel: softmaxKernel as Kernel<unknown>,
-    doc: { kind: 'softmax', params: { temperature: 1, logits: '天气续写' }, entities: [], streams: [] },
+    doc: { kind: 'softmax', params: { logits: '天气续写' }, entities: [], streams: [] },
     facts: [
       {
         id: 'topprob', label: '温度 T=1 时最高概率的百分比',
         ask: '温度 T=1，对"天气续写"这串 logits 做 softmax，概率最高的那个字占百分之多少？',
         kind: 'number',
-        compute: t => { const f = frameWhere(t, x => x.phase === 'norm'); const probs = f.probs as number[]; const pct = Math.round(Math.max(...probs) * 100); return { answer: String(pct), step: t.indexOf(f), evidence: String(f.log ?? '') } },
+        compute: t => { const f = frameWhere(t, x => x.T === 1); const probs = f.probs as number[]; const pct = Math.round(Math.max(...probs) * 100); return { answer: String(pct), step: t.indexOf(f), evidence: String(f.log ?? '') } },
         distractors: numDistractors,
       },
       {
         id: 'norm_step', label: 'softmax 归一化这一步做什么',
-        ask: 'softmax 里的"归一化"这一步，具体对每个 exp 值做了什么？',
+        ask: 'softmax 把 logit 变成概率的"归一化"，具体对每个 exp 值做了什么？',
         kind: 'choice',
-        compute: t => { const f = frameWhere(t, x => x.phase === 'norm'); return { answer: '把每个 exp 值除以所有 exp 的总和，让结果都落在 (0,1) 且加起来正好等于 1，成为一个概率分布', step: t.indexOf(f), evidence: String(f.log ?? '') } },
+        compute: t => { const f = frameWhere(t, x => x.T === 1); return { answer: '把每个 exp 值除以所有 exp 的总和，让结果都落在 (0,1) 且加起来正好等于 1，成为一个概率分布', step: t.indexOf(f), evidence: String(f.log ?? '') } },
         distractors: () => ['直接取 logit 最大的那个置 1、其余置 0', '给每个 logit 减去平均值，让它们零均值', '把每个 logit 平方后再相加'],
       },
       {

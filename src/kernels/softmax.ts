@@ -13,7 +13,7 @@
  * 值全部按公式现算。为数值稳定，exp 前先减去最大 logit（不改结果，教材同款技巧）。
  * 状态可 JSON 往返（验收标准 2）。
  */
-import { num, type SimDocument } from '../core/document.ts'
+import { type SimDocument } from '../core/document.ts'
 import type { Kernel, CompiledModel } from '../core/kernel.ts'
 
 export type SoftmaxState = {
@@ -53,43 +53,36 @@ export const softmaxKernel: Kernel<SoftmaxState> = {
   kind: 'softmax',
 
   compile(doc: SimDocument): CompiledModel<SoftmaxState> {
-    const T = num(doc.params, 'temperature') || 1
     const preset = PRESETS[String(doc.params.logits ?? '天气续写')] ?? PRESETS['天气续写']
     const tokens = preset.tokens
     const logits = preset.logits
 
-    const scaled = logits.map(x => x / T)
-    const mx = Math.max(...scaled)
-    const exps = scaled.map(x => Math.exp(x - mx))
-    const sumExp = exps.reduce((a, b) => a + b, 0)
-    const probs = exps.map(e => e / sumExp)
-    const entropy = entropyOf(probs)
+    //  softmax 不是"一步步算"的仿真——它是个函数：logits + 温度 → 分布。
+    //  真正在**变化**的是温度：轴换成"温度从低到高扫描"，按播放就看同一串 logit 的分布
+    //  从尖(低温、接近贪心)变平(高温、更随机)、熵一路升高。这才是"一个状态在发生变化"。
+    const T_SWEEP = [0.25, 0.5, 0.75, 1, 1.5, 2, 3, 5]   // 低温(尖)→高温(平)，含基准 T=1
 
-    const frames: Frame[] = []
-    const base = (phase: Frame['phase']): Frame => ({
-      phase, tokens, logits, T, scaled: [], exps: [], sumExp: 0, probs: [], entropy: 0, focus: -1, log: '',
-    })
+    const at = (T: number): Frame => {
+      const scaled = logits.map(x => x / T)
+      const mx = Math.max(...scaled)
+      const exps = scaled.map(x => Math.exp(x - mx))
+      const sumExp = exps.reduce((a, b) => a + b, 0)
+      const probs = exps.map(e => e / sumExp)
+      const entropy = entropyOf(probs)
+      const maxP = Math.max(...probs)
+      const top = tokens[probs.indexOf(maxP)]
+      return {
+        phase: 'done', tokens, logits, T, scaled, exps, sumExp, probs, entropy, focus: -1,
+        log: `温度 T=${T}${T < 1 ? '（低温）' : T > 1 ? '（高温）' : '（基准）'}：每个 logit 除以 ${T} 再 softmax → 最大概率 **${(maxP * 100).toFixed(0)}%**「${top}」、熵 **${entropy.toFixed(2)} bit**。`
+          + (T < 1 ? '差距被放大、分布尖，越接近只选最大（贪心、确定）' : T > 1 ? '差距被压平、分布匀，越随机、越有创造性' : '原始差距，基准分布'),
+      }
+    }
 
-    frames.push({ ...base('logits'),
-      log: `模型对每个候选 token 打了一个分（**logit**）：${tokens.map((t, k) => `${t}=${logits[k]}`).join('、')}。logit 不是概率，可正可负、加起来也不为 1` })
-
-    frames.push({ ...base('scale'), scaled,
-      log: T === 1
-        ? `温度 T=1 → logit 除以 1 不变。温度就是"softmax 之前先把 logit 除以 T"`
-        : `温度 T=${T} → 每个 logit **除以 ${T}**：${scaled.map(x => x.toFixed(2)).join('、')}。${T < 1 ? 'T<1 把差距放大，分布会更尖' : 'T>1 把差距压平，分布会更均匀'}` })
-
-    frames.push({ ...base('exp'), scaled, exps, sumExp,
-      log: `每个都取 **exp**（先减最大值保数值稳定，不改结果），再求和 = ${sumExp.toFixed(3)}。exp 把负数也变正、把大的拉得更大` })
-
-    frames.push({ ...base('norm'), scaled, exps, sumExp, probs, entropy,
-      log: `**归一化**：每个 prob = exp ÷ 总和 → ${tokens.map((t, k) => `${t} ${(probs[k] * 100).toFixed(0)}%`).join('、')}。现在加起来正好是 1，成了概率分布` })
-
-    frames.push({ ...base('done'), scaled, exps, sumExp, probs, entropy,
-      log: `分布出来了，熵 = ${entropy.toFixed(2)} bit。${T < 1 ? '低温分布尖 —— 越接近贪心，只选最可能的' : T > 1 ? '高温分布平 —— 越随机、越有创造性' : '基准温度。调高更随机、调低更确定'}` })
+    const frames: Frame[] = T_SWEEP.map(at)
 
     return {
-      axis: { kind: 'step', label: '步骤' },
-      initial: () => ({ i: -1, ...base('logits'), log: '' }),
+      axis: { kind: 'step', label: '温度 T' },
+      initial: () => ({ i: -1, ...at(1), log: '按 ▶ 从低温到高温扫描温度：同一串 logit，看分布从尖变平、熵一路升高。温度就是 softmax 之前先把 logit 除以 T。' }),
       describe: s => s.log,
       step(prev) {
         const b = prev ?? this.initial()

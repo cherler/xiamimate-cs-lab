@@ -2649,27 +2649,24 @@ const softmax: Experiment<SoftmaxState> = {
   title: 'softmax 与温度',
   subtitle: 'logits → 概率 · 温度调的是什么',
   kernel: softmaxKernel,
-  defaultDoc: { kind: 'softmax', params: { temperature: 1, logits: '天气续写' }, entities: [], streams: [] },
+  defaultDoc: { kind: 'softmax', params: { logits: '天气续写' }, entities: [], streams: [] },
   params: [
-    { key: 'temperature', label: '温度 T', kind: 'number', options: [0.5, 1, 1.5, 2], unit: '' },
     { key: 'logits', label: 'logits 组', kind: 'enum', options: ['天气续写', '接近平局', '一枝独秀'] },
   ],
-  paramsNote: '大模型每吐一个字，都对下一个 token 的 logits 做 softmax、再按概率采样。温度 T 就是 softmax 之前先把 logits 除以 T：T 小分布尖（接近贪心）、T 大分布平（更随机）。用熵量化。',
+  paramsNote: 'softmax 不是一步步算的仿真，是个函数：logits + 温度 → 分布。真正在变的是温度——这里把轴换成"温度从低到高扫描"，按 ▶ 播放就看同一串 logit 的分布从尖变平、熵一路升高。温度就是 softmax 之前先把 logits 除以 T：T 小分布尖（接近贪心）、T 大分布平（更随机）。',
   bounds: [
     'logits 是给定的示例值，不是真跑模型出来的 —— 但 softmax 与温度的数学是精确的',
-    'exp 前减去最大值是数值稳定技巧，不改变结果',
+    '轴是温度扫描（T=0.25→5）：每一步是同一串 logit 在该温度下的完整分布，不是计算的中间步',
     '熵用以 2 为底（bit）；只演示温度对分布的影响，不含 top-k/top-p 截断（那是另一个实验）',
-    '概率四舍五入到整数百分比显示，内部按浮点算',
+    '概率四舍五入到整数百分比显示，内部按浮点算；exp 前减最大值是数值稳定技巧不改结果',
   ],
   tabs: [{ id: 'dist', label: '分布' }],
   Stage: SoftmaxStage,
-  tone: s => (s.phase === 'done' ? { key: 'good', label: '分布' }
-    : s.phase === 'norm' ? { key: 'good', label: '归一化' }
-    : s.phase === 'scale' ? { key: 'idle', label: '除温度' }
-    : s.phase === 'exp' ? { key: 'idle', label: 'exp' }
-    : { key: 'idle', label: 'logits' }),
+  tone: s => (s.T < 1 ? { key: 'good', label: `T=${s.T} 尖` }
+    : s.T > 1 ? { key: 'idle', label: `T=${s.T} 平` }
+    : { key: 'idle', label: 'T=1 基准' }),
   metric: s => (s.probs.length ? Math.min(1, s.entropy / Math.log2(s.tokens.length || 2)) : 0),
-  tickLabel: s => ({ logits: 'logit', scale: '÷T', exp: 'exp', norm: '归一', done: '分布' }[s.phase]),
+  tickLabel: s => `T=${s.T}`,
   whyInRail: true,
   readouts: s => [
     { label: '温度 T', value: String(s.T) },
