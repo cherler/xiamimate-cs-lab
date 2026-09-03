@@ -7,6 +7,7 @@ export function SoftmaxStage({ state }: StageProps<SoftmaxState>) {
   const { tokens, logits, scaled, probs, phase } = state
   const showProbs = probs.length > 0
   const showScaled = scaled.length > 0
+  const topProb = showProbs ? probs.indexOf(Math.max(...probs)) : -1   // argmax=当前会选中的 token
 
   //  上排：logit（或温度缩放后）—— 有正有负，居中基线
   const vals = showScaled && !showProbs ? scaled : logits
@@ -42,9 +43,9 @@ export function SoftmaxStage({ state }: StageProps<SoftmaxState>) {
                 <div className="smrow" key={k}>
                   <span className="smtok">{tk}</span>
                   <div className="smtrack">
-                    <div className="smfill prob" style={{ width: `${probs[k] * 100}%` }} />
+                    <div className={`smfill prob ${k === topProb ? 'top' : ''}`} style={{ width: `${probs[k] * 100}%` }} />
                   </div>
-                  <span className="smval prob">{(probs[k] * 100).toFixed(0)}%</span>
+                  <span className={`smval prob ${k === topProb ? 'top' : ''}`}>{(probs[k] * 100).toFixed(0)}%</span>
                 </div>
               ))}
             </div>

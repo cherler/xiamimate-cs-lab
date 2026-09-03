@@ -2253,19 +2253,22 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .pgempty{font-size:12px;color:var(--ghost);margin-top:8px}
 
 /* ── softmax 与温度：logit 条 / 概率条 ── */
-.smsect{font-size:12.5px;font-weight:600;color:var(--ink);margin-bottom:8px}
-.smcap{font-weight:400;font-size:11.5px;color:var(--faint);margin-left:8px;font-family:var(--mono)}
-.smbars{display:flex;flex-direction:column;gap:6px}
+.smsect{font-size:var(--t-body);font-weight:600;color:var(--ink);margin-bottom:8px}
+.smcap{font-weight:400;font-size:var(--t-meta);color:var(--faint);margin-left:8px;font-family:var(--mono)}
+.smbars{display:flex;flex-direction:column;gap:7px}
 .smrow{display:grid;grid-template-columns:52px 1fr 56px;gap:10px;align-items:center}
-.smtok{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--ink);text-align:right}
-.smtrack{height:22px;border-radius:5px;background:var(--sunk-2);overflow:hidden;position:relative}
-.smtrack.neg{background:linear-gradient(90deg,transparent 49.6%,var(--line) 49.6%,var(--line) 50.4%,transparent 50.4%)}
-.smfill{height:100%;border-radius:5px;transition:width var(--anim-move),margin var(--anim-move)}
-.smfill.prob{background:var(--f-tag)}
-.smfill.pos{background:color-mix(in srgb,var(--hit) 60%,transparent)}
-.smfill.minus{background:color-mix(in srgb,var(--miss) 55%,transparent)}
-.smval{font-family:var(--mono);font-size:12px;color:var(--dim);text-align:right;font-variant-numeric:tabular-nums}
+.smtok{font-family:var(--mono);font-size:var(--t-body);font-weight:700;color:var(--ink);text-align:right}
+.smtrack{height:24px;border-radius:6px;background:var(--sunk-2);overflow:hidden;position:relative;
+  box-shadow:inset 0 1px 2px rgba(20,32,42,.06),inset 0 0 0 1px var(--line-soft)}
+.smtrack.neg{background:linear-gradient(90deg,var(--sunk-2) 49.5%,var(--line) 49.5%,var(--line) 50.5%,var(--sunk-2) 50.5%)}
+.smfill{height:100%;border-radius:6px;transition:width var(--anim-move),margin var(--anim-move),background .25s;box-shadow:inset 0 1px 0 rgba(255,255,255,.28)}
+.smfill.prob{background:linear-gradient(180deg,color-mix(in srgb,var(--f-tag) 82%,var(--panel)),var(--f-tag))}
+.smfill.prob.top{background:linear-gradient(180deg,color-mix(in srgb,var(--now) 84%,var(--panel)),var(--now));box-shadow:0 0 0 1px color-mix(in srgb,var(--now) 45%,transparent),inset 0 1px 0 rgba(255,255,255,.3)}
+.smfill.pos{background:linear-gradient(180deg,color-mix(in srgb,var(--hit) 52%,var(--panel)),color-mix(in srgb,var(--hit) 72%,transparent))}
+.smfill.minus{background:linear-gradient(180deg,color-mix(in srgb,var(--miss) 48%,var(--panel)),color-mix(in srgb,var(--miss) 68%,transparent))}
+.smval{font-family:var(--mono);font-size:var(--t-ui);color:var(--dim);text-align:right;font-variant-numeric:tabular-nums}
 .smval.prob{color:var(--f-tag);font-weight:700}
+.smval.prob.top{color:var(--now)}
 
 /* ── 自注意力：连线 + 矩阵热力图 + 算式 ── */
 /* 三栏并排：左=查询列 · 中=注意力矩阵 · 右=键/值列 */
@@ -2712,12 +2715,14 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .mmlayout{display:grid;grid-template-columns:auto auto;gap:10px;justify-content:start;align-items:start;margin-bottom:14px}
 .mmcorner{font-size:10px;color:var(--faint);font-family:var(--mono);text-align:center;align-self:end;line-height:1.4}
 .mmA,.mmB,.mmC{display:grid;gap:4px}
-.mmcell{min-width:38px;height:34px;display:flex;align-items:center;justify-content:center;border-radius:5px;
-  font-size:14px;font-variant-numeric:tabular-nums;font-family:var(--mono);border:1px solid var(--line-soft);
-  transition:background var(--anim,.18s ease),box-shadow var(--anim,.18s ease)}
-.mmcell.a{background:color-mix(in srgb,var(--f-idx) 8%,var(--panel));color:var(--ink)}
-.mmcell.b{background:color-mix(in srgb,var(--f-tag) 8%,var(--panel));color:var(--ink)}
-.mmcell.c{background:var(--sunk-2);color:var(--ink);font-weight:700}
+.mmcell{min-width:40px;height:36px;display:flex;align-items:center;justify-content:center;border-radius:6px;
+  font-size:var(--t-body);font-weight:600;font-variant-numeric:tabular-nums;font-family:var(--mono);border:1px solid var(--line-soft);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.35);
+  transition:background var(--anim,.18s ease),box-shadow var(--anim,.18s ease),transform var(--anim,.18s ease)}
+.mmcell.c.cur{transform:scale(1.06);z-index:1}
+.mmcell.a{background:linear-gradient(180deg,color-mix(in srgb,var(--f-idx) 6%,var(--panel)),color-mix(in srgb,var(--f-idx) 13%,var(--panel)));color:var(--ink)}
+.mmcell.b{background:linear-gradient(180deg,color-mix(in srgb,var(--f-tag) 6%,var(--panel)),color-mix(in srgb,var(--f-tag) 13%,var(--panel)));color:var(--ink)}
+.mmcell.c{background:linear-gradient(180deg,var(--panel),color-mix(in srgb,var(--ink) 6%,var(--panel)));color:var(--ink);font-weight:700}
 .mmcell.c.pend{background:transparent;border-style:dashed;color:var(--faint);font-weight:400}
 .mmcell.rowhi{background:color-mix(in srgb,var(--f-idx) 26%,var(--panel));box-shadow:inset 0 0 0 1px var(--f-idx)}
 .mmcell.colhi{background:color-mix(in srgb,var(--f-tag) 26%,var(--panel));box-shadow:inset 0 0 0 1px var(--f-tag)}
