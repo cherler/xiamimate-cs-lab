@@ -2249,9 +2249,8 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .smval.prob{color:var(--f-tag);font-weight:700}
 
 /* ── 自注意力：连线 + 矩阵热力图 + 算式 ── */
-/* 连线图 + 热力矩阵并排一行(别再上下两层、上层空一大片) */
-.atrow{display:flex;gap:34px;align-items:flex-start;flex-wrap:wrap;margin-bottom:14px}
-.atflow{display:grid;grid-template-columns:auto minmax(80px,1fr) auto;gap:0;align-items:start;margin-bottom:0;flex:1 1 300px;min-width:250px}
+/* 三栏并排：左=查询列 · 中=注意力矩阵 · 右=键/值列 */
+.atrow{display:flex;gap:30px;align-items:center;justify-content:center;flex-wrap:wrap;margin-bottom:14px}
 .atside{display:flex;flex-direction:column;gap:10px;min-width:64px}
 .atlabel{font-size:11px;color:var(--faint);height:16px;text-align:center}
 .attok{height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;gap:6px;font-family:var(--mono);font-weight:700;font-size:var(--t-body);
