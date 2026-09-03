@@ -3306,46 +3306,60 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .hpcell.out .hpi { color:var(--hit); }
 
 /* 快速排序 Quicksort */
-/* ── 快速排序：仪表级动效柱状图 ──
-   柱子按值 key、用 translateX 定槽位，一交换就滑过去(FLIP)；高度∝值；语义色带材质与投影。 */
-.qschartwrap { display:flex; justify-content:center; margin:20px 0 12px; }
-.qschart { position:relative; }
-.qschart::after { content:''; position:absolute; left:-10px; right:-10px; bottom:0; height:2px; z-index:0;
+/* ── 共享柱状图原语(bc = bar chart)：排序/选择族通用的仪表级动效柱子 ──
+   柱子按值 key、translateX 定槽位，一交换就滑过去(FLIP)；高度∝值；语义色带材质与投影。
+   几何(SLOT/宽/高)由各舞台内联，这里只管配色/材质/动效。
+   角色色：focus=琥珀(当前/基准/右段) · ptr=蓝(指针/左段) · done=绿(锁定/命中) · soft=淡绿(中间态) · dim=灰(出区间)。 */
+.bc-wrap { display:flex; justify-content:center; margin:20px 0 12px; }
+.bc-chart { position:relative; }
+.bc-chart::after { content:''; position:absolute; left:-10px; right:-10px; bottom:0; height:2px; z-index:0;
   background:linear-gradient(90deg, transparent, var(--line) 10%, var(--line) 90%, transparent); border-radius:2px; }
-.qsband { position:absolute; top:-8px; bottom:3px; left:0; border-radius:10px; z-index:0;
+.bc-band { position:absolute; top:-8px; bottom:3px; left:0; border-radius:10px; z-index:0;
   background:var(--sunk-2); box-shadow:inset 0 0 0 1px var(--line-soft);
   transition:transform .42s cubic-bezier(.34,1.1,.4,1), width .42s cubic-bezier(.34,1.1,.4,1); }
-.qsbar { position:absolute; bottom:3px; left:0; display:flex; flex-direction:column; align-items:center; z-index:1;
+.bc-bar { position:absolute; bottom:3px; left:0; display:flex; flex-direction:column; align-items:center; z-index:1;
   border-radius:6px 6px 2px 2px;
   background:linear-gradient(180deg, var(--panel), color-mix(in srgb,var(--ink) 6%, var(--panel)));
   border:1px solid var(--line); box-shadow:0 1px 2px rgba(20,32,42,.06), inset 0 1px 0 rgba(255,255,255,.55);
   transition:transform .42s cubic-bezier(.34,1.18,.42,1), height .32s ease, background .25s, border-color .25s, box-shadow .25s, opacity .22s; }
-.qsbar .qsv { font-family:var(--mono); font-size:var(--t-body); font-weight:700; color:var(--ink);
+.bc-bar .bc-v { font-family:var(--mono); font-size:var(--t-body); font-weight:700; color:var(--ink);
   font-variant-numeric:tabular-nums; margin-top:6px; line-height:1; }
-.qsbar.dim { opacity:.3; }
-.qsbar.less { border-color:color-mix(in srgb,var(--hit) 40%,var(--line));
+.bc-bar.dim { opacity:.3; }
+.bc-bar.soft { border-color:color-mix(in srgb,var(--hit) 40%,var(--line));
   background:linear-gradient(180deg, color-mix(in srgb,var(--hit) 9%,var(--panel)), color-mix(in srgb,var(--hit) 20%,var(--panel))); }
-.qsbar.scan { border-color:var(--f-tag); border-width:1.5px;
+.bc-bar.ptr { border-color:var(--f-tag); border-width:1.5px;
   background:linear-gradient(180deg, color-mix(in srgb,var(--f-tag) 8%,var(--panel)), color-mix(in srgb,var(--f-tag) 18%,var(--panel)));
   box-shadow:0 0 0 3px color-mix(in srgb,var(--f-tag) 18%,transparent), 0 2px 7px color-mix(in srgb,var(--f-tag) 24%,transparent); }
-.qsbar.scan .qsv { color:var(--f-tag); }
-.qsbar.pivot { border-color:var(--now);
+.bc-bar.ptr .bc-v { color:var(--f-tag); }
+.bc-bar.focus { border-color:var(--now);
   background:linear-gradient(180deg, color-mix(in srgb,var(--now) 20%,var(--panel)), color-mix(in srgb,var(--now) 40%,var(--panel)));
   box-shadow:0 0 0 3px color-mix(in srgb,var(--now) 22%,transparent), 0 3px 10px color-mix(in srgb,var(--now) 34%,transparent); }
-.qsbar.pivot .qsv { color:var(--now); }
-.qsbar.lock { border-color:var(--hit);
+.bc-bar.focus .bc-v { color:var(--now); }
+.bc-bar.done { border-color:var(--hit);
   background:linear-gradient(180deg, color-mix(in srgb,var(--hit) 22%,var(--panel)), color-mix(in srgb,var(--hit) 44%,var(--panel)));
   box-shadow:0 2px 8px color-mix(in srgb,var(--hit) 26%,transparent); }
-.qsbar.lock .qsv { color:var(--hit); }
+.bc-bar.done .bc-v { color:var(--hit); }
 /* 指针小旗，飘在柱顶上方，带朝下三角 */
-.qsptr { position:absolute; top:-20px; font-family:var(--mono); font-size:var(--t-meta); font-weight:700; color:#fff;
+.bc-flag { position:absolute; top:-20px; font-family:var(--mono); font-size:var(--t-meta); font-weight:700; color:#fff;
   padding:1px 7px; border-radius:9px; white-space:nowrap; line-height:1.6; }
-.qsptr.sc { background:var(--f-tag); box-shadow:0 2px 6px color-mix(in srgb,var(--f-tag) 40%,transparent); }
-.qsptr.pv { background:var(--now); box-shadow:0 2px 6px color-mix(in srgb,var(--now) 40%,transparent); }
-.qsptr::after { content:''; position:absolute; left:50%; bottom:-4px; transform:translateX(-50%); border:4px solid transparent; }
-.qsptr.sc::after { border-top-color:var(--f-tag); }
-.qsptr.pv::after { border-top-color:var(--now); }
-.qslock { position:absolute; top:-16px; font-size:var(--t-meta); color:var(--hit); font-weight:800; }
+.bc-flag.ptr { background:var(--f-tag); box-shadow:0 2px 6px color-mix(in srgb,var(--f-tag) 40%,transparent); }
+.bc-flag.focus { background:var(--now); box-shadow:0 2px 6px color-mix(in srgb,var(--now) 40%,transparent); }
+.bc-flag::after { content:''; position:absolute; left:50%; bottom:-4px; transform:translateX(-50%); border:4px solid transparent; }
+.bc-flag.ptr::after { border-top-color:var(--f-tag); }
+.bc-flag.focus::after { border-top-color:var(--now); }
+.bc-tick { position:absolute; top:-16px; font-size:var(--t-meta); color:var(--hit); font-weight:800; }
+/* 槽位标记(如 quickselect 的「目标位 K」)，浮在地面线下方、跟着槽位滑 */
+.bc-mark { position:absolute; bottom:-21px; left:0; text-align:center; font-family:var(--mono); font-size:var(--t-meta);
+  color:var(--now); font-weight:700; white-space:nowrap; transition:transform .42s cubic-bezier(.34,1.1,.4,1); }
+/* 归并输出缓冲：一排小格，最后取入的按来源(左蓝/右琥珀)染色 */
+.bc-outlab { text-align:center; font-size:var(--t-meta); color:var(--dim); margin:8px 0 4px; }
+.bc-out { display:flex; gap:4px; justify-content:center; min-height:30px; flex-wrap:wrap; }
+.bc-oc { min-width:26px; height:28px; padding:0 4px; display:flex; align-items:center; justify-content:center; font-family:var(--mono);
+  font-size:var(--t-body); font-weight:600; border-radius:5px; background:var(--sunk-1); border:1px solid var(--line); color:var(--ink);
+  font-variant-numeric:tabular-nums; transition:background .25s, border-color .25s; }
+.bc-oc.fromL { border-color:var(--f-tag); background:color-mix(in srgb,var(--f-tag) 14%,var(--panel)); color:var(--f-tag); font-weight:700; }
+.bc-oc.fromR { border-color:var(--now); background:color-mix(in srgb,var(--now) 16%,var(--panel)); color:var(--now); font-weight:700; }
+.bc-empty { color:var(--faint); font-family:var(--mono); align-self:center; }
 
 /* 归并排序 Merge Sort */
 .mswrap { display:flex; flex-direction:column; align-items:center; gap:4px; margin:14px 0; }

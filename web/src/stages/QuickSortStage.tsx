@@ -22,10 +22,10 @@ export function QuickSortStage({ state }: StageProps<QuickSortState>) {
           <div className="scdk"><span className={`scdn ${done ? 'good' : ''}`}>{sortedCount}/{n}</span><span className="scdl">已归位</span></div>
         </div>
 
-        <div className="qschartwrap">
-          <div className="qschart" style={{ width: n * SLOT, height: AREA }}>
+        <div className="bc-wrap">
+          <div className="bc-chart" style={{ width: n * SLOT, height: AREA }}>
             {/* 当前处理区间：柱子后面一条会滑动的高亮带 */}
-            {inPart && <div className="qsband" style={{ transform: `translateX(${lo * SLOT}px)`, width: (hi - lo + 1) * SLOT - (SLOT - BARW) }} />}
+            {inPart && <div className="bc-band" style={{ transform: `translateX(${lo * SLOT}px)`, width: (hi - lo + 1) * SLOT - (SLOT - BARW) }} />}
             {arr.map((v, k) => {
               const inRange = inPart && k >= lo && k <= hi
               const isPivot = inPart && v === pivotVal && k === hi && act !== 'place'
@@ -33,15 +33,15 @@ export function QuickSortStage({ state }: StageProps<QuickSortState>) {
               const isPlace = act === 'place' && k === jPtr
               const lessZone = inPart && k >= lo && k <= iPtr
               const isLock = locked[k] || done
-              const role = (isPlace || isLock) ? 'lock' : isPivot ? 'pivot' : isScan ? 'scan'
-                : lessZone ? 'less' : (inRange || !inPart) ? 'base' : 'dim'
+              const role = (isPlace || isLock) ? 'done' : isPivot ? 'focus' : isScan ? 'ptr'
+                : lessZone ? 'soft' : (inRange || !inPart) ? '' : 'dim'
               const h = Math.round((v / maxV) * BARMAX + BARMIN)
               return (
-                <div key={v} className={`qsbar ${role}`}
+                <div key={v} className={`bc-bar ${role}`}
                      style={{ transform: `translateX(${k * SLOT}px)`, width: BARW, height: h }}>
-                  {(isPivot || isScan) && <span className={`qsptr ${isPivot ? 'pv' : 'sc'}`}>{isPivot ? '基准' : 'j'}</span>}
-                  {isLock && !done && <span className="qslock">✓</span>}
-                  <span className="qsv">{v}</span>
+                  {(isPivot || isScan) && <span className={`bc-flag ${isPivot ? 'focus' : 'ptr'}`}>{isPivot ? '基准' : 'j'}</span>}
+                  {isLock && !done && <span className="bc-tick">✓</span>}
+                  <span className="bc-v">{v}</span>
                 </div>
               )
             })}
