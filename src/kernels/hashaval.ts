@@ -35,31 +35,33 @@ export type HashAvalState = {
 export const HASHAVAL_VISIBLE = ['step', 'a', 'b', 'hashA', 'hashB', 'bitsA', 'bitsB', 'pos', 'flipped', 'phase', 'log'] as const
 
 type Frame = Omit<HashAvalState, 'i'>
-const A = 'cat', B = 'cot'
+const A = 'cat'
+//  与 "cat" 各差一点点的输入(改一个字母/加一个字母),扫过去看输出翻转都≈一半
+const VARIANTS = ['cot', 'hat', 'can', 'mat', 'cut']
 
 export const hashavalKernel: Kernel<HashAvalState> = {
   kind: 'hashaval',
   compile(_doc: SimDocument): CompiledModel<HashAvalState> {
-    const hashA = h16(A), hashB = h16(B)
-    const bA = bits(hashA), bB = bits(hashB)
-    const frames: Frame[] = []
-    let flipped = 0
-    for (let p = 0; p < 16; p++) {
-      const diff = bA[p] !== bB[p]
-      if (diff) flipped++
-      frames.push({
-        step: frames.length, a: A, b: B, hashA, hashB, bitsA: bA, bitsB: bB, pos: p, flipped, phase: 'run',
-        log: `第 ${p + 1} 位：${bA[p]} vs ${bB[p]} → ${diff ? '**翻转**' : '相同'}。累计翻转 ${flipped} 位。`,
-      })
+    //  雪崩不是"一步步算"的仿真——它是个性质:输入改一点、输出翻一半。真正在**变**的是输入。
+    //  轴换成"把 cat 换成一串差一点点的输入(cot/bat/car…)":按播放看每次翻转位数都≈8/16(一半)、
+    //  翻哪些位不可预测——这才是雪崩。原来那 16 帧只是把 cat↔cot 的固定结果逐位读出,不是"在变"。
+    const hashA = h16(A)
+    const bA = bits(hashA)
+    const at = (b: string, isBase = false): Frame => {
+      const hashB = h16(b)
+      const bB = bits(hashB)
+      const flipped = bA.reduce((n, x, p) => n + (x !== bB[p] ? 1 : 0), 0)
+      return {
+        step: 0, a: A, b, hashA, hashB, bitsA: bA, bitsB: bB, pos: -1, flipped, phase: 'done',
+        log: isBase
+          ? `基准："${A}" 和自己比 → 0 位翻转。按 ▶ 把它换成差一点点的输入(cot / bat / car…)，看输出翻转都≈一半、翻哪些位不可预测——这就是雪崩，防篡改的根基。`
+          : `"${A}" → "${b}"（改一点点）：16 位哈希翻转 **${flipped}** 位（${Math.round(flipped / 16 * 100)}%，≈一半），翻哪些位不可预测。输入微小变化 → 输出面目全非，这就是**雪崩效应**——攻击者没法一点点凑出想要的哈希。真实 SHA-256 是 256 位、雪崩更彻底。`,
+      }
     }
-    frames.push({
-      step: frames.length, a: A, b: B, hashA, hashB, bitsA: bA, bitsB: bB, pos: -1, flipped, phase: 'done',
-      log: `**比较完成**：只把 "cat" 改成 "cot"(一个字母),16 位哈希里就翻转了 **${flipped}** 位(≈一半)。输入微小变化→输出面目全非,这就是**雪崩效应**,防篡改的根基。真实的 SHA-256 是 256 位、雪崩更彻底、且不可预测。`,
-    })
-    const base0: Frame = { step: -1, a: A, b: B, hashA, hashB, bitsA: bA, bitsB: bB, pos: -1, flipped: 0, phase: 'run', log: '' }
+    const frames: Frame[] = VARIANTS.map(v => at(v))
     return {
-      axis: { kind: 'step', label: '位' },
-      initial: () => ({ i: -1, ...base0 }),
+      axis: { kind: 'step', label: '改动的输入' },
+      initial: () => ({ ...at(A, true), i: -1 }),
       describe: s => s.log,
       step(prev) { const bb = prev ?? this.initial(); const idx = bb.i + 1; if (idx >= frames.length) return null; return { state: { i: idx, ...frames[idx]! }, done: idx === frames.length - 1 } },
     }

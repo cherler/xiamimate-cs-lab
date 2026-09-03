@@ -1082,7 +1082,7 @@ const CATALOG_CORE: CatalogEntry[] = [
     facts: [{
       id: 'flipped', label: 'cat→cot 后 16 位哈希翻转的位数',
       ask: '哈希雪崩：把 "cat" 改成 "cot"（一个字母），16 位哈希翻转了多少位?', kind: 'number',
-      compute: t => ({ answer: String(last(t).flipped), step: t.length - 1, evidence: `翻转 ${last(t).flipped}/16 位，约一半` }),
+      compute: t => { const f = t.find(x => x.b === 'cot') ?? last(t); return { answer: String(f.flipped), step: t.indexOf(f), evidence: `cat→cot 翻转 ${f.flipped}/16 位，约一半` } },
       distractors: answer => { const f = Number(answer); return [String(f + 2), String(Math.max(0, f - 3)), '1'] },
     }],
   },

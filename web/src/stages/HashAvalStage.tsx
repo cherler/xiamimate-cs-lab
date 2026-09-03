@@ -10,7 +10,7 @@ export function HashAvalStage({ state }: StageProps<HashAvalState>) {
       <h3>哈希雪崩效应 <span className="hint">输入改一点，输出翻一半</span></h3>
       <div className="body">
         <div className="scdim">
-          <div className="scdk"><span className="scdn hot">"{a}" vs "{b}"</span><span className="scdl">只差一个字母</span></div>
+          <div className="scdk"><span className="scdn hot">"{a}" vs "{b}"</span><span className="scdl">输入·改一点点</span></div>
           <div className="scdk"><span className="scdn">{hashA} / {hashB}</span><span className="scdl">两个哈希</span></div>
           <div className="scdk"><span className={`scdn ${flipped >= 6 ? 'ok' : ''}`}>{flipped}/16</span><span className="scdl">翻转位数</span></div>
         </div>

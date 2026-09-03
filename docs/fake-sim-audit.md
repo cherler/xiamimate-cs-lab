@@ -31,8 +31,8 @@ RL/控制/物理:qlearn qlearning mdp ppo policygrad pid mpc impedance kalman ek
 - ✅**quant** 权重量化——已换轴:位宽 int8→int2 扫描,看精度换显存(commit 3305c01)
 - ✅**ik** 二连杆逆解——已换轴:目标距离 r 由近到远扫描,多解→奇异(r=L1+L2 合并)→无解(commit 待填)
 - ✅**jacobian** 雅可比——已换轴:θ2 从 90°→0° 扫描,det=L1L2sinθ2→0 逼近奇异
-- **inode** i 节点寻址——扫**逻辑块号** 看直接→一/二/三级间接跨界(子代理确认)
-- **hashaval** 雪崩——扫**输入扰动** 看输出翻转≈一半(子代理确认)
+- ✅**inode** i 节点寻址——其实已是块号扫描(默认[5,100,1000,100000]跨四级、tick 显块号),只把轴标签改成「逻辑块号」
+- ✅**hashaval** 雪崩——已换轴:cat→cot/hat/can/mat/cut 扫输入扰动,看每次翻转≈8/16(一半)且不可预测
 - ~~residual~~ **实为 REAL(误判)**:细读内核=梯度沿层倒传的真递归(gradPlain*=factor、两条曲线随层累积),是真过程,不动。归 A。
 - ~~maxent~~ **实为 B2(误判)**:内核 MUS=[3.5..5.5] 本就是"扫约束 μ"、每帧重算最大熵分布,结构已对;顶多把轴标签/舞台打磨,不用换轴。
 **B2 已经是正确扫描形态(轴就是参数)——结构没问题,顶多把舞台做得像 softmax 那样"看它形变":**
@@ -50,7 +50,7 @@ Transformer 拆解:mha scaledmask norm rmsnorm forward xent wordvec attention(�
 LeRobot/杂:lerobot layout normstats deltats induction
 
 ## 建议顺序
-先啃 **B1**(8 个,和 softmax 同病、ROI 最高;sampling 第一,它就是 softmax 的续集)。
+**B1 已全部处理完**(softmax/sampling/quant/ik/jacobian/hashaval 换轴;inode 只需标签;residual/maxent 是误判归 A/B2)。
 再看 **B2** 舞台打磨(结构已对)。**C** 视情况(很多"手算走查"其实可留)。**A** 不动。
 
 > 注:本表由 3 个子代理详判(handeye→llmsize 段)+ 其余按 axis 标签/算法性质归类;个别 C/B 边界可再核。

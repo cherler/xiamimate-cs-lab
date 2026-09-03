@@ -5557,14 +5557,14 @@ const signature: Experiment<SignState> = {
   readouts: s => [{ label: '消息哈希 h', value: `${s.hash}` }, { label: '签名 s', value: s.sig >= 0 ? `${s.sig}` : '—' }, { label: '验证 s^e', value: s.verified >= 0 ? `${s.verified}` : '—' }, { label: '结果', value: s.phase === 'done' ? (s.ok ? '通过 ✓' : '失败 ✕') : '…', tone: s.phase === 'done' ? (s.ok ? 'good' : 'bad') : undefined }],
 }
 const hashaval: Experiment<HashAvalState> = {
-  id: 'hashaval', group: '密码学', title: '哈希雪崩效应', subtitle: '输入改一点，输出翻一半',
+  id: 'hashaval', group: '密码学', title: '哈希雪崩效应', subtitle: '换不同的小改动，看输出都翻一半',
   kernel: hashavalKernel, defaultDoc: { kind: 'hashaval', params: {}, entities: [], streams: [] }, params: [],
-  paramsNote: '无可调参数。对比 "cat" 与 "cot"（差一个字母）的 16 位哈希，逐位数翻转——翻了 8 位（约一半）。这就是雪崩效应。详见讲解卡。',
-  bounds: ['对比 cat / cot 的 16 位哈希', '逐位比较,数翻转位(可核)', '一个字母之差→翻转 8/16 位(≈一半)', '雪崩=防篡改根基;真实 SHA-256 更彻底'],
+  paramsNote: '雪崩不是一步步算的仿真，是个性质：输入改一点、输出翻一半。真正在变的是输入——这里把轴换成"把 cat 换成一串差一点点的输入(cot / bat / car…)"，按 ▶ 播放看每次 16 位哈希都翻转≈8 位(一半)、翻哪些位不可预测。这就是防篡改的根基：攻击者没法一点点凑出想要的哈希。',
+  bounds: ['轴是输入扰动扫描:cat 对比 cot/bat/car/cap/cats 等差一点点的输入', '每帧一次完整对比,数翻转位(可核)', '一个字母之差→翻转≈8/16 位(≈一半)且不可预测', '雪崩=防篡改根基;真实 SHA-256 是 256 位、更彻底'],
   tabs: [{ id: 'aval', label: '逐位对比' }], Stage: HashAvalStage, whyInRail: true,
-  tone: s => (s.phase === 'done' ? { key: 'good', label: `翻转 ${s.flipped}/16` } : { key: 'idle', label: `翻 ${s.flipped}` }),
-  metric: s => (s.phase === 'done' ? 1 : Math.max(0, (s.step + 1) / 17)),
-  tickLabel: s => (s.phase === 'done' ? '毕' : `${s.flipped}`),
+  tone: s => (s.b === s.a ? { key: 'idle', label: '基准' } : { key: 'good', label: `翻转 ${s.flipped}/16` }),
+  metric: s => Math.min(1, s.flipped / 8),
+  tickLabel: s => `"${s.b}"`,
   readouts: s => [{ label: '对比', value: `"${s.a}" vs "${s.b}"` }, { label: '两个哈希', value: `${s.hashA} / ${s.hashB}` }, { label: '当前位', value: s.pos >= 0 ? `第${s.pos + 1}位` : '完成' }, { label: '翻转位数', value: `${s.flipped}/16`, tone: s.phase === 'done' ? 'good' : undefined }],
 }
 const merkle: Experiment<MerkleState> = {

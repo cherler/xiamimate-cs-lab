@@ -53,7 +53,7 @@ export const inodeKernel: Kernel<InodeState> = {
     })
 
     return {
-      axis: { kind: 'step', label: '查找序号' },
+      axis: { kind: 'step', label: '逻辑块号' },
       initial,
       describe: s => s.log,
 
