@@ -26,7 +26,8 @@ export function AttentionStage({ state }: StageProps<AttnState>) {
             style={{ height: 16 + n * 40 }}>
             {qi >= 0 && showW && tokens.map((_, j) => (
               <line key={j} x1="1" y1={41 + qi * 40} x2="99" y2={41 + j * 40}
-                stroke="var(--f-tag)" strokeWidth={0.6 + w[j] * 5} vectorEffect="non-scaling-stroke" opacity={0.14 + w[j] * 0.82} />
+                className={j === topKey ? 'atline-top' : ''}
+                stroke={j === topKey ? 'var(--now)' : 'var(--f-tag)'} strokeWidth={0.6 + w[j] * 5} vectorEffect="non-scaling-stroke" opacity={0.14 + w[j] * 0.82} />
             ))}
           </svg>
           <div className="atside">
@@ -51,9 +52,12 @@ export function AttentionStage({ state }: StageProps<AttnState>) {
                   {tokens.map((_, j) => {
                     const filled = attn[i].length > 0
                     const v = filled ? attn[i][j] : 0
+                    // 当前查询行用琥珀热(=「当前」语义色)，其余行用蓝热；当前行的最大权重格加琥珀环
+                    const heat = i === qi ? 'var(--now)' : 'var(--f-tag)'
+                    const isPeak = i === qi && filled && j === topKey
                     return (
-                      <td key={j} className={filled ? '' : 'empty'}
-                        style={filled ? { background: `color-mix(in srgb, var(--f-tag) ${Math.round(v * 90)}%, transparent)`, color: v > 0.5 ? '#fff' : 'var(--ink)' } : undefined}>
+                      <td key={j} className={`${filled ? '' : 'empty'} ${isPeak ? 'peak' : ''}`}
+                        style={filled ? { background: `color-mix(in srgb, ${heat} ${Math.round(v * 90)}%, transparent)`, color: v > 0.55 ? '#fff' : 'var(--ink)' } : undefined}>
                         {filled ? `${(v * 100).toFixed(0)}` : ''}
                       </td>
                     )

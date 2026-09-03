@@ -2252,22 +2252,29 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .atflow{display:grid;grid-template-columns:auto 1fr auto;gap:0;align-items:start;margin-bottom:16px}
 .atside{display:flex;flex-direction:column;gap:10px;min-width:64px}
 .atlabel{font-size:11px;color:var(--faint);height:16px;text-align:center}
-.attok{height:30px;border-radius:6px;display:flex;align-items:center;justify-content:center;gap:6px;font-family:var(--mono);font-weight:600;font-size:14px;background:var(--sunk-1);border:1px solid var(--line);transition:background var(--anim),border-color var(--anim)}
-.attok.q.cur{background:color-mix(in srgb,var(--now) 20%,transparent);border-color:var(--now)}
-.attok.k.top{background:color-mix(in srgb,var(--f-tag) 16%,transparent);border-color:var(--f-tag);color:var(--f-tag)}
-.attok .atw{font-size:10px;color:var(--faint);font-weight:400}
+.attok{height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;gap:6px;font-family:var(--mono);font-weight:700;font-size:var(--t-body);
+  background:linear-gradient(180deg,var(--panel),color-mix(in srgb,var(--ink) 5%,var(--panel)));border:1px solid var(--line);
+  box-shadow:0 1px 2px rgba(20,32,42,.06),inset 0 1px 0 rgba(255,255,255,.5);
+  transition:background var(--anim),border-color var(--anim),box-shadow var(--anim),transform var(--anim)}
+.attok.q.cur{background:linear-gradient(180deg,color-mix(in srgb,var(--now) 14%,var(--panel)),color-mix(in srgb,var(--now) 28%,var(--panel)));border-color:var(--now);color:var(--now);transform:scale(1.05);box-shadow:0 0 0 3px color-mix(in srgb,var(--now) 18%,transparent)}
+.attok.k.top{background:linear-gradient(180deg,color-mix(in srgb,var(--f-tag) 12%,var(--panel)),color-mix(in srgb,var(--f-tag) 22%,var(--panel)));border-color:var(--f-tag);color:var(--f-tag)}
+.attok .atw{font-size:var(--t-meta);color:var(--faint);font-weight:600;font-variant-numeric:tabular-nums}
+.attok.k.top .atw{color:var(--f-tag)}
 .atlines{align-self:stretch;min-height:100%}
+.atline-top{stroke-dasharray:4 3;animation:gv-flow .5s linear infinite}
 .atmatwrap{margin-top:4px}
-.atsect{font-size:12.5px;font-weight:600;color:var(--ink);margin-bottom:7px}
-.atcap{font-weight:400;font-size:11px;color:var(--faint);margin-left:8px}
-.atmat{border-collapse:collapse;font-family:var(--mono);font-size:12px}
-.atmat th{padding:5px 9px;color:var(--dim);font-weight:600;text-align:center}
-.atmat tbody th{background:var(--sunk-1);border:1px solid var(--line)}
-.atmat td{width:40px;height:30px;text-align:center;border:1px solid var(--line);font-weight:600;transition:background var(--anim)}
-.atmat td.empty{background:var(--sunk-1);color:var(--ghost)}
+.atsect{font-size:var(--t-body);font-weight:600;color:var(--ink);margin-bottom:7px}
+.atcap{font-weight:400;font-size:var(--t-meta);color:var(--faint);margin-left:8px}
+.atmat{border-collapse:separate;border-spacing:4px;font-family:var(--mono);font-size:var(--t-body)}
+.atmat th{padding:2px 6px;color:var(--dim);font-weight:600;text-align:center;font-size:var(--t-meta)}
+.atmat tbody th{background:var(--sunk-1);border:1px solid var(--line);border-radius:6px;width:32px}
+.atmat td{width:48px;height:38px;text-align:center;border-radius:7px;font-weight:700;background:var(--sunk-1);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.4);
+  transition:background var(--anim),color var(--anim),box-shadow var(--anim),transform var(--anim)}
+.atmat td.empty{background:var(--sunk-1);color:var(--ghost);box-shadow:none}
 .atmat tr.cur th{color:var(--now)}
-.atmat tr.cur td{outline:0}
-.atmat tr.cur{box-shadow:inset 0 0 0 2px color-mix(in srgb,var(--now) 40%,transparent)}
+.atmat tr.cur td{box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--now) 32%,transparent)}
+.atmat td.peak{box-shadow:0 0 0 2px var(--now),0 2px 7px color-mix(in srgb,var(--now) 32%,transparent);transform:scale(1.07);position:relative;z-index:1}
 .atcalc{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:14px;font-family:var(--mono);font-size:12px}
 .atck{font-weight:700;color:var(--ink)}
 .atcstep{color:var(--dim);display:inline-flex;align-items:center;gap:5px}
