@@ -695,6 +695,23 @@ export default function App() {
             {d.status === 'planned' && <i className="dtsoon">即将</i>}
           </button>
         ))}
+        {/* 搜索:放最顶层(和职业切换同一条),右对齐;结果做成下拉,点一条自动切职业+选中 */}
+        <div className="topsearch">
+          <input value={search} onChange={ev => setSearch(ev.target.value)}
+                 placeholder="🔍 搜实验（跨全部职业）" aria-label="搜实验"
+                 onKeyDown={ev => { if (ev.key === 'Escape') setSearch('') }} />
+          {search && <button type="button" className="topsearchx" onClick={() => setSearch('')} aria-label="清空搜索">✕</button>}
+          {search.trim() && (
+            <div className="topsearch-drop">
+              {searchResults.length > 0 ? searchResults.map(({ id, title, group }) => (
+                <button type="button" key={id} className={`tsr ${id === expId ? 'on' : ''}`} onClick={() => jumpToExp(id, group)}>
+                  <span className="tsr-t">{title}</span>
+                  <span className="tsr-k">{DISCIPLINE_OF_GROUP[group]?.title} · {group}</span>
+                </button>
+              )) : <div className="tsr-empty">没找到「{search.trim()}」<br /><small>试试实验名、副标题里的词，或英文 id</small></div>}
+            </div>
+          )}
+        </div>
       </div>
       <header className="top">
         {/*
@@ -781,56 +798,38 @@ export default function App() {
         </button>
         {/* 左：实验目录 */}
         <nav className="card nav" aria-label="实验目录">
-          {/* 搜索框:跨全部职业找实验(名称/副标题/关键词);有内容时目录切成搜索结果 */}
-          <div className="navsearch">
-            <input value={search} onChange={ev => setSearch(ev.target.value)}
-                   placeholder="🔍 搜实验（跨全部职业）" aria-label="搜实验"
-                   onKeyDown={ev => { if (ev.key === 'Escape') setSearch('') }} />
-            {search && <button className="navsearchx" onClick={() => setSearch('')} aria-label="清空搜索">✕</button>}
+          {/*  当前学科的 guide 页入口（div，非 button）—— 从地基通到那件职业/造物。
+               学科切换已上移成通栏顶条；这里只留「本学科地图」入口，和实验目录放一起。 */}
+          <div className="discguide" role="button" tabIndex={0}
+            onClick={() => setGuideOpen(true)}
+            onKeyDown={ev => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); setGuideOpen(true) } }}
+            title={`${activeDiscObj.title}地图`}>
+            🗺️ <b>{activeDiscObj.title}地图</b>：从 {activeDiscObj.guide.from} 到 {activeDiscObj.guide.toIcon}{activeDiscObj.guide.to}
           </div>
 
-          {search.trim() ? (
-            <div className="navresults">
-              {searchResults.length > 0 ? searchResults.map(({ id, title, group }) => (
-                <button key={id} className={`nrrow ${id === expId ? 'on' : ''}`} onClick={() => jumpToExp(id, group)}>
-                  <span className="nrtitle">{title}</span>
-                  <span className="nrtrack">{DISCIPLINE_OF_GROUP[group]?.title} · {group}</span>
-                </button>
-              )) : <div className="navsoon">没找到「{search.trim()}」相关的实验<br /><small>试试实验名、副标题里的词，或英文 id</small></div>}
+          {navRows.length > 0 ? navRows.map(({ group, items }) => (
+            <div key={group}>
+              <div className="grp">{group}</div>
+              {items.map(({ e, soft, num }) => (
+                  <button
+                    key={e.id}
+                    className={`${e.id === expId ? 'on' : ''} ${soft ? 'soft' : ''}`}
+                    onClick={() => selectExp(e.id)}
+                    aria-current={e.id === expId}
+                    title={soft ? `软链接：真身在「${e.group}」，这里是一个导航入口` : undefined}
+                  >
+                    <span className="n">{String(num).padStart(2, '0')}</span>
+                    <span>{e.title}</span>
+                    {soft && <span className="softmark" aria-hidden>↗</span>}
+                  </button>
+              ))}
             </div>
-          ) : (<>
-            {/*  当前学科的 guide 页入口（div，非 button）—— 从地基通到那件职业/造物。 */}
-            <div className="discguide" role="button" tabIndex={0}
-              onClick={() => setGuideOpen(true)}
-              onKeyDown={ev => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); setGuideOpen(true) } }}
-              title={`${activeDiscObj.title}地图`}>
-              🗺️ <b>{activeDiscObj.title}地图</b>：从 {activeDiscObj.guide.from} 到 {activeDiscObj.guide.toIcon}{activeDiscObj.guide.to}
+          )) : (
+            <div className="navsoon">
+              「{activeDiscObj.title}」学科即将开放<br />
+              <small>guide 会是一条「从 {activeDiscObj.guide.from} 到 {activeDiscObj.guide.toIcon}{activeDiscObj.guide.to}」的路</small>
             </div>
-
-            {navRows.length > 0 ? navRows.map(({ group, items }) => (
-              <div key={group}>
-                <div className="grp">{group}</div>
-                {items.map(({ e, soft, num }) => (
-                    <button
-                      key={e.id}
-                      className={`${e.id === expId ? 'on' : ''} ${soft ? 'soft' : ''}`}
-                      onClick={() => selectExp(e.id)}
-                      aria-current={e.id === expId}
-                      title={soft ? `软链接：真身在「${e.group}」，这里是一个导航入口` : undefined}
-                    >
-                      <span className="n">{String(num).padStart(2, '0')}</span>
-                      <span>{e.title}</span>
-                      {soft && <span className="softmark" aria-hidden>↗</span>}
-                    </button>
-                ))}
-              </div>
-            )) : (
-              <div className="navsoon">
-                「{activeDiscObj.title}」学科即将开放<br />
-                <small>guide 会是一条「从 {activeDiscObj.guide.from} 到 {activeDiscObj.guide.toIcon}{activeDiscObj.guide.to}」的路</small>
-              </div>
-            )}
-          </>)}
+          )}
         </nav>
 
         {/* 中：舞台 + 轴 + 日志 */}
