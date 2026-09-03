@@ -763,7 +763,12 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{
 .pr{display:flex;justify-content:space-between;align-items:baseline;gap:10px;
   padding:5px 0;border-bottom:1px dashed var(--line)}
 .pr:last-child{border-bottom:0}
-.pr .k{font-size:var(--t-ui);color:var(--faint);letter-spacing:.02em}
+.pr .k{font-size:var(--t-ui);color:var(--dim);letter-spacing:.02em}
+/*  读数值带语义色时，标签也跟着染一档淡的，让「名—值」成一组、扫读更快（克制增色） */
+.pr:has(.v.good) .k{color:color-mix(in srgb,var(--hit) 62%,var(--dim))}
+.pr:has(.v.bad) .k{color:color-mix(in srgb,var(--miss) 62%,var(--dim))}
+.pr .v.hot{color:var(--now)}
+.pr:has(.v.hot) .k{color:color-mix(in srgb,var(--now) 62%,var(--dim))}
 /*  读数是这类产品的心跳。原来 12.5px 常规字，和左边的标签一样重 ——
     于是一屏十几个数，没有一个抓得住眼睛。 */
 .pr .v{font-family:var(--mono);font-size:var(--t-read);font-weight:650;color:var(--ink);

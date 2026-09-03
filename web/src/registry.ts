@@ -3821,7 +3821,7 @@ const binsearch: Experiment<BinSearchState> = {
   whyInRail: true,
   readouts: s => [
     { label: '区间', value: `[${s.lo}, ${s.hi}]` },
-    { label: '中点', value: s.mid >= 0 ? `arr[${s.mid}]=${s.arr[s.mid]}` : '—' },
+    { label: '中点', value: s.mid >= 0 ? `arr[${s.mid}]=${s.arr[s.mid]}` : '—', tone: s.mid >= 0 && s.phase !== 'done' ? 'hot' : undefined },
     { label: '比较次数', value: `${s.compares}` },
     { label: '结果', value: s.found >= 0 ? `命中@${s.found}` : '查找中', tone: s.found >= 0 ? 'good' : undefined },
   ],

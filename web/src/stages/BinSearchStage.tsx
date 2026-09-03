@@ -23,7 +23,10 @@ export function BinSearchStage({ state }: StageProps<BinSearchState>) {
               return (
                 <div key={k} className="bscol">
                   <div className={`bscell ${inRange ? '' : 'out'} ${isMid ? 'mid' : ''} ${isFound ? 'found' : ''}`}>{v}</div>
-                  <span className="bsidx">{k === lo ? 'lo' : k === hi ? 'hi' : k === mid ? 'mid' : ''}</span>
+                  {(() => {
+                    const marker = k === lo ? 'lo' : k === hi ? 'hi' : k === mid ? 'mid' : ''
+                    return <span className={`bsidx ${marker === 'mid' ? 'mid' : marker ? 'lohi' : ''}`}>{marker}</span>
+                  })()}
                 </div>
               )
             })}

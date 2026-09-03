@@ -77,7 +77,8 @@ export type ParamSpec =
 export type ToneKey = 'good' | 'bad' | 'idle'
 export type Tone = { key: ToneKey; label: string }
 
-export type Readout = { label: string; value: string; tone?: ToneKey }
+// 读数可带语义色：good/bad（命中/出错）+ hot（当前聚焦，琥珀）。hot 只用于读数强调，不进 stage Tone。
+export type Readout = { label: string; value: string; tone?: ToneKey | 'hot' }
 
 /**
  * 可编辑的驱动序列。

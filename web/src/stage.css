@@ -2841,9 +2841,14 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 /* ── √d 缩放 scale ── */
 .scdim{display:flex;gap:20px;margin-bottom:12px}
 .scdk{display:flex;flex-direction:column;align-items:center;gap:1px}
-.scdn{font-family:var(--mono);font-size:var(--t-read);font-weight:700;color:var(--ink)}
+.scdn{font-family:var(--mono);font-size:var(--t-read);font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums}
 .scdn.hot{color:var(--now)}
-.scdl{font-size:var(--t-meta);color:var(--faint)}
+.scdl{font-size:var(--t-meta);color:var(--dim)}                 /* 读数标签：faint→dim，层级更清 */
+.scdk:has(.scdn.hot) .scdl{color:var(--now)}                    /* 琥珀数字配琥珀标签，成一组 */
+.scdk:has(.scdn.good) .scdl{color:var(--hit)}
+.scdk:has(.scdn.bad) .scdl{color:var(--miss)}
+.scdn.good{color:var(--hit)}
+.scdn.bad{color:var(--miss)}
 .scbase{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:12px;font-size:var(--t-ui)}
 .scblab{color:var(--faint);font-size:var(--t-meta)}
 .scbval{font-family:var(--mono);font-weight:700;color:var(--ink)}
@@ -3247,12 +3252,14 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .bswrap { display:flex; flex-direction:column; align-items:center; gap:8px; margin:14px 0; }
 .bsrow { display:flex; gap:3px; flex-wrap:wrap; justify-content:center; }
 .bscol { display:flex; flex-direction:column; align-items:center; gap:2px; }
-.bscell { min-width:26px; height:30px; padding:0 4px; display:flex; align-items:center; justify-content:center; font-size:12px;
+.bscell { min-width:26px; height:30px; padding:0 4px; display:flex; align-items:center; justify-content:center; font-size:var(--t-body);
   border-radius:4px; background:var(--panel); border:1px solid var(--line); color:var(--ink); font-variant-numeric:tabular-nums; transition:all .2s; }
 .bscell.out { opacity:.3; }
 .bscell.mid { border-color:var(--now); background:color-mix(in srgb,var(--now) 20%,var(--panel)); font-weight:700; box-shadow:0 0 0 2px color-mix(in srgb,var(--now) 25%,transparent); }
 .bscell.found { border-color:var(--hit); background:color-mix(in srgb,var(--hit) 26%,var(--panel)); color:var(--hit); font-weight:700; }
-.bsidx { font-size:9px; color:var(--faint); font-family:var(--mono); height:11px; }
+.bsidx { font-size:var(--t-meta); color:var(--faint); font-family:var(--mono); font-weight:600; height:11px; letter-spacing:.04em; }
+.bsidx.mid { color:var(--now); font-weight:700; }   /* 指针名跟着方块的语义色：mid=琥珀(当前) */
+.bsidx.lohi { color:var(--dim); }                    /* lo/hi=边界，比 faint 清楚一档 */
 
 /* 回溯 N 皇后 */
 .nqwrap { display:flex; flex-direction:column; align-items:center; gap:10px; margin:14px 0; }
