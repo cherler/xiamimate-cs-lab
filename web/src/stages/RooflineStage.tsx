@@ -18,8 +18,14 @@ export function RooflineStage({ state }: StageProps<RooflineState>) {
   const pTicks = [1, 10, 100]
   return (
     <div className="card">
-      <h3>Roofline 性能建模 <span className="hint">算术强度 vs 屋顶：卡带宽还是卡算力</span></h3>
+      <h3>Roofline 性能建模 <span className="hint">批大小扫描：算术强度爬过脊点、瓶颈从带宽转算力</span></h3>
       <div className="body">
+        {/* 批大小是被扫的参数:大数条摆 批大小 / 算术强度 / 当前瓶颈,一眼看出卡哪 */}
+        <div className="scdim">
+          <div className="scdk"><span className="scdn hot">{batch}</span><span className="scdl">批大小</span></div>
+          <div className="scdk"><span className="scdn">{ai}</span><span className="scdl">算术强度 AI(脊点 {ridge})</span></div>
+          <div className="scdk"><span className={`scdn ${bound === 'memory' ? 'sk-neg' : 'km-dn'}`} style={{ fontSize: '13px' }}>{bound === 'memory' ? '卡带宽' : '卡算力'}</span><span className="scdl">瓶颈 · 可达 {attainTFLOPs}T</span></div>
+        </div>
         <div className="rfwrap">
           <svg className="rfsvg" viewBox={`0 0 ${W} ${H}`} aria-hidden="true">
             {/* 网格 */}
