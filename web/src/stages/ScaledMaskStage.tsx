@@ -19,6 +19,14 @@ export function ScaledMaskStage({ state }: StageProps<ScaledMaskState>) {
     <div className="card">
       <h3>缩放点积 + 因果掩码 <span className="hint">除 √d 防饱和 · 掩码令矩阵成下三角</span></h3>
       <div className="body">
+        {/* √d 缩放是主角:大数条摆 缩放因子 / 除√d后最大权重 / 不除会饱和到多少 */}
+        {d > 1 && raw.length > 0 && (
+          <div className="scdim">
+            <div className="scdk"><span className="scdn hot">√{d}={scale.toFixed(2)}</span><span className="scdl">缩放因子</span></div>
+            <div className="scdk"><span className="scdn good">{Math.round(peak * 100)}%</span><span className="scdl">除√d后·本行最大权重</span></div>
+            <div className="scdk"><span className="scdn bad">{Math.round(peakUnscaled * 100)}%</span><span className="scdl">不除会饱和到·太尖</span></div>
+          </div>
+        )}
         {/* 注意力矩阵热力图 */}
         <div className="smmwrap">
           <div className="smmgrid" style={{ gridTemplateColumns: `28px repeat(${N}, 1fr)` }}>
