@@ -997,6 +997,32 @@
 .gvw.chosen{background:var(--hit)} .gvw.dropped{background:var(--miss)}
 .gvw.critical{background:var(--miss);height:4px} .gvw.active{background:var(--now)}
 
+/* ── 图族仪表级升级(共享 GraphView)：深度材质 + 会动的状态 ──
+   结点固定位置,"动"体现在:当前结点脉冲呼吸、松弛的边有流动虚线、确定的结点/树边平滑亮起。 */
+@keyframes gv-pulse { 0%,100%{ box-shadow:0 0 0 3px color-mix(in srgb,var(--now) 32%,transparent), 0 2px 7px color-mix(in srgb,var(--now) 26%,transparent) }
+  50%{ box-shadow:0 0 0 8px color-mix(in srgb,var(--now) 7%,transparent), 0 2px 7px color-mix(in srgb,var(--now) 26%,transparent) } }
+@keyframes gv-flow { to { stroke-dashoffset:-16 } }
+/* 结点:白纸+材质 */
+.gnode{ background:linear-gradient(180deg,var(--panel),color-mix(in srgb,var(--ink) 5%,var(--panel)));
+  border:1.5px solid var(--line); box-shadow:0 2px 5px rgba(20,32,42,.08), inset 0 1px 0 rgba(255,255,255,.6); }
+.gvwrap .gnode{ width:46px; height:46px }
+.gnode em{ color:var(--dim) }
+.gnode.done{ border-color:var(--hit); background:linear-gradient(180deg,color-mix(in srgb,var(--hit) 13%,var(--panel)),color-mix(in srgb,var(--hit) 26%,var(--panel)));
+  box-shadow:0 2px 8px color-mix(in srgb,var(--hit) 22%,transparent) }
+.gnode.done b, .gnode.done em{ color:var(--hit) }
+.gnode.active{ border-color:var(--now); transform:translate(-50%,-50%) scale(1.1); z-index:3;
+  background:linear-gradient(180deg,color-mix(in srgb,var(--now) 14%,var(--panel)),color-mix(in srgb,var(--now) 30%,var(--panel)));
+  animation:gv-pulse 1.5s ease-in-out infinite }
+.gnode.active b, .gnode.active em{ color:var(--now) }
+/* 边:松弛中=琥珀流动虚线、树边=绿发光 */
+.gedge.chosen line{ stroke:var(--hit); stroke-width:2.8px; filter:drop-shadow(0 0 1.5px color-mix(in srgb,var(--hit) 45%,transparent)) }
+.gedge.act line, .gedge.active line{ stroke:var(--now); stroke-width:3px; stroke-dasharray:5 3.5;
+  animation:gv-flow .55s linear infinite; filter:drop-shadow(0 0 2px color-mix(in srgb,var(--now) 45%,transparent)) }
+/* 边权标签:随边态染色 + 材质小牌 */
+.gvlab{ background:color-mix(in srgb,var(--panel) 86%,transparent); padding:0 4px; border-radius:4px }
+.gvlab.chosen{ background:color-mix(in srgb,var(--hit) 12%,var(--panel)) }
+.gvlab.active{ background:color-mix(in srgb,var(--now) 14%,var(--panel)) }
+
 /* ═══ 动态分区内存条 ═══ */
 .membar{display:flex;gap:2px;height:64px;margin-bottom:5px}
 .memblk{min-width:0;border-radius:4px;display:flex;flex-direction:column;align-items:center;
@@ -2111,10 +2137,16 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 }
 
 /* SVG 图/树：结点与边的填充、描边、透明度 */
-.stagewrap .gnode, .stagewrap .gedge, .stagewrap .tvnode,
+.stagewrap .gedge, .stagewrap .gedge line, .stagewrap .tvnode,
 .stagewrap .gvwrap circle, .stagewrap .gvwrap line, .stagewrap .gvwrap path,
 .stagewrap .tvbox circle, .stagewrap .tvbox line {
   transition: fill var(--anim), stroke var(--anim), stroke-width var(--anim), opacity var(--anim);
+}
+/* HTML 结点/边权标签不是 SVG，fill/stroke 不管用——它们的背景/描边/光环/位移要单独过渡，
+   否则图算法每步的"点亮/确定"都是啪地跳(图族"静止"的病根)。 */
+.stagewrap .gnode, .stagewrap .gvlab {
+  transition: background var(--anim), border-color var(--anim), box-shadow var(--anim),
+              transform var(--anim), color var(--anim);
 }
 
 /* 走带刻度：走过的格子填充跟着推进滑动 */
