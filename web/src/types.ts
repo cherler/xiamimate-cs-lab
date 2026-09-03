@@ -176,6 +176,8 @@ export type StageProps<S> = {
   index: number
   state: S
   tab: string
+  /** 跳到另一个实验(库层"内容覆盖"反向连回理论实验用)。 */
+  onNavExp?: (id: string) => void
 }
 
 export interface Experiment<S = never> {

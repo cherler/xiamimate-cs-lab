@@ -14,9 +14,10 @@ import type { AnyExperiment } from '../types.ts'
 type Slot = { problemId: string; qi: number }
 
 export function ProgressPanel({
-  store, experiments, cloud, onJump, onClose, onClear,
+  store, experiments, cloud, onJump, onClose, onClear, scopeLabel,
 }: {
   store: Store
+  /** 只统计这些实验（当前职业的实验集合，含软链）—— 面板按职业过滤，不再全站一锅端。 */
   experiments: AnyExperiment[]
   /** 记录存在哪儿 —— 面板上如实说，不要让用户以为换台机器还在 */
   cloud: CloudState
@@ -24,12 +25,18 @@ export function ProgressPanel({
   onJump: (experimentId: string, problemId: string, qi: number) => void
   onClose: () => void
   onClear: () => void
+  /** 当前职业名，印在标题上，让"这是哪一科的进度"一目了然。 */
+  scopeLabel?: string
 }) {
   const [confirming, setConfirming] = useState(false)
 
+  //  ⚠️ 只数**当前职业**的实验的题:面板此前用全站 PROBLEMS,导致每个职业点开都看同一个 0/全站,
+  //     且和顶栏"N 实验"(按职业统计)对不上。改成按传入的 experiments 过滤。
+  const expIds = useMemo(() => new Set(experiments.map(e => e.id)), [experiments])
   const all: Slot[] = useMemo(
-    () => PROBLEMS.flatMap(p => p.questions.map((_, qi) => ({ problemId: p.id, qi }))),
-    [],
+    () => PROBLEMS.filter(p => expIds.has(p.experimentId))
+      .flatMap(p => p.questions.map((_, qi) => ({ problemId: p.id, qi }))),
+    [expIds],
   )
   const total = statOf(store, all)
   const queue = useMemo(() => reviewQueue(store, all), [store, all])
@@ -60,7 +67,7 @@ export function ProgressPanel({
     <div className="pgmask" role="dialog" aria-label="学习进度与错题本" onClick={onClose}>
       <div className="pgwrap" onClick={e => e.stopPropagation()}>
         <header className="pghead">
-          <h2>学习进度</h2>
+          <h2>学习进度{scopeLabel ? ` · ${scopeLabel}` : ''}</h2>
           <span className="pgsum">
             已掌握 <b>{total.mastered}</b> / {total.total} 问
           </span>
@@ -68,6 +75,14 @@ export function ProgressPanel({
           <button className="pgx" onClick={onClose} aria-label="关闭">✕</button>
         </header>
 
+        {all.length === 0 ? (
+          <div className="pgbody">
+            <p className="pgempty">
+              「{scopeLabel ?? '这个职业'}」目前还没有真题 —— AI 学伴的题库还没覆盖到这条线。
+              先去有真题的职业(如 408 基础、算法)做题,答错的会进错题本。
+            </p>
+          </div>
+        ) : (
         <div className="pgbody">
           {/* ── 错题本：先说下一步做什么 ── */}
           <section>
@@ -161,6 +176,7 @@ export function ProgressPanel({
             )}
           </section>
         </div>
+        )}
       </div>
     </div>
   )

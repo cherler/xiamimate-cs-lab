@@ -7583,19 +7583,16 @@ const moveit: Experiment<LibraryState> = {
     '内容覆盖反向连回理论实验:OMPL↔RRT-Connect/RRT/RRT*/PRM、FCL↔GJK、CHOMP、时间参数化↔梯形速度曲线、IK↔逆运动学/雅可比',
     '取舍:生态标准/可插拔/开箱即用,但学习曲线陡、配置繁、和 ROS 强耦合、偏机械臂(移动导航是 Nav2)。落地:Franka Panda、UR 等',
   ],
-  tabs: [{ id: 'lib', label: '逐段翻' }], Stage: LibraryStage, whyInRail: true,
-  tone: s => (s.section === 'done' ? { key: 'good', label: '库层小结' }
-    : s.section === 'coverage' ? { key: 'good', label: '反向连回实验' }
-    : s.section === 'proscons' ? { key: 'idle', label: '优缺点' }
-    : s.section === 'projects' ? { key: 'idle', label: '落地项目' }
-    : { key: 'idle', label: '特点介绍' }),
-  metric: s => Math.max(0, (s.step + 1) / 5),
-  tickLabel: s => ({ intro: '特', proscons: '优', coverage: '覆', projects: '落', done: '结' }[s.section] ?? '·'),
+  tabs: [{ id: 'lib', label: '库层参考' }], Stage: LibraryStage, whyInRail: true,
+  //  库层=参考页,一屏铺开(见 LibraryStage);不走"步",所以这些都返回固定值。
+  tone: () => ({ key: 'good', label: '库层参考' }),
+  metric: () => 1,
+  tickLabel: () => '库',
   readouts: s => [
     { label: '库/框架', value: s.name },
     { label: '许可', value: s.license },
-    { label: '当前段', value: ({ intro: '特点介绍', proscons: '优缺点剖析', coverage: '内容覆盖', projects: '落地项目', done: '小结' } as Record<string, string>)[s.section] ?? '—' },
-    { label: '覆盖理论实验', value: `${s.coverage.flatMap(c => c.links).length} 个`, tone: s.section === 'coverage' || s.section === 'done' ? 'good' : undefined },
+    { label: '语言', value: s.lang },
+    { label: '覆盖理论实验', value: `${s.coverage.flatMap(c => c.links).length} 个`, tone: 'good' },
   ],
 }
 // 库层实验共用的导览逻辑（分段:特点/优缺点/覆盖/落地/小结）
@@ -7603,19 +7600,16 @@ const mkLib = (id: string, title: string, subtitle: string, lib: string, paramsN
   id, group, title, subtitle,
   kernel: libraryKernel, defaultDoc: { kind: 'library', params: { lib }, entities: [], streams: [] }, params: [],
   paramsNote, bounds,
-  tabs: [{ id: 'lib', label: '逐段翻' }], Stage: LibraryStage, whyInRail: true,
-  tone: s => (s.section === 'done' ? { key: 'good', label: '库层小结' }
-    : s.section === 'coverage' ? { key: 'good', label: '反向连回实验' }
-    : s.section === 'proscons' ? { key: 'idle', label: '优缺点' }
-    : s.section === 'projects' ? { key: 'idle', label: '落地项目' }
-    : { key: 'idle', label: '特点介绍' }),
-  metric: s => Math.max(0, (s.step + 1) / 5),
-  tickLabel: s => ({ intro: '特', proscons: '优', coverage: '覆', projects: '落', done: '结' }[s.section] ?? '·'),
+  tabs: [{ id: 'lib', label: '库层参考' }], Stage: LibraryStage, whyInRail: true,
+  //  库层=参考页,一屏铺开(见 LibraryStage);不走"步",所以这些都返回固定值。
+  tone: () => ({ key: 'good', label: '库层参考' }),
+  metric: () => 1,
+  tickLabel: () => '库',
   readouts: s => [
     { label: '库/框架', value: s.name },
     { label: '许可', value: s.license },
-    { label: '当前段', value: ({ intro: '特点介绍', proscons: '优缺点剖析', coverage: '内容覆盖', projects: '落地项目', done: '小结' } as Record<string, string>)[s.section] ?? '—' },
-    { label: '覆盖理论实验', value: `${s.coverage.flatMap(c => c.links).length} 个`, tone: s.section === 'coverage' || s.section === 'done' ? 'good' : undefined },
+    { label: '语言', value: s.lang },
+    { label: '覆盖理论实验', value: `${s.coverage.flatMap(c => c.links).length} 个`, tone: 'good' },
   ],
 })
 const ros2 = mkLib('ros2', 'ROS 2 · 机器人通信中间件', '机器人的"操作系统"：节点图 + 发布订阅 + DDS，几乎所有机器人软件的通信底座（库层）', 'ros2',

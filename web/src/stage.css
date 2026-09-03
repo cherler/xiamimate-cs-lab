@@ -6272,8 +6272,18 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .lib-covmod{font-weight:700;color:var(--ink)}
 .lib-covd{font-weight:400;color:var(--faint);font-size:var(--t-meta);margin-left:8px}
 .lib-covlinks{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
-.lib-link{font-size:var(--t-meta);color:var(--hit);border:1px solid color-mix(in srgb,var(--hit) 40%,var(--line));border-radius:20px;padding:2px 9px;background:color-mix(in srgb,var(--hit) 7%,transparent);font-family:var(--mono)}
+.lib-link{font-size:var(--t-meta);color:var(--hit);border:1px solid color-mix(in srgb,var(--hit) 40%,var(--line));border-radius:20px;padding:3px 10px;background:color-mix(in srgb,var(--hit) 7%,transparent);font-family:var(--mono);cursor:pointer;transition:background var(--anim),border-color var(--anim),transform var(--anim)}
+.lib-link:hover{background:color-mix(in srgb,var(--hit) 18%,transparent);border-color:var(--hit);transform:translateY(-1px)}
+.lib-link:active{transform:translateY(0)}
 .lib-proj-grid{display:flex;flex-direction:column;gap:6px}
 .lib-proj{border-left:2px solid var(--now);padding:4px 10px;background:var(--panel-2);border-radius:0 6px 6px 0}
 .lib-see{margin-top:10px;font-size:var(--t-meta);color:var(--faint)}
 .lib-covnote b,.lib-what b{color:var(--ink)}
+/* 库层参考页:四段一屏铺开(替掉旧的逐段播放) */
+.lib-page{display:flex;flex-direction:column;gap:16px}
+.lib-cap{font-size:var(--t-ui);font-weight:700;color:var(--ink);letter-spacing:.02em;
+  padding-left:9px;border-left:3px solid var(--now);margin-bottom:9px;display:flex;align-items:baseline;gap:8px}
+.lib-capn{font-size:var(--t-meta);font-weight:400;color:var(--faint)}
+.lib-foot{margin:2px 0 0;font-size:var(--t-meta);color:var(--faint);line-height:1.8;
+  border-top:1px dashed var(--line);padding-top:10px}
+.lib-foot b{color:var(--dim)}

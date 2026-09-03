@@ -639,6 +639,11 @@ export default function App() {
     selectExp(id)
     setSearch('')
   }
+  //  只给一个实验 id 就跳(库层"内容覆盖"反向连回理论实验用)——自己查出它的学科,跨轨也能跳。
+  const navToExpById = (id: string) => {
+    const e = EXPERIMENTS.find(x => x.id === id)
+    if (e) jumpToExp(id, e.group)
+  }
 
   //  当前学科的实验集合（含软链），用来把"N 个实验 / 进度"按学科统计（跟顶条切换）。
   const discExpIds = useMemo(() => {
@@ -931,7 +936,7 @@ export default function App() {
               where={exp.tickLabel && state ? exp.tickLabel(state, clamped) : `第 ${clamped + 1} 步`}
               stage={state
                 ? <FitBox min={0.5} max={1.2}>
-                    <exp.Stage doc={doc} trace={trace} index={clamped} state={state} tab={exp.tabs[0].id} />
+                    <exp.Stage doc={doc} trace={trace} index={clamped} state={state} tab={exp.tabs[0].id} onNavExp={navToExpById} />
                   </FitBox>
                 : null}
               chips={trace.map((s, i) => {
@@ -1004,10 +1009,12 @@ export default function App() {
                     {!exp.whyInRail && dockNode}
                     <div className="stagewrap">
                       <FitBox>
-                        <exp.Stage doc={doc} trace={trace} index={clamped} state={state} tab={tab} />
+                        <exp.Stage doc={doc} trace={trace} index={clamped} state={state} tab={tab} onNavExp={navToExpById} />
                       </FitBox>
                     </div>
                   </div>
+                  {/*  单帧轨迹(如库层参考页)没有"步"可走 —— 藏掉走带,否则留一个点不动的播放条。 */}
+                  {trace.length > 1 && (
                   <AxisBand
                     exp={exp} trace={trace} index={clamped} doc={doc} replay={replay}
                     playing={playing} stepMs={stepMs}
@@ -1018,6 +1025,7 @@ export default function App() {
                       setPlaying(p => !p)
                     }}
                   />
+                  )}
                   {/*
                     * **实验记录**：走带底下一条。收起时只有一行"已验证的结论"
                     * （概念图上就是这一条），点右边展开，里面是逐步日志 / 真题 / 边界。
@@ -1061,10 +1069,13 @@ export default function App() {
           {exp.whyInRail && whyParts.length > 0 &&
             <WhyRail parts={whyParts} tone={state ? exp.tone(state) : undefined}
                      verdict={state ? GUIDES[exp.id]?.verdict?.(state as never, doc) : undefined} />}
-          <ParamPanel specs={exp.params} values={doc.params} onChange={setParam}
+          {/*  库层是参考页,没有可调参数、也没有"自由度"要解释 —— 藏掉实验控制盒,
+               否则右侧只剩一段堆在一起的 paramsNote。读数(库/许可/语言/覆盖)照常显示。 */}
+          {exp.defaultDoc.kind !== 'library' &&
+            <ParamPanel specs={exp.params} values={doc.params} onChange={setParam}
                       emptyNote={exp.paramsNote}
                       dirty={Object.keys(overrides[exp.id] ?? {}).length > 0}
-                      onReset={() => setOverrides(o => ({ ...o, [exp.id]: {} }))} />
+                      onReset={() => setOverrides(o => ({ ...o, [exp.id]: {} }))} />}
           {state && <Readouts items={exp.readouts(state, doc, clamped)} />}
         </div>
       </div>}
@@ -1072,7 +1083,8 @@ export default function App() {
 
       {showProgress && (
         <ProgressPanel
-          store={store} experiments={EXPERIMENTS}
+          store={store} experiments={EXPERIMENTS.filter(e => discExpIds.has(e.id))}
+          scopeLabel={activeDiscObj.title}
           onJump={jumpToQuestion}
           onClose={() => setShowProgress(false)}
           cloud={cloud}

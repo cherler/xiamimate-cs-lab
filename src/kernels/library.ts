@@ -968,20 +968,11 @@ export const libraryKernel: Kernel<LibraryState> = {
     const b0 = { lib, name: p.name, tagline: p.tagline, license: p.license, lang: p.lang, latest: p.latest, maintainer: p.maintainer, seeAlso: p.seeAlso, whatIs: p.whatIs, features: p.features, pros: p.pros, cons: p.cons, coverage: p.coverage, projects: p.projects }
     const push = (section: Frame['section'], focus: string, log: string) => frames.push({ ...b0, step: frames.length, section, focus, log } as Frame)
 
-    push('intro', `${p.name}:${p.tagline}(${p.license})`,
-      `**${p.name} · 特点介绍**\n${p.whatIs}\n\n**基本信息**:许可 **${p.license}**、语言 ${p.lang}、维护 ${p.maintainer}、${p.latest}。\n\n**核心模块/抽象**:\n${p.features.map(f => `· **${f.t}**:${f.d}`).join('\n')}\n\n(这是"软件库/框架"层——它不是一个能焊死仿真的算法,而是把很多算法工程化拼成的系统;下面看它的取舍、覆盖了我们哪些理论实验、以及真实项目。)`)
-
-    push('proscons', `${p.name} 优缺点:强在生态与开箱即用,弱在重与配置繁琐`,
-      `**${p.name} · 优缺点剖析**\n**强在哪 ✅**\n${p.pros.map(x => `· ${x}`).join('\n')}\n\n**坑在哪 / 什么时候别用 ⚠️**\n${p.cons.map(x => `· ${x}`).join('\n')}`)
-
-    push('coverage', `内容覆盖:它把我们这些理论实验工程化——${p.coverage.flatMap(c => c.links.map(l => l.label)).join('、')}`,
-      `**${p.name} · 内容覆盖(反向连回理论实验)**\n它内部用到的算法,正是实验室里我们焊死过的那些理论——库是"用法",实验是"原理":\n${p.coverage.map(c => `· **${c.mod}**:${c.d}　→ 连回：${c.links.map(l => `「${l.label}」`).join('、')}`).join('\n')}\n\n**这就是"库层"的价值**:学库之前先在实验里把原理焊死(RRT-Connect 怎么两头长树、GJK 怎么判碰、CHOMP 怎么降代价),再回头看 MoveIt 就是"把这些拼成一条能跑的规划流水线"。`)
-
-    push('projects', `落地项目:${p.projects.slice(0, 3).join('、')} 等`,
-      `**${p.name} · 落地项目示例**\n真实用它做出来的:\n${p.projects.map(x => `· ${x}`).join('\n')}\n\n**相关**:${p.seeAlso}。`)
-
-    push('done', `${p.name}:骑在运动规划理论实验之上的工程化框架;许可 ${p.license}`,
-      `**小结:${p.name}**\n· **是什么**:${p.tagline};中枢 move_group 串起 场景/规划/碰撞/运动学/轨迹一条流水线;\n· **取舍**:生态标准、可插拔、开箱即用,但重、配置繁、偏机械臂;\n· **覆盖**:内部算法=我们的理论实验(OMPL↔RRT-Connect/RRT*/PRM、FCL↔GJK、CHOMP、时间参数化↔梯形曲线、IK/雅可比);\n· **落地**:Franka Panda、UR 等机械臂的规划底座。\n**"库层"读法**:理论实验教"原理为什么对"、库教"工程上怎么拼起来用";两层对着看,既懂机制又会用工具。${p.seeAlso}。`)
+    //  ⚠️ 库层是"参考页"不是仿真:一次算完、一屏铺开,不拆成假的"计算步骤"走带。
+    //     所以只发一帧(trace.length===1,前端据此隐藏走带);四段内容都由 LibraryStage 一次全渲染。
+    const covCount = p.coverage.flatMap(c => c.links).length
+    push('intro', `${p.name} · 库层参考:特点 / 优缺点 / 覆盖(可点回 ${covCount} 个理论实验) / 落地,一屏读完`,
+      `**${p.name} · 库层参考页**\n${p.whatIs}\n\n**基本信息**:许可 **${p.license}**、语言 ${p.lang}、维护 ${p.maintainer}、${p.latest}。\n\n**这是"软件库/框架"层**——不是能焊死仿真的算法,而是把很多算法工程化拼成的系统,所以不走"步"、一屏铺开:①特点 ②优缺点 ③内容覆盖(库里用到的算法=你在实验室焊死过的理论,**链接可点、一键跳回**)④落地项目。库是"用法"、实验是"原理",两层对着看。`)
 
     const base0: Frame = { ...b0, section: 'intro', step: -1, focus: '', log: '' }
     return {
