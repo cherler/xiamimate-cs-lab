@@ -14,6 +14,7 @@ export function AttentionStage({ state }: StageProps<AttnState>) {
     <div className="card">
       <h3>自注意力 <span className="hint">每个查询 token 关注全句，按权重汇总信息</span></h3>
       <div className="body">
+        <div className="atrow">
         {/* 查询 → 键 注意力连线（softmax 后，线的浓淡 = 权重）*/}
         <div className="atflow">
           <div className="atside">
@@ -66,6 +67,7 @@ export function AttentionStage({ state }: StageProps<AttnState>) {
               ))}
             </tbody>
           </table>
+        </div>
         </div>
 
         {/* 当前查询的算式：分数 → softmax → 加权和 */}

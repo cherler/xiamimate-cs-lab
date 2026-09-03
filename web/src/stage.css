@@ -2249,7 +2249,9 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .smval.prob{color:var(--f-tag);font-weight:700}
 
 /* ── 自注意力：连线 + 矩阵热力图 + 算式 ── */
-.atflow{display:grid;grid-template-columns:auto 1fr auto;gap:0;align-items:start;margin-bottom:16px}
+/* 连线图 + 热力矩阵并排一行(别再上下两层、上层空一大片) */
+.atrow{display:flex;gap:34px;align-items:flex-start;flex-wrap:wrap;margin-bottom:14px}
+.atflow{display:grid;grid-template-columns:auto minmax(80px,1fr) auto;gap:0;align-items:start;margin-bottom:0;flex:1 1 300px;min-width:250px}
 .atside{display:flex;flex-direction:column;gap:10px;min-width:64px}
 .atlabel{font-size:11px;color:var(--faint);height:16px;text-align:center}
 .attok{height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;gap:6px;font-family:var(--mono);font-weight:700;font-size:var(--t-body);
@@ -2262,7 +2264,7 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .attok.k.top .atw{color:var(--f-tag)}
 .atlines{align-self:stretch;min-height:100%}
 .atline-top{stroke-dasharray:4 3;animation:gv-flow .5s linear infinite}
-.atmatwrap{margin-top:4px}
+.atmatwrap{margin-top:0;flex:0 1 auto}
 .atsect{font-size:var(--t-body);font-weight:600;color:var(--ink);margin-bottom:7px}
 .atcap{font-weight:400;font-size:var(--t-meta);color:var(--faint);margin-left:8px}
 .atmat{border-collapse:separate;border-spacing:4px;font-family:var(--mono);font-size:var(--t-body)}
