@@ -3306,21 +3306,46 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .hpcell.out .hpi { color:var(--hit); }
 
 /* 快速排序 Quicksort */
-.qswrap { display:flex; flex-direction:column; align-items:center; gap:10px; margin:14px 0; }
-.qsrow { display:flex; gap:4px; flex-wrap:wrap; justify-content:center; }
-.qscol { display:flex; flex-direction:column; align-items:center; gap:2px; }
-.qscell { min-width:30px; height:34px; padding:0 5px; display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:600;
-  border-radius:5px; background:var(--panel); border:1px solid var(--line); color:var(--ink); font-variant-numeric:tabular-nums; transition:all .18s; }
-.qscell.dim { opacity:.32; }
-.qscell.less { background:color-mix(in srgb,var(--now) 12%,var(--panel)); border-color:color-mix(in srgb,var(--now) 40%,var(--line)); }
-.qscell.pivot { border-color:var(--now); background:color-mix(in srgb,var(--now) 26%,var(--panel)); box-shadow:0 0 0 2px color-mix(in srgb,var(--now) 30%,transparent); font-weight:800; }
-.qscell.scan { border-color:#3b82f6; box-shadow:0 0 0 2px color-mix(in srgb,#3b82f6 40%,transparent); }
-.qscell.place { border-color:var(--hit); background:color-mix(in srgb,var(--hit) 28%,var(--panel)); box-shadow:0 0 0 2px color-mix(in srgb,var(--hit) 35%,transparent); }
-.qscell.lock { border-color:var(--hit); background:color-mix(in srgb,var(--hit) 20%,var(--panel)); color:var(--hit); font-weight:700; }
-.qstag { font-size:9px; height:11px; color:var(--faint); font-family:var(--mono); }
-.qscell.scan + .qstag, .qscol:has(.scan) .qstag { color:#3b82f6; }
-.qscol:has(.pivot) .qstag { color:var(--now); font-weight:700; }
-.qscol:has(.lock) .qstag { color:var(--hit); }
+/* ── 快速排序：仪表级动效柱状图 ──
+   柱子按值 key、用 translateX 定槽位，一交换就滑过去(FLIP)；高度∝值；语义色带材质与投影。 */
+.qschartwrap { display:flex; justify-content:center; margin:20px 0 12px; }
+.qschart { position:relative; }
+.qschart::after { content:''; position:absolute; left:-10px; right:-10px; bottom:0; height:2px; z-index:0;
+  background:linear-gradient(90deg, transparent, var(--line) 10%, var(--line) 90%, transparent); border-radius:2px; }
+.qsband { position:absolute; top:-8px; bottom:3px; left:0; border-radius:10px; z-index:0;
+  background:var(--sunk-2); box-shadow:inset 0 0 0 1px var(--line-soft);
+  transition:transform .42s cubic-bezier(.34,1.1,.4,1), width .42s cubic-bezier(.34,1.1,.4,1); }
+.qsbar { position:absolute; bottom:3px; left:0; display:flex; flex-direction:column; align-items:center; z-index:1;
+  border-radius:6px 6px 2px 2px;
+  background:linear-gradient(180deg, var(--panel), color-mix(in srgb,var(--ink) 6%, var(--panel)));
+  border:1px solid var(--line); box-shadow:0 1px 2px rgba(20,32,42,.06), inset 0 1px 0 rgba(255,255,255,.55);
+  transition:transform .42s cubic-bezier(.34,1.18,.42,1), height .32s ease, background .25s, border-color .25s, box-shadow .25s, opacity .22s; }
+.qsbar .qsv { font-family:var(--mono); font-size:var(--t-body); font-weight:700; color:var(--ink);
+  font-variant-numeric:tabular-nums; margin-top:6px; line-height:1; }
+.qsbar.dim { opacity:.3; }
+.qsbar.less { border-color:color-mix(in srgb,var(--hit) 40%,var(--line));
+  background:linear-gradient(180deg, color-mix(in srgb,var(--hit) 9%,var(--panel)), color-mix(in srgb,var(--hit) 20%,var(--panel))); }
+.qsbar.scan { border-color:var(--f-tag); border-width:1.5px;
+  background:linear-gradient(180deg, color-mix(in srgb,var(--f-tag) 8%,var(--panel)), color-mix(in srgb,var(--f-tag) 18%,var(--panel)));
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--f-tag) 18%,transparent), 0 2px 7px color-mix(in srgb,var(--f-tag) 24%,transparent); }
+.qsbar.scan .qsv { color:var(--f-tag); }
+.qsbar.pivot { border-color:var(--now);
+  background:linear-gradient(180deg, color-mix(in srgb,var(--now) 20%,var(--panel)), color-mix(in srgb,var(--now) 40%,var(--panel)));
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--now) 22%,transparent), 0 3px 10px color-mix(in srgb,var(--now) 34%,transparent); }
+.qsbar.pivot .qsv { color:var(--now); }
+.qsbar.lock { border-color:var(--hit);
+  background:linear-gradient(180deg, color-mix(in srgb,var(--hit) 22%,var(--panel)), color-mix(in srgb,var(--hit) 44%,var(--panel)));
+  box-shadow:0 2px 8px color-mix(in srgb,var(--hit) 26%,transparent); }
+.qsbar.lock .qsv { color:var(--hit); }
+/* 指针小旗，飘在柱顶上方，带朝下三角 */
+.qsptr { position:absolute; top:-20px; font-family:var(--mono); font-size:var(--t-meta); font-weight:700; color:#fff;
+  padding:1px 7px; border-radius:9px; white-space:nowrap; line-height:1.6; }
+.qsptr.sc { background:var(--f-tag); box-shadow:0 2px 6px color-mix(in srgb,var(--f-tag) 40%,transparent); }
+.qsptr.pv { background:var(--now); box-shadow:0 2px 6px color-mix(in srgb,var(--now) 40%,transparent); }
+.qsptr::after { content:''; position:absolute; left:50%; bottom:-4px; transform:translateX(-50%); border:4px solid transparent; }
+.qsptr.sc::after { border-top-color:var(--f-tag); }
+.qsptr.pv::after { border-top-color:var(--now); }
+.qslock { position:absolute; top:-16px; font-size:var(--t-meta); color:var(--hit); font-weight:800; }
 
 /* 归并排序 Merge Sort */
 .mswrap { display:flex; flex-direction:column; align-items:center; gap:4px; margin:14px 0; }
