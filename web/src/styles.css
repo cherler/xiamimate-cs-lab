@@ -589,6 +589,22 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{
 
 /* ── 左：实验目录 ── */
 .nav{display:flex;flex-direction:column;padding-bottom:6px;overflow-y:auto}
+/* 搜索框:跨全部职业找实验 */
+.navsearch{position:relative;padding:8px 10px 6px}
+.navsearch input{width:100%;box-sizing:border-box;padding:6px 26px 6px 10px;font-size:var(--t-ui);
+  font-family:var(--sans);color:var(--ink);background:var(--sunk-1);border:1px solid var(--line);border-radius:7px}
+.navsearch input:focus{outline:none;border-color:var(--now);background:var(--panel)}
+.navsearch input::placeholder{color:var(--faint)}
+.navsearchx{position:absolute;right:16px;top:50%;transform:translateY(-50%);width:18px;height:18px;
+  display:grid;place-items:center;background:var(--sunk-3);border:0;border-radius:50%;color:var(--dim);cursor:pointer;font-size:10px;padding:0}
+.navsearchx:hover{background:var(--now);color:#fff}
+.navresults{display:flex;flex-direction:column;padding:2px 0}
+.navresults .nrrow{display:flex;flex-direction:column;gap:1px;align-items:flex-start;padding:6px 12px;width:100%;
+  background:none;border:0;border-left:2px solid transparent;cursor:pointer;text-align:left}
+.navresults .nrrow:hover{background:var(--panel-2)}
+.navresults .nrrow.on{border-left-color:var(--now);background:var(--panel-2)}
+.navresults .nrtitle{font-size:var(--t-body);color:var(--ink)}
+.navresults .nrtrack{font-size:var(--t-meta);color:var(--faint);font-family:var(--mono)}
 .nav .grp{padding:11px 12px 4px;font-family:var(--mono);font-size:var(--t-meta);
   letter-spacing:.16em;text-transform:uppercase;color:var(--faint)}
 .nav button{display:flex;gap:8px;align-items:baseline;padding:6px 12px;width:100%;

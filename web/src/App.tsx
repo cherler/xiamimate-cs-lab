@@ -9,7 +9,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { run } from '@engine/core/kernel.ts'
 import { validateDocument } from '@engine/ai/schema.ts'
 import type { SimDocument, Entity } from '@engine/core/document.ts'
-import { EXPERIMENTS, BASED_ON, USED_BY, DISCIPLINES, SOFT_LINKS } from './registry.ts'
+import { EXPERIMENTS, BASED_ON, USED_BY, DISCIPLINES, SOFT_LINKS, DISCIPLINE_OF_GROUP } from './registry.ts'
 import { AxisBand } from './shell/AxisBand.tsx'
 import { WhyBand, WhyRail } from './shell/WhyBand.tsx'
 import { rich } from './shell/rich.tsx'
@@ -94,6 +94,7 @@ export default function App() {
   const [diagramOpen, setDiagramOpen] = useState(false)
   //  学科切换（默认 cs；不落本机——每次加载都回到有内容的计算机学科，冒烟也稳）
   const [activeDisc, setActiveDisc] = useState('base')
+  const [search, setSearch] = useState('')   // 跨全部职业搜实验(名称/副标题/关键词)
   const [guideOpen, setGuideOpen] = useState(false)
 
 
@@ -622,6 +623,23 @@ export default function App() {
     items: list.map(e => ({ e, soft: e.group !== group, num: ++__navSeq })),
   }))
 
+  //  搜索:跨全部职业按 标题/副标题/id/组名 匹配(只搜可导航的=组落在某职业里)。
+  const searchResults = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return []
+    return EXPERIMENTS
+      .filter(e => DISCIPLINE_OF_GROUP[e.group])
+      .filter(e => `${e.title} ${e.subtitle ?? ''} ${e.id} ${e.group}`.toLowerCase().includes(q))
+      .slice(0, 40)
+  }, [search])
+  //  跳到某实验:若在别的职业,先切职业(否则目录/面包屑对不上),再选中,清空搜索。
+  function jumpToExp(id: string, group: string) {
+    const disc = DISCIPLINE_OF_GROUP[group]
+    if (disc && disc.key !== activeDisc) setActiveDisc(disc.key)
+    selectExp(id)
+    setSearch('')
+  }
+
   //  当前学科的实验集合（含软链），用来把"N 个实验 / 进度"按学科统计（跟顶条切换）。
   const discExpIds = useMemo(() => {
     const ids = new Set<string>()
@@ -763,38 +781,56 @@ export default function App() {
         </button>
         {/* 左：实验目录 */}
         <nav className="card nav" aria-label="实验目录">
-          {/*  当前学科的 guide 页入口（div，非 button）—— 从地基通到那件职业/造物。
-               学科切换已上移成通栏顶条；这里只留「本学科地图」入口，和实验目录放一起。 */}
-          <div className="discguide" role="button" tabIndex={0}
-            onClick={() => setGuideOpen(true)}
-            onKeyDown={ev => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); setGuideOpen(true) } }}
-            title={`${activeDiscObj.title}地图`}>
-            🗺️ <b>{activeDiscObj.title}地图</b>：从 {activeDiscObj.guide.from} 到 {activeDiscObj.guide.toIcon}{activeDiscObj.guide.to}
+          {/* 搜索框:跨全部职业找实验(名称/副标题/关键词);有内容时目录切成搜索结果 */}
+          <div className="navsearch">
+            <input value={search} onChange={ev => setSearch(ev.target.value)}
+                   placeholder="🔍 搜实验（跨全部职业）" aria-label="搜实验"
+                   onKeyDown={ev => { if (ev.key === 'Escape') setSearch('') }} />
+            {search && <button className="navsearchx" onClick={() => setSearch('')} aria-label="清空搜索">✕</button>}
           </div>
 
-          {navRows.length > 0 ? navRows.map(({ group, items }) => (
-            <div key={group}>
-              <div className="grp">{group}</div>
-              {items.map(({ e, soft, num }) => (
-                  <button
-                    key={e.id}
-                    className={`${e.id === expId ? 'on' : ''} ${soft ? 'soft' : ''}`}
-                    onClick={() => selectExp(e.id)}
-                    aria-current={e.id === expId}
-                    title={soft ? `软链接：真身在「${e.group}」，这里是一个导航入口` : undefined}
-                  >
-                    <span className="n">{String(num).padStart(2, '0')}</span>
-                    <span>{e.title}</span>
-                    {soft && <span className="softmark" aria-hidden>↗</span>}
-                  </button>
-              ))}
+          {search.trim() ? (
+            <div className="navresults">
+              {searchResults.length > 0 ? searchResults.map(({ id, title, group }) => (
+                <button key={id} className={`nrrow ${id === expId ? 'on' : ''}`} onClick={() => jumpToExp(id, group)}>
+                  <span className="nrtitle">{title}</span>
+                  <span className="nrtrack">{DISCIPLINE_OF_GROUP[group]?.title} · {group}</span>
+                </button>
+              )) : <div className="navsoon">没找到「{search.trim()}」相关的实验<br /><small>试试实验名、副标题里的词，或英文 id</small></div>}
             </div>
-          )) : (
-            <div className="navsoon">
-              「{activeDiscObj.title}」学科即将开放<br />
-              <small>guide 会是一条「从 {activeDiscObj.guide.from} 到 {activeDiscObj.guide.toIcon}{activeDiscObj.guide.to}」的路</small>
+          ) : (<>
+            {/*  当前学科的 guide 页入口（div，非 button）—— 从地基通到那件职业/造物。 */}
+            <div className="discguide" role="button" tabIndex={0}
+              onClick={() => setGuideOpen(true)}
+              onKeyDown={ev => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); setGuideOpen(true) } }}
+              title={`${activeDiscObj.title}地图`}>
+              🗺️ <b>{activeDiscObj.title}地图</b>：从 {activeDiscObj.guide.from} 到 {activeDiscObj.guide.toIcon}{activeDiscObj.guide.to}
             </div>
-          )}
+
+            {navRows.length > 0 ? navRows.map(({ group, items }) => (
+              <div key={group}>
+                <div className="grp">{group}</div>
+                {items.map(({ e, soft, num }) => (
+                    <button
+                      key={e.id}
+                      className={`${e.id === expId ? 'on' : ''} ${soft ? 'soft' : ''}`}
+                      onClick={() => selectExp(e.id)}
+                      aria-current={e.id === expId}
+                      title={soft ? `软链接：真身在「${e.group}」，这里是一个导航入口` : undefined}
+                    >
+                      <span className="n">{String(num).padStart(2, '0')}</span>
+                      <span>{e.title}</span>
+                      {soft && <span className="softmark" aria-hidden>↗</span>}
+                    </button>
+                ))}
+              </div>
+            )) : (
+              <div className="navsoon">
+                「{activeDiscObj.title}」学科即将开放<br />
+                <small>guide 会是一条「从 {activeDiscObj.guide.from} 到 {activeDiscObj.guide.toIcon}{activeDiscObj.guide.to}」的路</small>
+              </div>
+            )}
+          </>)}
         </nav>
 
         {/* 中：舞台 + 轴 + 日志 */}
