@@ -59,65 +59,51 @@ export const samplingKernel: Kernel<SamplingState> = {
 
   compile(doc: SimDocument): CompiledModel<SamplingState> {
     const T = num(doc.params, 'temperature') || 1
-    const k = num(doc.params, 'topK') || 0          // 0 = 关
-    const p = num(doc.params, 'topP') || 1          // 1 = 关
+    const k = num(doc.params, 'topK') || 0          // 0 = 关(侧栏旋钮)
     const preset = PRESETS[str(doc.params, 'logits')] ?? PRESETS['长尾一堆']
     const tokens = preset.tokens
     const n = tokens.length
 
     const probs = softmax(preset.logits.map(x => x / T))
-    //  按概率降序
-    const order = probs.map((_, i) => i).sort((a, b) => probs[b] - probs[a])
-
-    const frames: Frame[] = []
-    const base = (phase: Frame['phase']): Frame => ({
-      tokens, T, k, p, probs, order, kept: new Array(n).fill(true), cum: [], final: [], phase, focus: -1, log: '',
-    })
-
-    frames.push({ ...base('softmax'),
-      log: `先 softmax（温度 T=${T}）→ 概率分布。长尾里那些低概率 token 加起来也不少，直接采容易蹦出离谱的词` })
-
-    frames.push({ ...base('sort'),
-      log: `把候选**按概率从高到低排序**：${order.map(i => tokens[i]).join(' > ')}。截断刀都在这个顺序上切` })
-
-    //  top-k：保留前 k 个
+    const order = probs.map((_, i) => i).sort((a, b) => probs[b] - probs[a])   // 按概率降序
+    //  top-k 预筛(若侧栏开了),top-p 在其之上再切
     const keptK = new Array(n).fill(true)
     if (k > 0) order.forEach((idx, rank) => { if (rank >= k) keptK[idx] = false })
-    frames.push({ ...base('topk'), kept: [...keptK],
-      log: k > 0
-        ? `**top-k = ${k}**：只留概率最高的 ${k} 个（${order.slice(0, k).map(i => tokens[i]).join(' ')}），其余全砍掉`
-        : `**top-k 关闭**（k=0）：不按个数截断` })
 
-    //  top-p：在（经过 top-k 的）排序上累加，保留累计刚超 p 的一撮
-    const cum: number[] = []
-    const keptP = [...keptK]
-    let acc = 0, crossed = false
-    order.forEach((idx) => {
-      if (!keptK[idx]) { cum.push(acc); return }
-      if (crossed) { keptP[idx] = false; cum.push(acc); return }
-      acc += probs[idx]
-      cum.push(acc)
-      if (acc >= p) crossed = true      // 加到刚超过 p，这个留下，之后的砍掉
-    })
-    frames.push({ ...base('topp'), kept: [...keptP], cum,
-      log: p < 1
-        ? `**top-p = ${p}**：概率从大到小累加，保留累计刚超过 ${p} 的那一小撮（"核"）—— 分布尖时只留一两个，分布平时自动多留几个`
-        : `**top-p 关闭**（p=1）：不按累计概率截断` })
+    //  采样不是"一步步算"的仿真——它是个函数：一组 logit + 旋钮 → 候选集。真正在**变**的是
+    //  截断阈值 top-p:轴换成"top-p 从紧到松扫描",按播放就看「核」(保留的候选集)怎么随阈值长大、
+    //  自适应分布形状(分布尖核小、分布平核大)。温度/top-k 留作侧栏旋钮。
+    const P_SWEEP = [0.3, 0.5, 0.7, 0.8, 0.9, 0.95, 1]
 
-    //  重新归一化
-    const survived = probs.map((pr, i) => (keptP[i] ? pr : 0))
-    const sum = survived.reduce((a, b) => a + b, 0) || 1
-    const final = survived.map(x => x / sum)
-    frames.push({ ...base('renorm'), kept: [...keptP], cum, final,
-      log: `**重新归一化**：把留下的概率除以它们的总和，重新凑成和为 1 的分布 → 就在这里面随机采一个 token` })
+    const at = (p: number): Frame => {
+      const cum: number[] = []
+      const keptP = [...keptK]
+      let acc = 0, crossed = false
+      order.forEach((idx) => {
+        if (!keptK[idx]) { cum.push(acc); return }
+        if (crossed) { keptP[idx] = false; cum.push(acc); return }
+        acc += probs[idx]
+        cum.push(acc)
+        if (acc >= p) crossed = true      // 加到刚超过 p，这个留下，之后的砍掉
+      })
+      const survived = probs.map((pr, i) => (keptP[i] ? pr : 0))
+      const sum = survived.reduce((a, b) => a + b, 0) || 1
+      const final = survived.map(x => x / sum)
+      const keptCount = keptP.filter(Boolean).length
+      const coverage = probs.reduce((s, pr, i) => s + (keptP[i] ? pr : 0), 0)
+      return {
+        tokens, T, k, p, probs, order, kept: keptP, cum, final, phase: 'done', focus: -1,
+        log: `top-p=${p}${p >= 1 ? '（关·全保留）' : ''}：概率从大到小累加、保留累计刚超过 ${p} 的「核」`
+          + ` → 留 **${keptCount}/${n}** 个候选(覆盖 ${(coverage * 100).toFixed(0)}% 概率)${k > 0 ? `，并叠加 top-k=${k}` : ''}。`
+          + (p < 1 ? '分布尖时核小、分布平时核自动变大——这就是核采样的"自适应"' : '不截断,全在长尾里采,容易蹦出离谱的词'),
+      }
+    }
 
-    const keptCount = keptP.filter(Boolean).length
-    frames.push({ ...base('done'), kept: [...keptP], cum, final,
-      log: `最终从 **${keptCount}** 个候选里采样（原本 ${n} 个）。温度调随机性、top-k/top-p 砍长尾 —— 三个旋钮一起决定"下一个字有多稳 / 多野"` })
+    const frames: Frame[] = P_SWEEP.map(at)
 
     return {
-      axis: { kind: 'step', label: '步骤' },
-      initial: () => ({ i: -1, ...base('softmax'), log: '' }),
+      axis: { kind: 'step', label: 'top-p' },
+      initial: () => ({ i: -1, ...at(0.3), log: '按 ▶ 从紧到松扫 top-p(核采样阈值)：看「核」——保留的候选集——怎么随阈值长大。温度、top-k 在左侧「实验控制」里调。' }),
       describe: s => s.log,
       step(prev) {
         const b = prev ?? this.initial()

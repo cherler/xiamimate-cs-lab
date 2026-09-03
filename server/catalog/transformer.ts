@@ -478,7 +478,7 @@ export const TRANSFORMER_ENTRIES: CatalogEntry[] = [
   //  ── 采样解码旋钮台 ────────────────────────────────
   {
     id: 'sampling', title: '采样解码旋钮台', kernel: samplingKernel as Kernel<unknown>,
-    doc: { kind: 'sampling', params: { temperature: 1, topK: 3, topP: 1, logits: '长尾一堆' }, entities: [], streams: [] },
+    doc: { kind: 'sampling', params: { temperature: 1, topK: 0, logits: '长尾一堆' }, entities: [], streams: [] },
     facts: [
       {
         id: 'total_candidates', label: '原始候选总数', kind: 'number',
@@ -490,11 +490,11 @@ export const TRANSFORMER_ENTRIES: CatalogEntry[] = [
         distractors: numDistractors,
       },
       {
-        id: 'kept_count', label: 'top-k=3 后保留几个', kind: 'number',
-        ask: '默认温度 1、top-k=3、top-p 关，截断后最终保留几个候选可供采样？',
+        id: 'kept_count', label: 'top-p=0.9 时核里保留几个', kind: 'number',
+        ask: '温度 1、top-k 关，top-p=0.9（核采样）时最终保留几个候选可供采样？',
         compute: t => {
-          const f = last(t)
-          return { answer: String((f.kept as boolean[]).filter(Boolean).length), step: t.length - 1, evidence: ev(f) }
+          const f = fi(t, x => (x.p as number) === 0.9)
+          return { answer: String((t[f].kept as boolean[]).filter(Boolean).length), step: f, evidence: ev(t[f]) }
         },
         distractors: numDistractors,
       },
@@ -502,7 +502,7 @@ export const TRANSFORMER_ENTRIES: CatalogEntry[] = [
         id: 'topp_rule', label: 'top-p 的截断规则', kind: 'choice',
         ask: 'top-p（核采样）是按什么规则截断候选的？',
         compute: t => {
-          const s = fi(t, f => f.phase === 'topp')
+          const s = fi(t, f => (f.p as number) < 1)
           return { answer: '把概率从大到小累加，保留累计刚超过 p 的那一小撮', step: s, evidence: ev(t[s]) }
         },
         distractors: () => ['保留概率最高的固定 p 个', '随机丢弃 p 比例的候选', '保留所有概率大于 p 的 token'],
@@ -511,7 +511,7 @@ export const TRANSFORMER_ENTRIES: CatalogEntry[] = [
         id: 'topk_vs_topp', label: 'top-k 与 top-p 的差别', kind: 'choice',
         ask: 'top-k 和 top-p 两把“截断刀”的关键区别是什么？',
         compute: t => {
-          const s = fi(t, f => f.phase === 'topk')
+          const s = fi(t, f => (f.p as number) < 1)
           return { answer: 'top-k 按固定个数截断，top-p 按累计概率动态截断', step: s, evidence: ev(t[s]) }
         },
         distractors: () => ['两者的规则完全相同', 'top-k 按概率阈值、top-p 按个数', 'top-p 只在训练时使用'],

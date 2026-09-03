@@ -2762,39 +2762,33 @@ const sampling: Experiment<SamplingState> = {
   id: 'sampling',
   group: 'Transformer 原理',
   title: '采样解码旋钮台',
-  subtitle: '温度 · top-k · top-p 截断',
+  subtitle: 'top-p 核采样 · 看候选集随阈值长大',
   kernel: samplingKernel,
-  defaultDoc: { kind: 'sampling', params: { temperature: 1, topK: 3, topP: 1, logits: '长尾一堆' }, entities: [], streams: [] },
+  defaultDoc: { kind: 'sampling', params: { temperature: 1, topK: 0, logits: '长尾一堆' }, entities: [], streams: [] },
   params: [
     { key: 'temperature', label: '温度 T', kind: 'number', options: [0.7, 1, 1.3] },
-    { key: 'topK', label: 'top-k', kind: 'number', options: [0, 2, 3, 5], unit: '0=关' },
-    { key: 'topP', label: 'top-p', kind: 'number', options: [0.5, 0.8, 0.9, 1], unit: '1=关' },
+    { key: 'topK', label: 'top-k(叠加)', kind: 'number', options: [0, 2, 3, 5], unit: '0=关' },
     { key: 'logits', label: 'logits 组', kind: 'enum', options: ['长尾一堆', '两强争锋'] },
   ],
-  paramsNote: '接着 softmax 往下：吐字前先砍长尾。top-k 只留概率最高的 k 个；top-p（核采样）把概率从大到小累加、留累计刚超 p 的一小撮。砍完重新归一化再采。复用排序（按概率降序）。',
+  paramsNote: '采样解码不是一步步算的仿真，是个函数：一组 logit + 旋钮 → 候选集。真正在变的是截断阈值——这里把轴换成"top-p 从紧到松扫描"，按 ▶ 播放就看「核」(保留的候选集)怎么随阈值长大、自适应分布形状(分布尖核小、分布平核大)。温度、top-k 留作左侧旋钮,可叠加。',
   bounds: [
-    'logits 是示例值；softmax、top-k、top-p、重归一化的数学是精确的',
-    'top-k 与 top-p 同开时取交集（都满足才留）',
-    '只演示"截断出候选集"，真正的"随机采一个"是从最终分布里按概率抽 —— 这一步不建模具体随机数',
-    '不含重复惩罚 / 频率惩罚（那是另一组旋钮）',
+    'logits 是示例值；softmax、top-p、重归一化的数学是精确的',
+    '轴是 top-p 扫描(0.3→1)：每步是同一分布在该阈值下的完整候选集,不是计算中间步',
+    'top-k(侧栏,默认关)与 top-p 同开时取交集(都满足才留)',
+    '只演示"截断出候选集"，真正的"随机采一个"是从最终分布里按概率抽 —— 不建模具体随机数',
   ],
   tabs: [{ id: 'sample', label: '采样' }],
   Stage: SamplingStage,
-  tone: s => (s.phase === 'done' ? { key: 'good', label: '采样集' }
-    : s.phase === 'renorm' ? { key: 'good', label: '归一化' }
-    : s.phase === 'topk' ? { key: 'bad', label: 'top-k' }
-    : s.phase === 'topp' ? { key: 'bad', label: 'top-p' }
-    : s.phase === 'sort' ? { key: 'idle', label: '排序' }
-    : { key: 'idle', label: 'softmax' }),
+  tone: s => (s.p >= 1 ? { key: 'idle', label: 'top-p 关' } : { key: 'good', label: `top-p=${s.p}` }),
   metric: s => (s.tokens.length ? s.kept.filter(Boolean).length / s.tokens.length : 0),
-  tickLabel: s => ({ softmax: 'softmax', sort: '排序', topk: 'top-k', topp: 'top-p', renorm: '归一', done: '采样' }[s.phase]),
+  tickLabel: s => `p=${s.p}`,
   whyInRail: true,
   readouts: s => [
-    { label: '温度 / k / p', value: `${s.T} / ${s.k > 0 ? s.k : '关'} / ${s.p < 1 ? s.p : '关'}` },
-    { label: '候选总数', value: String(s.tokens.length) },
-    { label: '保留候选', value: `${s.kept.filter(Boolean).length} 个`, tone: 'good' },
-    { label: '本步', value: { softmax: 'softmax', sort: '按概率排序', topk: 'top-k 截断', topp: 'top-p 截断', renorm: '重新归一化', done: '得采样集' }[s.phase] },
-    { label: '砍掉', value: `${s.tokens.length - s.kept.filter(Boolean).length} 个长尾` },
+    { label: 'top-p', value: String(s.p), tone: 'hot' },
+    { label: '保留候选(核)', value: `${s.kept.filter(Boolean).length} / ${s.tokens.length}`, tone: 'good' },
+    { label: '覆盖概率', value: `${(s.probs.reduce((a, pr, i) => a + (s.kept[i] ? pr : 0), 0) * 100).toFixed(0)}%` },
+    { label: '温度 / top-k', value: `${s.T} / ${s.k > 0 ? s.k : '关'}` },
+    { label: '砍掉长尾', value: `${s.tokens.length - s.kept.filter(Boolean).length} 个` },
   ],
 }
 

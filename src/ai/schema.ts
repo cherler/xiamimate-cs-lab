@@ -232,7 +232,7 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   softmax: { logits: 'string' },
   attention: { sentence: 'string' },
   llmsize: { model: 'string', dtype: 'string', seq: 'number' },
-  sampling: { temperature: 'number', topK: 'number', topP: 'number', logits: 'string' },
+  sampling: { temperature: 'number', topK: 'number', logits: 'string' },
   bpe: { text: 'string' },
   batching: { mode: 'string', slots: 'number' },
   mha: { variant: 'string', heads: 'number', groups: 'number' },
