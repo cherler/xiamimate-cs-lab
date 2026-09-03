@@ -3895,22 +3895,28 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .mesi-bus.inval { border-color:var(--miss); color:var(--miss); }
 .mesi-cores { display:flex; gap:10px; align-items:stretch; flex-wrap:wrap; margin:4px 0 10px; }
 .mesi-core, .mesi-mem { flex:1; min-width:120px; display:flex; flex-direction:column; gap:4px;
-  padding:9px 11px; border:1.5px solid var(--line); border-radius:9px; background:var(--panel); }
-.mesi-mem { flex:0 0 auto; justify-content:center; background:var(--sunk-1); }
-.mesi-core.cur { box-shadow:0 0 0 2px var(--now); }
-.mesi-core.s-M { border-color:var(--miss); background:color-mix(in srgb, var(--miss) 9%, var(--panel)); }
-.mesi-core.s-E { border-color:var(--now); background:color-mix(in srgb, var(--now) 8%, var(--panel)); }
-.mesi-core.s-S { border-color:var(--hit); background:color-mix(in srgb, var(--hit) 9%, var(--panel)); }
-.mesi-core.s-I { border-style:dashed; opacity:.7; }
-.mesi-cid { font-size:14px; color:var(--ink); }
-.mesi-badge { align-self:flex-start; font-size:14px; font-weight:800; font-family:var(--mono);
-  padding:1px 8px; border-radius:5px; border:1px solid var(--line); }
-.mesi-badge.s-M { color:var(--miss); border-color:var(--miss); }
-.mesi-badge.s-E { color:var(--now); border-color:var(--now); }
-.mesi-badge.s-S { color:var(--hit); border-color:var(--hit); }
-.mesi-badge.s-I { color:var(--faint); }
-.mesi-sname { font-size:10.5px; color:var(--dim); }
-.mesi-cval { font-size:13px; font-family:var(--mono); color:var(--ink); }
+  padding:9px 11px; border:1.5px solid var(--line); border-radius:9px;
+  background:linear-gradient(180deg,var(--panel),color-mix(in srgb,var(--ink) 4%,var(--panel)));
+  box-shadow:0 1px 3px rgba(20,32,42,.06),inset 0 1px 0 rgba(255,255,255,.5);
+  transition:background var(--anim),border-color var(--anim),box-shadow var(--anim),opacity var(--anim); }
+.mesi-mem { flex:0 0 auto; justify-content:center; }
+/* 当前访问的核:琥珀脉冲(复用 gv-pulse),状态翻转随过渡滑入 */
+.mesi-core.cur { animation:gv-pulse 1.5s ease-in-out infinite; z-index:1; }
+.mesi-core.s-M { border-color:var(--miss); background:linear-gradient(180deg,color-mix(in srgb,var(--miss) 7%,var(--panel)),color-mix(in srgb,var(--miss) 15%,var(--panel))); }
+.mesi-core.s-E { border-color:var(--now); background:linear-gradient(180deg,color-mix(in srgb,var(--now) 6%,var(--panel)),color-mix(in srgb,var(--now) 14%,var(--panel))); }
+.mesi-core.s-S { border-color:var(--hit); background:linear-gradient(180deg,color-mix(in srgb,var(--hit) 7%,var(--panel)),color-mix(in srgb,var(--hit) 15%,var(--panel))); }
+.mesi-core.s-I { border-style:dashed; border-color:var(--line); opacity:.5; background:var(--sunk-2); }
+.mesi-cid { font-size:var(--t-body); font-weight:700; color:var(--ink); }
+/* 状态徽标:实心药丸,一眼看出 M/E/S/I */
+.mesi-badge { align-self:flex-start; font-size:var(--t-body); font-weight:800; font-family:var(--mono);
+  padding:1px 9px; border-radius:6px; border:1px solid var(--line); color:#fff;
+  transition:background var(--anim),color var(--anim),border-color var(--anim); }
+.mesi-badge.s-M { background:var(--miss); border-color:var(--miss); }
+.mesi-badge.s-E { background:var(--now); border-color:var(--now); }
+.mesi-badge.s-S { background:var(--hit); border-color:var(--hit); }
+.mesi-badge.s-I { background:var(--sunk-3); color:var(--faint); border-color:var(--line); }
+.mesi-sname { font-size:var(--t-meta); color:var(--dim); }
+.mesi-cval { font-size:var(--t-body); font-family:var(--mono); color:var(--ink); font-variant-numeric:tabular-nums; }
 
 /* ── 死锁检测 ── */
 .dl-threads { display:flex; gap:10px; margin:6px 0 10px; }
