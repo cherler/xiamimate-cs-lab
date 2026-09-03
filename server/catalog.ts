@@ -586,20 +586,20 @@ const CATALOG_CORE: CatalogEntry[] = [
     id: 'quant',
     title: '权重量化 W8',
     kernel: quantKernel as Kernel<unknown>,
-    doc: { kind: 'quant', params: { bits: 8 }, entities: [], streams: [] },
+    doc: { kind: 'quant', params: {}, entities: [], streams: [] },
     facts: [
       {
         id: 'qmax', label: 'int8 的正整数上限 qmax',
         ask: 'int8 量化用带符号 8 位整数表示，它的正数上限 qmax 是多少?',
         kind: 'number',
-        compute: t => ({ answer: String(last(t).qmax), step: t.length - 1, evidence: `int8 范围 ±127；终态 qmax=${last(t).qmax}` }),
+        compute: t => { const i = t.findIndex(f => f.bits === 8); const f = t[i] ?? last(t); return { answer: String(f.qmax), step: i < 0 ? t.length - 1 : i, evidence: `int8 范围 ±127；qmax=${f.qmax}` } },
         distractors: numDistractors,
       },
       {
         id: 'bytesQ', label: '8 个权重量化后占的字节数',
         ask: '把 8 个 fp32 权重量化成 int8 后，一共占多少字节(原本 fp32 是 32 字节)?',
         kind: 'number',
-        compute: t => ({ answer: String(last(t).bytesQ), step: t.length - 1, evidence: `fp32=32B → int8=${last(t).bytesQ}B，压 4 倍` }),
+        compute: t => { const i = t.findIndex(f => f.bits === 8); const f = t[i] ?? last(t); return { answer: String(f.bytesQ), step: i < 0 ? t.length - 1 : i, evidence: `fp32=32B → int8=${f.bytesQ}B，压 4 倍` } },
         distractors: numDistractors,
       },
     ],

@@ -240,7 +240,7 @@ const REQUIRED: Record<string, Record<string, 'number' | 'string'>> = {
   flash: { block: 'number' },
   scaledmask: { d: 'number', causal: 'number' },
   specdec: { k: 'number' },
-  quant: { bits: 'number' },
+  quant: {},
   moe: { topk: 'number' },
   rope: { theta: 'number' },
   roofline: { d: 'number' },

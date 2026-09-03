@@ -10,7 +10,7 @@
  * 值全部现算：scale、每个整数、反量化值、误差都可核对（这正是 IEEE754 浮点 / 补码那两屏的延续）。
  * 状态可 JSON 往返（验收标准 2）。
  */
-import { num, type SimDocument } from '../core/document.ts'
+import { type SimDocument } from '../core/document.ts'
 import type { Kernel, CompiledModel } from '../core/kernel.ts'
 
 export type QuantState = {
@@ -44,64 +44,45 @@ const r3 = (x: number) => Math.round(x * 1000) / 1000
 export const quantKernel: Kernel<QuantState> = {
   kind: 'quant',
 
-  compile(doc: SimDocument): CompiledModel<QuantState> {
-    const bits = Math.max(2, Math.min(8, num(doc.params, 'bits') || 8))
-    const qmax = Math.pow(2, bits - 1) - 1
+  compile(_doc: SimDocument): CompiledModel<QuantState> {
     const N = WEIGHTS.length
     const absMax = Math.max(...WEIGHTS.map(Math.abs))
-    const scale = absMax / qmax
     const bytesFp32 = N * 4
-    const bytesPerW = bits / 8
-    const bytesQ = N * bytesPerW
 
-    const frames: Frame[] = []
-    const ints: (number | null)[] = Array(N).fill(null)
-    const deq: (number | null)[] = Array(N).fill(null)
-    const errs: (number | null)[] = Array(N).fill(null)
+    //  量化不是"一步步算"的仿真——它是个函数：一组权重 + 位数 → 整数/误差/显存。
+    //  真正在**变**的是位数:轴换成"位宽从高到低扫描",按播放就看同一组权重压到 int8→int2,
+    //  整数越来越粗、最大误差越来越大、显存越来越小——一眼看清"拿精度换显存"这笔账。
+    const BITS_SWEEP = [8, 6, 4, 3, 2]
 
-    //  第 0 帧：算 scale
-    frames.push({
-      bits, qmax, scale, weights: WEIGHTS, cursor: -1,
-      ints: ints.slice(), deq: deq.slice(), errs: errs.slice(), maxErr: 0,
-      bytesFp32, bytesQ, phase: 'scale',
-      log: `**定标**：int${bits} 的整数范围是 ±${qmax}。取权重绝对值最大 ${r3(absMax)}，` +
-        `scale = ${r3(absMax)} / ${qmax} = **${scale.toFixed(4)}** —— 每个整数一格代表这么大。`,
-    })
-
-    let maxErr = 0
-    for (let k = 0; k < N; k++) {
-      const q = Math.max(-qmax, Math.min(qmax, Math.round(WEIGHTS[k] / scale)))
-      const dq = q * scale
-      const e = Math.abs(WEIGHTS[k] - dq)
-      ints[k] = q; deq[k] = r3(dq); errs[k] = r3(e)
-      maxErr = Math.max(maxErr, e)
-      frames.push({
-        bits, qmax, scale, weights: WEIGHTS, cursor: k,
-        ints: ints.slice(), deq: deq.slice(), errs: errs.slice(), maxErr: r3(maxErr),
-        bytesFp32, bytesQ, phase: 'quantize',
-        log: `第 ${k} 个 w=${WEIGHTS[k]}：round(${WEIGHTS[k]} / ${scale.toFixed(4)}) = **${q}**（占 ${bytesPerW} 字节）。` +
-          `反量化 ŵ = ${q} × ${scale.toFixed(4)} = ${r3(dq)}，误差 ${r3(e)}。`,
-      })
+    const at = (bits: number): Frame => {
+      const qmax = Math.pow(2, bits - 1) - 1
+      const scale = absMax / qmax
+      const bytesQ = N * (bits / 8)
+      const ints: (number | null)[] = []
+      const deq: (number | null)[] = []
+      const errs: (number | null)[] = []
+      let maxErr = 0
+      for (let k = 0; k < N; k++) {
+        const q = Math.max(-qmax, Math.min(qmax, Math.round(WEIGHTS[k] / scale)))
+        const dq = q * scale
+        const e = Math.abs(WEIGHTS[k] - dq)
+        ints.push(q); deq.push(r3(dq)); errs.push(r3(e))
+        maxErr = Math.max(maxErr, e)
+      }
+      return {
+        bits, qmax, scale, weights: WEIGHTS, cursor: N,
+        ints, deq, errs, maxErr: r3(maxErr), bytesFp32, bytesQ, phase: 'done',
+        log: `**int${bits}**（±${qmax}，scale=${scale.toFixed(4)}）：${N} 个权重从 fp32 的 ${bytesFp32}B 压到 **${bytesQ}B**`
+          + `（省 ${Math.round((1 - bytesQ / bytesFp32) * 100)}%），最大误差 **${r3(maxErr)}**。`
+          + (bits >= 8 ? '位多、误差小,但省得少' : bits <= 2 ? '位极少、误差飙升,精度快扛不住' : '位越少越省显存、误差越大——拿精度换显存和带宽'),
+      }
     }
 
-    frames.push({
-      bits, qmax, scale, weights: WEIGHTS, cursor: N,
-      ints: ints.slice(), deq: deq.slice(), errs: errs.slice(), maxErr: r3(maxErr),
-      bytesFp32, bytesQ, phase: 'done',
-      log: `${N} 个权重从 fp32 的 **${bytesFp32} 字节** 压到 int${bits} 的 **${bytesQ} 字节**` +
-        `（省 ${Math.round((1 - bytesQ / bytesFp32) * 100)}%），最大误差 **${r3(maxErr)}**。` +
-        `位越少越省显存、误差越大 —— 这就是量化拿精度换显存和带宽的本质。`,
-    })
-
-    const base0: Frame = {
-      bits, qmax, scale, weights: WEIGHTS, cursor: -1,
-      ints: Array(N).fill(null), deq: Array(N).fill(null), errs: Array(N).fill(null),
-      maxErr: 0, bytesFp32, bytesQ, phase: 'scale', log: '',
-    }
+    const frames: Frame[] = BITS_SWEEP.map(at)
 
     return {
-      axis: { kind: 'step', label: '量化步' },
-      initial: () => ({ i: -1, ...base0 }),
+      axis: { kind: 'step', label: '量化位数' },
+      initial: () => ({ ...at(8), i: -1, log: '按 ▶ 从高到低扫量化位数(int8→int2)：同一组权重,看整数越来越粗、最大误差越来越大、显存越来越小。' }),
       describe: s => s.log,
       step(prev) {
         const b = prev ?? this.initial()

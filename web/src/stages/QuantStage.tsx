@@ -8,8 +8,16 @@ export function QuantStage({ state }: StageProps<QuantState>) {
   const saved = Math.round((1 - bytesQ / bytesFp32) * 100)
   return (
     <div className="card">
-      <h3>权重量化 <span className="hint">fp32 → int{bits} · round(w/scale) 存整数</span></h3>
+      <h3>权重量化 <span className="hint">int8→int2 位宽扫描 · round(w/scale) 存整数</span></h3>
       <div className="body">
+        {/* 位宽是主角:大数条摆 量化位数 / 最大误差 / 省显存 */}
+        <div className="scdim">
+          <div className="scdk"><span className="scdn hot">int{bits}</span><span className="scdl">量化位数</span></div>
+          <div className="scdk"><span className={`scdn ${bits <= 2 ? 'bad' : ''}`}>{maxErr.toFixed(3)}</span><span className="scdl">最大误差 · 位越少越大</span></div>
+          <div className="scdk"><span className="scdn good">{saved}%</span><span className="scdl">省显存 · 位越少越省</span></div>
+        </div>
+        <p className="smtip">同一组权重,位宽从 int8 扫到 int2:整数越来越粗、误差越来越大、显存越来越小——拿精度换显存和带宽。</p>
+
         {/* 定标 */}
         <div className={`qzscale ${phase === 'scale' ? 'cur' : ''}`}>
           <span className="qzsk">scale</span>

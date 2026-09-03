@@ -3040,32 +3040,30 @@ const quant: Experiment<QuantState> = {
   id: 'quant',
   group: 'Transformer 原理',
   title: '权重量化 W8 / W4',
-  subtitle: 'fp32 → int8/int4 · 拿精度换显存',
+  subtitle: 'int8→int2 位宽扫描 · 拿精度换显存',
   kernel: quantKernel,
-  defaultDoc: { kind: 'quant', params: { bits: 8 }, entities: [], streams: [] },
-  params: [
-    { key: 'bits', label: '量化位数', kind: 'number', options: [8, 4], unit: 'bit' },
-  ],
-  paramsNote: '大模型显存几乎全被权重占（见参数量与显存）。对称量化把 fp32 权重压成低位整数：scale = max|w| ÷ (2^(bits-1)−1)，q = round(w/scale) 截断，反量化 ŵ = q·scale。int8 每权重 1 字节（vs fp32 的 4）、int4 只 0.5 字节 —— 位越少越省显存，舍入误差越大。切 8/4 位看整数、误差、显存怎么此消彼长；这正是 IEEE754 浮点 / 补码那两屏的延续。',
+  defaultDoc: { kind: 'quant', params: {}, entities: [], streams: [] },
+  params: [],
+  paramsNote: '量化不是一步步算的仿真，是个函数：一组权重 + 位数 → 整数/误差/显存。真正在变的是位宽——这里把轴换成"位宽从高到低扫描(int8→int2)"，按 ▶ 播放就看同一组权重被压得整数越来越粗、最大误差越来越大、显存越来越小。对称量化：scale = max|w| ÷ (2^(bits-1)−1)，q = round(w/scale) 截断，反量化 ŵ = q·scale。这就是"拿精度换显存和带宽"。',
   bounds: [
     '用固定 8 个权重、对称 per-tensor 量化，便于手核',
-    'scale = max|w| ÷ qmax；q 截断到 ±qmax；反量化 ŵ = q·scale',
-    'int8 每权重 1 字节、int4 0.5 字节；未含 scale/zero-point 的分组存储开销',
-    '只量化权重（W8/W4），未展开激活量化与 W8A8 矩阵乘的细节',
+    '轴是位宽扫描 int8→int2：每步是同一组权重在该位数下的完整量化,不是计算中间步',
+    'scale = max|w| ÷ qmax；q 截断到 ±qmax；反量化 ŵ = q·scale；每权重占 bits/8 字节',
+    '只量化权重，未展开激活量化与 W8A8 矩阵乘的细节；未含 scale/zero-point 分组存储开销',
   ],
   tabs: [{ id: 'quant', label: '量化与误差' }],
   Stage: QuantStage,
-  tone: s => (s.phase === 'done' ? { key: 'good', label: `省 ${Math.round((1 - s.bytesQ / s.bytesFp32) * 100)}%` }
-    : s.phase === 'scale' ? { key: 'idle', label: '定标' }
-      : { key: 'idle', label: `w${s.cursor}` }),
+  tone: s => (s.bits >= 8 ? { key: 'good', label: `int${s.bits} 稳` }
+    : s.bits <= 2 ? { key: 'bad', label: `int${s.bits} 险` }
+    : { key: 'idle', label: `int${s.bits}` }),
   metric: s => 1 - s.bytesQ / s.bytesFp32,
-  tickLabel: s => (s.phase === 'done' ? '毕' : s.phase === 'scale' ? '标' : `w${s.cursor}`),
+  tickLabel: s => `int${s.bits}`,
   whyInRail: true,
   readouts: s => [
-    { label: '量化位数', value: `int${s.bits}（±${s.qmax}）` },
+    { label: '量化位数', value: `int${s.bits}（±${s.qmax}）`, tone: 'hot' },
     { label: 'scale', value: s.scale.toFixed(4) },
     { label: '显存', value: `${s.bytesFp32}B → ${s.bytesQ}B` },
-    { label: '最大误差', value: s.phase === 'scale' ? '—' : s.maxErr.toFixed(3), tone: undefined },
+    { label: '最大误差', value: s.maxErr.toFixed(3), tone: s.bits <= 2 ? 'bad' : undefined },
     { label: '省下', value: `${Math.round((1 - s.bytesQ / s.bytesFp32) * 100)}%`, tone: 'good' },
   ],
 }
