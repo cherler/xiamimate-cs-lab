@@ -36,17 +36,34 @@ function Curve({ trace, index }: { trace: TcpState[]; index: number }) {
   const upto = trace.slice(0, index + 1)
   const cwndPath = upto.map((s, i) => `${i === 0 ? 'M' : 'L'} ${x(i)} ${y(s.cwnd)}`).join(' ')
   const ssPath = upto.map((s, i) => `${i === 0 ? 'M' : 'L'} ${x(i)} ${y(s.ssthresh)}`).join(' ')
+  //  面积填充:cwnd 曲线下方灌一层渐变,让"窗口涨落"有体积感(不再是一根线)
+  const areaPath = `${cwndPath} L ${x(index)} ${H - PAD} L ${x(0)} ${H - PAD} Z`
+  const cur = trace[index]
 
   return (
     <div className="card">
       <h3>拥塞窗口变化 <span className="hint">实线 cwnd · 虚线 ssthresh</span></h3>
-      <div className="body curvewrap">
+      <div className="body">
+        {/* 拥塞控制的三个主角:大数条摆 cwnd / ssthresh / 当前阶段,一眼看出涨到哪、门限在哪、在哪个阶段 */}
+        <div className="scdim">
+          <div className="scdk"><span className="scdn hot">{cur.cwnd}</span><span className="scdl">cwnd · 当前窗口(MSS)</span></div>
+          <div className="scdk"><span className="scdn">{cur.ssthresh}</span><span className="scdl">ssthresh · 慢启动门限</span></div>
+          <div className="scdk"><span className="scdn" style={{ color: PHASE_COLOR[cur.phase], fontSize: '15px' }}>{PHASE_CN[cur.phase]}</span><span className="scdl">{cur.event === 'none' ? `阶段 · 第 ${cur.round} 轮` : cur.event === 'timeout' ? '超时!cwnd 重置' : '三次重复ACK'}</span></div>
+        </div>
+        <div className="curvewrap">
         <svg className="curve" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img"
              aria-label="拥塞窗口随轮次变化的锯齿曲线">
+          <defs>
+            <linearGradient id="tcpfill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stopColor="var(--now)" stopOpacity="0.26" />
+              <stop offset="1" stopColor="var(--now)" stopOpacity="0.02" />
+            </linearGradient>
+          </defs>
           {[0.25, 0.5, 0.75].map(f => (
             <line key={f} x1={PAD} x2={W - PAD} y1={y(maxC * f)} y2={y(maxC * f)}
                   stroke="var(--line)" strokeWidth={1} vectorEffect="non-scaling-stroke" />
           ))}
+          {upto.length > 1 && <path d={areaPath} fill="url(#tcpfill)" stroke="none" />}
           <path d={ssPath} fill="none" stroke="var(--dim)" strokeWidth={1.4} strokeDasharray="5 4" vectorEffect="non-scaling-stroke" />
           <path d={cwndPath} fill="none" stroke="var(--now)" strokeWidth={2}
                 strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
@@ -70,6 +87,7 @@ function Curve({ trace, index }: { trace: TcpState[]; index: number }) {
           <span><i style={{ background: 'var(--dim)' }} />ssthresh</span>
           <span><i style={{ background: 'var(--miss)' }} />丢包事件</span>
           <span className="max">纵轴上限 {maxC} MSS</span>
+        </div>
         </div>
       </div>
     </div>

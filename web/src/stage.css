@@ -540,9 +540,11 @@
 .arow{display:flex;gap:9px;align-items:center}
 .arow .k{font-size:var(--t-ui);color:var(--faint);font-family:var(--mono);min-width:44px}
 .acells{display:flex;gap:3px;flex-wrap:wrap}
-.acell{width:26px;height:26px;border-radius:3px;display:flex;align-items:center;
-  justify-content:center;font-family:var(--mono);font-size:var(--t-ui);color:var(--faint);
-  background:var(--sunk-2);border:1px solid var(--line)}
+.acell{width:26px;height:26px;border-radius:4px;display:flex;align-items:center;
+  justify-content:center;font-family:var(--mono);font-size:var(--t-ui);color:var(--dim);
+  background:linear-gradient(180deg,var(--panel),var(--sunk-2));border:1px solid var(--line);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.32);
+  transition:background var(--anim),border-color var(--anim),color var(--anim),box-shadow var(--anim)}
 .acell.inwin{border-color:var(--now)}
 .acell.acked{background:#45B39A1c;color:var(--hit);border-color:#45B39A44}
 .acell.flying{background:#F0B42920;color:var(--now)}
@@ -888,10 +890,16 @@
   color:var(--faint);margin-bottom:3px}
 .hsside b{font-family:var(--mono);font-size:14px}
 .hsside.c b{color:var(--f-tag)} .hsside.s b{color:var(--f-idx)}
-.hschain{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-.hsnode{padding:6px 11px;border-radius:4px;border:1px solid var(--line);background:var(--sunk-2);
-  font-family:var(--mono);font-size:var(--t-ui);color:var(--faint)}
-.hsnode.on{border-color:var(--now);background:#F0B42920;color:var(--now);font-weight:700}
+.hschain{display:flex;gap:13px;flex-wrap:wrap;align-items:center}
+.hsnode{position:relative;padding:6px 12px;border-radius:6px;border:1px solid var(--line);
+  background:linear-gradient(180deg,var(--panel),var(--sunk-2));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.35);
+  font-family:var(--mono);font-size:var(--t-ui);color:var(--dim);
+  transition:border-color var(--anim),background var(--anim),color var(--anim),box-shadow var(--anim),transform var(--anim)}
+.hsnode:not(:last-child)::after{content:'→';position:absolute;right:-12px;top:50%;transform:translateY(-50%);
+  color:var(--faint);font-size:11px;pointer-events:none}
+.hsnode.on{border-color:var(--now);background:linear-gradient(180deg,#F0B42928,#F0B42910);color:var(--now);font-weight:700;
+  box-shadow:0 0 0 1px var(--now),0 3px 10px #F0B42933;transform:translateY(-1px)}
 
 /* ═══ 共享树视图 ═══ */
 .tv{margin-bottom:12px}

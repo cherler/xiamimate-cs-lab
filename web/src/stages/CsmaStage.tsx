@@ -17,6 +17,12 @@ function Slots({ trace, index, state, stations }: {
     <div className="card">
       <h3>争用期时隙图 <span className="hint">行 = 站 · 列 = 争用期（2τ）</span></h3>
       <div className="body scroll">
+        {/* CSMA/CD 题眼="这一期谁在发、撞没撞":大数条摆 争用期 / 本期结果 / 已成功站数 */}
+        <div className="scdim">
+          <div className="scdk"><span className="scdn hot">{state.slot}</span><span className="scdl">当前争用期(2τ)</span></div>
+          <div className="scdk"><span className="scdn" style={{ color: state.collision ? 'var(--miss)' : state.sending.length ? 'var(--hit)' : 'var(--dim)' }}>{state.collision ? '冲突 ✕' : state.sending.length ? '成功 ✓' : '空闲'}</span><span className="scdl">{state.sending.length ? state.sending.join('/') + ' 在发' : '无人发送'}</span></div>
+          <div className="scdk"><span className="scdn good">{state.done.length}</span><span className="scdl">已成功站数 {state.done.join('、') || ''}</span></div>
+        </div>
         <table className="ptab csma">
           <thead>
             <tr><th>站</th>{slots.map(s => (
@@ -76,6 +82,12 @@ function Backoff({ trace, index, state, stations }: {
     <div className="card">
       <h3>二进制指数退避 <span className="hint">第 n 次冲突从 {'{0 … 2^min(n,10)−1}'} 里取 r</span></h3>
       <div className="body scroll">
+        {/* 退避是"越撞越让":大数条摆 已成功 / 已放弃 / 总冲突次数 */}
+        <div className="scdim">
+          <div className="scdk"><span className="scdn good">{state.done.length}</span><span className="scdl">已成功 {state.done.join('、') || '暂无'}</span></div>
+          <div className="scdk"><span className={`scdn ${state.aborted.length ? 'bad' : ''}`}>{state.aborted.length}</span><span className="scdl">已放弃(连撞16次)</span></div>
+          <div className="scdk"><span className="scdn hot">{(Object.values(state.attempts) as number[]).reduce((a, b) => a + b, 0)}</span><span className="scdl">总冲突次数</span></div>
+        </div>
         <table className="ptab">
           <thead><tr><th>争用期</th>{stations.map(s => <th key={s}>{s}</th>)}</tr></thead>
           <tbody>

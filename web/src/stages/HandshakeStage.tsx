@@ -20,6 +20,12 @@ function Timeline({ trace, index, state }: { trace: HsState[]; index: number; st
     <div className="card">
       <h3>时序图 <span className="hint">左客户端 · 右服务器 · 状态标在各自一侧</span></h3>
       <div className="body hswrap">
+        {/* 考题几乎都问"此刻两端各是什么状态":大数条把两端状态 + 本步报文摆最前 */}
+        <div className="scdim">
+          <div className="scdk"><span className="scdn hot" style={{ fontSize: '14px' }}>{state.client}</span><span className="scdl">客户端(主动方)</span></div>
+          <div className="scdk"><span className="scdn good" style={{ fontSize: '14px' }}>{state.server}</span><span className="scdl">服务器(被动方)</span></div>
+          <div className="scdk"><span className="scdn" style={{ fontSize: '14px', color: state.seg?.lost ? 'var(--miss)' : 'var(--f-tag)' }}>{state.seg ? state.seg.flags : '—'}</span><span className="scdl">{state.seg ? (state.seg.lost ? '本步报文 · 丢失✕' : `本步报文 seq=${state.seg.seq}`) : '尚未发送'}</span></div>
+        </div>
         <div className="hslanes"><span>客户端</span><span>服务器</span></div>
         <div className="hsplot" style={{ height: `${Math.max(200, rows * 54)}px` }}>
           <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
@@ -58,10 +64,6 @@ function Timeline({ trace, index, state }: { trace: HsState[]; index: number; st
               </div>
             )
           })}
-        </div>
-        <div className="hsnow">
-          <div className="hsside c"><span className="k">客户端</span><b>{state.client}</b></div>
-          <div className="hsside s"><span className="k">服务器</span><b>{state.server}</b></div>
         </div>
       </div>
     </div>

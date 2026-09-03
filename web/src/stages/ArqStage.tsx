@@ -6,7 +6,7 @@ export function ArqStage({ doc, trace, index, state, tab }: StageProps<ArqState>
   const total = doc.params.totalFrames as number
   const W = doc.params.protocol === 'SW' ? 1 : (doc.params.windowSize as number)
   if (tab === 'window') return <Window state={state} total={total} W={W} proto={String(doc.params.protocol)} />
-  return <Spacetime trace={trace} index={index} delay={doc.params.delay as number} />
+  return <Spacetime trace={trace} index={index} delay={doc.params.delay as number} total={total} proto={String(doc.params.protocol)} />
 }
 
 /**
@@ -14,9 +14,11 @@ export function ArqStage({ doc, trace, index, state, tab }: StageProps<ArqState>
  * 左边一条发送方时间线，右边一条接收方时间线，中间是斜的报文箭头。
  * 丢失的报文画成半路断掉的虚线。
  */
-function Spacetime({ trace, index, delay }: { trace: ArqState[]; index: number; delay: number }) {
+function Spacetime({ trace, index, delay, total, proto }: { trace: ArqState[]; index: number; delay: number; total: number; proto: string }) {
   const rows = trace.length
   const yOf = (t: number) => (t / Math.max(1, rows)) * 100
+  const cur = trace[index]
+  const retx = Math.max(0, cur.transmissions - total)
 
   /** 从轨迹里还原每一次传输：发出时隙 → 到达（或丢失）时隙 */
   type Msg = {
@@ -55,6 +57,12 @@ function Spacetime({ trace, index, delay }: { trace: ArqState[]; index: number; 
     <div className="card">
       <h3>时空图 <span className="hint">左发送方 · 右接收方 · 斜线是报文，红色断头表示丢失</span></h3>
       <div className="body awrap">
+        {/* ARQ 的题眼是"丢一帧要重传多少":大数条摆 累计传输 / 其中重传 / 信道在途,一眼看出 GBN 的浪费 */}
+        <div className="scdim">
+          <div className="scdk"><span className="scdn hot">{cur.transmissions}</span><span className="scdl">{proto} · 累计传输次数</span></div>
+          <div className="scdk"><span className={`scdn ${retx > 0 ? 'bad' : 'good'}`}>{retx}</span><span className="scdl">其中重传(理想 0)</span></div>
+          <div className="scdk"><span className="scdn">{cur.inFlight.length}</span><span className="scdl">信道在途报文</span></div>
+        </div>
         <div className="alanes"><span>发送方</span><span>接收方</span></div>
         <div className="aplot" style={{ height: `${Math.max(200, rows * 26)}px` }}>
           <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
@@ -104,6 +112,12 @@ function Window({ state, total, W, proto }: {
     <div className="card">
       <h3>窗口状态 <span className="hint">{proto} · 发送窗口 {W}</span></h3>
       <div className="body">
+        {/* 窗口三要素:大数条摆 窗口左沿 base / 接收方期待 / 重传次数 */}
+        <div className="scdim">
+          <div className="scdk"><span className="scdn hot">{state.base}</span><span className="scdl">发送窗口左沿 base(上界 {state.base + W - 1})</span></div>
+          <div className="scdk"><span className="scdn good">{state.expected}</span><span className="scdl">接收方期待帧</span></div>
+          <div className="scdk"><span className={`scdn ${Math.max(0, state.transmissions - total) > 0 ? 'bad' : ''}`}>{Math.max(0, state.transmissions - total)}</span><span className="scdl">重传次数 · 累计传 {state.transmissions}</span></div>
+        </div>
         <div className="awin">
           <div className="arow">
             <span className="k">发送方</span>
