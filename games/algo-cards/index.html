@@ -466,10 +466,18 @@ const MOBS=['shuffled','tape','dupes','stream','graph']
 const ELITES=['worst','collide','regret','explode2','atomic']
 const SHAPE=['MOB','MOB','ELITE','MOB','MOB','ELITE','MOB','BOSS']
 const PATH=SHAPE                                   // 关卡数 = SHAPE.length
-function newRun(seed,kit){const R=rng(seed)
- // films:整局八关的胶片,用来拼长图
- return{R,seed,deck:[...starterOf(kit),...KITS[kit]],kit,budget:T.BUDGET,cap:T.BUDGET,node:0,over:null,offer:null,
+function newRun(seed,kit,kit2){const R=rng(seed)
+ // films:整局八关的胶片,用来拼长图。kit2 给了就是双流派:两条流派的牌拼进同一副(起始牌共用一份)。
+ const dual=kit2&&kit2!==kit
+ const deck=[...starterOf(kit),...KITS[kit],...(dual?KITS[kit2]:[])]
+ return{R,seed,deck,kit,kit2:dual?kit2:null,budget:T.BUDGET,cap:T.BUDGET,node:0,over:null,offer:null,
    used:[],opts:null,log:[],films:[],refactors:0}}
+/* 双流派组合名:4 条核心流派两两相配,每一对都是一个真实算法(见 docs/v2-proposal 2.6)。
+   键按字母序拼(和 comboName 里 sort() 一致);没收录的对给个「A + B」的朴素名。 */
+const COMBO={'dc+sort':'归并排序','memo+sort':'索引','dc+memo':'记忆化递归',
+ 'greedy+memo':'启发式剪枝搜索','greedy+sort':'区间调度','dc+greedy':'随机化快排',
+ 'heap+sort':'堆排序','sort+twop':'有序双指针','memo+twop':'前缀和缓存','greedy+heap':'贪心 + 优先队列'}
+function comboName(a,b){ if(!b||a===b)return TAGNAME[a]; return COMBO[[a,b].sort().join('+')]||`${TAGNAME[a]} + ${TAGNAME[b]}` }
 /* ═══ 5.1 重构:删一张牌(照抄 StS 的除牌:次数不封死,但越删越贵)═══
    起始牌 63%、「遍历」一张统治、「观察」0% 出场却没法删 —— 这是重复感最直接的根。
    代价走本作自己的资源=预算上限(时间):删第 k 张永久 −(REF_BASE + k×REF_STEP) 上限。
@@ -661,11 +669,12 @@ const fit=()=>{W=innerWidth;H=innerHeight;cv.width=W*DPR;cv.height=H*DPR;ctx.set
 addEventListener('resize',fit);fit()
 let RUN=null,S=null,offer=null,intel=null,parts=[],KIT='sort',anim=null,hist=[],poster=null
 let remove=false,refBox=null   // remove=正在看「重构删牌」子屏;refBox=奖励屏上那颗重构按钮的命中框
+let menu=false,menuSel=[],KIT2=null   // menu=开局选流派的标题屏;menuSel=已选的 1~2 条流派;KIT2=第二流派(单流派时 null)
 const CO={bg0:'#050a12',bg1:'#0a141f',line:'rgba(90,150,190,.22)',panel:'rgba(12,24,38,.72)',
  ink:'#e6eef7',dim:'#8ba3bb',faint:'#4d6076',cyan:'#5fd0e8',amber:'#f0a94a',red:'#ff6b5e',green:'#7fd98f',
  tag:{base:'#a8c0d6',sort:'#f0a94a',dc:'#b39ddb',memo:'#7fd98f',greedy:'#ff8f6b',tool:'#5fd0e8',deck:'#9ecbff',heap:'#ffb3d9',twop:'#8ee6c8',def:'#c8b4ff',graph:'#7fd1ff'}}
 const TAGNAME={base:'起始',sort:'排序流',dc:'拆解流',memo:'复利流',greedy:'激进流',tool:'工具',deck:'牌库',heap:'堆流',twop:'区间流',def:'防御',graph:'图算法'}
-function startRun(k){KIT=k;RUN=newRun(Date.now()&0xffff,k);enter()}
+function startRun(k,k2){KIT=k;KIT2=(k2&&k2!==k)?k2:null;menu=false;RUN=newRun(Date.now()&0xffff,k,KIT2);enter()}
 function enter(){RUN.opts=rollNode(RUN,RUN.node)
  intel=RUN.opts.map(o=>Object.assign(intelOf(RUN.deck,o.foe,o.flaw,RUN.node),o))
  offer=null;hist=[100];flo=null
@@ -814,7 +823,8 @@ Object.assign(window,{__POL2:S=>POL[KIT](S),__SETG:(c,d)=>{GCLUST=c;GDENS=d},__S
   return out},__anim:()=>!!anim,__auto:autoTurn,__S:()=>S,__RUN:()=>RUN,__offer:()=>offer,__intel2:()=>intel,
  __play:i=>uiPlay(i),__end:()=>{if(!anim){endTurn(S);hist.push(hpPct(S));if(S.over)afterFight()}},
  __draw:()=>draw(),__FB:v=>{FLAWBONUS=v},__HITBOX:()=>HITBOX,__CARD:id=>C[id],__take:takeCard,__startRun:startRun,__skipIntel:()=>{if(intel)pickNode(0)},__pickNode:k=>pickNode(k),__SHAPE:SHAPE,
- __doRemove:doRemove,__canRefactor:()=>canRefactor(RUN),__refactorCost:()=>refactorCost(RUN),__refactors:()=>RUN.refactors,__RUN:()=>RUN,__remove:v=>{remove=v},__setOffer:()=>{offer=offer3(RUN)}})
+ __doRemove:doRemove,__canRefactor:()=>canRefactor(RUN),__refactorCost:()=>refactorCost(RUN),__refactors:()=>RUN.refactors,__RUN:()=>RUN,__remove:v=>{remove=v},__setOffer:()=>{offer=offer3(RUN)},
+ __menu:v=>{menu=v;menuSel=[]},__menuSel:()=>menuSel,__comboName:comboName,__COMBO:COMBO,__KIT2:()=>KIT2,__newRun2:(seed,k,k2)=>newRun(seed,k,k2)})
 
 /* ── 图上的操作:玩家加边,敌人断边 ── */
 function gAdj(G){const a={};for(const e of G.edges)if(e.alive){
@@ -1200,6 +1210,7 @@ function draw(){
   ctx.textAlign='center';ctx.font='600 12px system-ui';ctx.fillStyle=CO.dim
   ctx.fillText('P 收起 · S 保存 PNG',W/2,H-8);ctx.textAlign='left'
   return req()}
+ if(menu)      {menuScreen();return req()}   // 开局选流派:RUN 可能还没建,必须排在 RUN.over 之前
  if(RUN.over)  {overScreen();return req()}
  if(intel)     {intelScreen();return req()}
  if(remove)    {removeScreen();return req()}
@@ -1827,6 +1838,40 @@ function intelScreen(){
  ctx.fillText(`牌组 ${RUN.deck.length} 张 · 预算 ${RUN.budget} · 深度 +${Math.round(DEPTHMUL*RUN.node*100)}% 规模`,cx,y+ch+34)
  ctx.textAlign='left'}
 
+/* 开局标题屏:选 1~2 条流派。选 2 条 = 双流派,组合名是个真实算法(见 comboName)。 */
+const MENUKITS=['sort','dc','memo','greedy','heap','twop']
+const KITBLURB={sort:'排好序,再二分',dc:'切开 · 各自解 · 合并',memo:'空间换时间,查表',greedy:'当下最优,取近似',heap:'每回合自动弹最小',twop:'一次处理一段区间'}
+let menuBox=[]
+function menuScreen(){
+ const cx=W/2
+ ctx.textAlign='center'
+ ctx.font='800 46px system-ui';ctx.fillStyle=CO.ink;ctx.fillText('算法卡牌',cx,H*.15)
+ ctx.font='400 15px system-ui';ctx.fillStyle=CO.dim
+ ctx.fillText('选两条流派开局 —— 每一对搭配都是一个真实算法',cx,H*.15+30)
+ ctx.textAlign='left'
+ const n=MENUKITS.length,cw=214,ch=118,gap=18,perRow=Math.min(n,Math.max(3,Math.floor((W-100)/(cw+gap))))
+ const rows=Math.ceil(n/perRow),gw=perRow*(cw+gap)-gap,x0=cx-gw/2,y0=H*.30
+ menuBox=[]
+ MENUKITS.forEach((k,i)=>{const x=x0+(i%perRow)*(cw+gap),y=y0+Math.floor(i/perRow)*(ch+gap)
+  const sel=menuSel.includes(k),col=CO.tag[k]
+  ctx.fillStyle=sel?'rgba(20,40,60,.95)':'rgba(12,22,34,.9)';ctx.fillRect(x,y,cw,ch)
+  ctx.strokeStyle=sel?col:'rgba(70,90,110,.5)';ctx.lineWidth=sel?2.6:1.2;ctx.strokeRect(x+.8,y+.8,cw-1.6,ch-1.6)
+  hex(x+26,y+30,14,col)
+  ctx.fillStyle=CO.ink;ctx.font='700 19px system-ui';ctx.fillText(TAGNAME[k],x+48,y+36)
+  ctx.fillStyle=CO.dim;ctx.font='400 12.5px system-ui';wrap(KITBLURB[k],x+16,y+64,cw-30,17)
+  ctx.fillStyle=col;ctx.font='600 11px system-ui';ctx.fillText(KITS[k].length+' 张流派牌',x+16,y+ch-14)
+  if(sel){ctx.fillStyle=col;ctx.font='700 14px system-ui';ctx.textAlign='right';ctx.fillText('✓ '+(menuSel.indexOf(k)+1),x+cw-12,y+30);ctx.textAlign='left'}
+  menuBox[i]=[x,y,cw,ch]})
+ const by=y0+rows*(ch+gap)+18
+ ctx.textAlign='center'
+ if(menuSel.length){const nm=comboName(menuSel[0],menuSel[1])
+  ctx.fillStyle=menuSel.length===2?CO.amber:CO.dim;ctx.font='700 24px system-ui'
+  ctx.fillText(menuSel.length===2?`= ${nm}`:`${nm} —— 再选一条组成搭配`,cx,by+12)}
+ else{ctx.fillStyle=CO.faint;ctx.font='400 14px system-ui';ctx.fillText('点两条流派',cx,by+12)}
+ ctx.textAlign='left'
+ if(menuSel.length>=1)btn(cx-90,by+34,180,44,menuSel.length===2?'开 始':'单流派开始')
+ else btn.last=null}
+
 function offerScreen(){
  const cx=W/2
  ctx.textAlign='center';ctx.font='700 30px system-ui';ctx.fillStyle=CO.ink
@@ -1919,7 +1964,15 @@ const req=()=>requestAnimationFrame(()=>{
  }})
 const inBox=(mx,my,b)=>b&&mx>b[0]&&mx<b[0]+b[2]&&my>b[1]&&my<b[1]+b[3]
 cv.addEventListener('click',e=>{const mx=e.clientX,my=e.clientY
- if(RUN.over){startRun(KIT);return}
+ //  选流派标题屏:点流派切换选中(最多 2 条,满了替换最早那条);点开始按钮开局。RUN 可能为空,必须最先判。
+ if(menu){
+  for(let i=0;i<menuBox.length;i++) if(inBox(mx,my,menuBox[i])){
+   const k=MENUKITS[i],idx=menuSel.indexOf(k)
+   if(idx>=0)menuSel.splice(idx,1); else if(menuSel.length<2)menuSel.push(k); else{menuSel.shift();menuSel.push(k)}
+   return}
+  if(btn.last&&inBox(mx,my,btn.last)&&menuSel.length>=1){startRun(menuSel[0],menuSel[1]);return}
+  return}
+ if(RUN.over){menu=true;menuSel=[];return}   // 通关/失败后回到选流派屏,可换一套搭配
  if(intel){for(let k=0;k<NODEBOX.length;k++)if(inBox(mx,my,NODEBOX[k])){pickNode(k);return}
   return}
  //  重构子屏:返回键(btn.last)或点某张牌删掉。必须排在下面通用命中之前。
@@ -1949,5 +2002,5 @@ addEventListener('keydown',e=>{
    if(intel){pickNode(intel.length>1&&intel[1].score>intel[0].score?1:0);return}
    if(offer){takeCard(offer.find(c=>KITS[KIT].includes(c))??offer[0]);return}
    autoTurn()},420)}})
-startRun('sort');draw()
+menu=true;draw()   // 开局先进选流派标题屏(不再默认直接开 sort)
 </script></body></html>

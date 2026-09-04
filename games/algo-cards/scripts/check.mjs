@@ -164,6 +164,19 @@ check('G6 重构代价升级', `${ref.cost1},${ref.cost2},${ref.cost3}`, v => v 
 check('G6 首删 −3 上限', ref.cDrop, v => v === 3, '= 3')
 check('G6 重构自限不删空', ref.canAfter === false && ref.deckMin >= 6 ? 'OK' : `FAIL(${ref.canAfter},${ref.deckMin})`, v => v === 'OK', 'canRef→false 且 ≥6 张')
 
+/* ── G7 双流派:选两条流派 = 两校牌拼进同一副;6 个核心搭配各是一个真实算法名 ── */
+const dual = await page.evaluate(() => ({
+  dualDeck: __newRun2(1, 'sort', 'dc').deck.length,
+  single: __newRun2(1, 'sort').deck.length,
+  kit2: __newRun2(1, 'sort', 'dc').kit2,
+  kit2single: __newRun2(1, 'sort').kit2,
+  combos: [__comboName('sort','dc'), __comboName('sort','memo'), __comboName('dc','memo'),
+           __comboName('memo','greedy'), __comboName('sort','greedy'), __comboName('dc','greedy')].join('/')
+}))
+check('G7 双流派牌组 = 单流派 + 6 张', dual.dualDeck - dual.single, v => v === 6, '= 6')
+check('G7 双流派记住第二流派', `${dual.kit2},${dual.kit2single}`, v => v === 'dc,null', 'dc / 单流派 null')
+check('G7 六个核心搭配算法名', dual.combos, v => v === '归并排序/索引/记忆化递归/启发式剪枝搜索/区间调度/随机化快排', '六对各是真算法')
+
 /* ── 控制台 ── */
 check('全程无控制台报错', consoleErrors.length ? consoleErrors[0].slice(0, 60) : 0, v => v === 0, '0 条')
 
