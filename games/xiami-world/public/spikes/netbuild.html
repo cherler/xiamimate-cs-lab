@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>网络搭建 TD · 灰盒(深度)</title>
+<style>
+  html,body{margin:0;height:100%;background:#0e1524;overflow:hidden;font-family:sans-serif;color:#e8e2d6}
+  #c{display:block;width:100vw;height:100vh}
+  #q{position:fixed;top:12px;left:16px;right:230px;z-index:5;font-size:13px;color:#8a93a6}#q b{color:#ffcb7a}
+  #hud{position:fixed;top:38px;left:16px;z-index:5;font-size:15px;color:#cfe0f0}
+  #prev{position:fixed;top:62px;left:16px;z-index:5;font-size:14px;color:#ffb0a5}
+  #res{position:fixed;top:12px;right:16px;z-index:5;font-size:15px;font-weight:bold;text-align:right}
+  #res .g{color:#ffcb7a}#res .h{color:#ff8a8a}#res .w{color:#9fd0ff}
+  #send{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:5;background:#c0603a;color:#150d07;border:none;border-radius:10px;padding:12px 30px;font-size:16px;font-weight:bold;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.4)}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="q">灰盒·深度:<b>读下一波预告 → 备战(建/拼/加固/修)→ 发波。声誉扣光就输。张力=有限金币下,护哪座、赌哪座。</b></div>
+<div id="hud"></div><div id="prev"></div><div id="res"></div>
+<button id="send">▶ 发一波请求</button>
+<script>
+const cv=document.getElementById('c'),ctx=cv.getContext('2d')
+let W,H,DPR=Math.min(2,devicePixelRatio||1)
+function resize(){W=cv.clientWidth;H=cv.clientHeight;cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0)}
+addEventListener('resize',resize);resize()
+
+const STATIONS=[
+ {id:'DNS', c:'#e0a94b', kind:'set', parts:['域名','服务器','缓存'], need:'把域名解析成IP', cost:20},
+ {id:'路由',c:'#6b8cff', kind:'set', parts:['路由表','下一跳'],     need:'按IP找下一跳',   cost:20},
+ {id:'TCP', c:'#4fb6a3', kind:'seq', parts:['SYN','SYN-ACK','ACK'], need:'三次握手(讲顺序)',cost:25},
+ {id:'TLS', c:'#a879d6', kind:'set', parts:['证书','密钥'],         need:'验身份+加密',     cost:25},
+ {id:'HTTP',c:'#9be29b', kind:'set', parts:['请求','响应'],         need:'取回网页',        cost:20},
+]
+const N=STATIONS.length
+const PX=i=>200+(W-360)*i/(N-1), PY=()=>H*0.36
+const built=Array(N).fill(false), broken=Array(N).fill(false), hard=Array(N).fill(false)
+let gold=120, wave=1, rep=3, HARDEN=12, REPAIR=15, REWARD=45, preview={targets:[],desc:''}
+let view='path', asm=null, pkt=null, over=false, msg=''
+const hud=document.getElementById('hud'), res=document.getElementById('res'), prevEl=document.getElementById('prev')
+let _seed=7; function rnd(){_seed=(_seed*1103515245+12345)&0x7fffffff;return _seed/0x7fffffff}
+
+function genPreview(){ // 下一波冲击哪几站(波越后越多)
+ if(wave===1){preview={targets:[],desc:'第1波:普通请求——先把五站建齐、发波。'};return}
+ const bi=[];for(let i=0;i<N;i++)if(built[i])bi.push(i)
+ const n=Math.min(1+Math.floor((wave-1)/2), Math.max(1,bi.length))
+ const t=[];const pool=bi.slice();while(t.length<n&&pool.length){t.push(pool.splice(Math.floor(rnd()*pool.length),1)[0])}
+ preview={targets:t, desc:`⚠ 第${wave}波冲击:`+t.map(i=>`「${STATIONS[i].id}」`).join('')+` —— 加固🛡(-${HARDEN})挡住,或赌它不坏`}
+}
+function afford(n){return gold>=n}
+function distractors(i){const p=[];STATIONS.forEach((s,j)=>{if(j!==i)p.push(s.parts[0])});return p.slice(0,2)}
+function openAsm(i){if(built[i]||over)return;if(!afford(STATIONS[i].cost)){msg=`金不够(建${STATIONS[i].id}要${STATIONS[i].cost})`;refreshHud();return}
+ view=i;asm={sockets:Array(STATIONS[i].parts.length).fill(null),sel:null,tray:[...STATIONS[i].parts,...distractors(i)]};refreshHud()}
+function tryPlace(part){const S=STATIONS[view],k=asm.sockets.findIndex(x=>x===null);if(k<0)return
+ const okSet=S.parts.includes(part)&&!asm.sockets.includes(part),okSeq=part===S.parts[k]
+ if(S.kind==='seq'?okSeq:okSet){asm.sockets[k]=part;asm.sel=null
+   if(asm.sockets.every(Boolean)){built[view]=true;gold-=S.cost;msg=`建成${S.id}(-${S.cost})`;view='path';asm=null;if(wave>1)genPreview();refreshHud()}}
+ else{msg=S.kind==='seq'?`讲顺序:第${k+1}个该是${S.parts[k]}`:(S.parts.includes(part)?'已放过':`${part}不是${S.id}的零件`)}}
+function harden(i){if(!built[i]||broken[i]||hard[i]||over)return;if(!afford(HARDEN)){msg=`加固要${HARDEN}金`;refreshHud();return}gold-=HARDEN;hard[i]=true;msg=`加固${STATIONS[i].id}🛡(-${HARDEN})`;refreshHud()}
+function repair(i){if(!afford(REPAIR)){msg=`修复要${REPAIR}金`;refreshHud();return}gold-=REPAIR;broken[i]=false;msg=`修好${STATIONS[i].id}(-${REPAIR})`;refreshHud()}
+function refreshHud(){res.innerHTML=`<span class="g">🪙${gold}</span> · <span class="h">${'❤'.repeat(Math.max(0,rep))||'—'}</span> · <span class="w">第${wave}波</span>`
+ prevEl.textContent = view==='path'&&!pkt ? preview.desc : ''
+ if(pkt){hud.textContent=msg;return}
+ if(over){hud.textContent='💀 声誉扣光,游戏结束。刷新重来。';prevEl.textContent='';return}
+ hud.textContent = view==='path' ? (msg||'空站=点击拼建 · 已建=点击加固🛡 · 红=故障点修 · 备好发波') : `拼装「${STATIONS[view].id}」——点零件、再点空槽`}
+genPreview();refreshHud()
+
+document.getElementById('send').onclick=()=>{ if(pkt||view!=='path'||over)return
+ // 结算冲击:加固的挡住(消耗护盾),没加固的被打坏
+ for(const t of preview.targets){ if(hard[t]){hard[t]=false} else {broken[t]=true} }
+ pkt={x:100,stage:0,tint:'#cfe0f0',phase:'move',t:0,repd:false}; msg=`第${wave}波:包出发……`; refreshHud() }
+
+cv.addEventListener('pointerdown',e=>{const x=e.clientX,y=e.clientY
+ if(view==='path'){if(pkt||over)return;for(let i=0;i<N;i++){if(Math.abs(x-PX(i))<46&&Math.abs(y-PY())<44){
+   if(!built[i])openAsm(i); else if(broken[i])repair(i); else harden(i); return}}}
+ else{const S=STATIONS[view],px=W/2,py=H*0.5
+  if(x>W-140&&x<W-30&&y>60&&y<95){view='path';asm=null;refreshHud();return}
+  const ns=S.parts.length,sw=110,gap=20,tot=ns*sw+(ns-1)*gap,x0=px-tot/2
+  for(let k=0;k<ns;k++){const bx=x0+k*(sw+gap);if(x>bx&&x<bx+sw&&y>py-28&&y<py+28){if(asm.sel)tryPlace(asm.sel);refreshHud();return}}
+  const tw=130,tg=14,tt=asm.tray.length*tw+(asm.tray.length-1)*tg,tx0=px-tt/2,ty=py+120
+  for(let k=0;k<asm.tray.length;k++){const bx=tx0+k*(tw+tg);if(x>bx&&x<bx+tw&&y>ty&&y<ty+44){asm.sel=asm.tray[k];refreshHud();return}}}})
+
+function box(x,y,w,h,fill,stroke,dash){ctx.lineWidth=2.5;ctx.strokeStyle=stroke;if(dash)ctx.setLineDash([6,6]);ctx.beginPath();ctx.rect(x,y,w,h);if(fill){ctx.fillStyle=fill;ctx.fill()}ctx.stroke();ctx.setLineDash([])}
+let last=0,shake=0
+function frame(ts){const dt=Math.min(.05,(ts-last)/1000||0);last=ts
+ ctx.clearRect(0,0,W,H);ctx.fillStyle='#0e1524';ctx.fillRect(0,0,W,H)
+ shake=Math.max(0,shake-dt*40);const sx=(Math.random()-.5)*shake
+ ctx.strokeStyle='#2a3446';ctx.lineWidth=6;ctx.beginPath();ctx.moveTo(100,PY());ctx.lineTo(W-100,PY());ctx.stroke()
+ for(const [x,label] of [[100,'客户端'],[W-100,'服务器']]){ctx.fillStyle='#3a4660';ctx.beginPath();ctx.arc(x,PY(),20,0,7);ctx.fill();ctx.fillStyle='#cfe0f0';ctx.font='13px sans-serif';ctx.textAlign='center';ctx.fillText(label,x,PY()+40)}
+ const threat=new Set(preview.targets)
+ for(let i=0;i<N;i++){const x=PX(i)+(view==='path'?sx:0),y=PY(),S=STATIONS[i]
+  if(built[i]&&broken[i]){box(x-42,y-26,84,52,'#7a2b2b','#ff6b5b',false);ctx.fillStyle='#ffd9d3';ctx.font='bold 14px sans-serif';ctx.textAlign='center';ctx.fillText(S.id,x,y-2);ctx.fillStyle='#ffb0a5';ctx.font='11px sans-serif';ctx.fillText('故障·点修('+REPAIR+')',x,y+16)}
+  else if(built[i]){box(x-42,y-26,84,52,S.c,hard[i]?'#bfe6ff':'#fff3',false);ctx.fillStyle='#0e1524';ctx.font='bold 15px sans-serif';ctx.textAlign='center';ctx.fillText(S.id,x,y+5)
+    if(hard[i]){ctx.fillStyle='#bfe6ff';ctx.font='15px sans-serif';ctx.fillText('🛡',x+30,y-14)}}
+  else{box(x-42,y-26,84,52,null,'#4a5566',true);ctx.fillStyle='#7f8ba0';ctx.font='12px sans-serif';ctx.textAlign='center';ctx.fillText(S.id,x,y-2);ctx.fillStyle='#5f6b80';ctx.font='10px sans-serif';ctx.fillText('建('+S.cost+')',x,y+16)}
+  if(view==='path'&&!pkt&&threat.has(i)){ctx.strokeStyle='#ff8a5b';ctx.lineWidth=2;ctx.setLineDash([4,4]);ctx.strokeRect(x-48,y-32,96,64);ctx.setLineDash([]);ctx.fillStyle='#ff8a5b';ctx.font='11px sans-serif';ctx.fillText('⚠ 将被冲击',x,y-38)}
+ }
+ if(pkt&&view==='path'){pkt.t+=dt
+  if(pkt.phase==='move'){const tx=pkt.stage<N?PX(pkt.stage):W-100;pkt.x=Math.min(tx,pkt.x+560*dt)
+    if(pkt.x>=tx-0.5){ if(pkt.stage>=N){pkt.phase='win';gold+=REWARD;wave++;msg=`✓ 第${wave-1}波通了 +${REWARD}金!`;genPreview()}
+      else if(built[pkt.stage]&&!broken[pkt.stage]){pkt.tint=STATIONS[pkt.stage].c;pkt.stage++}
+      else{pkt.phase='fail';shake=14;if(!pkt.repd){rep--;pkt.repd=true;if(rep<=0)over=true}
+        msg=`✗ 卡在「${STATIONS[pkt.stage].id}」:`+(broken[pkt.stage]?'被冲击打坏了(该加固的)':'还没建')+` —— 声誉-1`}}}
+  ctx.save();ctx.shadowColor=pkt.tint;ctx.shadowBlur=20;ctx.fillStyle=pkt.tint;ctx.beginPath();ctx.arc(pkt.x+sx,PY(),12,0,7);ctx.fill();ctx.restore()
+  if(pkt.phase==='fail'){ctx.fillStyle='#ff6b5b';ctx.font='bold 22px sans-serif';ctx.textAlign='center';ctx.fillText('✗',pkt.x+sx,PY()-24);if(pkt.t>1.5){pkt=null;refreshHud()}}
+  if(pkt&&pkt.phase==='win'){ctx.fillStyle='#9be29b';ctx.font='bold 24px sans-serif';ctx.textAlign='center';ctx.save();ctx.shadowColor='#9be29b';ctx.shadowBlur=18;ctx.fillText('✓ 通了 +'+REWARD,W/2,PY()-60);ctx.restore();if(pkt.t>2){pkt=null;refreshHud()}}
+ }
+ if(view!=='path'){const S=STATIONS[view],px=W/2,py=H*0.5
+  ctx.fillStyle='rgba(8,12,20,0.86)';ctx.fillRect(0,H*0.24,W,H*0.62)
+  ctx.fillStyle=S.c;ctx.font='bold 22px sans-serif';ctx.textAlign='center';ctx.fillText('拼装 '+S.id+'  (-'+S.cost+'金)',px,H*0.32)
+  ctx.fillStyle='#9fb0c2';ctx.font='14px sans-serif';ctx.fillText(S.need+(S.kind==='seq'?'(按顺序放)':'(顺序随意)'),px,H*0.32+26)
+  box(W-140,60,110,35,'#2a3242','#4a5566',false);ctx.fillStyle='#cfe0f0';ctx.font='14px sans-serif';ctx.textAlign='center';ctx.fillText('← 返回路上',W-85,83)
+  const ns=S.parts.length,sw=110,gap=20,tot=ns*sw+(ns-1)*gap,x0=px-tot/2
+  for(let k=0;k<ns;k++){const bx=x0+k*(sw+gap)+(Math.random()-.5)*shake,by=py-28,p=asm.sockets[k]
+   if(S.kind==='seq'){ctx.fillStyle='#8a7a5a';ctx.font='11px sans-serif';ctx.textAlign='center';ctx.fillText('第'+(k+1)+'拍',bx+sw/2,by-8);if(k<ns-1){ctx.fillStyle='#5a4a2a';ctx.fillText('▶',bx+sw+gap/2,by+18)}}
+   if(p){box(bx,by,sw,56,S.c,'#fff3',false);ctx.fillStyle='#0e1524';ctx.font='bold 14px sans-serif';ctx.textAlign='center';ctx.fillText(p,bx+sw/2,by+32)}
+   else{box(bx,by,sw,56,null,'#5a6577',true);ctx.fillStyle='#5f6b80';ctx.font='12px sans-serif';ctx.textAlign='center';ctx.fillText('空槽',bx+sw/2,by+32)}}
+  const tw=130,tg=14,tt=asm.tray.length*tw+(asm.tray.length-1)*tg,tx0=px-tt/2,ty=py+120
+  ctx.fillStyle='#8a93a6';ctx.font='12px sans-serif';ctx.textAlign='center';ctx.fillText('零件盘(有对的、也有干扰的)',px,ty-14)
+  for(let k=0;k<asm.tray.length;k++){const bx=tx0+k*(tw+tg),part=asm.tray[k],sd=asm.sel===part
+   box(bx,ty,tw,44,sd?'#c9a227':'#1b2740',sd?'#ffcb7a':'#3a4666',false);ctx.fillStyle=sd?'#0e1524':'#dfe6f0';ctx.font='bold 14px sans-serif';ctx.textAlign='center';ctx.fillText(part,bx+tw/2,ty+28)}}
+ window.__nb={view,built:built.slice(),broken:broken.slice(),hard:hard.slice(),builtCount:built.filter(Boolean).length,gold,wave,rep,targets:preview.targets.slice(),running:!!pkt,over}
+ requestAnimationFrame(frame)
+}
+requestAnimationFrame(frame)
+window.__open=i=>openAsm(i);window.__build=i=>{if(!built[i]&&afford(STATIONS[i].cost)){built[i]=true;gold-=STATIONS[i].cost}view='path';asm=null;if(wave>1)genPreview();refreshHud()}
+window.__place=part=>{if(view!=='path')tryPlace(part)};window.__harden=i=>harden(i);window.__repair=i=>repair(i);window.__send=()=>document.getElementById('send').onclick()
+</script>
+</body>
+</html>

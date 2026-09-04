@@ -1,0 +1,477 @@
+/**
+ * 「搭机器」核心引擎 v1(灰盒)。Zachtronics/Opus Magnum 那一挂:摆零件→接线→按运行→包自己流→对照规格判对错、按零件/拍数评分。
+ * 关卡系统:每关一个规格 + 一套解锁的零件。第1关分包转发(传送带+分流器);第2关复制/广播(新零件复制器)。
+ * 深度来自设计与最优化,不是手速。先灰盒验好玩,再上绘本美术。
+ */
+import cutUrl from '../../web/assets/gen/home/house-cutaway.webp'
+import routerUrl from '../../web/assets/gen/home/router.webp'
+import corrUrl from '../../web/assets/gen/gates/corridor.webp'
+import { sfx } from '../demo/sfx'
+const cv = document.getElementById('c') as HTMLCanvasElement
+const ctx = cv.getContext('2d')!
+const IMG = (u: string) => { const i = new Image(); i.src = u; return i }
+const CUT = IMG(cutUrl), ROUTER = IMG(routerUrl), CORR = IMG(corrUrl)
+const iready = (i: HTMLImageElement) => i.complete && i.naturalWidth > 0
+let introRouter = { x: 0, y: 0, w: 0, h: 0 } // 房子里那台路由器的可点区域(renderIntro 里更新)
+let W = 0, H = 0
+const DPR = Math.min(2, devicePixelRatio || 1)
+function resize() { W = innerWidth; H = innerHeight; cv.width = W * DPR; cv.height = H * DPR; ctx.setTransform(DPR, 0, 0, DPR, 0, 0) }
+addEventListener('resize', resize); resize()
+
+const COLS = 12, ROWS = 8
+const DX = [1, 0, -1, 0], DY = [0, 1, 0, -1] // 0右 1下 2左 3上
+const SHAPE_COL = ['#e0954b', '#5b8def', '#3fa78f']
+const TEAL = '#49a791', AMBER = '#e8c98a', CREAM = '#efe6d2', RED = '#c8452e', BLUE = '#5b8def'
+type Dir = 0 | 1 | 2 | 3
+type Kind = 'belt' | 'router' | 'copier' | 'cache' | 'queue' | 'arouter'
+type Piece = { kind: Kind; dir: Dir; mode: number; seen?: Set<number>; store?: number[]; next?: number }
+const QUEUE_MODES = ['限速', '排序'] // 缓冲队列两种放法:限速=每拍放1个(先到先出,安全默认) / 排序=按号重排(缺号会等)
+const grid: (Piece | null)[][] = Array.from({ length: ROWS }, () => Array<Piece | null>(COLS).fill(null))
+const leftOf = (d: Dir) => ((d + 3) % 4) as Dir
+const rightOf = (d: Dir) => ((d + 1) % 4) as Dir
+// 可编程路由器:每种形状(△□○)走哪个前向出口 —— 0=左 1=直 2=右;右键循环模式
+const ROUTER_MODES: { name: string; map: number[] }[] = [
+  { name: '三向分拣', map: [0, 1, 2] }, // △左 □直 ○右
+  { name: '△挑向左', map: [0, 1, 1] }, // △左 · 其余直
+  { name: '□挑向左', map: [1, 0, 1] }, // □左 · 其余直
+  { name: '○挑向右', map: [1, 1, 2] }, // ○右 · 其余直
+  { name: '反向分拣', map: [2, 1, 0] }, // △右 □直 ○左
+]
+
+// —— 关卡 ——
+type Sink = { r: number; accept: number; need: number; label?: string; ordered?: boolean; rate?: number; addr?: number }
+type Src = { r: number; seq: number[] }
+type Level = { name: string; hint: string; srcRow: number; seq: number[]; sinks: Sink[]; parts: Kind[]; par: { parts: number; cycles: number }; burst?: boolean; finale?: boolean; sandbox?: boolean; sources?: Src[]; collide?: boolean; gap?: number; showAddr?: boolean }
+const LEVELS: Level[] = [
+  // —— 教学关:一关认一个原语 ——
+  { name: '第1关 · 路由器分拣', hint: '〈路由器〉按形状转发:默认「三向分拣」△走左、○走右 —— 把 △ 送右上口、○ 送右下口(右键换路由器的分法)', srcRow: 3, seq: [0, 2, 0, 2, 2, 0], sinks: [{ r: 1, accept: 0, need: 3 }, { r: 5, accept: 2, need: 3 }], parts: ['belt', 'router'], par: { parts: 16, cycles: 22 } },
+  { name: '第2关 · 复制广播', hint: '同一个 △ 要同时送到上口和下口 —— 用〈复制器〉复制成两份,分头送', srcRow: 3, seq: [0, 0, 0, 0], sinks: [{ r: 1, accept: 0, need: 4 }, { r: 5, accept: 0, need: 4 }], parts: ['belt', 'copier'], par: { parts: 18, cycles: 24 } },
+  { name: '第3关 · 缓存命中', hint: '〈缓存盒〉记住见过谁:没见过的走琥珀口(去查号)、见过的走青口(走快线) —— 接到两个出口', srcRow: 3, seq: [0, 2, 0, 0, 2], sinks: [{ r: 1, accept: -1, need: 3, label: '快线(见过)' }, { r: 5, accept: -1, need: 2, label: '查号(没见过)' }], parts: ['belt', 'cache'], par: { parts: 16, cycles: 22 } },
+  { name: '第4关 · 缓冲队列(排序)', hint: '包带序号、乱序到达 —— 〈缓冲队列〉切到「排序」挡先收着,再按 0→1→2→3 顺序放出,送进按序口(右键切 排序 / 限速)', srcRow: 3, seq: [2, 0, 3, 1], sinks: [{ r: 3, accept: -1, need: 4, ordered: true, label: '按序' }], parts: ['belt', 'queue'], par: { parts: 10, cycles: 22 } },
+  // —— 组合关:逼你把两三个原语拼成多级机器 ——
+  { name: '第5关 · 缓存+路由(组合)', hint: '拼两级:〈缓存盒〉见过的走快线;没见过的交给〈路由器〉,把 △/○ 分到各自服务器', srcRow: 4, seq: [0, 2, 0, 2, 0], sinks: [{ r: 0, accept: -1, need: 3, label: '快线' }, { r: 2, accept: 0, need: 1, label: '△站' }, { r: 6, accept: 2, need: 1, label: '○站' }], parts: ['belt', 'cache', 'router'], par: { parts: 26, cycles: 28 } },
+  { name: '第6关 · 拥塞削平(路由+队列)', hint: '一峰 △○ 同拍涌到、两个出口各每拍限1 —— 先用〈路由器〉按形状分开,各接一个〈缓冲队列〉切「限速」削成 1/拍', srcRow: 3, seq: [0, 2, 0, 2], burst: true, sinks: [{ r: 1, accept: 0, need: 2, rate: 1, label: '△·每拍1' }, { r: 5, accept: 2, need: 2, rate: 1, label: '○·每拍1' }], parts: ['belt', 'router', 'queue'], par: { parts: 22, cycles: 22 } },
+  { name: '第7关 · 广播+分拣(组合)', hint: '既要留底又要分发 —— 〈复制器〉复制两份(上、下各一份):一份进存档,另一份交〈路由器〉分到 △/○ 站', srcRow: 3, seq: [0, 2, 0, 2], sinks: [{ r: 1, accept: -1, need: 4, label: '存档' }, { r: 3, accept: 0, need: 2, label: '△站' }, { r: 7, accept: 2, need: 2, label: '○站' }], parts: ['belt', 'copier', 'router'], par: { parts: 26, cycles: 26 } },
+  // —— 终关 ——
+  { name: '终关 · 输入网址回车', hint: '把学到的全拼成一台机器:〈缓存盒〉见过走快线、没见过交〈路由器〉查号分到 △/○ 服务器,让"输入网址→取回网页"整条路跑通', srcRow: 4, seq: [0, 2, 0, 2, 0, 2, 0], sinks: [{ r: 1, accept: -1, need: 5, label: '缓存快线' }, { r: 2, accept: 0, need: 1, label: '△站' }, { r: 6, accept: 2, need: 1, label: '○站' }], parts: ['belt', 'cache', 'router'], par: { parts: 27, cycles: 30 }, finale: true },
+  // —— 甲·线速样板(新机制:一格一拍只容一个包=撞包;多源同时进;拼布局/错峰,刷拍数)——
+  { name: '甲·线速 · 双路汇入', hint: '上下两条链路都要进存档,可一格一拍只容一个包 —— 两股等长汇到同一格会「撞包」!给一条流加个〈缓冲队列〉切「限速」错开一拍(或多绕一格),让它们交替着并进一条道。通关后接着刷更少的拍数', srcRow: 3, seq: [], sources: [{ r: 3, seq: [0, 0, 0, 0] }, { r: 5, seq: [0, 0, 0, 0] }], collide: true, sinks: [{ r: 4, accept: -1, need: 8, label: '存档' }], parts: ['belt', 'queue'], par: { parts: 20, cycles: 22 } },
+  { name: '甲·线速 · 双源按序汇入', hint: '两条链路的号交错发(A 偶数、B 奇数),要按 0→1→2… 顺序进存档 —— 先用〈缓冲队列〉切「限速」错峰把两股并成一道别撞,再用一个切「排序」的队列把号排好。限速+排序两种模式一起用', srcRow: 3, seq: [], sources: [{ r: 3, seq: [6, 4, 2, 0] }, { r: 5, seq: [7, 5, 3, 1] }], collide: true, sinks: [{ r: 4, accept: -1, need: 8, ordered: true, label: '按序存档' }], parts: ['belt', 'queue'], par: { parts: 20, cycles: 34 } },
+  { name: '甲·线速 · 汇入三向分拣', hint: '两条链路混着 △□○,先错峰(限速)并成一道别撞;并好的这股再用〈路由器〉一次分到 △/□/○ 三个站 —— 合流 + 三向分拣 + 一格一拍只容一个', srcRow: 3, seq: [], sources: [{ r: 3, seq: [0, 1, 2] }, { r: 5, seq: [0, 1, 2] }], collide: true, sinks: [{ r: 2, accept: 0, need: 2, label: '△站' }, { r: 4, accept: 1, need: 2, label: '□站' }, { r: 6, accept: 2, need: 2, label: '○站' }], parts: ['belt', 'router', 'queue'], par: { parts: 28, cycles: 30 } },
+  { name: '真·路由器 · 按址转发', hint: '每个包带一个 2 位目的地址(0~3),要送到对应网段 —— 一台〈地址路由〉只看某一位(右键选看第几位:该位=0 走直、=1 拐弯)。把几台串成一棵转发树:先看高位分两支、再看低位,把四个地址各归各网段', srcRow: 3, seq: [0, 1, 2, 3, 0, 1, 2, 3], showAddr: true, sinks: [{ r: 4, addr: 0, accept: -1, need: 2, label: '网段0' }, { r: 3, addr: 1, accept: -1, need: 2, label: '网段1' }, { r: 1, addr: 2, accept: -1, need: 2, label: '网段2' }, { r: 0, addr: 3, accept: -1, need: 2, label: '网段3' }], parts: ['belt', 'arouter'], par: { parts: 16, cycles: 28 } },
+]
+let lvl = 0
+let SOURCES: Src[] = [{ r: LEVELS[0]!.srcRow, seq: LEVELS[0]!.seq }]
+let SINKS: Sink[] = LEVELS[0]!.sinks
+function isSource(r: number, c: number) { return c === 0 && SOURCES.some(s => s.r === r) }
+function editable(r: number, c: number) { return c > 0 && c < COLS - 1 && r >= 0 && r < ROWS }
+function trayItems(): (Kind | 'erase')[] { return [...LEVELS[lvl]!.parts, 'erase'] }
+function loadLevel(i: number) { lvl = Math.max(0, Math.min(LEVELS.length - 1, i)); const L = LEVELS[lvl]!; SOURCES = L.sources ?? [{ r: L.srcRow, seq: L.seq }]; SINKS = L.sinks; for (const row of grid) row.fill(null); resetSim(); tool = L.parts[0]!; enterFade = 1; celebrate = 0; resultT = 0 }
+const STORY = [
+  '网,断了。信号在门口堵成一团 —— 用〈路由器〉按目的地把包分开、各自转发。',
+  '一个请求要同时通知好几处 —— 把它复制成几份,分头送出去。',
+  '老往同一个地方查,太慢了 —— 装个缓存盒,见过的走快线。',
+  '包在路上被打乱了顺序 —— 用缓冲队列按序重排,再交出去。',
+  '把两招拼起来:先缓存挡一道,没见过的再查号分流。',
+  '流量突然涌成一个峰 —— 先按目的地分开,再各自排队限速,别挤到丢包。',
+  '既要留底又要分发 —— 复制一份进存档,另一份按目的地分头送。',
+  '最后一里:把学到的全拼成一台机器,让"输入网址 → 取回网页"整条路跑通。',
+  '两条链路同时涌进来 —— 一格一拍只过一个包,别让它们挤在一起撞了,想办法错开、并到一条道上稳稳跑。',
+  '两条链路的号还是错开的 —— 既要并成一道别撞,又要把顺序理顺,两种手法一起来。',
+  '包上写着目的地址 —— 像真路由器那样,搭一棵转发树,一位一位地看,把每个地址送到它该去的网段。',
+]
+type Best = { parts: number; cycles: number }
+let mode: 'intro' | 'menu' | 'play' = 'intro'
+let best: Record<number, Best> = {}
+try { best = JSON.parse(localStorage.getItem('buildgame.best') || '{}') } catch { }
+function saveBest() { try { localStorage.setItem('buildgame.best', JSON.stringify(best)) } catch { } }
+let bgmStarted = false, musicMuted = false
+try { musicMuted = localStorage.getItem('buildgame.muted') === '1' } catch { }
+function ensureBgm() { if (musicMuted) { sfx.setMuted(true); return } if (!bgmStarted) { sfx.startBgm(); bgmStarted = true } sfx.setMuted(false) }
+function toggleMusic() { musicMuted = !musicMuted; try { localStorage.setItem('buildgame.muted', musicMuted ? '1' : '0') } catch { } ensureBgm(); sfx.blip() }
+const passed = (i: number) => best[i] !== undefined
+const unlocked = (i: number) => i === 0 || passed(i - 1) || !!LEVELS[i]?.sandbox || !!LEVELS[i]?.collide
+
+// —— 仿真 ——
+type Pkt = { r: number; c: number; ar: number; ac: number; shape: number; num: number }
+let running = false, done = false, pass = false, overflowed = false, stuck = false
+let step = 0, acc = 0, tprev = 0, celebrate = 0, enterFade = 0, resultT = 0
+let emittedPer: number[] = [0], collided = false
+let collisionFlash: { r: number; c: number; t: number }[] = []
+const allEmitted = () => SOURCES.every((s, i) => (emittedPer[i] ?? 0) >= s.seq.length)
+let delivered = 0, wrong = 0, lost = 0
+let deliveredBy: number[] = SINKS.map(() => 0)
+let oexp: number[] = SINKS.map(() => 0) // 按序口:下一个该到的序号
+let pkts: Pkt[] = []
+const STEP_MS = 240, EMIT_GAP = 2
+function partCount() { let n = 0; for (const row of grid) for (const p of row) if (p) n++; return n }
+function resetSim() { running = false; done = false; pass = false; overflowed = false; stuck = false; collided = false; collisionFlash = []; step = 0; emittedPer = SOURCES.map(() => 0); acc = 0; delivered = 0; wrong = 0; lost = 0; deliveredBy = SINKS.map(() => 0); oexp = SINKS.map(() => 0); pkts = []; for (const row of grid) for (const p of row) if (p) { if (p.kind === 'cache') p.seen = new Set(); if (p.kind === 'queue') { p.store = []; p.next = 0 } } }
+function run() { resetSim(); running = true; sfx.run() }
+function exits(r: number, c: number, shape: number, num = 0): Dir[] {
+  if (isSource(r, c)) return [0]
+  const p = grid[r]![c]; if (!p) return []
+  if (p.kind === 'belt') return [p.dir]
+  if (p.kind === 'router') { const m = ROUTER_MODES[p.mode] ?? ROUTER_MODES[0]!; return [[leftOf(p.dir), p.dir, rightOf(p.dir)][m.map[shape]!]!] } // 可编程路由器:按形状查表转发
+  if (p.kind === 'arouter') { const bit = (num >> p.mode) & 1; return [bit ? leftOf(p.dir) : p.dir] } // 地址路由器:看地址第 mode 位,0→直行 1→拐弯(串成转发树)
+  if (p.kind === 'copier') return [leftOf(p.dir), rightOf(p.dir)] // T 型分叉:朝右=左进、上下各一份(两个垂直出口)
+  // cache:没见过→dir(去查号),见过→leftOf(走快线)
+  if (!p.seen) p.seen = new Set()
+  if (p.seen.has(shape)) return [leftOf(p.dir)]
+  p.seen.add(shape); return [p.dir]
+}
+function buffersEmpty() { for (const row of grid) for (const p of row) if (p && p.kind === 'queue' && p.store && p.store.length > 0) return false; return true }
+function simStep() {
+  step++
+  const L = LEVELS[lvl]!
+  if (L.burst) { if (step === 1) SOURCES.forEach((src, i) => { for (const num of src.seq) pkts.push({ r: src.r, c: 0, ar: src.r, ac: 0, shape: num % 3, num }); emittedPer[i] = src.seq.length }) } // 峰值:同一拍全喷出、叠在源上
+  else if (step % (L.gap ?? EMIT_GAP) === 1) SOURCES.forEach((src, i) => { if ((emittedPer[i] ?? 0) < src.seq.length) { const num = src.seq[emittedPer[i]!]!; pkts.push({ r: src.r, c: 0, ar: src.r, ac: 0, shape: num % 3, num }); emittedPer[i]!++ } }) // 每个源各发各的(gap 控快慢)
+  const next: Pkt[] = []
+  const sinkTick = SINKS.map(() => 0) // 本拍各出口已收数(用于 rate 限流)
+  const arrive = (nr: number, nc: number, num: number, shape: number, fr: number, fc: number) => {
+    if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) { lost++; return }
+    const si = SINKS.findIndex(s => s.r === nr && nc === COLS - 1)
+    if (si >= 0) {
+      const s = SINKS[si]!
+      if (s.rate !== undefined && sinkTick[si]! >= s.rate) { lost++; return } // 拥塞:本拍已收满,多的挤丢
+      const okShape = s.addr !== undefined ? (num === s.addr) : s.ordered ? (num === oexp[si]) : (s.accept === -1 || shape === s.accept)
+      if (!okShape) { wrong++; return }                                     // 地址不对 / 形状不对 / 顺序不对
+      if (deliveredBy[si]! >= s.need) { deliveredBy[si]!++; wrong++; return } // 送多了(含无限增殖)= 错,并把溢出显示出来
+      deliveredBy[si]!++; sinkTick[si]!++; if (s.ordered) oexp[si]!++; delivered++; sfx.ping()
+      return
+    }
+    if (!editable(nr, nc) && !isSource(nr, nc)) { lost++; return }
+    next.push({ r: nr, c: nc, ar: fr, ac: fc, shape, num })
+  }
+  const hadInput = pkts.length > 0
+  // 1) 缓冲队列先放:放的是上一拍之前就囤好的包(所以这一拍新到的包至少要等到下一拍 —— 队列天然延一拍,可用来错峰)
+  let released = false
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+    const b = grid[r]![c]; if (!b || b.kind !== 'queue' || !b.store || b.store.length === 0) continue
+    if (b.next === undefined) b.next = 0
+    let num = -1
+    if (b.mode === 0) { num = b.store.shift()! } // 限速 FIFO(默认)
+    else { const i = b.store.indexOf(b.next); if (i >= 0) { num = b.next; b.store.splice(i, 1); b.next++ } } // 排序:等到 next 才放
+    if (num >= 0) { released = true; arrive(r + DY[b.dir]!, c + DX[b.dir]!, num, num % 3, r, c) }
+  }
+  // 2) 再吸收这一拍新到队列的包(存起来、下一拍才有资格放),其余正常流动
+  const flowing: Pkt[] = []
+  for (const p of pkts) { const pc = grid[p.r]![p.c]; if (pc && pc.kind === 'queue') { (pc.store ??= []).push(p.num) } else flowing.push(p) }
+  for (const p of flowing) { const es = exits(p.r, p.c, p.shape, p.num); if (es.length === 0) { lost++; continue } for (const d of es) arrive(p.r + DY[d]!, p.c + DX[d]!, p.num, p.shape, p.r, p.c) }
+  // 撞包:一格一拍只容一个包(甲·线速关)。两个包落到同一格 → 都丢 + 红闪
+  if (L.collide && next.length > 1) {
+    const cnt = new Map<number, number>()
+    for (const q of next) { const k = q.r * COLS + q.c; cnt.set(k, (cnt.get(k) || 0) + 1) }
+    if ([...cnt.values()].some(v => v > 1)) {
+      const keep: Pkt[] = []
+      for (const q of next) { if ((cnt.get(q.r * COLS + q.c) || 0) > 1) { lost++; collided = true; collisionFlash.push({ r: q.r, c: q.c, t: 1 }) } else keep.push(q) }
+      next.length = 0; for (const q of keep) next.push(q)
+    }
+  }
+  pkts = next
+  const moved = hadInput || released // 这一拍有没有任何包在动
+  if (!L.sandbox && allEmitted() && pkts.length === 0 && buffersEmpty()) { running = false; done = true; pass = wrong === 0 && lost === 0 && SINKS.every((s, i) => deliveredBy[i] === s.need); if (pass) { const b = best[lvl] || { parts: Infinity, cycles: Infinity }; best[lvl] = { parts: Math.min(b.parts, partCount()), cycles: Math.min(b.cycles, step) }; saveBest(); if (partCount() <= L.par.parts || step <= L.par.cycles) sfx.win(); else sfx.chime() } else sfx.fail() }
+  else if (!L.sandbox && allEmitted() && pkts.length === 0 && !moved && !buffersEmpty()) { running = false; done = true; pass = false; stuck = true; sfx.fail() } // 卡死:源发完了、没有任何包在流动,但队列里还压着包放不出来(多半是队列该切「限速」)
+  else if (running && (step > 300 || delivered + wrong + lost > 120 || pkts.length > 120)) { running = false; done = true; pass = false; overflowed = delivered + wrong + lost > 120 || pkts.length > 120; sfx.fail() } // 失控保护:接成环无限增殖 —— 快速判失败,别永远转
+}
+
+// —— 布局 ——
+function geo() { const top = 88, botUI = 96; const gw = W - 80, gh = H - top - botUI; const cs = Math.min(gw / COLS, gh / ROWS); return { cs, ox: (W - cs * COLS) / 2, oy: top } }
+function cellAt(px: number, py: number) { const g = geo(); const c = Math.floor((px - g.ox) / g.cs), r = Math.floor((py - g.oy) / g.cs); return (r >= 0 && r < ROWS && c >= 0 && c < COLS) ? { r, c } : null }
+
+// —— 输入 ——
+let tool: Kind | 'erase' = 'belt'
+let curDir: Dir = 0
+const modeCount = (k: Kind) => k === 'router' ? ROUTER_MODES.length : k === 'queue' ? QUEUE_MODES.length : k === 'arouter' ? 3 : 1
+addEventListener('keydown', e => {
+  const k = e.key.toLowerCase()
+  if (k === 'r') curDir = ((curDir + 1) % 4) as Dir
+  if (k === ' ') { e.preventDefault(); const L = LEVELS[lvl]!; if (done && pass && !L.finale && !L.sandbox && lvl < LEVELS.length - 1) loadLevel(lvl + 1); else if (running || done) resetSim(); else run() }
+})
+function place(r: number, c: number) {
+  if (!editable(r, c)) return
+  if (tool === 'erase') { grid[r]![c] = null; sfx.blip(); return }
+  const cur = grid[r]![c]
+  if (cur && cur.kind === tool) cur.dir = ((cur.dir + 1) % 4) as Dir
+  else grid[r]![c] = { kind: tool, dir: curDir, mode: 0 }
+  sfx.place()
+}
+function menuBtnGeo() { return { x: W - 108, y: 16, w: 92, h: 30 } }
+function musicBtnGeo() { return { x: W - 150, y: 16, w: 34, h: 30 } }
+function drawMusicBtn() { const B = musicBtnGeo(); ctx.fillStyle = '#241d16'; ctx.fillRect(B.x, B.y, B.w, B.h); ctx.strokeStyle = '#6a5a3a'; ctx.lineWidth = 1.5; ctx.strokeRect(B.x, B.y, B.w, B.h); ctx.fillStyle = musicMuted ? '#8a7a5a' : CREAM; ctx.font = '15px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(musicMuted ? '🔇' : '🎵', B.x + B.w / 2, B.y + B.h / 2 + 1); ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left' }
+function retryGeo() { const R = runGeo(); return { x: R.x - 130 - 12, y: R.y, bw: 130, bh: R.bh } }
+function menuCards() { const cols = 3, cw = Math.min(340, (W - 80) / cols - 20), ch = 118, gapx = 24, gapy = 24, totalW = cols * cw + (cols - 1) * gapx, x0 = (W - totalW) / 2, y0 = 150; return LEVELS.map((_, i) => ({ i, x: x0 + (i % cols) * (cw + gapx), y: y0 + Math.floor(i / cols) * (ch + gapy), cw, ch })) }
+function menuClick(x: number, y: number) { for (const c of menuCards()) if (unlocked(c.i) && x >= c.x && x <= c.x + c.cw && y >= c.y && y <= c.y + c.ch) { loadLevel(c.i); mode = 'play'; sfx.enter(); return } }
+cv.addEventListener('pointerdown', e => {
+  if (e.button !== 0) return // 只认左键放置/旋转;右键留给 contextmenu 切模式
+  sfx.resume(); ensureBgm()
+  const MB = musicBtnGeo(); if (mode !== 'intro' && e.clientX >= MB.x && e.clientX <= MB.x + MB.w && e.clientY >= MB.y && e.clientY <= MB.y + MB.h) { toggleMusic(); return }
+  if (mode === 'intro') { const r = introRouter; if (e.clientX >= r.x - 10 && e.clientX <= r.x + r.w + 10 && e.clientY >= r.y - 10 && e.clientY <= r.y + r.h + 10) mode = 'menu'; return }
+  if (mode === 'menu') { menuClick(e.clientX, e.clientY); return }
+  const M = menuBtnGeo(); if (e.clientX >= M.x && e.clientX <= M.x + M.w && e.clientY >= M.y && e.clientY <= M.y + M.h) { mode = 'menu'; return }
+  if (e.clientY > H - 104) { uiClick(e.clientX, e.clientY); return }
+  if ((running || done) && !LEVELS[lvl]!.sandbox) return // 沙盒里运行时也能继续摆
+  const cell = cellAt(e.clientX, e.clientY); if (!cell) return
+  place(cell.r, cell.c)
+})
+cv.addEventListener('contextmenu', e => { e.preventDefault(); if (mode !== 'play') return; const cell = cellAt(e.clientX, e.clientY); if (cell) { const p = grid[cell.r]![cell.c]; if (p && (p.kind === 'router' || p.kind === 'queue' || p.kind === 'arouter')) { p.mode = (p.mode + 1) % modeCount(p.kind); sfx.blip() } } })
+function uiClick(x: number, y: number) {
+  const T = trayGeo(), items = trayItems()
+  if (y >= T.y && y <= T.y + T.ts) { for (let i = 0; i < items.length; i++) { const bx = T.x0 + i * (T.ts + T.gap); if (x >= bx && x <= bx + T.ts) { tool = items[i]!; sfx.blip(); return } } }
+  const L = LEVELS[lvl]!, isSandbox = !!L.sandbox, goNext = done && pass && !L.finale && !isSandbox && lvl < LEVELS.length - 1
+  if (goNext) { const RT = retryGeo(); if (x >= RT.x && x <= RT.x + RT.bw && y >= RT.y && y <= RT.y + RT.bh) { resetSim(); sfx.blip(); return } }
+  const R = runGeo(); if (x >= R.x && x <= R.x + R.bw && y >= R.y && y <= R.y + R.bh) { if (running) { if (isSandbox) { resetSim(); sfx.blip() } return } else if (!done) run(); else if (goNext) { loadLevel(lvl + 1); sfx.enter() } else { resetSim(); sfx.blip() } }
+}
+
+// —— 画 ——
+function shape(x: number, y: number, r: number, sh: number, col: string) { ctx.fillStyle = col; ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = 2; ctx.beginPath(); if (sh === 0) { ctx.moveTo(x, y - r); ctx.lineTo(x + r, y + r * .8); ctx.lineTo(x - r, y + r * .8); ctx.closePath() } else if (sh === 1) ctx.rect(x - r * .85, y - r * .85, r * 1.7, r * 1.7); else ctx.arc(x, y, r, 0, 7); ctx.fill(); ctx.stroke() }
+// —— 零件美术:物件即美术(手工机械件,暖黄铜/钢/木/青玻璃;Opus Magnum 味)——
+const BRASS = ['#eccd8e', '#c39a55', '#6f5028'], STEEL = ['#565049', '#38342e', '#1f1c17']
+const VIOLET = ['#bda0dd', '#7d5fa8', '#3c2c58'], GOLD = ['#f0d485', '#cba54e', '#71531f'], GREEN = ['#aad79b', '#6fa85f', '#2c4c28']
+function withDir(x: number, y: number, cs: number, dir: Dir, fn: () => void) { ctx.save(); ctx.translate(x + cs / 2, y + cs / 2); ctx.rotate(dir * Math.PI / 2); ctx.translate(-cs / 2, -cs / 2); fn(); ctx.restore() }
+function plate(x: number, y: number, w: number, h: number, r: number, c: string[]) { const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, c[0]!); g.addColorStop(.5, c[1]!); g.addColorStop(1, c[2]!); rr(x, y, w, h, r); ctx.fillStyle = g; ctx.fill(); ctx.strokeStyle = 'rgba(0,0,0,.42)'; ctx.lineWidth = 1.5; rr(x, y, w, h, r); ctx.stroke(); ctx.strokeStyle = 'rgba(255,244,214,.3)'; ctx.lineWidth = 1; rr(x + 1.5, y + 1.5, w - 3, h - 3, Math.max(1, r - 1)); ctx.stroke() }
+function rivet(x: number, y: number, rad: number) { ctx.fillStyle = 'rgba(28,20,10,.85)'; ctx.beginPath(); ctx.arc(x, y, rad, 0, 7); ctx.fill(); ctx.fillStyle = 'rgba(255,240,210,.32)'; ctx.beginPath(); ctx.arc(x - rad * .3, y - rad * .3, rad * .5, 0, 7); ctx.fill() }
+function housing(cs: number, c: string[]) { const m = cs * .12; plate(m, m, cs - 2 * m, cs - 2 * m, cs * .1, c); const o = cs * .06; for (const [rx, ry] of [[m + o, m + o], [cs - m - o, m + o], [m + o, cs - m - o], [cs - m - o, cs - m - o]]) rivet(rx!, ry!, cs * .026) }
+function chevron(x: number, y: number, s: number, col: string, lw: number) { ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.beginPath(); ctx.moveTo(x - s * .5, y - s * .6); ctx.lineTo(x + s * .5, y); ctx.lineTo(x - s * .5, y + s * .6); ctx.stroke(); ctx.lineCap = 'butt' }
+function channel(x1: number, y1: number, x2: number, y2: number, w: number, col: string) { ctx.strokeStyle = col; ctx.lineWidth = w; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); ctx.lineCap = 'butt' }
+function hub(cs: number) { ctx.fillStyle = '#241d14'; ctx.beginPath(); ctx.arc(cs * .5, cs * .5, cs * .12, 0, 7); ctx.fill(); ctx.strokeStyle = '#e8c98a'; ctx.lineWidth = 2; ctx.stroke() }
+function drawBody(kind: Kind, cs: number, mode: number, seen?: Set<number>, nums?: number[]) {
+  const flow = running ? (tprev / 220) % 1 : 0
+  if (kind === 'belt') {
+    plate(cs * .05, cs * .2, cs * .9, cs * .13, 3, STEEL); plate(cs * .05, cs * .67, cs * .9, cs * .13, 3, STEEL)
+    ctx.fillStyle = '#29241e'; rr(cs * .08, cs * .33, cs * .84, cs * .34, 4); ctx.fill()
+    for (const rx of [cs * .16, cs * .84]) { ctx.fillStyle = '#c49a55'; ctx.beginPath(); ctx.arc(rx, cs * .5, cs * .085, 0, 7); ctx.fill(); ctx.strokeStyle = '#6f5028'; ctx.lineWidth = 1.5; ctx.stroke(); ctx.fillStyle = 'rgba(255,240,210,.4)'; ctx.beginPath(); ctx.arc(rx - cs * .02, cs * .47, cs * .022, 0, 7); ctx.fill() }
+    for (let i = 0; i < 3; i++) chevron(cs * (.26 + ((i / 3 + flow) % 1) * .48), cs * .5, cs * .1, 'rgba(127,232,192,.85)', 3)
+    return
+  }
+  if (kind === 'router') { // 可编程路由器:每种形状按当前模式走哪个前向口,通道按形状上色
+    housing(cs, GREEN); channel(cs * .14, cs * .5, cs * .5, cs * .5, cs * .07, '#3a2c18') // 入口(左)
+    const ends = [[cs * .5, cs * .12], [cs * .88, cs * .5], [cs * .5, cs * .88]] // 局部:左出=上 / 直出=右 / 右出=下
+    const m = ROUTER_MODES[mode] ?? ROUTER_MODES[0]!
+    for (let sh = 0; sh < 3; sh++) { const d = m.map[sh]!, e = ends[d]!, off = (sh - 1) * cs * .055; const ox = d === 1 ? 0 : off, oy = d === 1 ? off : 0; channel(cs * .5 + ox, cs * .5 + oy, e[0]! + ox, e[1]! + oy, cs * .05, SHAPE_COL[sh]!) }
+    hub(cs); return
+  }
+  if (kind === 'arouter') { // 地址路由器:看地址第 mode 位,0→直行、1→拐弯(上)
+    housing(cs, ['#9ec2e0', '#5f8fb8', '#2a4a63'])
+    channel(cs * .14, cs * .5, cs * .5, cs * .5, cs * .07, '#26343f')          // 入口(左)
+    channel(cs * .5, cs * .5, cs * .86, cs * .5, cs * .055, '#8fb4ff')         // 位=0 → 直行
+    channel(cs * .5, cs * .5, cs * .5, cs * .14, cs * .055, '#e0b04f')         // 位=1 → 拐弯(上)
+    ctx.fillStyle = '#12202c'; ctx.beginPath(); ctx.arc(cs * .5, cs * .5, cs * .13, 0, 7); ctx.fill(); ctx.strokeStyle = '#8fb4ff'; ctx.lineWidth = 2; ctx.stroke()
+    ctx.fillStyle = '#cfe4ff'; ctx.font = `bold ${Math.round(cs * .16)}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('2' + '⁰¹²'[mode], cs * .5, cs * .5); ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left' // 看第几位(权重)
+    return
+  }
+  if (kind === 'copier') { // T 型分叉:进料(左)→ 复制两份从上、下两个垂直口出
+    housing(cs, BRASS)
+    channel(cs * .14, cs * .5, cs * .5, cs * .5, cs * .07, '#22303a')   // 进料(左)
+    channel(cs * .5, cs * .5, cs * .5, cs * .12, cs * .09, '#4a6fb0')   // 复制→上
+    channel(cs * .5, cs * .5, cs * .5, cs * .88, cs * .09, '#4a6fb0')   // 复制→下
+    ctx.fillStyle = '#26343f'; ctx.beginPath(); ctx.arc(cs * .5, cs * .5, cs * .15, 0, 7); ctx.fill(); ctx.strokeStyle = BLUE; ctx.lineWidth = 2; ctx.stroke()
+    ctx.fillStyle = '#8fb4ff'; rr(cs * .43, cs * .43, cs * .1, cs * .1, 2); ctx.fill(); ctx.fillStyle = '#5b8def'; rr(cs * .49, cs * .49, cs * .1, cs * .1, 2); ctx.fill(); return
+  }
+  if (kind === 'cache') {
+    housing(cs, VIOLET)
+    for (let i = 0; i < 3; i++) { const sx = cs * (.3 + i * .2); ctx.fillStyle = '#2a2038'; rr(sx - cs * .06, cs * .23, cs * .12, cs * .15, 2); ctx.fill(); ctx.strokeStyle = '#6a4f92'; ctx.lineWidth = 1; rr(sx - cs * .06, cs * .23, cs * .12, cs * .15, 2); ctx.stroke(); if (seen && seen.has(i)) { ctx.fillStyle = '#7fe8c0'; ctx.beginPath(); ctx.arc(sx, cs * .305, cs * .03, 0, 7); ctx.fill() } }
+    channel(cs * .14, cs * .62, cs * .5, cs * .62, cs * .08, '#3a2c18'); channel(cs * .5, cs * .62, cs * .86, cs * .62, cs * .08, AMBER); channel(cs * .5, cs * .62, cs * .5, cs * .44, cs * .08, TEAL)
+    ctx.fillStyle = '#241d14'; ctx.beginPath(); ctx.arc(cs * .5, cs * .62, cs * .06, 0, 7); ctx.fill(); return
+  }
+  // queue 缓冲队列:入口→排队腔→闸门→单口放出;排队的号亮片;右上角小徽标示模式(排/限)
+  housing(cs, GOLD); channel(cs * .14, cs * .5, cs * .32, cs * .5, cs * .08, '#3a2c18')
+  ctx.fillStyle = '#2a2214'; rr(cs * .32, cs * .24, cs * .28, cs * .52, 3); ctx.fill(); ctx.strokeStyle = '#caa85a'; ctx.lineWidth = 1.5; rr(cs * .32, cs * .24, cs * .28, cs * .52, 3); ctx.stroke()
+  const q = nums || []; for (let i = 0; i < 3; i++) { ctx.fillStyle = i < q.length ? SHAPE_COL[q[i]! % 3]! : '#3a3020'; rr(cs * .35, cs * (.6 - i * .13), cs * .22, cs * .1, 2); ctx.fill() }
+  ctx.fillStyle = '#caa85a'; ctx.fillRect(cs * .6, cs * .42, cs * .03, cs * .16); channel(cs * .63, cs * .5, cs * .86, cs * .5, cs * .08, '#e8c98a')
+  ctx.fillStyle = mode === 0 ? '#e0954b' : '#7fe8c0'; rr(cs * .66, cs * .2, cs * .18, cs * .14, 2); ctx.fill(); ctx.fillStyle = '#1a140c'; ctx.font = `bold ${Math.round(cs * .1)}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(mode === 0 ? '限' : '排', cs * .75, cs * .27); ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left'
+}
+function paintPart(kind: Kind, x: number, y: number, cs: number, dir: Dir, mode: number, seen?: Set<number>, nums?: number[]) {
+  withDir(x, y, cs, dir, () => drawBody(kind, cs, mode, seen, nums))
+}
+function pieceGraphic(p: Piece, x: number, y: number, cs: number) {
+  const nums = p.kind === 'queue' ? (p.store || []) : undefined
+  paintPart(p.kind, x, y, cs, p.dir, p.mode, p.seen, nums)
+}
+function partIcon(kind: Kind | 'erase', cx: number, cy: number, s: number) {
+  if (kind === 'erase') { ctx.strokeStyle = RED; ctx.lineWidth = 3.5; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(cx - s * .4, cy - s * .4); ctx.lineTo(cx + s * .4, cy + s * .4); ctx.moveTo(cx + s * .4, cy - s * .4); ctx.lineTo(cx - s * .4, cy + s * .4); ctx.stroke(); ctx.lineCap = 'butt'; return }
+  const box = s * 2.1; paintPart(kind, cx - box / 2, cy - box / 2, box, curDir, 0)
+}
+function drawSource(x: number, y: number, cs: number) {
+  plate(x + cs * .1, y + cs * .14, cs * .8, cs * .72, cs * .1, STEEL)
+  rivet(x + cs * .2, y + cs * .24, cs * .026); rivet(x + cs * .2, y + cs * .76, cs * .026)
+  const pulse = 0.55 + 0.45 * Math.sin(tprev / 240) // 发射口:暗腔 + 脉冲青核
+  ctx.fillStyle = '#12201c'; ctx.beginPath(); ctx.arc(x + cs * .6, y + cs * .5, cs * .2, 0, 7); ctx.fill()
+  ctx.globalAlpha = pulse; ctx.fillStyle = '#7fe8c0'; ctx.beginPath(); ctx.arc(x + cs * .6, y + cs * .5, cs * .12, 0, 7); ctx.fill(); ctx.globalAlpha = 1
+  ctx.fillStyle = '#3fa78f'; ctx.beginPath(); ctx.arc(x + cs * .6, y + cs * .5, cs * .05, 0, 7); ctx.fill()
+  for (let i = 0; i < 2; i++) { ctx.strokeStyle = `rgba(127,232,192,${.55 - i * .25})`; ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; const px = x + cs * (.82 + ((tprev / 520 + i / 2) % 1) * .14); ctx.beginPath(); ctx.moveTo(px, y + cs * .43); ctx.lineTo(px + cs * .05, y + cs * .5); ctx.lineTo(px, y + cs * .57); ctx.stroke(); ctx.lineCap = 'butt' }
+  ctx.fillStyle = 'rgba(232,222,202,.92)'; ctx.font = `bold ${Math.round(cs * .17)}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('源', x + cs * .34, y + cs * .5); ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left'
+}
+function drawSink(x: number, y: number, cs: number, s: Sink, i: number) {
+  const got = deliveredBy[i]!, full = got === s.need, over = got > s.need
+  plate(x + cs * .1, y + cs * .14, cs * .8, cs * .72, cs * .1, over ? ['#e0a48f', '#c0432c', '#571a12'] : full ? ['#8fe6c8', '#49a791', '#245c4e'] : STEEL)
+  ctx.fillStyle = '#12100c'; ctx.beginPath(); ctx.moveTo(x + cs * .1, y + cs * .38); ctx.lineTo(x + cs * .27, y + cs * .5); ctx.lineTo(x + cs * .1, y + cs * .62); ctx.closePath(); ctx.fill() // 进料口
+  if (s.addr !== undefined) { ctx.fillStyle = full || over ? '#160a08' : '#8fb4ff'; ctx.font = `bold ${Math.round(cs * .3)}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(s.addr), x + cs * .55, y + cs * .38); ctx.font = `${Math.round(cs * .1)}px system-ui`; ctx.fillStyle = full || over ? '#160a08' : '#9a8a6a'; ctx.fillText(s.label ?? '', x + cs * .54, y + cs * .56); ctx.textBaseline = 'alphabetic' } // 网段:目的地址
+  else if (s.accept >= 0) shape(x + cs * .55, y + cs * .42, cs * .15, s.accept, SHAPE_COL[s.accept]!)
+  else { ctx.fillStyle = full || over ? '#160a08' : AMBER; ctx.font = `bold ${Math.round(cs * .13)}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(s.label ?? '任意', x + cs * .54, y + cs * .4); ctx.textBaseline = 'alphabetic' }
+  ctx.fillStyle = full || over ? '#160a08' : (got > 0 ? CREAM : '#9a8a6a'); ctx.font = `bold ${Math.round(cs * .15)}px system-ui`; ctx.textAlign = 'center'; ctx.fillText(`${got}/${s.need}`, x + cs * .54, y + cs * .76)
+  if (full) { ctx.strokeStyle = '#0d1a16'; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.beginPath(); ctx.moveTo(x + cs * .17, y + cs * .25); ctx.lineTo(x + cs * .23, y + cs * .31); ctx.lineTo(x + cs * .33, y + cs * .19); ctx.stroke(); ctx.lineCap = 'butt' }
+  else if (over) { ctx.strokeStyle = '#2a0f0a'; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x + cs * .18, y + cs * .2); ctx.lineTo(x + cs * .28, y + cs * .3); ctx.moveTo(x + cs * .28, y + cs * .2); ctx.lineTo(x + cs * .18, y + cs * .3); ctx.stroke(); ctx.lineCap = 'butt' } // 溢出:✕
+  ctx.textAlign = 'left'
+}
+const partName = (k: Kind | 'erase') => k === 'belt' ? '传送带' : k === 'router' ? '路由器' : k === 'arouter' ? '地址路由' : k === 'copier' ? '复制器' : k === 'cache' ? '缓存盒' : k === 'queue' ? '缓冲队列' : '擦除'
+function trayGeo() { const ts = 66, gap = 12, y = H - ts - 16, x0 = 24; return { ts, gap, y, x0 } }
+function runGeo() { const bw = 168, bh = 54; return { x: W - bw - 24, y: H - bh - 16, bw, bh } }
+function rr(x: number, y: number, w: number, h: number, r: number) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath() }
+function coverImg(img: HTMLImageElement, x: number, y: number, w: number, h: number, dim = 0) { if (!iready(img)) { ctx.fillStyle = '#1a140d'; ctx.fillRect(x, y, w, h); return } const s = Math.max(w / img.naturalWidth, h / img.naturalHeight), dw = img.naturalWidth * s, dh = img.naturalHeight * s; ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip(); ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh); if (dim) { ctx.fillStyle = `rgba(14,10,6,${dim})`; ctx.fillRect(x, y, w, h) } ctx.restore() }
+function wrapText(text: string, x: number, y: number, maxw: number, lh: number, maxLines: number) { const chars = [...text]; let line = '', ln = 0; for (const ch of chars) { if (ctx.measureText(line + ch).width > maxw) { ctx.fillText(line, x, y + ln * lh); ln++; line = ch; if (ln >= maxLines) return } else line += ch } if (ln < maxLines) ctx.fillText(line, x, y + ln * lh) }
+function renderIntro() {
+  ctx.fillStyle = '#120d07'; ctx.fillRect(0, 0, W, H)
+  const cw = Math.min(W * 0.62, 940), ch = cw * (iready(CUT) ? CUT.naturalHeight / CUT.naturalWidth : 0.62)
+  const hx = W / 2 - cw / 2, hy = H * 0.56 - ch / 2
+  coverImg(CUT, hx, hy, cw, ch)
+  // 房子里那台路由器(书房桌上),高亮 + 可点
+  const rw = cw * 0.085, rx = hx + cw * 0.175 - rw / 2, ry = hy + ch * 0.40 - rw / 2
+  introRouter = { x: rx, y: ry, w: rw, h: rw }
+  const pulse = 0.55 + 0.35 * Math.sin(tprev / 260)
+  ctx.fillStyle = `rgba(10,8,5,.5)`; rr(rx - 6, ry - 6, rw + 12, rw + 12, 8); ctx.fill()
+  coverImg(ROUTER, rx, ry, rw, rw)
+  ctx.globalAlpha = pulse; ctx.strokeStyle = AMBER; ctx.lineWidth = 3; rr(rx - 6, ry - 6, rw + 12, rw + 12, 8); ctx.stroke(); ctx.globalAlpha = 1
+  ctx.fillStyle = 'rgba(20,16,12,.9)'; ctx.font = 'bold 14px system-ui'; ctx.textAlign = 'left'; const lt = '← 点这台路由器,钻进去'; const ltw = ctx.measureText(lt).width + 20; rr(rx + rw + 8, ry + rw / 2 - 15, ltw, 30, 8); ctx.fill(); ctx.fillStyle = CREAM; ctx.textBaseline = 'middle'; ctx.fillText(lt, rx + rw + 18, ry + rw / 2); ctx.textBaseline = 'alphabetic'
+  const gd = ctx.createLinearGradient(0, 0, 0, 210); gd.addColorStop(0, 'rgba(10,7,4,.92)'); gd.addColorStop(1, 'rgba(10,7,4,0)'); ctx.fillStyle = gd; ctx.fillRect(0, 0, W, 210)
+  ctx.fillStyle = CREAM; ctx.textAlign = 'center'; ctx.font = 'bold 36px system-ui'; ctx.fillText('网,断了。', W / 2, H * 0.14)
+  ctx.fillStyle = AMBER; ctx.font = '18px system-ui'; ctx.fillText('信号追进了家里这台路由器 —— 点开它,钻进去,把它一处处修好。', W / 2, H * 0.14 + 36)
+}
+function renderMenu() {
+  coverImg(CORR, 0, 0, W, H, 0.62)
+  ctx.fillStyle = CREAM; ctx.font = 'bold 30px system-ui'; ctx.textAlign = 'center'; ctx.fillText('路由器内部 · 待修的子系统', W / 2, 58)
+  ctx.fillStyle = AMBER; ctx.font = '14px system-ui'; ctx.fillText('一处处修过去、把信号重新接通;每关都能再搭一次,刷更省的解', W / 2, 88)
+  drawMusicBtn()
+  for (const c of menuCards()) {
+    const L = LEVELS[c.i]!, ul = unlocked(c.i), pd = passed(c.i)
+    rr(c.x, c.y, c.cw, c.ch, 12); ctx.fillStyle = ul ? 'rgba(30,38,32,.92)' : 'rgba(20,16,11,.9)'; ctx.fill(); ctx.strokeStyle = pd ? TEAL : ul ? '#8a7550' : '#33291a'; ctx.lineWidth = 2; rr(c.x, c.y, c.cw, c.ch, 12); ctx.stroke()
+    ctx.textAlign = 'left'; ctx.fillStyle = ul ? CREAM : '#6a5a3a'; ctx.font = 'bold 17px system-ui'; ctx.fillText(L.name, c.x + 16, c.y + 30)
+    ctx.fillStyle = ul ? '#c8bfa8' : '#5a4e3a'; ctx.font = '12px system-ui'; wrapText(STORY[c.i]!, c.x + 16, c.y + 52, c.cw - 32, 16, 2)
+    if (L.sandbox) { ctx.fillStyle = '#8fdcc0'; ctx.font = 'bold 15px system-ui'; ctx.fillText('🧪 随便搭 · 随时进来玩', c.x + 16, c.y + c.ch - 14) }
+    else {
+      if (!ul) { ctx.fillStyle = '#6a5a3a'; ctx.font = '13px system-ui'; ctx.fillText('🔒 先通过上一关', c.x + 16, c.y + c.ch - 14) }
+      else if (pd) { const b = best[c.i]!, mp = b.parts <= L.par.parts, mc = b.cycles <= L.par.cycles; ctx.fillStyle = TEAL; ctx.font = '13px system-ui'; ctx.fillText(`✓ 已修好 · 最好 ${b.parts}件 ${b.cycles}拍  ${mp ? '🏅' : ''}${mc ? '🏅' : ''}`, c.x + 16, c.y + c.ch - 14) }
+      else { ctx.fillStyle = AMBER; ctx.font = 'bold 15px system-ui'; ctx.fillText('▶ 开始修', c.x + 16, c.y + c.ch - 14) }
+      ctx.textAlign = 'right'; ctx.fillStyle = '#9a8a6a'; ctx.font = '11px system-ui'; ctx.fillText(`目标 ≤${L.par.parts}件 ≤${L.par.cycles}拍`, c.x + c.cw - 14, c.y + 26); ctx.textAlign = 'left'
+    }
+  }
+}
+function frame(now: number) {
+  const dt = tprev ? now - tprev : 16; tprev = now
+  if (mode === 'intro') { renderIntro(); requestAnimationFrame(frame); return }
+  if (mode === 'menu') { renderMenu(); requestAnimationFrame(frame); return }
+  if (running) { acc += dt; while (acc >= STEP_MS) { acc -= STEP_MS; simStep(); if (!running) break } }
+  const g = geo(), cs = g.cs, L = LEVELS[lvl]!
+  const isSandbox = !!L.sandbox, goNext = done && pass && !L.finale && !isSandbox && lvl < LEVELS.length - 1
+  coverImg(CORR, 0, 0, W, H, 0.74) // 你在路由器内部
+  const pw = cs * COLS + 28, ph = cs * ROWS + 28
+  rr(g.ox - 14, g.oy - 14, pw, ph, 14); ctx.fillStyle = 'rgba(24,19,12,.9)'; ctx.fill(); ctx.strokeStyle = '#4a3f2a'; ctx.lineWidth = 2; rr(g.ox - 14, g.oy - 14, pw, ph, 14); ctx.stroke()
+  ctx.fillStyle = CREAM; ctx.font = 'bold 18px system-ui'; ctx.textAlign = 'left'; ctx.fillText(L.name, 24, 28)
+  ctx.fillStyle = '#c8bfa8'; ctx.font = '13px system-ui'; wrapText(STORY[lvl]!, 24, 48, W * 0.62, 16, 1)
+  ctx.fillStyle = AMBER; ctx.font = '12px system-ui'; ctx.fillText(L.hint, 24, 68)
+  // 网格
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+    const x = g.ox + c * cs, y = g.oy + r * cs
+    ctx.strokeStyle = editable(r, c) ? '#2c2418' : '#1e1810'; ctx.lineWidth = 1; ctx.strokeRect(x, y, cs, cs)
+    const p = grid[r]![c]; if (p) pieceGraphic(p, x, y, cs)
+  }
+  // 源(发射机)
+  for (const src of SOURCES) drawSource(g.ox, g.oy + src.r * cs, cs)
+  // 汇(收料台,带需求数)
+  for (let i = 0; i < SINKS.length; i++) drawSink(g.ox + (COLS - 1) * cs, g.oy + SINKS[i]!.r * cs, cs, SINKS[i]!, i)
+  // 包
+  const tt = Math.min(1, acc / STEP_MS), showNum = SINKS.some(s => s.ordered) || !!L.showAddr
+  for (const p of pkts) { const rr = p.ar + (p.r - p.ar) * tt, cc = p.ac + (p.c - p.ac) * tt, sxp = g.ox + (cc + .5) * cs, syp = g.oy + (rr + .5) * cs; ctx.fillStyle = 'rgba(0,0,0,.28)'; ctx.beginPath(); ctx.ellipse(sxp, syp + cs * .18, cs * .17, cs * .06, 0, 0, 7); ctx.fill(); shape(sxp, syp, cs * .2, p.shape, SHAPE_COL[p.shape]!); ctx.fillStyle = 'rgba(255,255,255,.4)'; ctx.beginPath(); ctx.arc(sxp - cs * .06, syp - cs * .07, cs * .04, 0, 7); ctx.fill(); if (showNum) { ctx.fillStyle = '#161009'; ctx.font = `bold ${Math.round(cs * .22)}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(p.num), sxp, syp + cs * .02); ctx.textBaseline = 'alphabetic' } }
+  // 撞包红闪
+  for (const f of collisionFlash) { const x = g.ox + f.c * cs, y = g.oy + f.r * cs; ctx.fillStyle = `rgba(200,60,44,${0.55 * f.t})`; rr(x + 2, y + 2, cs - 4, cs - 4, 6); ctx.fill(); ctx.strokeStyle = `rgba(255,120,90,${f.t})`; ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x + cs * .32, y + cs * .32); ctx.lineTo(x + cs * .68, y + cs * .68); ctx.moveTo(x + cs * .68, y + cs * .32); ctx.lineTo(x + cs * .32, y + cs * .68); ctx.stroke(); ctx.lineCap = 'butt'; f.t -= dt / 500 }
+  collisionFlash = collisionFlash.filter(f => f.t > 0)
+  // 终关通关:庆祝「网,回来了」——真正的收尾时刻(按钮仍画在其上、可点)
+  {
+    const isWin = !!L.finale && done && pass
+    celebrate = Math.max(0, Math.min(1, celebrate + (isWin ? dt / 900 : -dt / 250)))
+    if (celebrate > 0.01) {
+      const e = celebrate, cx = W / 2, cy = H * 0.40
+      ctx.fillStyle = `rgba(20,54,46,${0.55 * e})`; ctx.fillRect(0, 0, W, H) // 暖青绿光罩
+      for (let k = 5; k >= 1; k--) { ctx.fillStyle = `rgba(93,193,164,${0.05 * e * k})`; ctx.beginPath(); ctx.arc(cx, cy, (90 + k * 46 + 18 * Math.sin(tprev / 500)) * e, 0, 7); ctx.fill() } // 中心呼吸光晕
+      for (let i = 0; i < 44; i++) { // 上升的火花
+        const a = i * 2.399, rad = (70 + ((i * 61) % 300)) * (0.4 + 0.6 * e)
+        const px = cx + Math.cos(a) * rad, drift = ((tprev / 22 + i * 40) % (H * 0.9))
+        const py = (cy + rad * 0.42) - drift * e, tw = 0.35 + 0.65 * Math.abs(Math.sin(tprev / 220 + i))
+        ctx.globalAlpha = tw * e; ctx.fillStyle = i % 3 === 0 ? '#ffd27a' : '#8feecb'
+        ctx.beginPath(); ctx.arc(px, py, 2.6, 0, 7); ctx.fill()
+      }
+      ctx.globalAlpha = 1; ctx.textAlign = 'center'
+      ctx.fillStyle = `rgba(245,240,224,${e})`; ctx.font = `bold ${Math.round(40 * (0.7 + 0.3 * e))}px system-ui`; ctx.fillText('网,回来了。', cx, H * 0.30)
+      ctx.fillStyle = `rgba(224,180,80,${e})`; ctx.font = '17px system-ui'; ctx.fillText('从「输入网址」到「取回网页」——整条路都是你亲手搭的。', cx, H * 0.30 + 38)
+      ctx.fillStyle = `rgba(200,191,168,${0.9 * e})`; ctx.font = '13px system-ui'; ctx.fillText('六个子系统全部修通,信号重新开始流动。', cx, H * 0.30 + 64)
+      ctx.textAlign = 'left'
+    }
+  }
+  // 每关结算卡:通过 / 失败都有(终关通过用上面的大庆祝、这里跳过)
+  {
+    const finaleWin = !!L.finale && pass
+    resultT = Math.max(0, Math.min(1, resultT + ((done && !finaleWin) ? dt / 280 : -dt / 220)))
+    if (done && !finaleWin && resultT > 0.01) {
+      const e = resultT, cw = Math.min(460, W * 0.52), ch = 156, cardX = W / 2 - cw / 2, cardY = H * 0.30 - (1 - e) * 22
+      ctx.save(); ctx.globalAlpha = e
+      rr(cardX, cardY, cw, ch, 16); ctx.fillStyle = pass ? 'rgba(20,52,44,.96)' : 'rgba(52,30,22,.96)'; ctx.fill(); ctx.strokeStyle = pass ? TEAL : AMBER; ctx.lineWidth = 2.5; rr(cardX, cardY, cw, ch, 16); ctx.stroke()
+      const seal = cardX + 56, sy = cardY + 58 // 印章
+      ctx.fillStyle = pass ? 'rgba(73,167,145,.22)' : 'rgba(200,69,46,.2)'; ctx.beginPath(); ctx.arc(seal, sy, 31, 0, 7); ctx.fill(); ctx.strokeStyle = pass ? TEAL : RED; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(seal, sy, 31, 0, 7); ctx.stroke()
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = 4.5
+      if (pass) { ctx.strokeStyle = TEAL; ctx.beginPath(); ctx.moveTo(seal - 13, sy + 1); ctx.lineTo(seal - 3, sy + 12); ctx.lineTo(seal + 15, sy - 12); ctx.stroke() }
+      else { ctx.strokeStyle = RED; ctx.beginPath(); ctx.moveTo(seal - 11, sy - 11); ctx.lineTo(seal + 11, sy + 11); ctx.moveTo(seal + 11, sy - 11); ctx.lineTo(seal - 11, sy + 11); ctx.stroke() }
+      ctx.lineCap = 'butt'
+      const tx = cardX + 104
+      ctx.textAlign = 'left'; ctx.fillStyle = CREAM; ctx.font = 'bold 23px system-ui'; ctx.fillText(pass ? '修好了!' : '还没通', tx, cardY + 44)
+      if (pass) {
+        const mp = partCount() <= L.par.parts, mc = step <= L.par.cycles
+        ctx.fillStyle = '#c8bfa8'; ctx.font = '14px system-ui'; ctx.fillText(`这个子系统信号通了 · 用了 ${partCount()} 件 ${step} 拍`, tx, cardY + 72)
+        ctx.font = '17px system-ui'; ctx.fillStyle = AMBER; ctx.fillText(mp || mc ? `${mp ? '🏅省料 ' : ''}${mc ? '🏅飞快' : ''}` : `再省一点就能拿🏅(目标 ≤${L.par.parts}件 ≤${L.par.cycles}拍)`, tx, cardY + 100)
+        ctx.fillStyle = '#8fdcc0'; ctx.font = '13px system-ui'; ctx.fillText(goNext ? '↓ 点「下一关」继续,或「再搭一次」刷更省的解' : '↓ 点「再搭一次」刷更省的解', tx, cardY + 128)
+        for (let i = 0; i < 12; i++) { const a = i * 2.399, rad = 36 + (i % 3) * 9, px = seal + Math.cos(a + tprev / 600) * rad, py = sy + Math.sin(a + tprev / 600) * rad; ctx.globalAlpha = e * (0.35 + 0.4 * Math.sin(tprev / 200 + i)); ctx.fillStyle = i % 2 ? '#ffd27a' : '#7fe8c0'; ctx.beginPath(); ctx.arc(px, py, 2, 0, 7); ctx.fill() }
+      } else {
+        ctx.globalAlpha = e; ctx.fillStyle = '#e8b8a8'; ctx.font = '14px system-ui'; ctx.fillText(collided ? '撞包了:两个包挤进了同一格' : overflowed ? '机器失控:包在无限增殖' : stuck ? '卡住了:有包堵在缓冲队列里出不来' : `送错 ${wrong} 个 · 丢了 ${lost} 个`, tx, cardY + 72)
+        ctx.fillStyle = '#d8c0a8'; ctx.font = '13px system-ui'; ctx.fillText(collided ? '一格一拍只容一个包 —— 把两股流分开走、或用队列错开半拍' : overflowed ? '多半是接成了环 —— 复制器的某个出口把包又送回了进料带' : stuck ? (lost > 0 ? '上游有包丢了(撞包?)—— 排序队列在等那个丢掉的号,先别让上游丢包' : '有个「排序」队列在等一个不会来的号 —— 该直通/错峰的队列右键切回「限速」') : '顺着箭头看看包走岔到哪了,调一处再来', tx, cardY + 100)
+        ctx.fillStyle = '#d8a890'; ctx.font = '13px system-ui'; ctx.fillText('↓ 点「再搭一次」', tx, cardY + 128)
+      }
+      ctx.globalAlpha = 1; ctx.restore(); ctx.textAlign = 'left'
+    }
+  }
+  // 左下:零件盘
+  const T = trayGeo(), items = trayItems()
+  ctx.textAlign = 'left'; ctx.font = '12px system-ui'; ctx.fillStyle = AMBER
+  const tip = tool === 'router' ? '路由器:左键摆(重复点同格转向)· 右键循环「分法」—— 通道按 △□○ 上色告诉你谁走哪' : tool === 'arouter' ? '地址路由:左键摆 · 右键换「看第几位」(2⁰/2¹/2²)—— 该位=0 直行、=1 拐弯;几台串起来就是一棵转发树,把每个地址送到它的网段' : tool === 'queue' ? '缓冲队列:左键摆 · 右键切模式 —— 默认「限速」每拍放1个(削峰/错峰,直通不卡);「排序」按号重排(要收齐号才放,缺号会等)' : '零件盘 · 选一个,左键摆在格子里(重复点同格转向)'
+  ctx.fillText(tip, T.x0, T.y - 8)
+  ctx.fillStyle = 'rgba(30,24,16,.6)'; ctx.fillRect(T.x0 - 6, T.y - 4, (T.ts + T.gap) * items.length + 6, T.ts + 8)
+  items.forEach((it, i) => { const x = T.x0 + i * (T.ts + T.gap), on = tool === it; ctx.fillStyle = on ? '#3a342a' : '#20190f'; ctx.fillRect(x, T.y, T.ts, T.ts); ctx.strokeStyle = on ? '#ffe6a8' : '#5a4e3a'; ctx.lineWidth = on ? 3 : 1.5; ctx.strokeRect(x, T.y, T.ts, T.ts); partIcon(it, x + T.ts / 2, T.y + T.ts / 2 - 5, T.ts * 0.46); ctx.fillStyle = on ? CREAM : '#9a8a6a'; ctx.font = '11px system-ui'; ctx.textAlign = 'center'; ctx.fillText(partName(it), x + T.ts / 2, T.y + T.ts - 7) })
+  // ☰ 关卡 按钮(右上)
+  const M = menuBtnGeo(); ctx.fillStyle = '#241d16'; ctx.fillRect(M.x, M.y, M.w, M.h); ctx.strokeStyle = '#6a5a3a'; ctx.lineWidth = 1.5; ctx.strokeRect(M.x, M.y, M.w, M.h); ctx.fillStyle = CREAM; ctx.font = '14px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('☰ 关卡', M.x + M.w / 2, M.y + M.h / 2); ctx.textBaseline = 'alphabetic'; drawMusicBtn()
+  // 右下:分数 / 目标 / 奖章
+  const R = runGeo(); ctx.textAlign = 'right'
+  ctx.font = '13px system-ui'; ctx.fillStyle = CREAM; ctx.fillText(`零件 ${partCount()} · 拍 ${step}`, R.x - 16, R.y + 12)
+  if (isSandbox) { ctx.font = '12px system-ui'; ctx.fillStyle = '#9a8a6a'; ctx.fillText('自由沙盒 · 无输赢', R.x - 16, R.y + 30) }
+  else {
+    ctx.font = '12px system-ui'; ctx.fillStyle = '#9a8a6a'; ctx.fillText(`目标 ≤${L.par.parts}件 · ≤${L.par.cycles}拍`, R.x - 16, R.y + 30)
+    if (done) { if (pass) { const mp = partCount() <= L.par.parts, mc = step <= L.par.cycles; ctx.fillStyle = TEAL; ctx.font = 'bold 15px system-ui'; ctx.fillText(`✓ 通过 ${mp ? '🏅件' : ''}${mc ? '🏅拍' : ''}`, R.x - 16, R.y + 50) } else { ctx.fillStyle = RED; ctx.font = 'bold 15px system-ui'; ctx.fillText(`✕ 失败 错${wrong} 丢${lost}`, R.x - 16, R.y + 50) } }
+  }
+  // 运行 / 停 / 下一关 主按钮
+  ctx.fillStyle = running ? (isSandbox ? '#3a2e1a' : '#26332a') : goNext ? '#2f5a3f' : done ? '#3a2e1a' : '#2f5a3f'; ctx.fillRect(R.x, R.y, R.bw, R.bh); ctx.strokeStyle = running ? (isSandbox ? AMBER : TEAL) : done && !pass ? AMBER : '#7fe8c0'; ctx.lineWidth = 2.5; ctx.strokeRect(R.x, R.y, R.bw, R.bh)
+  ctx.fillStyle = CREAM; ctx.font = 'bold 18px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(running ? (isSandbox ? '⏸ 停下' : '运行中…') : goNext ? '▶ 下一关' : done ? '↻ 再搭一次' : '▶ 运行机器', R.x + R.bw / 2, R.y + R.bh / 2); ctx.textBaseline = 'alphabetic'
+  // 再搭一次(可进下一关时的次按钮)
+  if (goNext) { const RT = retryGeo(); ctx.fillStyle = '#3a2e1a'; ctx.fillRect(RT.x, RT.y, RT.bw, RT.bh); ctx.strokeStyle = AMBER; ctx.lineWidth = 2; ctx.strokeRect(RT.x, RT.y, RT.bw, RT.bh); ctx.fillStyle = CREAM; ctx.font = 'bold 16px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('↻ 再搭一次', RT.x + RT.bw / 2, RT.y + RT.bh / 2); ctx.textBaseline = 'alphabetic' }
+  // 进关小过场:从黑淡入
+  if (enterFade > 0.01) { ctx.fillStyle = `rgba(10,8,5,${enterFade})`; ctx.fillRect(0, 0, W, H); enterFade = Math.max(0, enterFade - dt / 350) }
+  requestAnimationFrame(frame)
+}
+requestAnimationFrame(frame)
+
+// dev 钩子
+;(window as unknown as { __state: () => object }).__state = () => ({ lvl, running, done, pass, overflowed, stuck, collided, parts: partCount(), cycles: step, delivered, wrong, lost, deliveredBy: [...deliveredBy] })
+;(window as unknown as { __place: (r: number, c: number, kind: Kind, dir: number, mode?: number) => void }).__place = (r, c, kind, dir, mode = 0) => { if (editable(r, c)) grid[r]![c] = { kind, dir: (dir % 4) as Dir, mode } }
+;(window as unknown as { __erase: (r: number, c: number) => void }).__erase = (r, c) => { if (editable(r, c)) grid[r]![c] = null }
+;(window as unknown as { __run: () => void }).__run = run
+;(window as unknown as { __reset: () => void }).__reset = resetSim
+;(window as unknown as { __stepN: (n: number) => void }).__stepN = (n) => { for (let i = 0; i < n && running; i++) simStep() }
+;(window as unknown as { __level: (i: number) => void }).__level = (i) => loadLevel(i)
+;(window as unknown as { __play: (i: number) => void }).__play = (i) => { loadLevel(i); mode = 'play' }
+;(window as unknown as { __menu: () => void }).__menu = () => { mode = 'menu' }
+;(window as unknown as { __intro: () => object }).__intro = () => introRouter

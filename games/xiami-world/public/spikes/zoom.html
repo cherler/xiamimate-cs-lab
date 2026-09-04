@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>zoom-into-machine · 招牌过渡</title>
+<style>
+  html,body{margin:0;height:100%;background:#140f0a;overflow:hidden;font-family:sans-serif}
+  #c{display:block;width:100vw;height:100vh}
+  #tag{position:fixed;top:14px;left:18px;color:#c9a227;font-weight:bold;z-index:5}
+  #hint{position:fixed;top:38px;left:18px;color:#8a7a5a;font-size:13px;z-index:5}
+  #back{position:fixed;top:14px;right:18px;z-index:5;background:#2a2418;color:#c9a227;border:1px solid #5a4a2a;border-radius:9px;padding:8px 16px;font-size:14px;cursor:pointer;display:none}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="tag">打开网页 · 机器</div>
+<div id="hint">点 DNS 档 → 镜头俯冲钻进去,化成里面的查号机。(招牌过渡验证)</div>
+<button id="back">← 退出到整机</button>
+<script>
+const cv = document.getElementById('c'), ctx = cv.getContext('2d')
+let W, H, DPR = Math.min(2, devicePixelRatio || 1)
+function resize() { W = cv.clientWidth; H = cv.clientHeight; cv.width = W * DPR; cv.height = H * DPR; ctx.setTransform(DPR, 0, 0, DPR, 0, 0) }
+addEventListener('resize', resize); resize()
+const IMG = {}; const load = (k, s) => { const i = new Image(); i.src = s; IMG[k] = i }
+load('housing', './machine/housing.png'); load('gear', './machine/gear.png'); load('token', './machine/token.png')
+
+const STAGES = ['DNS解析', 'IP寻址', 'TCP连接', 'TLS握手', 'HTTP请求']
+const mods = () => STAGES.map((name, i) => ({ name, x: 150 + (W - 300) * (i + .5) / STAGES.length, y: H * 0.44, w: 150, h: 100 }))
+let zoom = 0, target = 0, angle = 0, diveInto = 0
+const backBtn = document.getElementById('back')
+function rr(x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath() }
+
+cv.addEventListener('pointerdown', e => {
+  if (zoom > 0.5) return
+  for (let i = 0; i < STAGES.length; i++) { const m = mods()[i]
+    if (Math.abs(e.clientX - m.x) < m.w / 2 && Math.abs(e.clientY - m.y) < m.h / 2) { diveInto = i; target = 1; document.getElementById('hint').style.display = 'none' }
+  }
+})
+backBtn.onclick = () => { target = 0 }
+window.__zoom = v => { target = v; if (v > 0) diveInto = 0 } // 冒烟直接设
+
+// 外层:五档机器连成线
+function drawExterior() {
+  ctx.strokeStyle = '#3a2e1a'; ctx.lineWidth = 10; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(120, H * .44); ctx.lineTo(W - 120, H * .44); ctx.stroke()
+  ctx.strokeStyle = '#241a0e'; ctx.lineWidth = 3; ctx.stroke()
+  mods().forEach((m, i) => {
+    ctx.save(); ctx.globalAlpha = 0.9
+    if (IMG.housing.complete) { const hw = m.w, hh = hw * 1024 / 1536; ctx.drawImage(IMG.housing, m.x - hw / 2, m.y - hh / 2, hw, hh) }
+    ctx.restore()
+    ctx.fillStyle = '#c9b58a'; ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'center'; ctx.fillText(m.name, m.x, m.y + 44)
+  })
+}
+// 内层:DNS 查号机(钻进去看到的子机器)
+function drawInterior() {
+  const hx = W / 2, hw = 560, hh = hw * 1024 / 1536, hy = H * 0.44
+  if (IMG.housing.complete) ctx.drawImage(IMG.housing, hx - hw / 2, hy - hh / 2, hw, hh)
+  ctx.fillStyle = '#ffe0a0'; ctx.font = 'bold 18px sans-serif'; ctx.textAlign = 'center'; ctx.fillText(STAGES[diveInto] + ' · 里面', hx, hy - hh / 2 - 14)
+  const dxs = [-0.205, 0, 0.205]
+  dxs.forEach((fx, k) => { const px = hx + fx * hw, py = hy + 0.05 * hh
+    if (IMG.gear.complete) { const g = 90; ctx.save(); ctx.translate(px, py); ctx.rotate((fx >= 0 ? 1 : -1) * angle); ctx.drawImage(IMG.gear, -g / 2, -g / 2, g, g); ctx.restore() }
+    ctx.fillStyle = '#a08a5a'; ctx.font = '13px sans-serif'; ctx.fillText(['域名', '服务器', '缓存'][k], px, py + 66) })
+  ctx.fillStyle = '#8a7a5a'; ctx.font = '13px sans-serif'; ctx.fillText('(这一层就是你拖零件搭的机器 —— 搭好可运行)', hx, hy + hh / 2 + 34)
+}
+
+let last = 0
+function frame(ts) {
+  const dt = Math.min(.05, (ts - last) / 1000 || 0); last = ts
+  zoom += (target - zoom) * Math.min(1, dt * 4.5); angle += dt * 1.4
+  backBtn.style.display = zoom > 0.55 ? 'block' : 'none'
+  ctx.clearRect(0, 0, W, H)
+  const bg = ctx.createRadialGradient(W / 2, H * .44, 60, W / 2, H * .44, W * .7); bg.addColorStop(0, '#1e160d'); bg.addColorStop(1, '#120d08'); ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H)
+
+  const m = mods()[diveInto]
+  // 外层:朝 DNS 档缩放冲入 + 淡出
+  if (zoom < 0.999) {
+    ctx.save(); const es = 1 + zoom * 7.5
+    ctx.translate(m.x, m.y); ctx.scale(es, es); ctx.translate(-m.x, -m.y)
+    ctx.globalAlpha = Math.max(0, 1 - zoom * 1.5)
+    drawExterior(); ctx.restore()
+  }
+  // 内层:从小长到位 + 淡入
+  if (zoom > 0.02) {
+    ctx.save(); const is = 0.55 + zoom * 0.45
+    ctx.translate(W / 2, H * .44); ctx.scale(is, is); ctx.translate(-W / 2, -H * .44)
+    ctx.globalAlpha = Math.min(1, (zoom - 0.15) * 1.6)
+    drawInterior(); ctx.restore()
+  }
+  window.__z = zoom
+  requestAnimationFrame(frame)
+}
+requestAnimationFrame(frame)
+</script>
+</body>
+</html>

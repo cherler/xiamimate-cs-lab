@@ -1,0 +1,11 @@
+node_modules
+dist
+.DS_Store
+scripts/shot-*.png
+
+# 密钥配置，绝不提交
+.env
+.env.local
+.env.*.local
+scripts/ux-*.png
+scripts/ux2-*.png

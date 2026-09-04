@@ -1,0 +1,58 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>包是怎么走到服务器的</title>
+<style>
+  :root{--ink:#e8e2d6;--dim:#9fb0c2;--warn:#ff8a5b;--ok:#6fbf73;--card:#1b2838;--line:#3f5a72;--accent:#ffcb7a}
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;background:#0c1420;color:var(--ink);
+    font:16px/1.7 -apple-system,"PingFang SC","Microsoft Yahei",sans-serif;
+    display:flex;flex-direction:column;align-items:center;padding:20px}
+  h1{font-size:20px;margin:2px 0}
+  .sub{color:var(--dim);font-size:13px;margin-bottom:14px}
+  /* 拓扑：一排设备 */
+  .net{display:flex;align-items:center;gap:0;width:min(880px,98vw);margin-bottom:6px;justify-content:space-between}
+  .dev{display:flex;flex-direction:column;align-items:center;position:relative;z-index:2}
+  .dev .box{width:96px;height:76px;border:2px solid var(--line);border-radius:10px;background:#243447;
+    display:flex;align-items:center;justify-content:center;font-size:30px;transition:.25s}
+  .dev .nm{font-size:12px;color:var(--dim);margin-top:5px}
+  .dev .ip{font-size:10px;color:#7f93a8;font-family:ui-monospace,monospace}
+  .link{flex:1;height:3px;background:var(--line);margin:0 -4px;position:relative;top:-16px;z-index:1}
+  .dev.here .box{border-color:var(--accent);box-shadow:0 0 16px rgba(255,203,122,.4)}
+  .dev.dead .box{border-color:var(--warn)}
+  .dev.ok .box{border-color:var(--ok)}
+  /* 包 */
+  #packet{position:fixed;width:120px;padding:6px 8px;border-radius:8px;background:#2a1f14;border:2px solid var(--accent);
+    font-family:ui-monospace,monospace;font-size:11px;pointer-events:none;transition:left .5s ease,top .5s ease;opacity:0;z-index:9}
+  #packet .to{color:var(--accent)} #packet .mac{color:#ff9a6a}
+  .say{width:min(880px,98vw);min-height:60px;background:rgba(20,24,30,.8);border:1px solid #2a3a4e;
+    border-radius:12px;padding:11px 15px;margin:10px 0;display:flex;gap:10px}
+  .say .who{color:var(--accent);font-size:12px;font-weight:700;flex:0 0 auto}
+  .say .txt{font-size:15px}
+  /* 路由表 */
+  .rt{width:min(880px,98vw);background:#141c26;border:1px solid #2a3a4e;border-radius:10px;padding:10px 14px;margin-bottom:8px;display:none}
+  .rt h3{margin:0 0 6px;font-size:13px;color:var(--dim)}
+  .rt table{width:100%;border-collapse:collapse;font-family:ui-monospace,monospace;font-size:13px}
+  .rt td{padding:4px 8px;border-bottom:1px solid #22303e}
+  .rt tr.def td{color:var(--accent)}
+  .rt .del{color:var(--warn);cursor:pointer;font-family:sans-serif}
+  .desk{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:4px}
+  button{font:inherit;font-size:15px;font-weight:700;color:#141210;background:var(--accent);border:0;border-radius:10px;padding:11px 17px;cursor:pointer}
+  button.ghost{background:#22303e;color:var(--ink);font-weight:400}
+</style></head>
+<body>
+  <h1>你查到了服务器的门牌号，那这个包怎么送过去？</h1>
+  <div class="sub">你手里有服务器的 IP（93.184.216.34）。发个包试试，盯着它怎么走。</div>
+
+  <div class="net" id="net"></div>
+  <div id="packet"></div>
+
+  <div class="rt" id="rt">
+    <h3>「你的电脑」的路由表——它靠这张表决定包往哪送</h3>
+    <table id="rtbody"></table>
+  </div>
+
+  <div class="say"><div class="who">咕噜</div><div class="txt" id="say">你手里有服务器的门牌号 93.184.216.34。发个包过去，看它一跳跳怎么走。</div></div>
+  <div class="desk" id="desk"></div>
+
+<script type="module" src="/proto/route.ts"></script>
+</body></html>

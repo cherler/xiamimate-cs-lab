@@ -1,0 +1,136 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>名字连不上，翻译一下才通</title>
+<style>
+  :root{--ink:#e8e2d6;--dim:#9fb0c2;--warn:#ff8a5b;--ok:#6fbf73;--card:#1b2838;--line:#3f5a72;--accent:#ffcb7a}
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;background:#0c1420;color:var(--ink);
+    font:16px/1.7 -apple-system,"PingFang SC","Microsoft Yahei",sans-serif;
+    display:flex;flex-direction:column;align-items:center;padding:24px}
+  h1{font-size:20px;margin:4px 0 2px}
+  .sub{color:var(--dim);font-size:13px;margin-bottom:18px}
+  .stage{position:relative;width:min(760px,96vw);height:300px;margin-bottom:8px}
+  .node{position:absolute;text-align:center}
+  .box{width:120px;height:96px;border:2px solid var(--line);border-radius:10px;
+    background:#2a3a4e;display:flex;align-items:center;justify-content:center;font-size:30px}
+  .node .cap{font-size:12px;color:var(--dim);margin-top:6px}
+  #you{left:0;top:80px}
+  #clerk{left:calc(50% - 60px);top:80px}
+  #clerk .box{background:#243447;border-color:var(--accent)}
+  #machine{right:0;top:80px}
+  #machine .box{transition:.3s}
+  /* 手里的卡 */
+  .card{position:absolute;width:150px;padding:8px 10px;border-radius:8px;background:var(--card);
+    border:2px solid var(--accent);text-align:center;font-family:ui-monospace,monospace;
+    transition:left .55s ease,top .55s ease,transform .3s}
+  .card .big{font-size:15px}
+  .card .lbl{font-size:10px;color:var(--dim);font-family:sans-serif}
+  #ipcard{border-color:var(--ok);opacity:0;transform:scale(.4)}
+  /* 咕噜 */
+  .say{width:min(760px,96vw);min-height:64px;background:rgba(20,24,30,.8);border:1px solid #2a3a4e;
+    border-radius:12px;padding:12px 16px;margin:6px 0 14px;display:flex;gap:12px;align-items:flex-start}
+  .say .who{color:var(--accent);font-size:12px;font-weight:700;flex:0 0 auto}
+  .say .txt{font-size:15px}
+  .desk{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+  button{font:inherit;font-size:15px;font-weight:700;color:#141210;background:var(--accent);
+    border:0;border-radius:10px;padding:12px 18px;cursor:pointer}
+  button:disabled{opacity:.35;cursor:not-allowed}
+  button.ghost{background:#22303e;color:var(--ink);font-weight:400}
+  .flash{animation:sh .4s}
+  @keyframes sh{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+</style></head>
+<body>
+  <h1>你想打开 example.com</h1>
+  <div class="sub">跟着做，别急着看解释——自己动手试试会发生什么</div>
+
+  <div class="stage" id="stage">
+    <div class="node" id="you"><div class="box">💻</div><div class="cap">你的电脑</div></div>
+    <div class="node" id="clerk"><div class="box">📖</div><div class="cap">查号台（DNS）</div></div>
+    <div class="node" id="machine"><div class="box" id="mbox">❓</div><div class="cap">example.com 那台机器</div></div>
+
+    <div class="card" id="namecard" style="left:0;top:0">
+      <div class="big">example.com</div><div class="lbl">网站的名字</div>
+    </div>
+    <div class="card" id="ipcard" style="left:calc(50% - 75px);top:0">
+      <div class="big" id="ipval">—</div><div class="lbl">门牌号（IP）</div>
+    </div>
+  </div>
+
+  <div class="say"><div class="who">咕噜</div><div class="txt" id="say">你想上 example.com。你手里攥着这张“名字”卡。直接拿它去连那台机器试试？</div></div>
+  <div class="desk" id="desk"></div>
+
+<script>
+const TRUTH_IP = '93.184.216.34'
+const $ = s => document.querySelector(s)
+const say = t => $('#say').textContent = t
+const desk = $('#desk')
+const nameCard = $('#namecard'), ipCard = $('#ipcard'), mbox = $('#mbox')
+function setDesk(btns){ desk.innerHTML=''; btns.forEach(b=>{const el=document.createElement('button');el.textContent=b.label;if(b.ghost)el.className='ghost';el.onclick=b.cb;desk.appendChild(el)}) }
+function moveTo(el,left,top){ el.style.left=left; el.style.top=top }
+
+// 阶段1：亲手用名字直连 → 撞墙
+function phaseTry(){
+  say('你手里只有“名字”。你觉得电脑能直接用这个名字连上那台机器吗？先猜，再动手。')
+  setDesk([{label:'拿“名字”去连那台机器',cb:tryName}])
+}
+function tryName(){
+  setDesk([])
+  moveTo(nameCard,'calc(100% - 150px)','0')          // 名字卡飞向机器
+  setTimeout(()=>{
+    mbox.textContent='？！'; mbox.style.borderColor='var(--warn)'; mbox.style.color='var(--warn)'
+    mbox.parentElement.classList.add('flash')
+    moveTo(nameCard,'0','0')                          // 弹回来
+    say('连不上——那台机器不认识“example.com”这个名字。它只认门牌号（一串数字 IP）。名字是给你记的，机器不用名字。')
+    setTimeout(phaseLookup,1400)
+  },650)
+}
+
+// 阶段2：拿名字去查号台换门牌号
+function phaseLookup(){
+  mbox.textContent='❓'; mbox.style.borderColor='var(--line)'; mbox.style.color=''
+  say('所以得先把“名字”翻译成“门牌号”。查号台（DNS）就是干这个的——拿名字去问它。')
+  setDesk([{label:'拿“名字”去查号台问门牌号',cb:doLookup}])
+}
+function doLookup(){
+  setDesk([])
+  moveTo(nameCard,'calc(50% - 75px)','0')             // 名字卡到查号台
+  setTimeout(()=>{
+    $('#ipval').textContent = TRUTH_IP
+    ipCard.style.opacity='1'; ipCard.style.transform='scale(1)'
+    moveTo(nameCard,'0','0')                          // 名字卡回手里
+    say('查到了！example.com → '+TRUTH_IP+'。这串数字才是那台机器的门牌号。现在拿号去连。')
+    setTimeout(phaseConnect,1200)
+  },650)
+}
+
+// 阶段3：拿门牌号拨通
+function phaseConnect(){
+  setDesk([{label:'拿“门牌号”去连那台机器',cb:doConnect}])
+}
+function doConnect(){
+  setDesk([])
+  moveTo(ipCard,'calc(100% - 150px)','0')
+  setTimeout(()=>{
+    mbox.textContent='✓'; mbox.style.borderColor='var(--ok)'; mbox.style.color='var(--ok)'
+    say('拨通了！看明白没——你每次上网，背后都先偷偷做了这一步：把“名字”翻译成“门牌号”。这层翻译，就是 DNS。')
+    setTimeout(phaseWhy,1400)
+  },650)
+}
+
+// 阶段4：为什么要这层翻译（理论——玩完再点一句，把操作升成理解）
+function phaseWhy(){
+  say('最后一个问题——为什么不让机器直接用名字，非要多这一步翻译？你觉得呢？')
+  setDesk([
+    {label:'因为名字给人记、号给机器用', cb:()=>whyRight('对。名字是给你记的（谁记得住一串数字），门牌号是给机器用的。更重要：机器搬家了、换了门牌号，名字还能不变——你照样用 example.com。把“名字”和“地址”分开，两边都舒服。这一层“中间的翻译”，计算机里到处都是。')},
+    {label:'因为机器太笨了',            cb:()=>whyWrong('不是笨——机器认数字比认名字快得多。真正的原因是“分开”带来的好处：名字给人、号给机器，而且号能变、名字不变。')},
+  ])
+}
+function whyRight(t){ say(t); done() }
+function whyWrong(t){ say(t); setTimeout(()=>phaseWhy(),3200) }  // 说错→换个说法再问，不判分、不踢人
+function done(){
+  setDesk([{label:'（我懂了）',ghost:true,cb:()=>{say('这个知识点亮了：名字 ≠ 地址，中间藏着一层翻译（DNS）。下一个：这串门牌号（IP）本身又是怎么回事？为什么分 v4 和 v6？——那是下一站。')}}])
+}
+
+phaseTry()
+</script>
+</body></html>
