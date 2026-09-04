@@ -4599,32 +4599,33 @@ const qlearn: Experiment<QLearnState> = {
   id: 'qlearn',
   group: '机器学习算法',
   title: '强化学习 Q-learning',
-  subtitle: '靠试错拿奖励，把未来总回报倒推回每一步',
+  subtitle: '靠 Bellman 一轮轮把终点奖励倒推成价值——还会自动绕开墙',
   kernel: qlearnKernel,
   defaultDoc: { kind: 'qlearn', params: {}, entities: [], streams: [] },
   params: [],
-  paramsNote: `**Q-learning:给每个状态估价值,用 Bellman 规则把终点奖励一圈圈倒推**——强化学习让智能体试错,做对给奖励、做错给惩罚;难点是奖励延迟(走迷宫只有到终点才 +1,中间没反馈)。
+  paramsNote: `**值迭代:给每个状态估价值,反复用 Bellman 规则把终点奖励一圈圈倒推**——强化学习让智能体试错,做对给奖励;难点是奖励延迟(走迷宫只有到终点才 +1,中间没反馈)。
 
-- **机制**:给每个状态估一个价值(从这出发未来总回报),更新规则=即时奖励+γ×下一格价值;于是终点的 +1 顺规则倒推——挨着终点 0.9、再外 0.81…每远一步打 γ=0.9 折。学好后往价值最高的邻居走=最优策略,不用提前知道地图。
-- **本实验**:5×4 网格,看价值从终点像波纹倒推(0.9→0.81→0.729),策略箭头指向终点,每格价值=0.9^到终点步数可手算。
+- **机制**:价值初始全 0,每轮做一次 Bellman 扫描 V(s)=max_a[即时奖励+γ×邻居价值];于是终点的 +1 顺规则往外传——挨着终点 0.9、再外 0.81…每远一步打 γ=0.9 折,某轮没格子再变就收敛。学好后往价值最高的邻居走=最优策略,不用提前知道地图。
+- **本实验**:5×4 网格中间竖一堵墙(留缺口)。价值靠**真迭代**从终点扩散、**自动绕过墙**:起点价值=γ^7=0.478 ≠ γ^曼哈顿5=0.59——这正是"距离公式"给不出、只有真迭代才认墙的东西,每格价值仍=γ^绕墙最短路可手算核对。
+- **值迭代 vs Q-learning**:同一套 Bellman;值迭代有模型地规划,Q-learning 从经验里免模型地学同一个价值。
 
 RL 是 AlphaGo、机器人、推荐、大模型 RLHF 的底子,AI 求职大热门。`,
   bounds: [
-    '5×4 走迷宫,终点 +1 奖励,γ=0.9',
-    'Bellman:格子价值=即时奖励+γ×下一格价值(可核)',
-    '价值从终点倒推:0.9^到终点步数;策略=往价值高处走',
-    '不用提前知道地图;RL 是 AlphaGo/RLHF 底子',
+    '5×4 走迷宫带墙,终点 +1 奖励,γ=0.9',
+    '每轮 Bellman 扫描:V(s)=max_a[奖励+γ×邻居价值](可核)',
+    '价值真迭代扩散、绕墙:起点=γ^7=0.478≠γ^曼哈顿(0.59)',
+    '收敛=某轮无格再变;不用提前知道地图;RL 是 RLHF 底子',
   ],
   tabs: [{ id: 'grid', label: '价值倒推' }],
   Stage: QLearnStage,
-  tone: s => (s.phase === 'done' ? { key: 'good', label: `最优 ${s.path.length - 1} 步` } : s.ring >= 0 ? { key: 'idle', label: `第${s.ring}圈` } : { key: 'idle', label: '试错' }),
-  metric: s => { const filled = s.value.filter(x => x !== null).length; return s.phase === 'done' ? 1 : filled / (s.w * s.h) },
-  tickLabel: s => (s.phase === 'done' ? '毕' : s.ring < 0 ? '始' : `${s.ring}`),
+  tone: s => (s.phase === 'done' ? { key: 'good', label: `最优 ${s.path.length - 1} 步` } : s.converged ? { key: 'good', label: '已收敛' } : { key: 'idle', label: `第${s.sweep}轮` }),
+  metric: s => { const filled = s.value.filter(x => x !== null && x > 0).length; return s.phase === 'done' ? 1 : filled / (s.w * s.h) },
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.sweep === 0 ? '始' : `${s.sweep}`),
   whyInRail: true,
   readouts: s => [
-    { label: '价值倒推', value: s.phase === 'done' ? '满图' : s.ring < 0 ? '起步' : `第 ${s.ring} 圈` },
+    { label: 'Bellman 扫描', value: s.phase === 'done' ? '收敛' : `第 ${s.sweep} 轮` },
     { label: '折扣 γ', value: `${s.gamma}` },
-    { label: '本圈价值', value: s.ring > 0 && s.phase !== 'done' ? `${Math.round(Math.pow(s.gamma, s.ring) * 1000) / 1000}` : '—' },
+    { label: '本轮变了', value: s.phase === 'done' ? '0 格' : `${s.changed} 格` },
     { label: '最优路线', value: s.phase === 'done' ? `${s.path.length - 1} 步` : '学习中', tone: s.phase === 'done' ? 'good' : undefined },
   ],
 }

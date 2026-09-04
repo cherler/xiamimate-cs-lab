@@ -3791,6 +3791,8 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .qcell { position:relative; width:44px; height:40px; display:flex; align-items:center; justify-content:center;
   border:1px solid var(--line); border-radius:4px; background:var(--panel); transition:all .18s; }
 .qcell.ring { box-shadow:0 0 0 2px var(--now); z-index:1; }
+.qcell.wall { background:color-mix(in srgb,var(--ink) 62%,var(--panel)); border-color:transparent;
+  background-image:repeating-linear-gradient(45deg,transparent,transparent 4px,color-mix(in srgb,var(--ink) 20%,transparent) 4px,color-mix(in srgb,var(--ink) 20%,transparent) 6px); }
 .qcell.path { outline:2px solid var(--hit); outline-offset:-2px; }
 .qcell.goal { background:color-mix(in srgb,var(--miss) 22%,var(--panel)); border-color:var(--miss); }
 .qval { position:absolute; top:2px; left:3px; font-size:9px; color:var(--dim); font-variant-numeric:tabular-nums; }

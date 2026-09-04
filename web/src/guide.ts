@@ -4733,28 +4733,30 @@ export const GUIDES: Record<string, Guide> = {
     terms: [],
   },
   qlearn: {
-    question: '走迷宫只有终点才有奖励，怎么知道中间每一步该往哪走？',
+    question: '走迷宫(还带一堵墙)只有终点才有奖励，怎么倒推出中间每一步该往哪走？',
     step: (s: never) => {
-      const st = s as { phase: string; ring: number; gamma: number; path: string[] }
+      const st = s as { phase: string; sweep: number; changed: number; converged: boolean; gamma: number; path: string[]; value: (number | null)[]; start: [number, number]; w: number }
+      const [sc, sr] = st.start
+      const sv = st.value[sc + sr * st.w]
       return [
-        { k: '本步输入', v: st.ring < 0 && st.phase !== 'done' ? '只有终点 ★ 有 +1 奖励' : st.phase === 'done' ? '价值满图、策略学好' : st.ring === 0 ? '终点拿到 +1' : `离终点 ${st.ring} 步的一圈格子` },
-        { k: '判定规则', v: `给每格估一个**价值**(从这出发未来总回报)。**Bellman**:格子价值 = 即时奖励 + γ×下一格价值。于是终点的 +1 顺规则**一圈圈倒推**,每远一步打 γ=${st.gamma} 折。策略=往价值最高的邻居走。` },
-        { k: '本步结果', v: st.phase === 'done' ? `跟着策略箭头从起点走到终点=最优 **${st.path.length - 1}** 步——没人教、靠试错+倒推自己学出来。`
-            : st.ring <= 0 ? '价值从终点开始往外倒推。'
-            : `价值 = 0.9^${st.ring} = **${Math.round(Math.pow(st.gamma, st.ring) * 1000) / 1000}**,箭头指向终点。` },
+        { k: '本步输入', v: st.sweep === 0 && st.phase !== 'done' ? '价值**初始全 0**,只有终点 ★ 有 +1' : st.phase === 'done' ? '价值满图、绕过了墙、策略学好' : `第 ${st.sweep} 轮:上一轮的价值` },
+        { k: '判定规则', v: `每格估一个**价值**(未来总回报)。每轮做一次 **Bellman 扫描**:V(s)=max_a[即时奖励 + γ×邻居价值],γ=${st.gamma}。终点的 +1 顺规则**一圈圈往外传**、**遇墙自动绕**。策略=往价值最高的可走邻居。` },
+        { k: '本步结果', v: st.phase === 'done' ? `跟策略从起点走到终点=最优 **${st.path.length - 1}** 步(绕墙,比曼哈顿 5 步长);起点价值 **${sv}** = γ^7 ≠ γ^曼哈顿(0.59)——"距离公式"给不出、只有真迭代才有。`
+            : st.converged ? '本轮**没有格子再变**(changed=0)→ **收敛**,价值满全图。'
+            : `本轮 **${st.changed}** 格价值更新:价值往外扩一圈(0.9→0.81→0.729…),遇墙绕行。` },
       ]
     },
     verdict: (s: never) => {
-      const st = s as { phase: string; ring: number; path: string[] }
-      return st.phase === 'done' ? `最优 ${st.path.length - 1} 步` : st.ring < 0 ? '试错' : `第${st.ring}圈`
+      const st = s as { phase: string; sweep: number; changed: number; converged: boolean; path: string[] }
+      return st.phase === 'done' ? `最优 ${st.path.length - 1} 步` : st.converged ? '收敛' : `第${st.sweep}轮·变${st.changed}格`
     },
     read: [
-      { at: '读数', is: '价值倒推到第几圈、折扣 γ、本圈价值、最优路线长。', anchor: '.scdim' },
-      { at: '迷宫', is: '格子越绿=价值越高;★=终点(+1)、S=起点;箭头=策略(该往哪走);价值像波纹从终点倒推。', anchor: '.asgrid' },
+      { at: '读数', is: '第几轮 Bellman 扫描、本轮变了几格(=0 即收敛)、折扣 γ、最优路线长。', anchor: '.scdim' },
+      { at: '迷宫', is: '格子越绿=价值越高;★=终点(+1)、S=起点、**灰=墙**;箭头=策略(该往哪走);价值像波纹从终点倒推、绕过墙。', anchor: '.asgrid' },
     ],
     try: [
-      { act: '按「下一步」看倒推', watch: '价值从终点一圈圈往外传,每远一步×γ=0.9(0.9→0.81→0.729…)。' },
-      { act: '看策略箭头', watch: '每格箭头指向价值更高的邻居——跟着走就是最优路线,还不用提前知道地图。' },
+      { act: '按「下一步」看倒推', watch: '价值从终点一圈圈往外传,每远一步×γ=0.9;碰到灰墙就绕下面的缺口过去。' },
+      { act: '盯住起点 S 的价值', watch: '收敛后是 0.478=γ^7(绕墙 7 步),不是 γ^曼哈顿 5 步的 0.59——真迭代才认得墙。' },
     ],
     terms: [],
   },
