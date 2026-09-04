@@ -307,6 +307,8 @@ export default function App() {
   //  AI 学伴：从底部「实验记录」抽屉里抽出来，改成头部一颗按钮开的**独立全屏面板**。
   //  抽屉那格太挤（出题/答疑/复习/面试四种用法各要一块地方），全屏才放得开。
   const [aiOpen, setAiOpen] = useState(false)
+  //  从进度面板「去练最弱那条」带过来的定向出题目标(实验+事实);消费一次即清。
+  const [drillFact, setDrillFact] = useState<{ expId: string; factId: string } | null>(null)
   //  只在**换实验**时决定要不要自动弹：第一次见才弹，之后靠页眉那颗按钮请回来
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { setBriefOpen(!!briefFor(expId) && !briefRecs[expId]) }, [expId])
@@ -1123,6 +1125,7 @@ export default function App() {
           aiFacts={aiFacts}
           onJump={jumpToQuestion}
           onOpenAi={(id) => { navToExpById(id); setShowProgress(false); setAiOpen(true) }}
+          onDrillFact={(id, factId) => { setDrillFact({ expId: id, factId }); navToExpById(id); setShowProgress(false); setAiOpen(true) }}
           onClose={() => setShowProgress(false)}
           cloud={cloud}
           onClear={() => {
@@ -1156,7 +1159,9 @@ export default function App() {
             <button className="aipanel-x" onClick={() => setAiOpen(false)} title="关闭（Esc）">✕</button>
           </div>
           <div className="aipanel-body">
-            <AiCompanion expId={exp.id} onCite={(step) => { seek(step); setAiOpen(false) }} onFactAnswer={recordFactAnswer} />
+            <AiCompanion expId={exp.id} onCite={(step) => { seek(step); setAiOpen(false) }} onFactAnswer={recordFactAnswer}
+              drillFactId={drillFact?.expId === exp.id ? drillFact.factId : undefined}
+              onDrillConsumed={() => setDrillFact(null)} />
           </div>
         </div>
       </div>

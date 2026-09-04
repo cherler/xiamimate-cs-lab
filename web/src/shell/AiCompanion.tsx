@@ -63,7 +63,11 @@ type Turn = { role: 'interviewer' | 'candidate'; text: string }
 /** AI 学伴出题作答的回调 —— 把 factId + 对错 + 出处 + 题面 报给 App 计入进度 */
 export type OnFactAnswer = (factId: string, correct: boolean, expId: string, label: string) => void
 
-export function AiCompanion({ expId, onCite, onFactAnswer }: { expId: string; onCite?: (step: number) => void; onFactAnswer?: OnFactAnswer }) {
+export function AiCompanion({ expId, onCite, onFactAnswer, drillFactId, onDrillConsumed }: {
+  expId: string; onCite?: (step: number) => void; onFactAnswer?: OnFactAnswer
+  /** 从进度面板「去练最弱那条」跳来时,要定向出题的 factId(仅当它属于当前实验) */
+  drillFactId?: string; onDrillConsumed?: () => void
+}) {
   const [supported, setSupported] = useState<boolean | null>(null)
   const [mode, setMode] = useState<Mode>('quiz')
 
@@ -91,7 +95,7 @@ export function AiCompanion({ expId, onCite, onFactAnswer }: { expId: string; on
         <button className={mode === 'review' ? 'on' : ''} onClick={() => setMode('review')}>复习</button>
         <button className={mode === 'interview' ? 'on' : ''} onClick={() => setMode('interview')}>面试</button>
       </div>
-      {mode === 'quiz' && <QuizView expId={expId} onCite={onCite} onFactAnswer={onFactAnswer} />}
+      {mode === 'quiz' && <QuizView expId={expId} onCite={onCite} onFactAnswer={onFactAnswer} drillFactId={drillFactId} onDrillConsumed={onDrillConsumed} />}
       {mode === 'ask' && <AskView expId={expId} onCite={onCite} />}
       {mode === 'review' && <ReviewView expId={expId} />}
       {mode === 'interview' && <InterviewView expId={expId} />}
@@ -157,20 +161,33 @@ function Md({ text }: { text: string }) {
 }
 
 // ── 出题 ──
-function QuizView({ expId, onCite, onFactAnswer }: { expId: string; onCite?: (step: number) => void; onFactAnswer?: OnFactAnswer }) {
+function QuizView({ expId, onCite, onFactAnswer, drillFactId, onDrillConsumed }: {
+  expId: string; onCite?: (step: number) => void; onFactAnswer?: OnFactAnswer
+  drillFactId?: string; onDrillConsumed?: () => void
+}) {
   const [sub, setSub] = useState<'normal' | 'debate'>('normal')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [qs, setQs] = useState<Question[] | null>(null)
   const [picked, setPicked] = useState<Record<number, number>>({})
+  const [drilled, setDrilled] = useState(false)   // 这组是不是"定向出的最弱那条"
 
-  async function gen() {
-    setLoading(true); setError(''); setPicked({})
+  async function gen(factId?: string) {
+    setLoading(true); setError(''); setPicked({}); setDrilled(!!factId)
     try {
-      const d = await postJSON<{ questions: Question[] }>('/lab/ai/quiz', { expId })
+      const d = await postJSON<{ questions: Question[] }>('/lab/ai/quiz', { expId, factId })
       setQs(d.questions)
     } catch (e) { setError((e as Error).message) } finally { setLoading(false) }
   }
+
+  //  从进度面板「去练最弱那条」跳进来:自动出那条 factId 的题(退回常规子页)。
+  useEffect(() => {
+    if (!drillFactId) return
+    setSub('normal')
+    void gen(drillFactId)
+    onDrillConsumed?.()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drillFactId])
 
   const subtabs = (
     <div className="aic-subtabs">
@@ -183,7 +200,8 @@ function QuizView({ expId, onCite, onFactAnswer }: { expId: string; onCite?: (st
   return (
     <div className="aic-body">
       {subtabs}
-      <button className="aic-go" disabled={loading} onClick={gen}>{loading ? '出题中…' : qs ? '换一组' : '出一组题'}</button>
+      {drilled && qs && <p className="aic-hint">这是你在本实验<b>最弱的一条</b>——练到掌握它就出师。</p>}
+      <button className="aic-go" disabled={loading} onClick={() => gen()}>{loading ? '出题中…' : qs ? '换一组' : '出一组题'}</button>
       {error && <p className="aic-err">出错了：{error}</p>}
       {qs?.map((q, qi) => {
         const chosen = picked[qi]

@@ -171,7 +171,7 @@ export function masteryOf(
 // ── 错题本：真题 + AI 事实一起收，按"最该先练"排序 ──
 export type ReviewItem =
   | { kind: 'true'; problemId: string; qi: number; rec: QRecord; status: QStatus }
-  | { kind: 'ai'; key: QKey; expId: string; label: string; rec: QRecord; status: QStatus }
+  | { kind: 'ai'; key: QKey; factId: string; expId: string; label: string; rec: QRecord; status: QStatus }
 
 export function reviewAll(
   s: Store,
@@ -188,7 +188,7 @@ export function reviewAll(
     if (!isFactKey(key) || !rec.meta) continue
     if (expIds && !expIds.has(rec.meta.expId)) continue
     const status = statusOf(rec)
-    if (status === 'wrong' || status === 'shaky') items.push({ kind: 'ai', key, expId: rec.meta.expId, label: rec.meta.label, rec, status })
+    if (status === 'wrong' || status === 'shaky') items.push({ kind: 'ai', key, factId: key.slice(FACT_PREFIX.length), expId: rec.meta.expId, label: rec.meta.label, rec, status })
   }
   return items.sort((a, b) =>
     (a.status === b.status ? 0 : a.status === 'wrong' ? -1 : 1)

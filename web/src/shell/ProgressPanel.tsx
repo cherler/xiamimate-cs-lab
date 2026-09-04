@@ -14,7 +14,7 @@ import type { AnyExperiment } from '../types.ts'
 type Slot = { problemId: string; qi: number }
 
 export function ProgressPanel({
-  store, experiments, cloud, onJump, onOpenAi, onClose, onClear, scopeLabel, aiFacts,
+  store, experiments, cloud, onJump, onOpenAi, onDrillFact, onClose, onClear, scopeLabel, aiFacts,
 }: {
   store: Store
   /** 只统计这些实验（当前职业的实验集合，含软链）—— 面板按职业过滤，不再全站一锅端。 */
@@ -25,6 +25,8 @@ export function ProgressPanel({
   onJump: (experimentId: string, problemId: string, qi: number) => void
   /** 打开某实验的 AI 学伴（AI 错题的"再练"入口——题面是现场生成的，无法定位到原题，只能回去重出） */
   onOpenAi: (experimentId: string) => void
+  /** 直接去练某实验里的某条事实（后端按 factId 定向出题）—— 推荐下一步"练最弱那条"用 */
+  onDrillFact: (experimentId: string, factId: string) => void
   onClose: () => void
   onClear: () => void
   /** 当前职业名，印在标题上，让"这是哪一科的进度"一目了然。 */
@@ -78,9 +80,11 @@ export function ProgressPanel({
       .map(g => ({ ...g, done: g.items.mastered, tried: g.items.mastered + g.items.shaky + g.items.wrong, ratio: g.items.total ? g.items.mastered / g.items.total : 1 }))
       .filter(g => g.tried > 0 && g.ratio < 1)
       .sort((a, b) => a.ratio - b.ratio)[0]
-    //  推荐下一步:错题优先 → 补练中 → 开新的
-    let rec: { text: string; expId?: string } | null = null
-    if (queue.length > 0) rec = { text: `先清错题本的 ${queue.length} 题` }
+    //  推荐下一步:最弱的那条 AI 事实(能定向出题)优先 → 真题错题 → 补练中 → 开新的
+    const topAi = queue.find(x => x.kind === 'ai')
+    let rec: { text: string; expId?: string; drill?: { expId: string; factId: string } } | null = null
+    if (topAi && topAi.kind === 'ai') rec = { text: `你最弱的一条:「${topAi.label}」`, drill: { expId: topAi.expId, factId: topAi.factId } }
+    else if (queue.length > 0) rec = { text: `先清错题本的 ${queue.length} 题` }
     else if (inProgress[0]) rec = { text: `继续攻「${inProgress[0].exp.title}」`, expId: inProgress[0].exp.id }
     else if (untouched[0]) rec = { text: `开练「${untouched[0].exp.title}」`, expId: untouched[0].exp.id }
     return { attempted: attempted.length, inProgress, weakGroup, rec }
@@ -126,6 +130,7 @@ export function ProgressPanel({
                   <div className="pgdiag-rec">
                     <span className="pgdiag-lbl">下一步</span>
                     <span className="pgdiag-do">{diag.rec.text}</span>
+                    {diag.rec.drill && <button className="pgdiag-go" onClick={() => onDrillFact(diag.rec!.drill!.expId, diag.rec!.drill!.factId)}>出这条的题 →</button>}
                     {diag.rec.expId && <button className="pgdiag-go" onClick={() => onOpenAi(diag.rec!.expId!)}>去练 →</button>}
                   </div>
                 )}

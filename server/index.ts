@@ -68,11 +68,11 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === 'POST' && path === '/lab/ai/quiz') {
       const raw = await readBody(req)
-      let body: { expId?: string; count?: number; useLLM?: boolean } = {}
+      let body: { expId?: string; count?: number; useLLM?: boolean; factId?: string } = {}
       try { body = raw ? JSON.parse(raw) : {} } catch { return send(res, 400, { error: '请求体不是合法 JSON' }) }
       if (!body.expId) return send(res, 400, { error: '缺少 expId' })
       const questions = await buildQuiz(body.expId, {
-        count: body.count, useLLM: body.useLLM, principal: principalOf(req),
+        count: body.count, useLLM: body.useLLM, principal: principalOf(req), factId: body.factId,
       })
       return send(res, 200, { expId: body.expId, questions })
     }

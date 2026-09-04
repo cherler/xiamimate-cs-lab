@@ -85,7 +85,7 @@ async function phrase(
   }
 }
 
-export type BuildOptions = { count?: number; useLLM?: boolean; principal?: Principal }
+export type BuildOptions = { count?: number; useLLM?: boolean; principal?: Principal; factId?: string }
 
 export async function buildQuiz(expId: string, opts: BuildOptions = {}): Promise<Question[]> {
   const entry = getEntry(expId)
@@ -94,9 +94,13 @@ export async function buildQuiz(expId: string, opts: BuildOptions = {}): Promise
   if (trace.length === 0) throw new Error(`实验 ${expId} 跑不出 trace`)
 
   const useLLM = opts.useLLM !== false
-  const picks = opts.count && opts.count < entry.facts.length
-    ? shuffle(entry.facts).slice(0, opts.count)
-    : entry.facts
+  //  factId 定向:只出这一条事实的题（「去练最弱那条」用）。事实过期(找不到)就退回整套,不至于空。
+  const targeted = opts.factId ? entry.facts.filter(f => f.id === opts.factId) : null
+  const picks = targeted && targeted.length > 0
+    ? targeted
+    : opts.count && opts.count < entry.facts.length
+      ? shuffle(entry.facts).slice(0, opts.count)
+      : entry.facts
 
   const out: Question[] = []
   for (const fact of picks) {
