@@ -7,7 +7,8 @@ import type { ReactNode } from 'react'
 
 export function mdInline(text: string): ReactNode[] {
   const nodes: ReactNode[] = []
-  const re = /(\*\*([^*]+)\*\*|`([^`]+)`|(?<![*\w])\*([^*\n]+)\*(?![*\w]))/g
+  //  ⚠️ 粗体内容用非贪婪 .+?(不是 [^*]+):否则内容里带 * 的(如 **A* 寻路**)匹配不上、星号裸露。
+  const re = /(\*\*(.+?)\*\*|`([^`]+)`|(?<![*\w])\*([^*\n]+)\*(?![*\w]))/g
   let last = 0, m: RegExpExecArray | null, k = 0
   while ((m = re.exec(text))) {
     if (m.index > last) nodes.push(text.slice(last, m.index))
