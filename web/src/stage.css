@@ -3664,6 +3664,25 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .scbar.win .scbfill { background:var(--hit); }
 .scbn { font-size:11px; color:var(--dim); font-variant-numeric:tabular-nums; }
 .scbwin { font-size:11px; color:var(--hit); font-weight:700; }
+/* 深化版:正解 vs 错误答案的条各自配色;当前多数票若是错的(N 小不走运)要显红,不能一律绿 */
+.scprob-ans { font-size:12px; color:var(--hit); font-weight:700; margin-left:8px; }
+.scbar.sc-correct .scba { color:var(--hit); }
+.scbar.sc-correct .scbfill { background:color-mix(in srgb,var(--hit) 45%,var(--panel)); }
+.scbar.sc-wrong .scbfill { background:color-mix(in srgb,var(--dim) 40%,var(--panel)); }
+.scbar.win.sc-correct .scbfill { background:var(--hit); }
+.scbar.win.sc-correct .scba { color:var(--hit); font-weight:800; }
+.scbar.win.sc-wrong .scbfill { background:var(--miss); }
+.scbar.win.sc-wrong .scba { color:var(--miss); font-weight:800; }
+.scbar.win.sc-wrong .scbwin { color:var(--miss); }
+/* 为什么正解会赢:两列——正解多条殊途同归 / 错法各异 */
+.scwhy { display:flex; gap:10px; flex-wrap:wrap; margin-top:2px; }
+.scwhy-col { flex:1 1 210px; min-width:190px; border:1px solid var(--line); border-radius:8px; padding:8px 11px; }
+.scwhy-col.ok { background:color-mix(in srgb,var(--hit) 5%,transparent); }
+.scwhy-col.bad { background:color-mix(in srgb,var(--miss) 5%,transparent); }
+.scwhy-h { font-size:12px; font-weight:700; margin-bottom:5px; }
+.scwhy-col.ok .scwhy-h { color:var(--hit); }
+.scwhy-col.bad .scwhy-h { color:var(--miss); }
+.scwhy-item { font-size:12px; color:var(--dim); font-variant-numeric:tabular-nums; line-height:1.75; }
 
 /* Best-of-N 拒绝采样 */
 .bnwrap { display:flex; flex-direction:column; gap:8px; margin:12px 0; }

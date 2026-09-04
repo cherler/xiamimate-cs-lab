@@ -626,10 +626,17 @@ const CATALOG_CORE: CatalogEntry[] = [
     doc: trivialDoc('selfconsist'),
     facts: [
       {
-        id: 'winner', label: '多数投票胜出的答案',
-        ask: '自洽性采样多条推理链再多数投票。「小明有 5 个苹果，又买了 3 袋每袋 4 个」这题，多数链投出的最终答案是多少?',
+        id: 'winner', label: '采样够多(N=25)时多数投票胜出的答案',
+        ask: '自洽性采样多条推理链再多数投票。「小明有 5 个苹果，又买了 3 袋每袋 4 个」这题，采样到 N=25 条链、多数投票投出的最终答案是多少?',
         kind: 'number',
         compute: t => ({ answer: String(last(t).winner), step: t.length - 1, evidence: String(last(t).log ?? '') }),
+        distractors: numDistractors,
+      },
+      {
+        id: 'n1', label: 'N=1(单条链、不投票)时的答案——不走运抽到错的',
+        ask: '自洽性的核心是"采样越多越可靠"。若只采样 N=1 条链(相当于单条贪心、不投票),答案就是那一条的结果。本实验 N=1 恰好抽到一条算错的链，此时答案是多少?',
+        kind: 'number',
+        compute: t => ({ answer: String(t[0]!.winner), step: 0, evidence: String(t[0]!.log ?? '') }),
         distractors: numDistractors,
       },
     ],

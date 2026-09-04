@@ -1,60 +1,68 @@
-/** 舞台：思维链自洽 —— 采样多条推理链，各得一个答案，多数投票；殊途同归的答案更可信 */
+/** 舞台：思维链自洽 —— 轴=采样链数 N；看多数票随 N 从"不可靠(错/平票)"收敛到正解 */
 import type { SelfConsistState } from '@engine/kernels/selfconsist.ts'
 import type { StageProps } from '../types.ts'
+import { rich } from '../shell/rich.tsx'
 
 export function SelfConsistStage({ state }: StageProps<SelfConsistState>) {
-  const { problem, chains, n, tally, winner, correct, phase } = state
-  const done = phase === 'done'
+  const { problem, samples, n, tally, winner, tie, correct, correctCount, reliable } = state
   const maxVotes = Math.max(...tally.map(([, v]) => v), 1)
+  const winColor = tie ? 'var(--now)' : reliable ? 'var(--hit)' : 'var(--miss)'
+  const winText = tie ? '平票' : (winner ?? '—')
+  //  样例(静态"为什么"锚):正解的多条不同推法(殊途同归) + 每种错法一条(发散)
+  const correctPaths = [...new Set(samples.filter(s => s.ok).map(s => s.r))].slice(0, 3)
+  const wrongPaths = [...new Map(samples.filter(s => !s.ok).map(s => [s.a, s.r] as const)).values()]
+
   return (
     <div className="card">
-      <h3>思维链自洽 Self-Consistency <span className="hint">采样多条推理链，多数投票</span></h3>
+      <h3>思维链自洽 Self-Consistency <span className="hint">采样越多，多数票越可靠</span></h3>
       <div className="body">
         <div className="scdim">
-          <div className="scdk"><span className="scdn hot">{chains.length}/{n}</span><span className="scdl">已采样链</span></div>
-          <div className="scdk"><span className="scdn">{done ? winner : tally[0]?.[0] ?? '—'}</span><span className="scdl">当前多数票</span></div>
-          <div className="scdk"><span className="scdn">{correct}</span><span className="scdl">正解</span></div>
+          <div className="scdk"><span className="scdn hot">N={n}</span><span className="scdl">采样链数(轴)</span></div>
+          <div className="scdk"><span className="scdn" style={{ color: winColor }}>{winText}</span><span className="scdl">多数票{reliable ? ' ✓正解' : tie ? ' 未定' : ' ✗错'}</span></div>
+          <div className="scdk"><span className="scdn">{n ? Math.round(correctCount / n * 100) : 0}%</span><span className="scdl">正解占比 {correctCount}/{n}</span></div>
         </div>
 
         <div className="scwrap">
-          <div className="scprob">📝 <b>{problem}</b></div>
+          <div className="scprob">📝 <b>{problem}</b> <span className="scprob-ans">正解 {correct}</span></div>
 
-          <div className="scchains">
-            {chains.map((c, k) => (
-              <div key={k} className={`scchain ${c.ok ? 'ok' : 'bad'}`}>
-                <span className="scidx">链{k + 1}</span>
-                <span className="screason">{c.r}</span>
-                <span className="scans">→ {c.a}</span>
-                <span className="scmark">{c.ok ? '✓' : '✗'}</span>
-              </div>
-            ))}
-          </div>
-
+          {/* 投票条:随 N 变——看正解(绿)的票数怎么一步步压过错误答案 */}
           <div className="scvote">
-            <span className="scvlbl">投票：</span>
+            <span className="scvlbl">N={n} 条链的票数：</span>
             {tally.map(([a, v]) => {
-              const win = done && a === winner
+              const win = !tie && a === winner
+              const isCorrect = a === correct
               return (
-                <div key={a} className={`scbar ${win ? 'win' : ''}`}>
-                  <span className="scba">{a}</span>
+                <div key={a} className={`scbar ${win ? 'win' : ''} ${isCorrect ? 'sc-correct' : 'sc-wrong'}`}>
+                  <span className="scba">{a}{isCorrect ? ' ✓' : ''}</span>
                   <span className="scbbar"><span className="scbfill" style={{ width: `${(v / maxVotes) * 100}%` }} /></span>
                   <span className="scbn">{v} 票</span>
-                  {win && <span className="scbwin">← 胜出</span>}
+                  {win && <span className="scbwin">← 多数票</span>}
                 </div>
               )
             })}
           </div>
 
-          <div className="orcap">
-            {chains.length === 0 ? '按「下一步」开始:对同一题采样多条推理链,再多数投票'
-              : done ? `多数投票 ${winner} 胜出(${tally[0][1]}/${n})——3 条殊途同归到 17,少数算错的被淹没`
-                : `第 ${chains.length} 条链 → ${chains[chains.length - 1].a}${chains[chains.length - 1].ok ? '' : '(算错)'};当前 ${tally[0][0]} 领先`}
+          {/* 为什么正解总是众数:多条正确推法殊途同归、错法各异(静态锚,解释机制) */}
+          <div className="scwhy">
+            <div className="scwhy-col ok">
+              <div className="scwhy-h">✓ 正解 {correct}：多条推法殊途同归</div>
+              {correctPaths.map((r, k) => <div key={k} className="scwhy-item">{r}</div>)}
+            </div>
+            <div className="scwhy-col bad">
+              <div className="scwhy-h">✗ 错法各异、彼此不一致</div>
+              {wrongPaths.map((r, k) => <div key={k} className="scwhy-item">{r}</div>)}
+            </div>
           </div>
+
+          <div className="orcap">{rich(state.log)}</div>
         </div>
 
-        {done
-          ? <p className="scnote">单条<b>贪心</b>推理一步错就步步错,若恰好采到那条错链(如 32)就答错。<b>自洽</b>的洞见:一道有唯一答案的推理题,<b>正确推法往往很多条、都通向同一个答案</b>,错法则五花八门、彼此不一致。于是<b>采样 N 条</b>链(温度制造多样)、各自推答案、<b>取票数最多的</b>——少数算错的被淹没,推理准确率显著提升(尤其数学/常识)。是提升 LLM 推理的经典简单招,配思维链 CoT 用。代价:要多跑 N 次、更贵。</p>
-          : <p className="scnote" style={{ opacity: .85 }}>对同一道题,让模型采样出<b>多条不同的推理链</b>(带随机性)。每条独立推到一个答案(绿=对、红=错),再<b>数票</b>:出现最多的那个答案胜出。不同路子若殊途同归到同一答案,它更可能对;个别算错的会被多数票淹没。</p>}
+        <p className="scnote">
+          <b>自洽的核心</b>:一道有唯一解的推理题,<b>正确推法往往很多条、都殊途同归到同一答案</b>(这里 17 由三种算法得到),
+          <b>错法却五花八门、彼此不一致</b>。所以正解单条链虽只占约 {correct === 17 ? '44' : '?'}%(不到半数),却是<b>唯一的众数</b>。
+          于是<b>采样越多、多数票越向正解收敛</b>:N 小时抽样噪声能让错误答案暂时领先或平票(如上 N≤5),N 大了正解就稳压全场(N≥9)。
+          这就是自洽比"单条贪心推理"强的原因——代价是要多跑 N 次、更贵。经典且简单,常配思维链 CoT 用。
+        </p>
       </div>
     </div>
   )
