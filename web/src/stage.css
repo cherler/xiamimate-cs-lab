@@ -6219,6 +6219,18 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .pn-blk.pn-off{opacity:.4}
 .pn-blk-g{border:1px solid color-mix(in srgb,var(--hit) 30%,var(--line));border-radius:8px;padding:8px 10px;background:color-mix(in srgb,var(--hit) 5%,transparent);font-size:var(--t-ui);line-height:1.7;font-variant-numeric:tabular-nums}
 .pn-n{font-family:var(--mono);color:var(--now);font-weight:700;margin-right:6px}
+/*  感知几何族(针孔相机/视觉里程计/双目/PnP/GJK)的小绘图盒:原来都是扁平 sunk-1 灰盒。
+    统一成仪表级几何坐标纸(淡网格 + 内凹材质),和具身绘图板 .fk-svg 一个气质。放最后覆盖各自的底/框。 */
+.ph-svg, .vo-svg, .st-svg, .pn-svg, .gk-svg {
+  background:
+    linear-gradient(color-mix(in srgb,var(--line) 42%,transparent) 1px, transparent 1px) 0 0 / 100% 20%,
+    linear-gradient(90deg, color-mix(in srgb,var(--line) 42%,transparent) 1px, transparent 1px) 0 0 / 20% 100%,
+    linear-gradient(180deg, var(--panel), color-mix(in srgb,var(--ink) 3%,var(--panel-2)));
+  border:1px solid var(--plate-edge);border-radius:9px;
+  box-shadow:inset 0 1px 4px rgba(20,32,42,.06), inset 0 0 0 1px rgba(255,255,255,.5);
+}
+/*  两联小图放大一档,几何看得清 */
+.vo-pane, .gk-pane, .pn-pane { min-width:172px; }
 .pn-goodc{color:var(--hit)}
 .pn-badc{color:var(--miss)}
 
