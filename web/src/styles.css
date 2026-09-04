@@ -463,8 +463,14 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{
  *  第二行 问句 + 「先搞懂几个词」。副题说的是**这个实验属于哪一类**，
  *  而问句说的是**这一屏要你回答什么** —— 招牌上只该留后者，
  *  分类在左边目录里已经写着（分组标题就是它）。 */
-.exphead{flex:0 0 auto;display:flex;flex-wrap:nowrap;align-items:baseline;
-  gap:12px;padding-bottom:7px;border-bottom:1px solid var(--line)}
+/*  ⚠️ flex-wrap:**wrap**（原来是 nowrap）。地基链 `.basedon` 是 flex:0 0 100%,本意是"独占一行"
+    ——可 nowrap 下它不会换行,而是把这一行撑到 1300+ 宽、把页签挤到视口外,`.col.main` 于是横向滚,
+    用户滑到右边只看到那两个页签浮在空白里(2026-09-04 反馈)。改 wrap 后:标题行(名/问句/看懂这一屏/页签)
+    一行、地基链自己换到下一行(见下方 order:99);没有地基链的实验仍是一行,不变。 */
+.exphead{flex:0 0 auto;display:flex;flex-wrap:wrap;align-items:baseline;
+  gap:12px 12px;padding-bottom:7px;border-bottom:1px solid var(--line)}
+/*  地基链排到最后 → 换到标题行下方独占一行(而不是夹在 问句 和 页签 中间把页签推走) */
+.exphead .basedon{order:99}
 /*  实验名沿用原来 `.top h1` 那一套（宋体，全站唯一一处）——
     ⚠️ 别自己编令牌：我第一版写的 `--t-h1` / `--serif` 都不存在，
     真名是 `--t-title` / `--song`，css-tokens 那套判据会红。 */
