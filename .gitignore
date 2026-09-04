@@ -7,3 +7,11 @@ dist/
 web/dist/
 
 web/public/models/
+
+# Claude Code 会话目录（每仓每会话生成，不入库）
+.claude/
+
+# 临时/草稿：下划线前缀约定的一次性脚本/探针/截图（如 _qtest.mjs / _smnow.png / _gen.sh）
+_*.mjs
+_*.png
+_*.sh
