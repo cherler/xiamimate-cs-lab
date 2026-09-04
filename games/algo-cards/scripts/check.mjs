@@ -150,6 +150,20 @@ const render = await page.evaluate(() => {
 process.stdout.write('\r\x1b[K')
 check('G5 每张卡 × 5 种极端局面能渲染', render.length ? render[0].slice(0, 46) : 0, v => v === 0, '0 处崩溃')
 
+/* ── G6 重构(除牌):删一张 = 牌组 −1;代价 3→6→9 越删越贵;会自限不删空 ── */
+const ref = await page.evaluate(() => {
+  __startRun('sort'); const R = __RUN()
+  const d0 = R.deck.length, c0 = R.cap, cost1 = __refactorCost()
+  __doRemove(0); const d1 = R.deck.length, c1 = R.cap, cost2 = __refactorCost()
+  __doRemove(0); const cost3 = __refactorCost()
+  let g = 0; while (__canRefactor() && g++ < 60) __doRemove(0)
+  return { dDrop: d0 - d1, cDrop: c0 - c1, cost1, cost2, cost3, deckMin: R.deck.length, canAfter: __canRefactor() }
+})
+check('G6 重构删一张 = 牌组 −1', ref.dDrop, v => v === 1, '= 1')
+check('G6 重构代价升级', `${ref.cost1},${ref.cost2},${ref.cost3}`, v => v === '3,6,9', '3,6,9')
+check('G6 首删 −3 上限', ref.cDrop, v => v === 3, '= 3')
+check('G6 重构自限不删空', ref.canAfter === false && ref.deckMin >= 6 ? 'OK' : `FAIL(${ref.canAfter},${ref.deckMin})`, v => v === 'OK', 'canRef→false 且 ≥6 张')
+
 /* ── 控制台 ── */
 check('全程无控制台报错', consoleErrors.length ? consoleErrors[0].slice(0, 60) : 0, v => v === 0, '0 条')
 

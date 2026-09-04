@@ -469,7 +469,18 @@ const PATH=SHAPE                                   // 关卡数 = SHAPE.length
 function newRun(seed,kit){const R=rng(seed)
  // films:整局八关的胶片,用来拼长图
  return{R,seed,deck:[...starterOf(kit),...KITS[kit]],kit,budget:T.BUDGET,cap:T.BUDGET,node:0,over:null,offer:null,
-   used:[],opts:null,log:[],films:[]}}
+   used:[],opts:null,log:[],films:[],refactors:0}}
+/* ═══ 5.1 重构:删一张牌(照抄 StS 的除牌:次数不封死,但越删越贵)═══
+   起始牌 63%、「遍历」一张统治、「观察」0% 出场却没法删 —— 这是重复感最直接的根。
+   代价走本作自己的资源=预算上限(时间):删第 k 张永久 −(REF_BASE + k×REF_STEP) 上限。
+   第一张 −3 恰好抵消一关的 +3 成长,便宜到肯用;越删越贵,自然「次数有限」。
+   删到牌组只剩 DECK_MIN 张、或上限扛不住下一次,就删不动了 —— 不会把自己删到打不了。 */
+const REF_BASE=3, REF_STEP=3, DECK_MIN=6, CAP_FLOOR=18
+function refactorCost(RUN){return REF_BASE+RUN.refactors*REF_STEP}
+function canRefactor(RUN){return RUN.deck.length>DECK_MIN && RUN.cap-refactorCost(RUN)>=CAP_FLOOR}
+function doRemove(i){ if(!canRefactor(RUN)||i<0||i>=RUN.deck.length)return
+ const cost=refactorCost(RUN); RUN.cap-=cost; RUN.budget=RUN.cap
+ RUN.deck.splice(i,1); RUN.refactors++; remove=false}
 const FLAWIDS=Object.keys(FLAW)
 function nodeFlaw(RUN,i){ if(i<1)return null              // 第 1 关不挂失误
  return RUN.R()<Math.min(.8,.35+.07*i)?FLAWIDS[Math.floor(RUN.R()*FLAWIDS.length)]:null}
@@ -649,6 +660,7 @@ let W,H,DPR=Math.min(devicePixelRatio||1,2)
 const fit=()=>{W=innerWidth;H=innerHeight;cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0)}
 addEventListener('resize',fit);fit()
 let RUN=null,S=null,offer=null,intel=null,parts=[],KIT='sort',anim=null,hist=[],poster=null
+let remove=false,refBox=null   // remove=正在看「重构删牌」子屏;refBox=奖励屏上那颗重构按钮的命中框
 const CO={bg0:'#050a12',bg1:'#0a141f',line:'rgba(90,150,190,.22)',panel:'rgba(12,24,38,.72)',
  ink:'#e6eef7',dim:'#8ba3bb',faint:'#4d6076',cyan:'#5fd0e8',amber:'#f0a94a',red:'#ff6b5e',green:'#7fd98f',
  tag:{base:'#a8c0d6',sort:'#f0a94a',dc:'#b39ddb',memo:'#7fd98f',greedy:'#ff8f6b',tool:'#5fd0e8',deck:'#9ecbff',heap:'#ffb3d9',twop:'#8ee6c8',def:'#c8b4ff',graph:'#7fd1ff'}}
@@ -801,7 +813,8 @@ Object.assign(window,{__POL2:S=>POL[KIT](S),__SETG:(c,d)=>{GCLUST=c;GDENS=d},__S
    if(b2)RUN.deck.push(b2)}
   return out},__anim:()=>!!anim,__auto:autoTurn,__S:()=>S,__RUN:()=>RUN,__offer:()=>offer,__intel2:()=>intel,
  __play:i=>uiPlay(i),__end:()=>{if(!anim){endTurn(S);hist.push(hpPct(S));if(S.over)afterFight()}},
- __draw:()=>draw(),__FB:v=>{FLAWBONUS=v},__HITBOX:()=>HITBOX,__CARD:id=>C[id],__take:takeCard,__startRun:startRun,__skipIntel:()=>{if(intel)pickNode(0)},__pickNode:k=>pickNode(k),__SHAPE:SHAPE})
+ __draw:()=>draw(),__FB:v=>{FLAWBONUS=v},__HITBOX:()=>HITBOX,__CARD:id=>C[id],__take:takeCard,__startRun:startRun,__skipIntel:()=>{if(intel)pickNode(0)},__pickNode:k=>pickNode(k),__SHAPE:SHAPE,
+ __doRemove:doRemove,__canRefactor:()=>canRefactor(RUN),__refactorCost:()=>refactorCost(RUN),__refactors:()=>RUN.refactors,__RUN:()=>RUN,__remove:v=>{remove=v},__setOffer:()=>{offer=offer3(RUN)}})
 
 /* ── 图上的操作:玩家加边,敌人断边 ── */
 function gAdj(G){const a={};for(const e of G.edges)if(e.alive){
@@ -1189,6 +1202,7 @@ function draw(){
   return req()}
  if(RUN.over)  {overScreen();return req()}
  if(intel)     {intelScreen();return req()}
+ if(remove)    {removeScreen();return req()}
  if(offer)     {offerScreen();return req()}
  fightScreen();req()}
 function grid(){ctx.strokeStyle='rgba(70,130,170,.07)';ctx.lineWidth=1
@@ -1818,12 +1832,54 @@ function offerScreen(){
  ctx.textAlign='center';ctx.font='700 30px system-ui';ctx.fillStyle=CO.ink
  ctx.fillText('打完了 · 三选一',cx,H*.26)
  ctx.font='400 13px system-ui';ctx.fillStyle=CO.dim
- ctx.fillText(`牌组 ${RUN.deck.length} 张 · 预算上限升到 ${RUN.cap} · 跳过也是策略(不稀释牌库)`,cx,H*.26+26)
+ ctx.fillText(`牌组 ${RUN.deck.length} 张 · 预算上限 ${RUN.cap} · 拿一张 / 重构删一张 / 跳过`,cx,H*.26+26)
  ctx.textAlign='left'
  const cw=200,ch=170,gap=22,x0=cx-(3*cw+2*gap)/2
  HITBOX.length=0
  offer.forEach((id,i)=>cardFace(id,x0+i*(cw+gap),H*.36,cw,ch,true,false,null,i))
- btn(cx-74,H*.36+ch+28,148,40,'跳 过')}
+ const by=H*.36+ch+28
+ //  重构键自绘、单独存 refBox —— 不走 btn(),免得覆盖 btn.last(留给跳过)。
+ refBox=null
+ if(canRefactor(RUN)){const rw=196,rx=cx-rw-12
+  ctx.fillStyle='rgba(179,157,219,.16)';ctx.strokeStyle='#b39ddb';ctx.lineWidth=1.4
+  ctx.beginPath();ctx.rect(rx,by,rw,40);ctx.fill();ctx.stroke()
+  ctx.fillStyle='#c9b8e8';ctx.font='600 14px system-ui';ctx.textAlign='center'
+  ctx.fillText(`重构 · 删一张(−${refactorCost(RUN)} 上限)`,rx+rw/2,by+25);ctx.textAlign='left'
+  refBox=[rx,by,rw,40]
+  btn(cx+12,by,148,40,'跳 过')
+ }else{
+  btn(cx-74,by,148,40,'跳 过')   // 删不动了(牌太少/上限扛不住),只留居中的跳过
+ }}
+
+/* 重构子屏:把牌组按 id 分组摊成紧凑格(重复卡合一格 + ×N),点一格删掉那种卡的一张。
+   不用 cardFace —— 它的文字按 y+84/y+116 固定摆位,只为 ~170px 高的大卡设计,缩到网格里会溢出。 */
+let removeGroups=[]
+function removeChip(g,x,y,cw,ch){const c=C[g.id],col=CO.tag[c.tag],my=y+ch/2
+ ctx.fillStyle='rgba(14,26,40,.96)';ctx.fillRect(x,y,cw,ch)
+ ctx.strokeStyle=col;ctx.lineWidth=1.4;ctx.strokeRect(x+.5,y+.5,cw-1,ch-1)
+ hex(x+22,my,13,col)
+ ctx.fillStyle='#08111c';ctx.font='700 13px system-ui';ctx.textAlign='center';ctx.fillText(String(c.cost),x+22,my+5);ctx.textAlign='left'
+ ctx.fillStyle=CO.ink;ctx.font='700 15px system-ui';ctx.fillText(c.name,x+42,my-4)
+ ctx.fillStyle=col;ctx.font='600 10px system-ui';ctx.fillText(TAGNAME[c.tag]+(c.exhaust?' · 一次性':''),x+42,my+13)
+ if(g.count>1){ctx.fillStyle=CO.amber;ctx.font='700 14px system-ui';ctx.textAlign='right';ctx.fillText('×'+g.count,x+cw-10,my+5);ctx.textAlign='left'}}
+function removeScreen(){
+ const cx=W/2
+ ctx.textAlign='center';ctx.font='700 28px system-ui';ctx.fillStyle=CO.ink
+ ctx.fillText('重构 · 点一张删掉',cx,H*.13)
+ ctx.font='400 13px system-ui';ctx.fillStyle=CO.dim
+ ctx.fillText(`删一张永久 −${refactorCost(RUN)} 预算上限 · 已重构 ${RUN.refactors} 次 · 越删越贵`,cx,H*.13+24)
+ ctx.textAlign='left'
+ //  按 id 分组:重复卡合一格,扫牌组一眼看清「遍历 ×4」这种稀释。
+ const seen={},groups=[]
+ RUN.deck.forEach(id=>{ if(seen[id]==null){seen[id]=groups.length;groups.push({id,count:1})} else groups[seen[id]].count++ })
+ removeGroups=groups
+ const cw=156,ch=62,gap=14
+ const perRow=Math.max(4,Math.min(groups.length,Math.floor((W-100)/(cw+gap))))
+ const rows=Math.ceil(groups.length/perRow),gw=perRow*(cw+gap)-gap,x0=cx-gw/2,y0=H*.26
+ HITBOX.length=0
+ groups.forEach((g,i)=>{const x=x0+(i%perRow)*(cw+gap),y=y0+Math.floor(i/perRow)*(ch+gap)
+  removeChip(g,x,y,cw,ch); HITBOX[i]=[x,y,cw,ch]})
+ btn(cx-74,y0+rows*(ch+gap)+26,148,40,'返 回',CO.dim)}
 
 function overScreen(){
  const cx=W/2,win=RUN.over==='win'
@@ -1866,6 +1922,13 @@ cv.addEventListener('click',e=>{const mx=e.clientX,my=e.clientY
  if(RUN.over){startRun(KIT);return}
  if(intel){for(let k=0;k<NODEBOX.length;k++)if(inBox(mx,my,NODEBOX[k])){pickNode(k);return}
   return}
+ //  重构子屏:返回键(btn.last)或点某张牌删掉。必须排在下面通用命中之前。
+ if(remove){ if(inBox(mx,my,btn.last)){remove=false;return}
+  for(let i=0;i<removeGroups.length;i++) if(inBox(mx,my,HITBOX[i])){
+   const di=RUN.deck.indexOf(removeGroups[i].id); if(di>=0)doRemove(di); return}
+  return}
+ //  奖励屏:点重构键进删牌子屏。
+ if(offer&&refBox&&inBox(mx,my,refBox)){remove=true;return}
  if(inBox(mx,my,btn.last)){offer?takeCard(null):window.__end();return}
  const ids=offer||S.hand
  for(let i=0;i<ids.length;i++) if(inBox(mx,my,HITBOX[i])){offer?takeCard(ids[i]):uiPlay(i);return}})
