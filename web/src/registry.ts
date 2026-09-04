@@ -3757,16 +3757,17 @@ const dtree: Experiment<DTreeState> = {
   kernel: dtreeKernel,
   defaultDoc: { kind: 'dtree', params: {}, entities: [], streams: [] },
   params: [],
-  paramsNote: `**决策树像 20 个问题**:每个内部节点问"某特征≷某阈值?"把数据一分为二,顺答案往下走到纯净叶子(几乎全同类)。
+  paramsNote: `**决策树 = 一刀刀"切平面"把类别分开**,关键在**每步怎么选那一刀**。
 
-- **怎么选每刀**:看哪刀让子集最纯——基尼不纯度(Gini,越近 0 越纯)下降最多(信息增益最大),递归切到每块都纯。
-- **优点**:天生可解释(每条路径=一串 if-else)、能用多刀轴对齐拼非线性边界,是随机森林、GBDT 的积木。
-- **本实验**:16 点分布四象限、只右上第 1 类,先切 x=0(左半纯=第0类)、再在右半切 y=0(右上第1类、右下第0类),三刀两下全切纯。`,
+- **搜出来、不钦定**:枚举所有候选切法(每特征相邻取值的中点)、算每个的**信息增益**(切前 Gini − 切后加权 Gini)、**取增益最大**的那刀落下。
+- **基尼**:Gini 越近 0 越纯;切出纯净(Gini=0)的一块就成叶子,不纯的递归再切。
+- **优点**:天生可解释(每条路径=一串 if-else)、多刀轴对齐拼非线性边界,是随机森林、GBDT 的积木。
+- **本实验**:16 点分四象限、只右上第 1 类;根上 **24** 个候选里搜出 **x<0**(增益 0.125)、右半 **13** 个里搜出 **y<0**(增益 0.5),三刀两下全切纯。`,
   bounds: [
-    '16 个点(四象限,右上=第1类),特征 x/y',
-    '每刀挑信息增益最大(Gini 下降最多)(可核)',
-    '切 x=0(左纯)、再切 y=0(右上/右下纯);深 2、3 叶子',
-    '演示轴对齐分裂;剪枝/连续特征/多类未展开',
+    '16 点(四象限,右上=第1类),特征 x/y;每步枚举候选切法',
+    '信息增益=切前 Gini − 切后加权 Gini;取最大那刀(可核)',
+    '根搜 24 候选→x<0(0.125);右半搜 13→y<0(0.5);深 2、3 叶子',
+    '演示轴对齐分裂 + 真搜索;剪枝/连续特征/多类未展开',
   ],
   tabs: [{ id: 'split', label: '切平面' }],
   Stage: DTreeStage,
@@ -3777,7 +3778,7 @@ const dtree: Experiment<DTreeState> = {
   readouts: s => [
     { label: '切了几刀', value: `${s.splits.length}` },
     { label: '当前不纯度', value: `${s.curGini}`, tone: s.curGini === 0 ? 'good' : undefined },
-    { label: '本刀增益', value: s.gain ? `${s.gain}` : '—' },
+    { label: '选中增益', value: s.best ? `${s.best.gain}` : '—', tone: s.phase === 'search' ? 'good' : undefined },
     { label: '纯叶子', value: `${s.leaves.length}`, tone: s.phase === 'done' ? 'good' : undefined },
   ],
 }

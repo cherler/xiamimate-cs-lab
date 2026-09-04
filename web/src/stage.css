@@ -3329,6 +3329,19 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 
 /* 决策树切线 */
 .dtcut { stroke:var(--ink); stroke-width:1.6; stroke-dasharray:3 2; }
+/* 决策树深化:候选切法搜索(平面预览线 + 候选列表) */
+.dtcand { stroke:var(--faint); stroke-width:0.8; stroke-dasharray:1.5 2; opacity:.5; }
+.dtcand.best { stroke:var(--now); stroke-width:1.8; stroke-dasharray:3 2; opacity:1; filter:drop-shadow(0 0 2px color-mix(in srgb,var(--now) 50%,transparent)); }
+.dtsearch { margin:8px 0 2px; border:1px solid var(--line); border-radius:8px; padding:8px 11px; background:var(--panel-2); }
+.dtsearch-t { font-size:11px; color:var(--faint); margin-bottom:6px; }
+.dtcandrow { display:grid; grid-template-columns:64px 1fr 64px 50px; align-items:center; gap:8px; padding:2px 0; }
+.dtcandrow.best .dtcr-lbl { color:var(--now); font-weight:700; }
+.dtcr-lbl { font-family:var(--mono); font-size:12px; color:var(--dim); }
+.dtcr-bar { height:9px; border-radius:5px; background:var(--panel); overflow:hidden; }
+.dtcr-fill { display:block; height:100%; background:color-mix(in srgb,var(--now) 45%,var(--panel)); }
+.dtcandrow.best .dtcr-fill { background:var(--now); }
+.dtcr-g { font-size:11px; color:var(--dim); font-variant-numeric:tabular-nums; }
+.dtcr-mk { font-size:11px; color:var(--now); font-weight:700; }
 
 /* SVM 间隔街边 */
 .svmmargin { stroke:var(--dim); stroke-width:1; stroke-dasharray:3 2; opacity:.6; }

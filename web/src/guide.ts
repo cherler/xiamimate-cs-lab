@@ -4019,14 +4019,15 @@ export const GUIDES: Record<string, Guide> = {
   dtree: {
     question: '不用直线，怎么靠"问是非题"一步步把类别分开？',
     step: (s: never) => {
-      const st = s as { phase: string; splits: unknown[]; curGini: number; gain: number; leaves: unknown[] }
+      const st = s as { phase: string; splits: unknown[]; curGini: number; nCands: number; best: { feat: string; t: number; gain: number } | null; leaves: unknown[] }
       return [
-        { k: '本步输入', v: st.phase === 'done' ? '切完(3 个纯叶子)' : st.phase === 'root' ? '根节点:16 点混在一起' : `切第 ${st.splits.length} 刀` },
-        { k: '判定规则', v: `每刀挑"某特征≷某阈值"里让子集**最纯**的那一刀(基尼不纯度下降最多=信息增益最大);切出纯块成叶子,不纯的继续切。` },
+        { k: '本步输入', v: st.phase === 'done' ? '切完(3 个纯叶子)' : st.phase === 'root' ? '根节点:16 点混在一起' : st.phase === 'search' ? `搜候选切法(共 ${st.nCands} 个)` : `落第 ${st.splits.length} 刀` },
+        { k: '判定规则', v: `枚举所有候选切法(每特征相邻点的中点)、算每个的信息增益(基尼下降最多)、**取最大**那刀落下;切出纯块成叶子,不纯的递归再切。` },
         { k: '本步结果', v: st.phase === 'done'
             ? `深 2、**${st.leaves.length}** 个纯叶子。每条路径=一串 if-else,可解释、拼出非线性边界。`
             : st.phase === 'root' ? `不纯度 Gini **${st.curGini}**(0=全同类),要切纯。`
-            : `本刀信息增益 **${st.gain}**,当前节点不纯度降到 **${st.curGini}**。` },
+            : st.phase === 'search' ? `搜出增益最大的一刀:**${st.best?.feat}<${st.best?.t}**(增益 **${st.best?.gain}**),不是钦定。`
+            : `落下 **${st.best?.feat}<${st.best?.t}**,当前节点不纯度降到 **${st.curGini}**。` },
       ]
     },
     verdict: (s: never) => {
@@ -4034,8 +4035,9 @@ export const GUIDES: Record<string, Guide> = {
       return st.phase === 'done' ? `${st.leaves.length} 纯叶子` : st.phase === 'root' ? '根·不纯' : `切${st.splits.length}刀`
     },
     read: [
-      { at: '读数', is: '切了几刀、当前不纯度、本刀增益、纯叶子数。', anchor: '.scdim' },
-      { at: '散点图', is: '蓝/红两类点;虚线=每一刀(轴对齐);浅色块=已切纯的叶子(按主类)。', anchor: '.mlplot' },
+      { at: '读数', is: '已落几刀、当前不纯度、选中那刀的增益、纯叶子数。', anchor: '.scdim' },
+      { at: '搜候选', is: '搜索步会列出候选切法及各自信息增益,★=选中的最大增益那刀。', anchor: '.dtsearch' },
+      { at: '散点图', is: '蓝/红两类点;浅虚线=候选切法预览、亮线=选中/已落的刀;浅色块=已切纯的叶子。', anchor: '.mlplot' },
     ],
     try: [
       { act: '一刀一刀切', watch: '先竖切 x=0(左半纯)、再横切右半 y=0——每块变纯、Gini 降到 0。' },

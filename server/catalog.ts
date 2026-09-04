@@ -466,6 +466,20 @@ const CATALOG_CORE: CatalogEntry[] = [
         compute: t => ({ answer: String(last(t).depth), step: t.length - 1, evidence: String(last(t).log ?? '') }),
         distractors: numDistractors,
       },
+      {
+        id: 'dt_ncands', label: '根节点枚举的候选切法数',
+        ask: '决策树选第一刀时，在根节点一共枚举了多少个候选切法(每个特征相邻取值的中点)来比较信息增益、取最大?',
+        kind: 'number',
+        compute: t => { const f = t.find(x => x.phase === 'search' && (x.splits as unknown[]).length === 0)!; return { answer: String(f.nCands), step: t.indexOf(f), evidence: String(f.log ?? '') } },
+        distractors: numDistractors,
+      },
+      {
+        id: 'dt_gain1', label: '搜出的第一刀的信息增益',
+        ask: '根节点搜遍所有候选后选中第一刀(x<0),它的信息增益是多少?(切前 Gini 0.375 − 切后加权 Gini 0.25)',
+        kind: 'number',
+        compute: t => { const f = t.find(x => x.phase === 'search' && (x.splits as unknown[]).length === 0)!; const b = f.best as { gain: number }; return { answer: String(b.gain), step: t.indexOf(f), evidence: String(f.log ?? '') } },
+        distractors: numDistractors,
+      },
     ],
   },
   {
