@@ -426,6 +426,9 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{
   background:var(--plate);
   /* 内凹一圈：台面是嵌进面板里的，不是浮在上面的卡片 */
   box-shadow:inset 0 1px 3px rgba(20,32,42,.055), inset 0 0 0 1px rgba(255,255,255,.6)}
+/*  文档/参考型舞台(库层):按自然高度排版、不缩放(不套 FitBox),超高时由主列 .col.main 滚。
+    覆盖 .stagerow>.stagewrap 的 flex:1 1 auto —— 用 0 0 auto 让它吃内容的真实高度。 */
+.stagerow>.stagewrap.stagewrap-doc{flex:0 0 auto;min-height:0}
 /* 中列的排布：页签与轴按内容高，编辑器封顶，**舞台吃掉剩下的全部**。
  *
  * ⚠️ 第一版把编辑器写成 `flex:0 0 auto`（按内容高、不许缩）。在只有序列编辑器的

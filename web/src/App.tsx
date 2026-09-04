@@ -1007,10 +1007,14 @@ export default function App() {
                       * 「本步推演」当默认格 —— 走步时最该看见的是它。
                       */}
                     {!exp.whyInRail && dockNode}
-                    <div className="stagewrap">
-                      <FitBox>
-                        <exp.Stage doc={doc} trace={trace} index={clamped} state={state} tab={tab} onNavExp={navToExpById} />
-                      </FitBox>
+                    {/*  库层是参考页(文字为主、天然很高):不套 FitBox —— FitBox 会把整页缩到取景框里
+                         导致字变得极小。让它按自然字号排版、主列自己滚(.col.main 本就 overflow-y:auto)。 */}
+                    <div className={`stagewrap${exp.defaultDoc.kind === 'library' ? ' stagewrap-doc' : ''}`}>
+                      {exp.defaultDoc.kind === 'library'
+                        ? <exp.Stage doc={doc} trace={trace} index={clamped} state={state} tab={tab} onNavExp={navToExpById} />
+                        : <FitBox>
+                            <exp.Stage doc={doc} trace={trace} index={clamped} state={state} tab={tab} onNavExp={navToExpById} />
+                          </FitBox>}
                     </div>
                   </div>
                   {/*  单帧轨迹(如库层参考页)没有"步"可走 —— 藏掉走带,否则留一个点不动的播放条。 */}

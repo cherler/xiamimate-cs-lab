@@ -6244,46 +6244,47 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .ds-goodc{color:var(--hit)}
 .ds-badc{color:var(--miss)}
 
-/* library · 软件库/框架介绍(库层,新内容类型) */
-.lib-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px;padding-bottom:8px;border-bottom:1px solid var(--line);margin-bottom:8px}
-.lib-name{font-size:var(--t-read);font-weight:700;color:var(--ink)}
-.lib-meta{font-size:var(--t-meta);color:var(--faint)}
+/* library · 软件库/框架介绍(库层,参考页) —— 不套 FitBox,自然字号,阅读级排版
+   字号跟 --xm-font-scale 走(全站字号设置);比舞台的 --t-ui(11px 按钮字)大一档,当正文读 */
+.lib-page{--lib-body:calc(14px * var(--xm-font-scale));--lib-sub:calc(13px * var(--xm-font-scale));
+  display:flex;flex-direction:column;gap:20px;font-size:var(--lib-body);color:var(--dim);line-height:1.72}
+.lib-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:12px;padding-bottom:11px;border-bottom:1px solid var(--line)}
+.lib-name{font-size:calc(20px * var(--xm-font-scale));font-weight:700;color:var(--ink)}
+.lib-meta{font-size:var(--lib-sub);color:var(--faint)}
 .lib-meta b{color:var(--dim);font-weight:600}
-.lib-tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
-.lib-tab{font-size:var(--t-meta);color:var(--faint);border:1px solid var(--line);border-radius:20px;padding:2px 10px}
-.lib-tab.on{color:var(--panel);background:var(--now);border-color:var(--now);font-weight:700}
-.lib-tab.done{color:var(--dim);border-color:color-mix(in srgb,var(--hit) 40%,var(--line))}
-.lib-sec{font-size:var(--t-ui);line-height:1.85;color:var(--dim)}
-.lib-what{margin:0 0 10px;line-height:1.9}
-.lib-feat-grid{display:flex;flex-direction:column;gap:6px}
-.lib-feat{border:1px solid var(--line);border-radius:8px;padding:7px 10px;background:var(--panel-2)}
+.lib-sec{font-size:var(--lib-body);line-height:1.72;color:var(--dim)}
+.lib-cap{font-size:calc(16px * var(--xm-font-scale));font-weight:700;color:var(--ink);letter-spacing:.01em;
+  padding-left:10px;border-left:3px solid var(--now);margin-bottom:12px;display:flex;align-items:baseline;gap:9px}
+.lib-capn{font-size:var(--lib-sub);font-weight:400;color:var(--faint)}
+.lib-what{margin:0 0 12px;line-height:1.85;max-width:78ch}
+.lib-covnote{margin:0 0 10px;max-width:78ch}
+.lib-covnote b,.lib-what b{color:var(--ink)}
+/* 特点:两列瓷砖(宽屏用满,窄屏自动回一列) */
+.lib-feat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:8px}
+.lib-feat{border:1px solid var(--line);border-radius:9px;padding:10px 13px;background:var(--panel-2)}
 .lib-ft{font-weight:700;color:var(--ink);margin-right:6px}
 .lib-fd{color:var(--dim)}
-.lib-pc{display:flex;gap:10px;flex-wrap:wrap}
-.lib-pros,.lib-cons{flex:1 1 200px;min-width:200px;border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+/* 优缺点:两列 */
+.lib-pc{display:flex;gap:12px;flex-wrap:wrap}
+.lib-pros,.lib-cons{flex:1 1 280px;min-width:260px;border:1px solid var(--line);border-radius:9px;padding:11px 14px}
 .lib-pros{background:color-mix(in srgb,var(--hit) 5%,transparent)}
 .lib-cons{background:color-mix(in srgb,var(--miss) 5%,transparent)}
-.lib-pchead{font-weight:700;margin-bottom:5px}
+.lib-pchead{font-weight:700;margin-bottom:7px;font-size:var(--lib-body)}
 .lib-good{color:var(--hit)}
 .lib-bad{color:var(--miss)}
 .lib-pcitem{line-height:1.7}
-.lib-covnote{margin:0 0 8px}
-.lib-cov{border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:7px;background:var(--panel-2)}
+/* 内容覆盖:反向连回实验(可点) */
+.lib-cov{border:1px solid var(--line);border-radius:9px;padding:11px 14px;margin-bottom:9px;background:var(--panel-2)}
 .lib-covmod{font-weight:700;color:var(--ink)}
-.lib-covd{font-weight:400;color:var(--faint);font-size:var(--t-meta);margin-left:8px}
-.lib-covlinks{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
-.lib-link{font-size:var(--t-meta);color:var(--hit);border:1px solid color-mix(in srgb,var(--hit) 40%,var(--line));border-radius:20px;padding:3px 10px;background:color-mix(in srgb,var(--hit) 7%,transparent);font-family:var(--mono);cursor:pointer;transition:background var(--anim),border-color var(--anim),transform var(--anim)}
+.lib-covd{font-weight:400;color:var(--faint);font-size:var(--lib-sub);margin-left:8px}
+.lib-covlinks{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px}
+.lib-link{font-size:var(--lib-sub);color:var(--hit);border:1px solid color-mix(in srgb,var(--hit) 40%,var(--line));border-radius:20px;padding:4px 12px;background:color-mix(in srgb,var(--hit) 7%,transparent);font-family:var(--mono);cursor:pointer;transition:background var(--anim),border-color var(--anim),transform var(--anim)}
 .lib-link:hover{background:color-mix(in srgb,var(--hit) 18%,transparent);border-color:var(--hit);transform:translateY(-1px)}
 .lib-link:active{transform:translateY(0)}
-.lib-proj-grid{display:flex;flex-direction:column;gap:6px}
-.lib-proj{border-left:2px solid var(--now);padding:4px 10px;background:var(--panel-2);border-radius:0 6px 6px 0}
-.lib-see{margin-top:10px;font-size:var(--t-meta);color:var(--faint)}
-.lib-covnote b,.lib-what b{color:var(--ink)}
-/* 库层参考页:四段一屏铺开(替掉旧的逐段播放) */
-.lib-page{display:flex;flex-direction:column;gap:16px}
-.lib-cap{font-size:var(--t-ui);font-weight:700;color:var(--ink);letter-spacing:.02em;
-  padding-left:9px;border-left:3px solid var(--now);margin-bottom:9px;display:flex;align-items:baseline;gap:8px}
-.lib-capn{font-size:var(--t-meta);font-weight:400;color:var(--faint)}
-.lib-foot{margin:2px 0 0;font-size:var(--t-meta);color:var(--faint);line-height:1.8;
-  border-top:1px dashed var(--line);padding-top:10px}
+/* 落地项目 */
+.lib-proj-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:7px}
+.lib-proj{border-left:3px solid var(--now);padding:7px 12px;background:var(--panel-2);border-radius:0 7px 7px 0}
+.lib-see{margin-top:11px;font-size:var(--lib-sub);color:var(--faint)}
+.lib-foot{margin:2px 0 0;font-size:var(--lib-sub);color:var(--faint);line-height:1.8;
+  border-top:1px dashed var(--line);padding-top:12px;max-width:78ch}
 .lib-foot b{color:var(--dim)}
