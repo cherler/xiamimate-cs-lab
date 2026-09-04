@@ -3287,13 +3287,22 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .ppcell.future { background:transparent; }
 .ppcell.nowcol { outline:2px solid color-mix(in srgb,var(--now) 40%,transparent); outline-offset:-1px; }
 
-/* 机器学习散点系列（线性回归等共用） */
-.mlwrap { display:flex; flex-direction:column; align-items:center; gap:6px; margin:10px 0; }
-.mlplot { width:min(320px,76vw); aspect-ratio:1/1; border:1px solid var(--line); border-radius:6px; background:var(--panel); }
-.mlaxis { stroke:var(--line); stroke-width:0.5; }
+/* 机器学习散点系列（线性回归/kNN/SVM/kmeans/PCA/逻辑回归等共用一套 .ml*） —— 仪表级坐标纸 */
+.mlwrap { display:flex; flex-direction:column; align-items:center; gap:8px; margin:10px 0; }
+/*  坐标纸:CSS 背景画 10×10 网格(在 400px 盒里每 10% 一格,对齐 viewBox 0-100 的十等分)
+    + 内凹材质,让散点像画在仪表/坐标纸上,不再是一块灰底。 */
+.mlplot { width:min(400px,80vw); aspect-ratio:1/1; border:1px solid var(--plate-edge); border-radius:9px;
+  background:
+    linear-gradient(color-mix(in srgb,var(--line) 55%,transparent) 1px, transparent 1px) 0 0 / 100% 10%,
+    linear-gradient(90deg, color-mix(in srgb,var(--line) 55%,transparent) 1px, transparent 1px) 0 0 / 10% 100%,
+    linear-gradient(180deg, var(--panel), color-mix(in srgb,var(--ink) 3%,var(--panel)));
+  box-shadow: inset 0 1px 4px rgba(20,32,42,.06), inset 0 0 0 1px rgba(255,255,255,.5); }
+.mlaxis { stroke:var(--dim); stroke-width:0.7; }
 .mlresid { stroke:var(--miss); stroke-width:1; stroke-dasharray:2 2; opacity:.55; }
-.mlline { stroke:var(--now); stroke-width:2; }
+.mlline { stroke:var(--now); stroke-width:2.4; filter:drop-shadow(0 0 2px color-mix(in srgb,var(--now) 55%,transparent)); }
 .mldot { fill:var(--hit); opacity:.9; }
+/*  散点整体一点点投影,像浮在坐标纸上(不改各舞台内联的 r/颜色,只加质感) */
+.mlplot circle { filter:drop-shadow(0 .4px .6px rgba(20,32,42,.28)); }
 
 /* 决策树切线 */
 .dtcut { stroke:var(--ink); stroke-width:1.6; stroke-dasharray:3 2; }
