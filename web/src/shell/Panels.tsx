@@ -1,6 +1,7 @@
 /** 共享面板：逐步日志 · 参数 · 读数 · 违规 · 边界 */
 import { useEffect, useRef, useState } from 'react'
 import { rich } from './rich.tsx'
+import { Md } from './md.tsx'
 import type { Violation } from '@engine/core/verify.ts'
 import { tipFor } from '../guide.ts'
 import type { AnyExperiment, ParamSpec, Readout } from '../types.ts'
@@ -98,7 +99,9 @@ export function ParamPanel({
     return (
       <div className="card">
         <h3>实验控制</h3>
-        <div className="body"><p className="pempty">{emptyNote ?? '本实验没有可调参数。'}</p></div>
+        <div className="body">{emptyNote
+          ? <Md text={emptyNote} className="pnote-md" />
+          : <p className="pempty">本实验没有可调参数。</p>}</div>
       </div>
     )
   }

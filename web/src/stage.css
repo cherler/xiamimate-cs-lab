@@ -562,6 +562,16 @@
 .bverdict.pending{background:var(--panel-2);border:1px solid var(--line)}
 .bverdict.pending b{color:var(--faint)}
 .pempty{margin:0;font-size:var(--t-ui);color:var(--faint);line-height:1.8}
+/* 实验控制的说明文字(paramsNote)走 markdown:段落/列表/小标题/粗体,不再一堵墙 */
+.pnote-md{font-size:var(--t-body);color:var(--dim);line-height:1.68}
+.pnote-md p{margin:0 0 8px}
+.pnote-md p:last-child{margin-bottom:0}
+.pnote-md strong{color:var(--ink);font-weight:600}
+.pnote-md .aic-md-h{font-weight:700;color:var(--ink);margin:11px 0 5px;font-size:var(--t-body)}
+.pnote-md ul,.pnote-md ol{margin:5px 0 9px;padding-left:18px;display:flex;flex-direction:column;gap:5px}
+.pnote-md li{line-height:1.6}
+.pnote-md li::marker{color:var(--faint)}
+.pnote-md code{font-family:var(--mono);font-size:.92em;background:var(--sunk-2);padding:0 3px;border-radius:3px}
 
 /* ═══ 驱动序列编辑器 ═══ */
 .card.seq.bad{border-color:#E2664A55}

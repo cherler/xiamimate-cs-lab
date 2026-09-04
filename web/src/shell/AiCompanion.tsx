@@ -10,6 +10,7 @@
  */
 import { useEffect, useState } from 'react'
 import { EXPERIMENTS, DISCIPLINE_OF_GROUP } from '../registry.ts'
+import { Md, mdInline } from './md.tsx'
 
 // 当前实验所在职业线的全部实验 id（用于「整轨面试」跨主题抽题；后端会自动过滤没接 catalog 的）
 function trackExpIdsOf(expId: string): string[] {
@@ -118,47 +119,6 @@ function CiteChip({ step, label, evidence, onCite }: { step: number; label?: str
 
 // ── 轻量 markdown 渲染 ──
 // 大模型输出带 **粗体** / `代码` / ## 小标题 / 有序·无序列表；不引第三方库，就地渲染这一小撮语法。
-// mdInline：只处理行内(粗体/代码/斜体)，用于气泡、卡片这类不便放块级元素的地方。
-function mdInline(text: string): React.ReactNode[] {
-  const nodes: React.ReactNode[] = []
-  const re = /(\*\*([^*]+)\*\*|`([^`]+)`|(?<![*\w])\*([^*\n]+)\*(?![*\w]))/g
-  let last = 0, m: RegExpExecArray | null, k = 0
-  while ((m = re.exec(text))) {
-    if (m.index > last) nodes.push(text.slice(last, m.index))
-    if (m[2] != null) nodes.push(<strong key={k++}>{m[2]}</strong>)
-    else if (m[3] != null) nodes.push(<code key={k++} className="aic-code">{m[3]}</code>)
-    else nodes.push(<em key={k++}>{m[4]}</em>)
-    last = m.index + m[0].length
-  }
-  if (last < text.length) nodes.push(text.slice(last))
-  return nodes
-}
-// Md：块级渲染(段落/小标题/有序·无序列表 + 行内)。用于答疑答案、参考答案、面试对话、讲解、复习小结等长文。
-function Md({ text }: { text: string }) {
-  const lines = (text ?? '').replace(/\r/g, '').split('\n')
-  const out: React.ReactNode[] = []
-  let para: string[] = []; let key = 0
-  const flush = () => { if (para.length) { const p = para; out.push(<p key={key++}>{p.map((l, j) => <span key={j}>{j > 0 && <br />}{mdInline(l)}</span>)}</p>); para = [] } }
-  for (let i = 0; i < lines.length;) {
-    const line = lines[i]
-    if (!line.trim()) { flush(); i++; continue }
-    const h = line.match(/^(#{1,4})\s+(.*)$/)
-    if (h) { flush(); out.push(<p key={key++} className="aic-md-h">{mdInline(h[2])}</p>); i++; continue }
-    if (/^\s*\d+[.)]\s+/.test(line)) {
-      flush(); const items: string[] = []
-      while (i < lines.length && /^\s*\d+[.)]\s+/.test(lines[i])) items.push(lines[i++].replace(/^\s*\d+[.)]\s+/, ''))
-      out.push(<ol key={key++}>{items.map((t, j) => <li key={j}>{mdInline(t)}</li>)}</ol>); continue
-    }
-    if (/^\s*[-*+]\s+/.test(line)) {
-      flush(); const items: string[] = []
-      while (i < lines.length && /^\s*[-*+]\s+/.test(lines[i])) items.push(lines[i++].replace(/^\s*[-*+]\s+/, ''))
-      out.push(<ul key={key++}>{items.map((t, j) => <li key={j}>{mdInline(t)}</li>)}</ul>); continue
-    }
-    para.push(line); i++
-  }
-  flush()
-  return <div className="aic-md">{out}</div>
-}
 
 // ── 出题 ──
 function QuizView({ expId, onCite, onFactAnswer, drillFactId, onDrillConsumed }: {
