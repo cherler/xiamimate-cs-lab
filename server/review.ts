@@ -73,25 +73,37 @@ export async function buildReview(expId: string, opts: ReviewOptions = {}): Prom
 
   const ctx = traceText(entry)
   const base = `实验：${entry.title}\n===== 运行轨迹 =====\n${ctx}\n===== 轨迹结束 =====`
-  // 小结与概念卡分两次调用；小结失败不影响卡，反之亦然。
-  let summary = ''
-  let conceptCards: Card[] = []
-  let billing = { metered: false, credits: 0, tokens: 0, note: '未接入积分' }
-  try {
-    const r1 = await generate({
+  // 小结与概念卡是两次**独立**调用——并行发,互不阻塞;allSettled 保证一个失败不拖垮另一个。
+  const [sumRes, cardRes] = await Promise.allSettled([
+    generate({
       module: 'lab_ai', task: 'summary', system: SUMMARY_SYSTEM,
       prompt: base + '\n\n请写复习小结。', maxTokens: 400, provider: 'minimax', principal: opts.principal ?? null,
-    })
-    summary = r1.text.trim()
-    billing = r1.billing
-  } catch (e) { summary = `（小结生成失败：${(e as Error).message}）` }
-  try {
-    const r2 = await generate({
+    }),
+    generate({
       module: 'lab_ai', task: 'cards', system: CARDS_SYSTEM,
       prompt: base + '\n\n请出 3 张概念卡。', maxTokens: 700, provider: 'minimax', principal: opts.principal ?? null,
-    })
-    conceptCards = extractCards(r2.text)
-  } catch (e) { console.warn('[review] 概念卡生成失败:', (e as Error).message) }
+    }),
+  ])
 
-  return { expId, title: entry.title, summary, factCards: facts, conceptCards, billing }
+  let summary: string
+  let conceptCards: Card[] = []
+  const billings: Billing[] = []
+  if (sumRes.status === 'fulfilled') { summary = sumRes.value.text.trim(); billings.push(sumRes.value.billing) }
+  else summary = `（小结生成失败：${(sumRes.reason as Error).message}）`
+  if (cardRes.status === 'fulfilled') { conceptCards = extractCards(cardRes.value.text); billings.push(cardRes.value.billing) }
+  else console.warn('[review] 概念卡生成失败:', (cardRes.reason as Error).message)
+
+  // 两次调用都要计费:之前只记了小结那次,概念卡的 token 白漏了。
+  return { expId, title: entry.title, summary, factCards: facts, conceptCards, billing: combineBilling(billings) }
+}
+
+type Billing = { metered: boolean; credits: number; tokens: number; note: string }
+function combineBilling(bs: Billing[]): Billing {
+  if (bs.length === 0) return { metered: false, credits: 0, tokens: 0, note: '未接入积分' }
+  return {
+    metered: bs.some(b => b.metered),
+    credits: bs.reduce((a, b) => a + b.credits, 0),
+    tokens: bs.reduce((a, b) => a + b.tokens, 0),
+    note: [...new Set(bs.map(b => b.note))].join('；'),
+  }
 }

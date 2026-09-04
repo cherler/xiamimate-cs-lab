@@ -71,12 +71,18 @@ export function AiCompanion({ expId, onCite, onFactAnswer, drillFactId, onDrillC
 }) {
   const [supported, setSupported] = useState<boolean | null>(null)
   const [mode, setMode] = useState<Mode>('quiz')
+  //  已进过的模式:只挂载访问过的 View,并保持挂载——切页签不再清空答过的题/问答/半场面试。
+  const [visited, setVisited] = useState<Set<Mode>>(() => new Set<Mode>(['quiz']))
 
   useEffect(() => {
     let live = true
     loadSupported().then(s => { if (live) setSupported(s.has(expId)) })
     return () => { live = false }
   }, [expId])
+
+  useEffect(() => { setVisited(v => v.has(mode) ? v : new Set(v).add(mode)) }, [mode])
+  //  从进度面板「去练最弱那条」跳来:自动切到出题模式,别让定向题落在别的页签后头看不见。
+  useEffect(() => { if (drillFactId) setMode('quiz') }, [drillFactId])
 
   if (supported === null) return <div className="aic aic-muted">加载中…</div>
   if (!supported) {
@@ -96,10 +102,11 @@ export function AiCompanion({ expId, onCite, onFactAnswer, drillFactId, onDrillC
         <button className={mode === 'review' ? 'on' : ''} onClick={() => setMode('review')}>复习</button>
         <button className={mode === 'interview' ? 'on' : ''} onClick={() => setMode('interview')}>面试</button>
       </div>
-      {mode === 'quiz' && <QuizView expId={expId} onCite={onCite} onFactAnswer={onFactAnswer} drillFactId={drillFactId} onDrillConsumed={onDrillConsumed} />}
-      {mode === 'ask' && <AskView expId={expId} onCite={onCite} />}
-      {mode === 'review' && <ReviewView expId={expId} />}
-      {mode === 'interview' && <InterviewView expId={expId} />}
+      {/*  访问过的模式全保持挂载,只切显示——状态不随页签切换丢失。 */}
+      {visited.has('quiz') && <div style={{ display: mode === 'quiz' ? undefined : 'none' }}><QuizView expId={expId} onCite={onCite} onFactAnswer={onFactAnswer} drillFactId={drillFactId} onDrillConsumed={onDrillConsumed} /></div>}
+      {visited.has('ask') && <div style={{ display: mode === 'ask' ? undefined : 'none' }}><AskView expId={expId} onCite={onCite} /></div>}
+      {visited.has('review') && <div style={{ display: mode === 'review' ? undefined : 'none' }}><ReviewView expId={expId} /></div>}
+      {visited.has('interview') && <div style={{ display: mode === 'interview' ? undefined : 'none' }}><InterviewView expId={expId} /></div>}
     </div>
   )
 }
@@ -147,11 +154,18 @@ function QuizView({ expId, onCite, onFactAnswer, drillFactId, onDrillConsumed }:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [drillFactId])
 
+  const answeredCount = Object.keys(picked).length
+  const correctCount = qs ? Object.entries(picked).filter(([qi, oi]) => qs[+qi]?.correctIndex === oi).length : 0
+
   return (
     <div className="aic-body">
       {drilled && qs && <p className="aic-hint">这是你在本实验<b>最弱的一条</b>——练到掌握它就出师。</p>}
       <button className="aic-go" disabled={loading} onClick={() => gen()}>{loading ? '出题中…' : qs ? '换一组' : '出一组题'}</button>
       {error && <p className="aic-err">出错了：{error}</p>}
+      {qs && answeredCount > 0 && (
+        <p className="aic-tally">本组已答 {answeredCount}/{qs.length} · 对 <b>{correctCount}</b> 道
+          {answeredCount === qs.length && <span className="aic-tally-pct">　正确率 {Math.round(correctCount / qs.length * 100)}%</span>}</p>
+      )}
       {qs?.map((q, qi) => {
         const chosen = picked[qi]
         const answered = chosen != null
@@ -320,6 +334,9 @@ function InterviewView({ expId }: { expId: string }) {
     } catch (e) { setError((e as Error).message) } finally { setRefLoading(false) }
   }
 
+  const TOTAL_ROUNDS = 3   // 与后端 interview.ts 的 MAX_ROUNDS 对齐:答满 3 轮进总评
+  const answeredRounds = history.filter(t => t.role === 'candidate').length
+
   function start() { setHistory([]); setDone(false); setRef(''); post([]) }
   function answer() {
     if (!input.trim() || loading || done) return
@@ -342,6 +359,11 @@ function InterviewView({ expId }: { expId: string }) {
             <button className="aic-go" disabled={loading} onClick={start}>{loading ? '面试官准备中…' : scope === 'track' ? '开始整轨面试' : '开始模拟面试'}</button>
           </>
         : <>
+            <div className="aic-ivprog">
+              {done ? <span className="aic-ivprog-done">面试结束 · 共 {TOTAL_ROUNDS} 轮,看下方总评与评分</span>
+                : <>第 <b>{Math.min(answeredRounds + 1, TOTAL_ROUNDS)}</b> / {TOTAL_ROUNDS} 轮
+                  <span className="aic-ivprog-dots">{Array.from({ length: TOTAL_ROUNDS }, (_, i) => <i key={i} className={i < answeredRounds ? 'done' : i === answeredRounds ? 'cur' : ''} />)}</span></>}
+            </div>
             <div className="aic-chat">
               {history.map((t, i) => (
                 <div key={i} className={`aic-msg ${t.role}`}>

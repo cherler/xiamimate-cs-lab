@@ -102,18 +102,19 @@ export async function buildQuiz(expId: string, opts: BuildOptions = {}): Promise
       ? shuffle(entry.facts).slice(0, opts.count)
       : entry.facts
 
-  const out: Question[] = []
-  for (const fact of picks) {
+  //  每条 fact 的题面改写是一次独立大模型调用,彼此无依赖——并行发,别串行等。
+  //  Promise.all 保留 picks 顺序,题目顺序不变;引擎钉死答案在 compute 里(同步)先算好。
+  const out = await Promise.all(picks.map(async (fact): Promise<Question> => {
     const { answer, step, evidence } = fact.compute(trace)      // ← 引擎算出的钉死答案
     const distractors = fact.distractors(answer, trace).filter(d => d !== answer)
     const options = shuffle([answer, ...distractors])
     const correctIndex = options.indexOf(answer)                // ← 我们设定，模型碰不到
     const { question, explanation, by } = await phrase(entry, fact, answer, evidence, opts.principal ?? null, useLLM)
-    out.push({
+    return {
       expId, title: entry.title, factId: fact.id,
       question, options, correctIndex, explanation,
       provenance: { engineAnswer: answer, traceLen: trace.length, sourceStep: step, evidence, phrasedBy: by },
-    })
-  }
+    }
+  }))
   return out
 }
