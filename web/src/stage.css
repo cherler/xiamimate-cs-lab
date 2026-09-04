@@ -6254,35 +6254,45 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .lib-meta b{color:var(--dim);font-weight:600}
 .lib-sec{font-size:var(--lib-body);line-height:1.72;color:var(--dim)}
 .lib-cap{font-size:calc(16px * var(--xm-font-scale));font-weight:700;color:var(--ink);letter-spacing:.01em;
-  padding-left:10px;border-left:3px solid var(--now);margin-bottom:12px;display:flex;align-items:baseline;gap:9px}
+  padding-left:10px;border-left:3px solid var(--now);margin-bottom:12px;display:flex;align-items:baseline;gap:7px}
+.lib-capno{color:var(--now);font-weight:800}
 .lib-capn{font-size:var(--lib-sub);font-weight:400;color:var(--faint)}
-.lib-what{margin:0 0 12px;line-height:1.85;max-width:78ch}
+.lib-what{margin:0 0 13px;line-height:1.85;max-width:78ch}
 .lib-covnote{margin:0 0 10px;max-width:78ch}
 .lib-covnote b,.lib-what b{color:var(--ink)}
-/* 特点:两列瓷砖(宽屏用满,窄屏自动回一列) */
-.lib-feat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:8px}
-.lib-feat{border:1px solid var(--line);border-radius:9px;padding:10px 13px;background:var(--panel-2)}
-.lib-ft{font-weight:700;color:var(--ink);margin-right:6px}
-.lib-fd{color:var(--dim)}
-/* 优缺点:两列 */
+/* ① 特点:编号列表 + 两列瓷砖(宽屏用满,窄屏自动回一列) */
+.lib-feat-grid{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:9px}
+.lib-feat{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);border-radius:9px;padding:11px 13px;background:var(--panel-2)}
+.lib-fk{flex:0 0 auto;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  background:color-mix(in srgb,var(--now) 15%,transparent);color:var(--now);font-weight:800;
+  font-size:calc(12px * var(--xm-font-scale));font-family:var(--mono)}
+.lib-ftxt{display:flex;flex-direction:column;gap:3px;min-width:0}
+.lib-ft{display:block;font-weight:700;color:var(--ink)}
+.lib-fd{display:block;color:var(--dim);line-height:1.6}
+/* ② 优缺点:两列,各自项目列表 */
 .lib-pc{display:flex;gap:12px;flex-wrap:wrap}
 .lib-pros,.lib-cons{flex:1 1 280px;min-width:260px;border:1px solid var(--line);border-radius:9px;padding:11px 14px}
 .lib-pros{background:color-mix(in srgb,var(--hit) 5%,transparent)}
 .lib-cons{background:color-mix(in srgb,var(--miss) 5%,transparent)}
-.lib-pchead{font-weight:700;margin-bottom:7px;font-size:var(--lib-body)}
+.lib-pchead{font-weight:700;margin-bottom:8px;font-size:var(--lib-body)}
 .lib-good{color:var(--hit)}
 .lib-bad{color:var(--miss)}
-.lib-pcitem{line-height:1.7}
-/* 内容覆盖:反向连回实验(可点) */
+.lib-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:7px}
+.lib-list li{position:relative;padding-left:16px;line-height:1.62}
+.lib-list li::before{content:'';position:absolute;left:3px;top:.6em;width:5px;height:5px;border-radius:50%;background:var(--faint)}
+.lib-pros .lib-list li::before{background:var(--hit)}
+.lib-cons .lib-list li::before{background:var(--miss)}
+/* ③ 内容覆盖:反向连回实验(可点) */
+.lib-covlist{list-style:none;margin:0;padding:0}
 .lib-cov{border:1px solid var(--line);border-radius:9px;padding:11px 14px;margin-bottom:9px;background:var(--panel-2)}
-.lib-covmod{font-weight:700;color:var(--ink)}
+.lib-covmod{font-weight:700;color:var(--ink);line-height:1.55}
 .lib-covd{font-weight:400;color:var(--faint);font-size:var(--lib-sub);margin-left:8px}
 .lib-covlinks{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px}
 .lib-link{font-size:var(--lib-sub);color:var(--hit);border:1px solid color-mix(in srgb,var(--hit) 40%,var(--line));border-radius:20px;padding:4px 12px;background:color-mix(in srgb,var(--hit) 7%,transparent);font-family:var(--mono);cursor:pointer;transition:background var(--anim),border-color var(--anim),transform var(--anim)}
 .lib-link:hover{background:color-mix(in srgb,var(--hit) 18%,transparent);border-color:var(--hit);transform:translateY(-1px)}
 .lib-link:active{transform:translateY(0)}
-/* 落地项目 */
-.lib-proj-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:7px}
+/* ④ 落地项目 */
+.lib-proj-grid{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:7px}
 .lib-proj{border-left:3px solid var(--now);padding:7px 12px;background:var(--panel-2);border-radius:0 7px 7px 0}
 .lib-see{margin-top:11px;font-size:var(--lib-sub);color:var(--faint)}
 .lib-foot{margin:2px 0 0;font-size:var(--lib-sub);color:var(--faint);line-height:1.8;
