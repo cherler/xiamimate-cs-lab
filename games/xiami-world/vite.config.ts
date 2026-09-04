@@ -17,6 +17,9 @@ export default defineConfig(({ mode }) => {
     }
   } catch { /* base 没配就不挂代理,assistant 走兜底 */ }
   return {
+    // 收进虾米课堂 monorepo 后挂在 /lab/world/ 下(Caddy handle_path 剥前缀、文件按根目录摆);
+    // base 让构建出的资源/入口链接(含 index.html 里的 /game/cards/demo.ts)都带上 /lab/world 前缀。
+    base: '/lab/world/',
     server: { port: 5180, proxy },
     build: { target: 'es2022' },
   }

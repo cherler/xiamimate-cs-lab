@@ -42,6 +42,9 @@ const API = arg('api', 'http://127.0.0.1:8200')
 const LAB_AI = arg('lab-ai', 'http://127.0.0.1:8300')
 
 const LAB_OUT = join(ROOT, 'web', 'dist')
+//  monorepo 里的两个游戏:各自 vite build 到自家 dist(base=/lab/cards|/lab/world),静态挂载。
+const CARDS_OUT = join(ROOT, 'games', 'algo-cards', 'dist')
+const WORLD_OUT = join(ROOT, 'games', 'xiami-world', 'dist')
 const MAIN_OUT = join(MAIN_REPO, 'out')
 // 主站 dev 服务 public/chrome，构建产物落 out/chrome —— 哪个在就用哪个。
 const CHROME_DIR = [join(MAIN_OUT, 'chrome'), join(MAIN_REPO, 'public', 'chrome')]
@@ -111,6 +114,15 @@ const server = createServer(async (req, res) => {
   //  /lab/ai/* —— AI 学伴后端(server/index.ts, :8300)，是独立进程，必须排在 /lab/* 之前。
   //    线上 caddy 同样要有这条(见 deploy/caddy-snippet)。
   if (p.startsWith('/lab/ai/')) return proxy(req, res, LAB_AI)
+
+  //  /lab/cards/*、/lab/world/* —— monorepo 里的两个游戏,静态挂各自 dist。
+  //    与 /lab/ai/* 同理:**必须排在通用 /lab/* 之前**,否则会落到本仓静态根 404。
+  //    handle_path 语义:剥掉 /lab/cards 前缀,产物按根目录摆(游戏 build 时 base=/lab/cards/ 配套)。
+  //    线上 caddy 同样要有这两条(见 deploy/caddy-snippet)。
+  if (p === '/lab/cards') { res.writeHead(308, { location: '/lab/cards/' }); return res.end() }
+  if (p.startsWith('/lab/cards/')) return serveStatic(res, CARDS_OUT, p.slice('/lab/cards'.length) || '/index.html', null)
+  if (p === '/lab/world') { res.writeHead(308, { location: '/lab/world/' }); return res.end() }
+  if (p.startsWith('/lab/world/')) return serveStatic(res, WORLD_OUT, p.slice('/lab/world'.length) || '/index.html', null)
 
   // ③ /lab → 308 /lab/（caddy-snippet 的 @labRoot）
   if (p === '/lab') { res.writeHead(308, { location: '/lab/' }); return res.end() }
