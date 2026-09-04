@@ -233,7 +233,7 @@ export const LLM_ALGO_ENTRIES: CatalogEntry[] = [
         id: 'tot_branches', label: '从根生成的想法(分支)数',
         ask: 'ToT 解 24 点,从根节点第一层一共生成了多少个想法(分支)?',
         kind: 'number',
-        compute: t => ({ answer: String((last(t).thoughts as unknown[]).length), step: t.length - 1, evidence: `根下展开 ${(last(t).thoughts as unknown[]).length} 个候选中间状态` }),
+        compute: t => ({ answer: String((last(t).l1 as unknown[]).length), step: t.length - 1, evidence: `根下展开 ${(last(t).l1 as unknown[]).length} 个候选中间状态` }),
         distractors: numDistractors,
       },
       {
@@ -241,9 +241,16 @@ export const LLM_ALGO_ENTRIES: CatalogEntry[] = [
         ask: '评估之后,有多少个分支因被判"impossible"而剪枝?',
         kind: 'number',
         compute: t => {
-          const th = last(t).thoughts as { pruned: boolean }[]
+          const th = last(t).l1 as { pruned: boolean }[]
           return { answer: String(th.filter(x => x.pruned).length), step: t.length - 1, evidence: String(last(t).log ?? '') }
         },
+        distractors: numDistractors,
+      },
+      {
+        id: 'tot_kept', label: '剪枝后继续展开第二层的分支数',
+        ask: 'ToT 剪掉 impossible 的分支后,还剩几条 sure 分支被保留、继续往深处展开第二层?',
+        kind: 'number',
+        compute: t => ({ answer: String(last(t).kept), step: t.length - 1, evidence: String(last(t).log ?? '') }),
         distractors: numDistractors,
       },
       {
@@ -255,10 +262,10 @@ export const LLM_ALGO_ENTRIES: CatalogEntry[] = [
       },
       {
         id: 'tot_why_prune', label: '为什么剪掉那两个分支',
-        ask: 'ToT 为什么把 {7, 2} 和 {1, 2} 这两个分支剪掉、不再往下展开?',
+        ask: 'ToT 为什么把 {7, 2} 和 {2, 3} 这两个分支剪掉、不再往下展开?',
         kind: 'choice',
         compute: t => {
-          const th = last(t).thoughts as { state: string; pruned: boolean }[]
+          const th = last(t).l1 as { state: string; pruned: boolean }[]
           const states = th.filter(x => x.pruned).map(x => x.state).join('、')
           return { answer: `评估器判定 ${states} 为 impossible(剩下两个数怎么算都到不了 24),剪掉它们就不必在死路上浪费后续展开`, step: t.length - 1, evidence: String(last(t).log ?? '') }
         },

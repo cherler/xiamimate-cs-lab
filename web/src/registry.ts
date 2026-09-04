@@ -4463,20 +4463,20 @@ const tot: Experiment<ToTState> = {
   id: 'tot',
   group: '大模型算法',
   title: '思维树 ToT',
-  subtitle: '推理展开成树：生成多个想法、评估、剪枝、搜索',
+  subtitle: '推理展开成一棵搜索树：生成→评估→剪枝→深入',
   kernel: totKernel,
   defaultDoc: { kind: 'tot', params: {}, entities: [], streams: [] },
   params: [],
-  paramsNote: `**思维树 ToT:把中间状态当树节点,分支探索 + 评估 + 剪枝 + 回溯**——思维链(CoT)一条道走到黑错一步没回头路;自洽采多条独立链投票,但每条内部还是一条线。
+  paramsNote: `**思维树 ToT = 把推理组织成一棵搜索树**——思维链一条道走到黑、错一步没回头;自洽采多条独立线投票、每条内部还是直线。ToT 更进一步:逐层 生成→评估→剪枝→深入。
 
-- **机制**:每步扩展出多个想法分支,用一个评估器给每个分支判前景(能否通向解:sure/maybe/impossible),于是能像搜索一样广度/深度优先地探索、剪枝、回溯——把"想不同的路、比一比、走最有希望的、走不通就退回换一条"变成显式过程,像下棋时在脑中推演多步、剪掉臭棋。
-- **本实验**:24 点用 [4,3,2] 凑 24——从根展开 5 个想法,3 个前景 sure(剩两数能乘到 24)、2 个 impossible,剪掉没希望的,沿一个展开 4×3=12、12×2=24 找到解。
-- **取舍**:擅长需探索/试错/规划的难题;代价是分支多、评估多,更贵更慢。`,
+- **机制**:每步生成多个想法(分支)、评估器给每个判前景(sure/impossible)、剪掉没希望的、沿有希望的**再往深处展开一层**,走不通还能回溯换分支——像下棋在脑中推演多步、剪掉臭棋。
+- **本实验(两层真树)**:24 点用 {2,3,4} 凑 24。第一层 5 个想法:{12,2}/{8,3}/{6,4} 判 **sure**、{7,2}/{2,3} 判 **impossible** → 剪掉;对留下的每条**再展开第二层**,都能到 24;第一条到 24 的叶子回溯到根 → **3×4=12、12×2=24**。
+- **取舍**:擅长要探索/试错/规划的难题(24点、字谜、走迷宫);代价是分支多、评估多,更贵更慢。`,
   bounds: [
-    '24 点:用 [4,3,2] 凑 24',
-    '生成想法(分支)→评估前景(sure/impossible)→剪枝→搜索(可核)',
-    '3 个 sure、2 个 impossible;沿 {12,2} 展开 12×2=24 解出',
-    '比 CoT(单线)/自洽(独立多线)更进一步:树+评估+回溯',
+    '24 点:用 {2,3,4} 凑 24,展开两层搜索树',
+    '第一层生成 5 想法 → 评估(3 sure / 2 impossible)→ 剪枝',
+    '对留下的 3 条各展开第二层,都到 24;解路径 3×4=12→12×2=24',
+    '比 CoT(单线)/自洽(独立多线)更进一步:广度生成 + 评估剪枝 + 深度搜索(可回溯)',
   ],
   tabs: [{ id: 'tree', label: '想法树搜索' }],
   Stage: ToTStage,
@@ -4485,10 +4485,10 @@ const tot: Experiment<ToTState> = {
   tickLabel: s => (s.phase === 'done' ? '解' : s.stage === 'generate' ? '生' : s.stage === 'evaluate' ? '评' : s.stage === 'prune' ? '剪' : s.stage === 'expand' ? '搜' : '根'),
   whyInRail: true,
   readouts: s => [
-    { label: '阶段', value: s.stage === 'root' ? '根' : s.stage === 'generate' ? '生成想法' : s.stage === 'evaluate' ? '评估前景' : s.stage === 'prune' ? '剪枝' : s.stage === 'expand' ? '展开搜索' : s.phase === 'done' ? '解出' : '待走' },
-    { label: '分支数', value: s.thoughts.length ? `${s.thoughts.length}` : '—' },
-    { label: '已剪枝', value: s.thoughts.filter(t => t.pruned).length ? `${s.thoughts.filter(t => t.pruned).length}` : '—', tone: s.stage === 'prune' ? 'bad' : undefined },
-    { label: '解', value: s.phase === 'done' ? s.solution : '搜索中', tone: s.phase === 'done' ? 'good' : undefined },
+    { label: '阶段', value: s.stage === 'root' ? '根' : s.stage === 'generate' ? '生成想法' : s.stage === 'evaluate' ? '评估前景' : s.stage === 'prune' ? '剪枝' : s.stage === 'expand' ? '展开第二层' : s.phase === 'done' ? '解出' : '待走' },
+    { label: '第一层分支', value: s.l1.length ? `${s.l1.length}` : '—' },
+    { label: '剪枝/留下', value: s.kept ? `剪 ${s.l1.filter(t => t.pruned).length} / 留 ${s.kept}` : '—', tone: s.stage === 'prune' ? 'bad' : undefined },
+    { label: '解', value: s.solL1 >= 0 ? s.solution : '搜索中', tone: s.solL1 >= 0 ? 'good' : undefined },
   ],
 }
 
