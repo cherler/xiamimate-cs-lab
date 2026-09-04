@@ -4428,34 +4428,34 @@ const bestofn: Experiment<BestOfNState> = {
   id: 'bestofn',
   group: '大模型算法',
   title: 'Best-of-N 拒绝采样',
-  subtitle: '采样 N 个候选，打分器挑最高分的那个',
+  subtitle: '采样越多、最高分越好——但边际递减',
   kernel: bestofnKernel,
   defaultDoc: { kind: 'bestofn', params: {}, entities: [], streams: [] },
   params: [],
-  paramsNote: `**Best-of-N(拒绝采样):多采几个、挑最好的**,用算力换质量——生成一次质量参差,模型有时灵光、有时平庸。
+  paramsNote: `**轴 = 采样候选数 N**（扫 1→32）。Best-of-N（拒绝采样）:多采 N 个、打分器给每个评分、**argmax 取最高**——用算力换质量。
 
-- **关键是打分器**:训练好的奖励模型(给回答质量/有用性/安全性打分,RLHF 里就用它)或可算的验证器(数学验算、代码跑单测);采样 N 个、逐个打分、argmax 取最高。
-- **和自洽的区别**:自洽靠多数投票,这里靠外部打分器选单个最好,适合开放式生成(没有"多数答案"可投)。
-- **本实验**:任务"用 3、8、5 拼算式凑近 24",采样 5 个,验证器按接近程度打分(奖励=10−|24−结果|)——3×8=24 满分 10、5×3+8=23 得 9、8×5=40 得 0,取最高 → 3×8。结果、奖励都可手算。
+- **核心是边际递减**:取 N 个样本的最好一个 = 取分布的最大值,期望最大值随 N **越涨越慢**(近似 log N)。前几个就容易撞到"还行"的、best 快速抬升;再加候选只偶尔更好、几乎不动。
+- **代价**:N 翻倍算力翻倍,质量提升却越来越小,还被**打分器上限**卡住(满分 10 封顶)。
+- **打分器**:奖励模型(RLHF)或可算验证器(验算/跑单测)。和自洽的**多数投票**不同:这里靠外部打分器选**单个最好**,适合开放式生成(没有"多数答案"可投)。
 
-N 越大质量越好但越贵,还受打分器质量限制。`,
+任务"用 3、8、5 拼算式凑近 24",奖励=10−|24−结果|;候选池与抽样序列钉死(好候选故意出现得晚),扫 N 看最高分怎么先快涨后压平。分数都可手算。`,
   bounds: [
-    '任务:用 3、8、5 拼算式凑近 24,采样 5 个候选',
-    '验证器打分:奖励=10−|24−结果|(可核)',
-    '3×8=24 得 10 分最高 → 采纳;8×5=40 得 0',
-    'argmax 取最高(≠自洽的多数投票);用算力换质量',
+    '轴=采样候选数 N(1→32);每个 N 取钉死序列前 N 个候选、打分、argmax 取最高',
+    '奖励=10−|24−结果|:3×8=24 得 10(满分)、5×3+8=23 得 9、8×5=40 得 0',
+    'best 随 N:2→2→5→9→10→10 —— 先快涨(N≤8)后压平(N≥16),边际递减',
+    'argmax 取单个最好(≠自洽的多数投票);受打分器上限卡住',
   ],
   tabs: [{ id: 'pick', label: '采样+择优' }],
   Stage: BestOfNStage,
-  tone: s => (s.phase === 'done' ? { key: 'good', label: `取 ${s.cands[s.bestIdx]?.reward} 分` } : { key: 'idle', label: `${s.cands.length}/${s.n}` }),
-  metric: s => (s.phase === 'done' ? 1 : s.n ? s.cands.length / s.n : 0),
-  tickLabel: s => (s.phase === 'done' ? '取' : `候${s.cands.length}`),
+  tone: s => ({ key: 'good', label: `N=${s.n} 取 ${s.bestReward}` }),
+  metric: s => (s.maxN ? s.n / s.maxN : 0),
+  tickLabel: s => `N${s.n}`,
   whyInRail: true,
   readouts: s => [
-    { label: '已采样', value: `${s.cands.length}/${s.n}` },
-    { label: '本候选分', value: s.cands.length && s.phase !== 'done' ? `${s.cands[s.cands.length - 1].reward}` : '—' },
-    { label: '当前最高', value: s.cands.length ? `${s.cands[s.bestIdx].e}(${s.cands[s.bestIdx].reward})` : '—', tone: 'good' },
-    { label: '结果', value: s.phase === 'done' ? `采纳 ${s.cands[s.bestIdx].e}` : '择优中' },
+    { label: '采样候选数 N', value: `${s.n}` },
+    { label: '最高分', value: `${s.bestReward} / 10`, tone: 'good' },
+    { label: '采纳', value: s.drawn[s.bestIdx]?.e ?? '—' },
+    { label: '比上一档', value: s.n === 1 ? '起点' : `+${s.gain}`, tone: s.gain > 0 ? 'good' : undefined },
   ],
 }
 

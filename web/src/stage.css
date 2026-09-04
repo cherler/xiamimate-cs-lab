@@ -3708,6 +3708,18 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .bncand.best .bnbarfill { background:var(--hit); }
 .bnr { font-size:11px; color:var(--dim); text-align:right; font-variant-numeric:tabular-nums; }
 .bnmark { font-size:10px; color:var(--hit); font-weight:700; text-align:right; }
+/* Best-of-N 深化:边际递减曲线 + 去重候选行 */
+.bncurvewrap{border:1px solid var(--line);border-radius:8px;padding:8px 11px;background:var(--panel-2)}
+.bncurve-t{font-size:11px;color:var(--faint);margin-bottom:5px}
+.bncurve-t b{color:var(--dim)}
+.bncurve{width:100%;height:auto;display:block}
+.bng{stroke:var(--line-soft);stroke-width:1}
+.bnax{font-size:8.5px;fill:var(--faint);font-family:var(--mono)}
+.bncurveline{fill:none;stroke:var(--now);stroke-width:2;filter:drop-shadow(0 0 2px color-mix(in srgb,var(--now) 50%,transparent))}
+.bndot{fill:var(--now)}
+.bndot.cur{fill:var(--hit)}
+.bndotlbl{font-size:9px;fill:var(--hit);font-weight:700}
+.bncand.bon{grid-template-columns:120px 1fr 48px 56px}
 
 /* 思维树 ToT */
 .totwrap { display:flex; flex-direction:column; align-items:center; gap:10px; margin:14px 0; }

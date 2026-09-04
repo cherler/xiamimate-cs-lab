@@ -77,21 +77,28 @@ export const LLM_ALGO_ENTRIES: CatalogEntry[] = [
     doc: { kind: 'bestofn', params: {}, entities: [], streams: [] },
     facts: [
       {
-        id: 'bon_n', label: '采样的候选个数 N',
-        ask: 'Best-of-N 对同一个任务一共采样了多少个候选答案?',
+        id: 'bon_n', label: '扫到的最大采样数 N',
+        ask: 'Best-of-N 沿采样数 N 扫描(1、2、4…),扫到的最大 N 是多少?',
         kind: 'number',
         compute: t => ({ answer: String(last(t).n), step: t.length - 1, evidence: String(last(t).log ?? '') }),
         distractors: numDistractors,
       },
       {
-        id: 'bon_best_reward', label: '被采纳候选的得分',
-        ask: '所有候选里,最终被打分器选中采纳的那个,拿到多少分(奖励=10−|24−结果|)?',
+        id: 'bon_best_reward', label: '采样够多(N=32)时被采纳候选的得分',
+        ask: '采样到 N=32 时,所有候选里最终被打分器选中采纳的那个,拿到多少分(奖励=10−|24−结果|,满分 10)?',
         kind: 'number',
         compute: t => {
-          const cands = last(t).cands as { e: string; r: number; reward: number }[]
+          const cands = last(t).drawn as { e: string; v: number; reward: number }[]
           const bi = last(t).bestIdx as number
-          return { answer: String(cands[bi].reward), step: t.length - 1, evidence: `最高分候选「${cands[bi].e}」= ${cands[bi].r},奖励 ${cands[bi].reward} 分` }
+          return { answer: String(cands[bi].reward), step: t.length - 1, evidence: `最高分候选「${cands[bi].e}」= ${cands[bi].v},奖励 ${cands[bi].reward} 分` }
         },
+        distractors: numDistractors,
+      },
+      {
+        id: 'bon_n1', label: 'N=1(只采1个)时的最高分——边际递减的起点',
+        ask: 'Best-of-N 的核心是"最高分随 N 边际递减"。若只采样 N=1 个候选(碰运气),本实验第一个候选拿到多少分?',
+        kind: 'number',
+        compute: t => ({ answer: String(t[0]!.bestReward), step: 0, evidence: String(t[0]!.log ?? '') }),
         distractors: numDistractors,
       },
       {
@@ -106,10 +113,10 @@ export const LLM_ALGO_ENTRIES: CatalogEntry[] = [
         ask: '8×5=40 数值最大,为什么打分器最终采纳的却是 3×8?',
         kind: 'choice',
         compute: t => {
-          const cands = last(t).cands as { e: string; r: number; reward: number }[]
+          const cands = last(t).drawn as { e: string; v: number; reward: number }[]
           const bi = last(t).bestIdx as number
           return {
-            answer: `打分器按接近目标 24 打分(奖励=10−|24−结果|):${cands[bi].e}=${cands[bi].r} 最接近得满分 ${cands[bi].reward};8×5=40 偏离最远,只有 0 分`,
+            answer: `打分器按接近目标 24 打分(奖励=10−|24−结果|):${cands[bi].e}=${cands[bi].v} 最接近得满分 ${cands[bi].reward};8×5=40 偏离最远,只有 0 分`,
             step: t.length - 1, evidence: String(last(t).log ?? ''),
           }
         },
