@@ -66,6 +66,26 @@ export function ProgressPanel({
     })
   }, [byExp])
 
+  //  ⭐ 薄弱点诊断 + 推荐下一步(全部由进度数据确定性算出,不问大模型——和出题一个哲学)。
+  const diag = useMemo(() => {
+    const attempted = byExp.filter(x => x.m.attempted > 0)
+    //  练了但没全掌握的,按题级掌握率升序=最该补的在前
+    const inProgress = attempted.filter(x => x.m.mastered < x.m.total)
+      .sort((a, b) => (a.m.mastered / a.m.total) - (b.m.mastered / b.m.total))
+    const untouched = byExp.filter(x => x.m.attempted === 0)
+    //  最弱科目:有作答的组里题级掌握率最低的
+    const weakGroup = byGroup
+      .map(g => ({ ...g, done: g.items.mastered, tried: g.items.mastered + g.items.shaky + g.items.wrong, ratio: g.items.total ? g.items.mastered / g.items.total : 1 }))
+      .filter(g => g.tried > 0 && g.ratio < 1)
+      .sort((a, b) => a.ratio - b.ratio)[0]
+    //  推荐下一步:错题优先 → 补练中 → 开新的
+    let rec: { text: string; expId?: string } | null = null
+    if (queue.length > 0) rec = { text: `先清错题本的 ${queue.length} 题` }
+    else if (inProgress[0]) rec = { text: `继续攻「${inProgress[0].exp.title}」`, expId: inProgress[0].exp.id }
+    else if (untouched[0]) rec = { text: `开练「${untouched[0].exp.title}」`, expId: untouched[0].exp.id }
+    return { attempted: attempted.length, inProgress, weakGroup, rec }
+  }, [byExp, byGroup, queue])
+
   const findTrue = (problemId: string) => {
     const p = PROBLEMS.find(x => x.id === problemId)!
     return { p, e: experiments.find(x => x.id === p.experimentId) }
@@ -92,6 +112,27 @@ export function ProgressPanel({
           </div>
         ) : (
         <div className="pgbody">
+          {/* ── 诊断 + 推荐下一步（进度数据现算，不问大模型） ── */}
+          <div className="pgdiag">
+            {diag.attempted === 0 ? (
+              <p className="pgdiag-t">还没开始练。挑一个实验，用「<b>AI 学伴 · 出题</b>」或做真题，进度就动起来了。</p>
+            ) : (
+              <>
+                <p className="pgdiag-t">
+                  练过 <b>{diag.attempted}</b> 个实验、掌握 <b>{expMastered}</b> 个。
+                  {diag.weakGroup && <> 最弱在「<b>{diag.weakGroup.group}</b>」——题级掌握才 {Math.round(diag.weakGroup.ratio * 100)}%。</>}
+                </p>
+                {diag.rec && (
+                  <div className="pgdiag-rec">
+                    <span className="pgdiag-lbl">下一步</span>
+                    <span className="pgdiag-do">{diag.rec.text}</span>
+                    {diag.rec.expId && <button className="pgdiag-go" onClick={() => onOpenAi(diag.rec!.expId!)}>去练 →</button>}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
           {/* ── 错题本：先说下一步做什么（真题 + AI 学伴一起） ── */}
           <section>
             <div className="pgcap">

@@ -178,7 +178,7 @@ function QuizView({ expId, onCite, onFactAnswer }: { expId: string; onCite?: (st
       <button className={sub === 'debate' ? 'on' : ''} onClick={() => setSub('debate')}>反驳同学</button>
     </div>
   )
-  if (sub === 'debate') return <>{subtabs}<DebateView expId={expId} onCite={onCite} /></>
+  if (sub === 'debate') return <>{subtabs}<DebateView expId={expId} onCite={onCite} onFactAnswer={onFactAnswer} /></>
 
   return (
     <div className="aic-body">
@@ -404,7 +404,7 @@ function InterviewView({ expId }: { expId: string }) {
 
 // ── 反驳（会反驳的 AI 同学，选择题版：同学抛错主张，你选能驳倒 TA 的那句） ──
 type DebateData = { factId: string; claim: string; options: string[]; correctIndex: number; answer: string; provenance: { label: string; step: number; evidence: string } }
-function DebateView({ expId, onCite }: { expId: string; onCite?: (step: number) => void }) {
+function DebateView({ expId, onCite, onFactAnswer }: { expId: string; onCite?: (step: number) => void; onFactAnswer?: OnFactAnswer }) {
   const [data, setData] = useState<DebateData | null>(null)
   const [picked, setPicked] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
@@ -435,7 +435,12 @@ function DebateView({ expId, onCite }: { expId: string; onCite?: (step: number) 
               {data.options.map((opt, oi) => {
                 let cls = 'aic-opt'
                 if (answered) { if (oi === data.correctIndex) cls += ' correct'; else if (oi === picked) cls += ' wrong' }
-                return <button key={oi} className={cls} disabled={answered} onClick={() => setPicked(oi)}>{opt}</button>
+                return <button key={oi} className={cls} disabled={answered} onClick={() => {
+                  if (picked != null) return   // 已答过不重复记账
+                  setPicked(oi)
+                  //  辩论也是选择题、引擎判对错 → 同样计入进度（键=同一 factId，错题本标签用事实名/主张）
+                  onFactAnswer?.(data.factId, oi === data.correctIndex, expId, data.provenance.label || data.claim)
+                }}>{opt}</button>
               })}
             </div>
             {answered && (

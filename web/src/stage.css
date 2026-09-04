@@ -1236,6 +1236,17 @@
 .pgqueue .tag{font-family:var(--mono);font-size:var(--t-meta);letter-spacing:.1em;color:var(--faint)}
 /*  AI 学伴出的错题:标签给个紫色小徽,和真题错题区分开(真题=灰) */
 .pgqueue .tag.ai{color:var(--f-idx,#7A5AF0);font-weight:600}
+/*  诊断 + 推荐下一步:进度面板顶部一张琥珀卡(现算,不问大模型) */
+.pgdiag{background:linear-gradient(180deg,color-mix(in srgb,var(--now) 8%,var(--panel)),var(--panel));
+  border:1px solid color-mix(in srgb,var(--now) 30%,var(--line));border-radius:10px;padding:12px 14px;margin-bottom:14px}
+.pgdiag-t{margin:0;font-size:var(--t-body);color:var(--dim);line-height:1.7}
+.pgdiag-t b{color:var(--ink)}
+.pgdiag-rec{display:flex;align-items:center;gap:10px;margin-top:9px;flex-wrap:wrap}
+.pgdiag-lbl{font-size:var(--t-meta);font-family:var(--mono);letter-spacing:.1em;color:var(--faint)}
+.pgdiag-do{font-size:var(--t-ui);color:var(--ink);font-weight:600}
+.pgdiag-go{margin-left:auto;font-size:var(--t-ui);border:1px solid var(--now);background:color-mix(in srgb,var(--now) 14%,transparent);
+  color:var(--now);border-radius:20px;padding:4px 13px;cursor:pointer;font-weight:600;transition:background var(--anim),transform var(--anim)}
+.pgdiag-go:hover{background:color-mix(in srgb,var(--now) 26%,transparent);transform:translateY(-1px)}
 .pgqueue .qq{font-size:var(--t-body);color:var(--ink);line-height:1.6}
 .pgqueue .meta{font-size:var(--t-ui);color:var(--faint)}
 .pgmore{font-size:var(--t-ui);color:var(--faint);padding:6px 13px}
