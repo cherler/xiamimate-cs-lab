@@ -20,7 +20,14 @@
  *    硬套只会给出一个看着专业、实则拍脑袋的日期。
  */
 
-export type QKey = string          // `${problemId}#${questionIndex}`
+//  两种题共用一个 store,靠 key 前缀区分:
+//    真题 = `${problemId}#${qi}`（keyOf）；AI 学伴事实题 = `fact:${factId}`（factKey）。
+export type QKey = string
+
+/** AI 学伴事实题的 key 前缀 —— 和真题的 `problemId#qi` 分属两个命名空间,互不撞。 */
+export const FACT_PREFIX = 'fact:'
+export const factKey = (factId: string): QKey => `${FACT_PREFIX}${factId}`
+export const isFactKey = (k: QKey): boolean => k.startsWith(FACT_PREFIX)
 
 export type QRecord = {
   /** 总作答次数（只计未偏离原题的） */
@@ -35,6 +42,10 @@ export type QRecord = {
   lastAt: number
   /** 第一次答对的时间戳；没答对过则缺省 */
   firstCorrectAt?: number
+  /** 仅 AI 学伴事实题:出处实验 + 最近一次题面。
+   *  客户端不持有 factId 全集(在服务端 catalog),所以靠 meta.expId 把某实验的 AI 错题找回来、
+   *  靠 label 在错题本里显示题面(题面是现场生成的,存最近一次即可)。 */
+  meta?: { expId: string; label: string }
 }
 
 export type Store = { v: 1; q: Record<QKey, QRecord> }
@@ -68,8 +79,9 @@ export function clearAll() {
 
 export const keyOf = (problemId: string, qi: number): QKey => `${problemId}#${qi}`
 
-/** 记一次作答；返回新的 store（不可变，方便 React 触发重渲染） */
-export function record(s: Store, k: QKey, correct: boolean, now = Date.now()): Store {
+/** 记一次作答；返回新的 store（不可变，方便 React 触发重渲染）。
+ *  meta 仅 AI 学伴事实题传（出处实验 + 题面），真题不传。 */
+export function record(s: Store, k: QKey, correct: boolean, now = Date.now(), meta?: QRecord['meta']): Store {
   const old = s.q[k] ?? { attempts: 0, wrong: 0, streak: 0, lastCorrect: false, lastAt: 0 }
   const next: QRecord = {
     attempts: old.attempts + 1,
@@ -78,6 +90,7 @@ export function record(s: Store, k: QKey, correct: boolean, now = Date.now()): S
     lastCorrect: correct,
     lastAt: now,
     firstCorrectAt: old.firstCorrectAt ?? (correct ? now : undefined),
+    meta: meta ?? old.meta,   // 新 meta 覆盖(题面更新);没传就保留旧的
   }
   return { ...s, q: { ...s.q, [k]: next } }
 }
@@ -127,4 +140,58 @@ export function statOf(s: Store, all: { problemId: string; qi: number }[]): Stat
   const out: Stat = { total: all.length, mastered: 0, shaky: 0, wrong: 0, untouched: 0 }
   for (const x of all) out[statusOf(s.q[keyOf(x.problemId, x.qi)])]++
   return out
+}
+
+// ── AI 学伴事实题:靠 meta.expId 找回某实验答过的事实题（客户端没有 factId 全集，只能这么找） ──
+export function aiRecordsOf(s: Store, expId: string): { key: QKey; rec: QRecord }[] {
+  return Object.entries(s.q)
+    .filter(([k, r]) => isFactKey(k) && r.meta?.expId === expId)
+    .map(([key, rec]) => ({ key, rec }))
+}
+
+// ── 每实验掌握度：真题 + AI 事实合起来算（这是新的主口径，弱化全站 X/139） ──
+export type Mastery = Stat & { attempted: number }
+
+/** 某实验掌握度。trueSlots=该实验真题（可空）；aiTotal=该实验 AI 事实总数（端点给，可为 0）。
+ *  total = 真题数 + aiTotal；没答过的 AI 事实算 untouched（计入 total、不计入 mastered）。 */
+export function masteryOf(
+  s: Store, expId: string,
+  trueSlots: { problemId: string; qi: number }[], aiTotal: number,
+): Mastery {
+  const out: Mastery = { total: trueSlots.length + aiTotal, mastered: 0, shaky: 0, wrong: 0, untouched: 0, attempted: 0 }
+  const tally = (st: QStatus) => { out[st]++; if (st !== 'untouched') out.attempted++ }
+  for (const x of trueSlots) tally(statusOf(s.q[keyOf(x.problemId, x.qi)]))
+  const ai = aiRecordsOf(s, expId)
+  for (const { rec } of ai) tally(statusOf(rec))
+  //  没答过的 AI 事实（aiTotal 比已记录的多的那部分）补成 untouched
+  out.untouched += Math.max(0, aiTotal - ai.length)
+  return out
+}
+
+// ── 错题本：真题 + AI 事实一起收，按"最该先练"排序 ──
+export type ReviewItem =
+  | { kind: 'true'; problemId: string; qi: number; rec: QRecord; status: QStatus }
+  | { kind: 'ai'; key: QKey; expId: string; label: string; rec: QRecord; status: QStatus }
+
+export function reviewAll(
+  s: Store,
+  trueSlots: { problemId: string; qi: number }[],
+  expIds?: Set<string>,   // 传了就只收这些实验的 AI 错题（按职业过滤）
+): ReviewItem[] {
+  const items: ReviewItem[] = []
+  for (const x of trueSlots) {
+    const rec = s.q[keyOf(x.problemId, x.qi)]; if (!rec) continue
+    const status = statusOf(rec)
+    if (status === 'wrong' || status === 'shaky') items.push({ kind: 'true', ...x, rec, status })
+  }
+  for (const [key, rec] of Object.entries(s.q)) {
+    if (!isFactKey(key) || !rec.meta) continue
+    if (expIds && !expIds.has(rec.meta.expId)) continue
+    const status = statusOf(rec)
+    if (status === 'wrong' || status === 'shaky') items.push({ kind: 'ai', key, expId: rec.meta.expId, label: rec.meta.label, rec, status })
+  }
+  return items.sort((a, b) =>
+    (a.status === b.status ? 0 : a.status === 'wrong' ? -1 : 1)
+    || (b.rec.wrong - a.rec.wrong)
+    || (a.rec.lastAt - b.rec.lastAt))
 }

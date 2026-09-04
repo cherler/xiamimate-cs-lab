@@ -21,7 +21,7 @@ import { problemsFor } from './problems.ts'
 import { ProgressPanel } from './shell/ProgressPanel.tsx'
 import { ChromeHeader, ChromeFooter } from './shell/PlatformChrome.tsx'
 import { Dock } from './shell/Dock.tsx'
-import { AiCompanion } from './shell/AiCompanion.tsx'
+import { AiCompanion, loadAiFacts } from './shell/AiCompanion.tsx'
 import { GuideOverlay } from './shell/GuideOverlay.tsx'
 import { GuideDiagramModal, GUIDE_DIAGRAMS } from './shell/GuideDiagram.tsx'
 import { LabGuide } from './shell/LabGuide.tsx'
@@ -71,6 +71,9 @@ export default function App() {
   const [store, setStore] = useState<progress.Store>(() => progress.load())
   /** 云端状态：没主站 / 没登录 / 已同步 / 正在写 / 写失败 —— 面板上如实显示 */
   const [cloud, setCloud] = useState<sync.CloudState>({ kind: 'unknown' })
+  //  每实验的 AI 学伴事实题数（掌握度分母）—— 开页面拉一次 /lab/ai/experiments。后端没起也不炸(空 Map)。
+  const [aiFacts, setAiFacts] = useState<Map<string, number>>(new Map())
+  useEffect(() => { loadAiFacts().then(setAiFacts).catch(() => {}) }, [])
   const [showProgress, setShowProgress] = useState(false)
   /**
    * 讲解浮层开关。关掉的状态存 localStorage —— 学会了的人不该每换一个实验就再关一次。
@@ -515,6 +518,17 @@ export default function App() {
       return next
     })
   }
+  //  AI 学伴出题作答 → 计入进度（键用 factId、带出处与题面 meta），存/同步与真题同一条路。
+  function recordFactAnswer(factId: string, correct: boolean, expId: string, label: string) {
+    setStore(s => {
+      const next = progress.record(s, progress.factKey(factId), correct, Date.now(), { expId, label })
+      progress.save(next)
+      if (cloud.kind === 'synced' || cloud.kind === 'saving' || cloud.kind === 'error') {
+        sync.schedulePush(next, setCloud)
+      }
+      return next
+    })
+  }
   /**
    * 开页面时跟云端对一次。
    *
@@ -670,11 +684,21 @@ export default function App() {
     }
     return undefined
   }
-  const { mastered, totalQ, reviewCount } = useMemo(() => {
-    const all = [...discExpIds].flatMap(id => problemsFor(id)).flatMap(p => p.questions.map((_, qi) => ({ problemId: p.id, qi })))
-    const st = progress.statOf(store, all)
-    return { mastered: st.mastered, totalQ: st.total, reviewCount: progress.reviewQueue(store, all).length }
-  }, [store, discExpIds])
+  //  新口径:**每实验掌握度**（真题 + AI 学伴事实合起来）。弱化全站 X/139。
+  //  expMastered/expTotal = 本职业里「可练的实验」中已全掌握的 / 可练总数;reviewCount = 错题(含 AI)。
+  const trueSlotsOf = (id: string) => problemsFor(id).flatMap(p => p.questions.map((_, qi) => ({ problemId: p.id, qi })))
+  const { expMastered, expTotal, reviewCount } = useMemo(() => {
+    let em = 0, et = 0
+    const allTrue: { problemId: string; qi: number }[] = []
+    for (const id of discExpIds) {
+      const ts = trueSlotsOf(id); allTrue.push(...ts)
+      const m = progress.masteryOf(store, id, ts, aiFacts.get(id) ?? 0)
+      if (m.total === 0) continue
+      et++
+      if (m.mastered === m.total) em++
+    }
+    return { expMastered: em, expTotal: et, reviewCount: progress.reviewAll(store, allTrue, discExpIds).length }
+  }, [store, discExpIds, aiFacts])
 
   return (
     <>
@@ -782,9 +806,9 @@ export default function App() {
               : <button className="chip vizsoon" disabled data-tip={v.tip} title={v.tip}>{v.icon} {v.label}<em className="soon">开发中</em></button>
           })()}
           {/*  实验数 + 进度合并成一颗（都按当前职业统计，跟顶条走）。
-               没写真题的职业（如具身，totalQ=0）只印实验数，不印「掌握 0/0」。 */}
+               新口径=每实验掌握度:「掌握 K/M 实验」(M=可练的实验数,K=已全掌握),不再印会稀释的全站 X/139。 */}
           <button className="chip act" onClick={() => setShowProgress(true)}>
-            {discCount} 实验{totalQ > 0 ? ` · 掌握 ${mastered}/${totalQ}` : ''}
+            {discCount} 实验{expTotal > 0 ? ` · 掌握 ${expMastered}/${expTotal}` : ''}
             {reviewCount > 0 && <b className="dot">{reviewCount}</b>}
           </button>
         </div>
@@ -1096,7 +1120,9 @@ export default function App() {
         <ProgressPanel
           store={store} experiments={EXPERIMENTS.filter(e => discExpIds.has(e.id))}
           scopeLabel={activeDiscObj.title}
+          aiFacts={aiFacts}
           onJump={jumpToQuestion}
+          onOpenAi={(id) => { navToExpById(id); setShowProgress(false); setAiOpen(true) }}
           onClose={() => setShowProgress(false)}
           cloud={cloud}
           onClear={() => {
@@ -1130,7 +1156,7 @@ export default function App() {
             <button className="aipanel-x" onClick={() => setAiOpen(false)} title="关闭（Esc）">✕</button>
           </div>
           <div className="aipanel-body">
-            <AiCompanion expId={exp.id} onCite={(step) => { seek(step); setAiOpen(false) }} />
+            <AiCompanion expId={exp.id} onCite={(step) => { seek(step); setAiOpen(false) }} onFactAnswer={recordFactAnswer} />
           </div>
         </div>
       </div>

@@ -5,8 +5,8 @@
  * 总览排在后面。只给数字不给下一步，学生看完还是茫然。
  */
 import { useMemo, useState } from 'react'
-import type { Store } from '../progress.ts'
-import { keyOf, reviewQueue, statOf, STATUS_LABEL, MASTER_STREAK } from '../progress.ts'
+import type { Store, Mastery } from '../progress.ts'
+import { keyOf, reviewAll, masteryOf, STATUS_LABEL, MASTER_STREAK } from '../progress.ts'
 import type { CloudState } from '../sync.ts'
 import { PROBLEMS } from '../problems.ts'
 import type { AnyExperiment } from '../types.ts'
@@ -14,54 +14,63 @@ import type { AnyExperiment } from '../types.ts'
 type Slot = { problemId: string; qi: number }
 
 export function ProgressPanel({
-  store, experiments, cloud, onJump, onClose, onClear, scopeLabel,
+  store, experiments, cloud, onJump, onOpenAi, onClose, onClear, scopeLabel, aiFacts,
 }: {
   store: Store
   /** 只统计这些实验（当前职业的实验集合，含软链）—— 面板按职业过滤，不再全站一锅端。 */
   experiments: AnyExperiment[]
   /** 记录存在哪儿 —— 面板上如实说，不要让用户以为换台机器还在 */
   cloud: CloudState
-  /** 跳到某道题的某一问 */
+  /** 跳到某真题的某一问 */
   onJump: (experimentId: string, problemId: string, qi: number) => void
+  /** 打开某实验的 AI 学伴（AI 错题的"再练"入口——题面是现场生成的，无法定位到原题，只能回去重出） */
+  onOpenAi: (experimentId: string) => void
   onClose: () => void
   onClear: () => void
   /** 当前职业名，印在标题上，让"这是哪一科的进度"一目了然。 */
   scopeLabel?: string
+  /** 每实验 AI 学伴事实题数（掌握度分母） */
+  aiFacts: Map<string, number>
 }) {
   const [confirming, setConfirming] = useState(false)
 
-  //  ⚠️ 只数**当前职业**的实验的题:面板此前用全站 PROBLEMS,导致每个职业点开都看同一个 0/全站,
-  //     且和顶栏"N 实验"(按职业统计)对不上。改成按传入的 experiments 过滤。
   const expIds = useMemo(() => new Set(experiments.map(e => e.id)), [experiments])
-  const all: Slot[] = useMemo(
-    () => PROBLEMS.filter(p => expIds.has(p.experimentId))
-      .flatMap(p => p.questions.map((_, qi) => ({ problemId: p.id, qi }))),
-    [expIds],
-  )
-  const total = statOf(store, all)
-  const queue = useMemo(() => reviewQueue(store, all), [store, all])
+  const trueSlotsOf = (id: string): Slot[] =>
+    PROBLEMS.filter(p => p.experimentId === id).flatMap(p => p.questions.map((_, qi) => ({ problemId: p.id, qi })))
+  const allTrue: Slot[] = useMemo(
+    () => PROBLEMS.filter(p => expIds.has(p.experimentId)).flatMap(p => p.questions.map((_, qi) => ({ problemId: p.id, qi }))),
+    [expIds])
 
+  //  ⭐ 新主口径:**每实验掌握度**(真题 + AI 学伴事实合起来)。只列有题可练的(total>0)。
+  //     attempted>0 的排前面(练过的先看),没练过的沉底。
+  const byExp = useMemo(() => experiments
+    .map(e => ({ exp: e, m: masteryOf(store, e.id, trueSlotsOf(e.id), aiFacts.get(e.id) ?? 0) }))
+    .filter(x => x.m.total > 0)
+    .sort((a, b) => (b.m.attempted > 0 ? 1 : 0) - (a.m.attempted > 0 ? 1 : 0)),
+    [store, experiments, aiFacts])
+  const expTotal = byExp.length
+  const expMastered = byExp.filter(x => x.m.mastered === x.m.total).length
+
+  //  错题本:真题 + AI 事实一起收(按当前职业过滤)
+  const queue = useMemo(() => reviewAll(store, allTrue, expIds), [store, allTrue, expIds])
+
+  //  按科目:每组「已全掌握实验 / 有题实验」+ 题级进度条
   const byGroup = useMemo(() => {
-    const groups = [...new Set(experiments.map(e => e.group))]
+    const groups = [...new Set(byExp.map(x => x.exp.group))]
     return groups.map(g => {
-      const ids = experiments.filter(e => e.group === g).map(e => e.id)
-      const slots = all.filter(s =>
-        ids.includes(PROBLEMS.find(p => p.id === s.problemId)?.experimentId ?? ''))
-      return { group: g, stat: statOf(store, slots) }
+      const rows = byExp.filter(x => x.exp.group === g)
+      const items = rows.reduce((a, x) => ({
+        mastered: a.mastered + x.m.mastered, shaky: a.shaky + x.m.shaky, wrong: a.wrong + x.m.wrong, total: a.total + x.m.total,
+      }), { mastered: 0, shaky: 0, wrong: 0, total: 0 })
+      return { group: g, mastered: rows.filter(x => x.m.mastered === x.m.total).length, total: rows.length, items }
     })
-  }, [store, experiments, all])
+  }, [byExp])
 
-  const byExp = useMemo(() => experiments.map(e => {
-    const slots = all.filter(s =>
-      PROBLEMS.find(p => p.id === s.problemId)?.experimentId === e.id)
-    return { exp: e, stat: statOf(store, slots) }
-  }).filter(x => x.stat.total > 0), [store, experiments, all])
-
-  const find = (problemId: string, qi: number) => {
+  const findTrue = (problemId: string) => {
     const p = PROBLEMS.find(x => x.id === problemId)!
-    const e = experiments.find(x => x.id === p.experimentId)!
-    return { p, e, q: p.questions[qi] }
+    return { p, e: experiments.find(x => x.id === p.experimentId) }
   }
+  const titleOf = (id: string) => experiments.find(e => e.id === id)?.title ?? id
 
   return (
     <div className="pgmask" role="dialog" aria-label="学习进度与错题本" onClick={onClose}>
@@ -69,83 +78,88 @@ export function ProgressPanel({
         <header className="pghead">
           <h2>学习进度{scopeLabel ? ` · ${scopeLabel}` : ''}</h2>
           <span className="pgsum">
-            已掌握 <b>{total.mastered}</b> / {total.total} 问
+            掌握 <b>{expMastered}</b> / {expTotal} 实验
           </span>
           <CloudTag cloud={cloud} />
           <button className="pgx" onClick={onClose} aria-label="关闭">✕</button>
         </header>
 
-        {all.length === 0 ? (
+        {expTotal === 0 ? (
           <div className="pgbody">
             <p className="pgempty">
-              「{scopeLabel ?? '这个职业'}」目前还没有真题 —— AI 学伴的题库还没覆盖到这条线。
-              先去有真题的职业(如 408 基础、算法)做题,答错的会进错题本。
+              「{scopeLabel ?? '这个职业'}」还没有可练的题 —— 真题和 AI 学伴都还没覆盖到这条线。
             </p>
           </div>
         ) : (
         <div className="pgbody">
-          {/* ── 错题本：先说下一步做什么 ── */}
+          {/* ── 错题本：先说下一步做什么（真题 + AI 学伴一起） ── */}
           <section>
             <div className="pgcap">
               错题本
               <em>
                 {queue.length > 0
-                  ? `${queue.length} 问 —— 错过的题要连续答对 ${MASTER_STREAK} 次才移出去`
+                  ? `${queue.length} 题 —— 错过的要连续答对 ${MASTER_STREAK} 次才移出去`
                   : ''}
               </em>
             </div>
             {queue.length === 0 ? (
               <p className="pgempty">
-                {total.mastered === 0
-                  ? '还没有作答记录。随便挑一个实验，把下面的真题做一遍，答错的会自动进这里。'
-                  : '错题本是空的 —— 错过的题都已经重新掌握了。'}
+                错题本是空的 —— 做题时答错的（真题或 AI 学伴出题）会自动进这里。
               </p>
             ) : (
               <ul className="pgqueue">
-                {queue.slice(0, 12).map(({ problemId, qi, rec, status }) => {
-                  const { p, e, q } = find(problemId, qi)
-                  return (
-                    <li key={keyOf(problemId, qi)} className={status}>
-                      <button onClick={() => onJump(e.id, p.id, qi)}>
-                        <span className="tag">{e.title}</span>
-                        <span className="qq">{q.prompt}</span>
-                        <span className="meta">
-                          {STATUS_LABEL[status]} · 做过 {rec.attempts} 次、错 {rec.wrong} 次
-                        </span>
+                {queue.slice(0, 14).map(item => item.kind === 'true'
+                  ? (() => {
+                    const { p, e } = findTrue(item.problemId)
+                    return (
+                      <li key={keyOf(item.problemId, item.qi)} className={item.status}>
+                        <button onClick={() => e && onJump(e.id, p.id, item.qi)}>
+                          <span className="tag">{e?.title ?? p.experimentId}</span>
+                          <span className="qq">{p.questions[item.qi].prompt}</span>
+                          <span className="meta">{STATUS_LABEL[item.status]} · 做过 {item.rec.attempts} 次、错 {item.rec.wrong} 次</span>
+                        </button>
+                      </li>
+                    )
+                  })()
+                  : (
+                    <li key={item.key} className={item.status}>
+                      <button onClick={() => onOpenAi(item.expId)}>
+                        <span className="tag ai">{titleOf(item.expId)} · AI</span>
+                        <span className="qq">{item.label}</span>
+                        <span className="meta">{STATUS_LABEL[item.status]} · 做过 {item.rec.attempts} 次、错 {item.rec.wrong} 次 · 点开去 AI 学伴再练</span>
                       </button>
                     </li>
-                  )
-                })}
-                {queue.length > 12 && (
-                  <li className="pgmore">还有 {queue.length - 12} 问，做完上面这些再看</li>
+                  ))}
+                {queue.length > 14 && (
+                  <li className="pgmore">还有 {queue.length - 14} 题</li>
                 )}
               </ul>
             )}
           </section>
 
-          {/* ── 四科总览 ── */}
+          {/* ── 按科目：已全掌握实验 / 有题实验 ── */}
           <section>
             <div className="pgcap">按科目</div>
             <div className="pggrid">
-              {byGroup.map(({ group, stat }) => (
+              {byGroup.map(({ group, mastered, total, items }) => (
                 <div className="pgcard" key={group}>
                   <span className="g">{group}</span>
-                  <Bar stat={stat} />
-                  <span className="n">{stat.mastered} / {stat.total} 问</span>
+                  <Bar stat={items} />
+                  <span className="n">{mastered} / {total} 实验</span>
                 </div>
               ))}
             </div>
           </section>
 
-          {/* ── 逐个实验 ── */}
+          {/* ── 逐个实验：真题 + AI 学伴合起来的掌握度 ── */}
           <section>
-            <div className="pgcap">按实验</div>
+            <div className="pgcap">按实验<em>真题 + AI 学伴合起来算</em></div>
             <ul className="pgexps">
-              {byExp.map(({ exp, stat }) => (
-                <li key={exp.id} className={stat.mastered === stat.total ? 'done' : ''}>
+              {byExp.map(({ exp, m }) => (
+                <li key={exp.id} className={m.mastered === m.total ? 'done' : ''}>
                   <span className="t">{exp.title}</span>
-                  <Bar stat={stat} />
-                  <span className="n">{stat.mastered}/{stat.total}</span>
+                  <Bar stat={m} />
+                  <span className="n">{m.mastered}/{m.total}</span>
                 </li>
               ))}
             </ul>
@@ -153,7 +167,7 @@ export function ProgressPanel({
 
           <section className="pgfoot">
             <p className="pgnote">
-              一次做对就算掌握；<b>错过的题要连续答对两次</b>才算真掌握。
+              <b>掌握度 = 真题 + AI 学伴出题合起来算</b>：一次做对就算掌握，错过的题要连续答对两次才算真掌握。
               <b>改动了实验配置时不记账</b> —— 配置一改答案就变了另一道题，记进去是假账。
             </p>
             <p className="pgnote">{STORAGE_NOTE[cloud.kind]}</p>

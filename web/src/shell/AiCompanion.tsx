@@ -30,22 +30,23 @@ type Question = {
 type Card = { front: string; back: string; source: 'engine' | 'llm' }
 type ReviewPack = { title: string; summary: string; factCards: Card[]; conceptCards: Card[] }
 
-// 支持的实验清单只取一次，跨面板共享。
-let SUPPORTED: Set<string> | null = null
-let supportedPromise: Promise<Set<string>> | null = null
-function loadSupported(): Promise<Set<string>> {
+// 可出题实验（id → 事实题数）只取一次，跨面板共享。事实题数=该实验 AI 学伴掌握度的分母。
+let SUPPORTED: Map<string, number> | null = null
+let supportedPromise: Promise<Map<string, number>> | null = null
+export function loadAiFacts(): Promise<Map<string, number>> {
   if (SUPPORTED) return Promise.resolve(SUPPORTED)
   if (!supportedPromise) {
     supportedPromise = fetch('/lab/ai/experiments')
       .then(r => r.json())
-      .then((d: { experiments: { id: string }[] }) => {
-        SUPPORTED = new Set(d.experiments.map(e => e.id))
+      .then((d: { experiments: { id: string; facts?: number }[] }) => {
+        SUPPORTED = new Map(d.experiments.map(e => [e.id, e.facts ?? 0]))
         return SUPPORTED
       })
-      .catch(() => { SUPPORTED = new Set(); return SUPPORTED })
+      .catch(() => { SUPPORTED = new Map(); return SUPPORTED })
   }
   return supportedPromise
 }
+const loadSupported = loadAiFacts   // 内部沿用旧名（返回值有 .has(id)，判断是否接入不变）
 
 async function postJSON<T>(path: string, body: unknown): Promise<T> {
   const r = await fetch(path, {
@@ -59,7 +60,10 @@ async function postJSON<T>(path: string, body: unknown): Promise<T> {
 type Mode = 'quiz' | 'ask' | 'review' | 'interview'
 type Turn = { role: 'interviewer' | 'candidate'; text: string }
 
-export function AiCompanion({ expId, onCite }: { expId: string; onCite?: (step: number) => void }) {
+/** AI 学伴出题作答的回调 —— 把 factId + 对错 + 出处 + 题面 报给 App 计入进度 */
+export type OnFactAnswer = (factId: string, correct: boolean, expId: string, label: string) => void
+
+export function AiCompanion({ expId, onCite, onFactAnswer }: { expId: string; onCite?: (step: number) => void; onFactAnswer?: OnFactAnswer }) {
   const [supported, setSupported] = useState<boolean | null>(null)
   const [mode, setMode] = useState<Mode>('quiz')
 
@@ -87,7 +91,7 @@ export function AiCompanion({ expId, onCite }: { expId: string; onCite?: (step: 
         <button className={mode === 'review' ? 'on' : ''} onClick={() => setMode('review')}>复习</button>
         <button className={mode === 'interview' ? 'on' : ''} onClick={() => setMode('interview')}>面试</button>
       </div>
-      {mode === 'quiz' && <QuizView expId={expId} onCite={onCite} />}
+      {mode === 'quiz' && <QuizView expId={expId} onCite={onCite} onFactAnswer={onFactAnswer} />}
       {mode === 'ask' && <AskView expId={expId} onCite={onCite} />}
       {mode === 'review' && <ReviewView expId={expId} />}
       {mode === 'interview' && <InterviewView expId={expId} />}
@@ -153,7 +157,7 @@ function Md({ text }: { text: string }) {
 }
 
 // ── 出题 ──
-function QuizView({ expId, onCite }: { expId: string; onCite?: (step: number) => void }) {
+function QuizView({ expId, onCite, onFactAnswer }: { expId: string; onCite?: (step: number) => void; onFactAnswer?: OnFactAnswer }) {
   const [sub, setSub] = useState<'normal' | 'debate'>('normal')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -196,7 +200,12 @@ function QuizView({ expId, onCite }: { expId: string; onCite?: (step: number) =>
                 }
                 return (
                   <button key={oi} className={cls} disabled={answered}
-                    onClick={() => setPicked(p => ({ ...p, [qi]: oi }))}>
+                    onClick={() => {
+                      if (picked[qi] != null) return   // 已答过不重复记账
+                      setPicked(p => ({ ...p, [qi]: oi }))
+                      //  作答即计入进度:factId + 对错 + 出处实验 + 题面(错题本要显示)
+                      onFactAnswer?.(q.factId, oi === q.correctIndex, expId, q.question)
+                    }}>
                     {opt}
                   </button>
                 )

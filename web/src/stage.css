@@ -1234,6 +1234,8 @@
 .pgqueue li.shaky button{border-left-color:var(--now)}
 .pgqueue li button:hover{background:var(--panel-2);border-color:var(--faint)}
 .pgqueue .tag{font-family:var(--mono);font-size:var(--t-meta);letter-spacing:.1em;color:var(--faint)}
+/*  AI 学伴出的错题:标签给个紫色小徽,和真题错题区分开(真题=灰) */
+.pgqueue .tag.ai{color:var(--f-idx,#7A5AF0);font-weight:600}
 .pgqueue .qq{font-size:var(--t-body);color:var(--ink);line-height:1.6}
 .pgqueue .meta{font-size:var(--t-ui);color:var(--faint)}
 .pgmore{font-size:var(--t-ui);color:var(--faint);padding:6px 13px}
