@@ -165,7 +165,6 @@ function QuizView({ expId, onCite, onFactAnswer, drillFactId, onDrillConsumed }:
   expId: string; onCite?: (step: number) => void; onFactAnswer?: OnFactAnswer
   drillFactId?: string; onDrillConsumed?: () => void
 }) {
-  const [sub, setSub] = useState<'normal' | 'debate'>('normal')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [qs, setQs] = useState<Question[] | null>(null)
@@ -180,26 +179,16 @@ function QuizView({ expId, onCite, onFactAnswer, drillFactId, onDrillConsumed }:
     } catch (e) { setError((e as Error).message) } finally { setLoading(false) }
   }
 
-  //  从进度面板「去练最弱那条」跳进来:自动出那条 factId 的题(退回常规子页)。
+  //  从进度面板「去练最弱那条」跳进来:自动出那条 factId 的题。
   useEffect(() => {
     if (!drillFactId) return
-    setSub('normal')
     void gen(drillFactId)
     onDrillConsumed?.()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [drillFactId])
 
-  const subtabs = (
-    <div className="aic-subtabs">
-      <button className={sub === 'normal' ? 'on' : ''} onClick={() => setSub('normal')}>常规题</button>
-      <button className={sub === 'debate' ? 'on' : ''} onClick={() => setSub('debate')}>反驳同学</button>
-    </div>
-  )
-  if (sub === 'debate') return <>{subtabs}<DebateView expId={expId} onCite={onCite} onFactAnswer={onFactAnswer} /></>
-
   return (
     <div className="aic-body">
-      {subtabs}
       {drilled && qs && <p className="aic-hint">这是你在本实验<b>最弱的一条</b>——练到掌握它就出师。</p>}
       <button className="aic-go" disabled={loading} onClick={() => gen()}>{loading ? '出题中…' : qs ? '换一组' : '出一组题'}</button>
       {error && <p className="aic-err">出错了：{error}</p>}
@@ -414,62 +403,6 @@ function InterviewView({ expId }: { expId: string }) {
                     {!ref && <button className="aic-ghost" disabled={refLoading || loading} onClick={showRef}>{refLoading ? '取参考答案…' : '看参考答案'}</button>}
                   </div>
                 </>}
-          </>}
-      {error && <p className="aic-err">出错了：{error}</p>}
-    </div>
-  )
-}
-
-// ── 反驳（会反驳的 AI 同学，选择题版：同学抛错主张，你选能驳倒 TA 的那句） ──
-type DebateData = { factId: string; claim: string; options: string[]; correctIndex: number; answer: string; provenance: { label: string; step: number; evidence: string } }
-function DebateView({ expId, onCite, onFactAnswer }: { expId: string; onCite?: (step: number) => void; onFactAnswer?: OnFactAnswer }) {
-  const [data, setData] = useState<DebateData | null>(null)
-  const [picked, setPicked] = useState<number | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-
-  async function start() {
-    setLoading(true); setError(''); setPicked(null); setData(null)
-    try {
-      const d = await postJSON<DebateData>('/lab/ai/debate', { expId })
-      setData(d)
-    } catch (e) { setError((e as Error).message) } finally { setLoading(false) }
-  }
-
-  const answered = picked != null
-  return (
-    <div className="aic-body">
-      {!data
-        ? <>
-            <p className="aic-hint">AI 当<b>爱抬杠的同学</b>：它抛一个<b>其实错的</b>常见误解，你从几句里<b>选出能驳倒 TA 的那句</b>。错误主张取自这道题<b>钉死的干扰项</b>，对错由引擎判（和出题一个口径，不用打字）。</p>
-            <button className="aic-go" disabled={loading} onClick={start}>{loading ? '同学准备开怼…' : '来辩一场'}</button>
-          </>
-        : <>
-            <div className="aic-chat">
-              <div className="aic-msg interviewer"><span className="aic-msg-who">同学</span><div className="aic-msg-text"><Md text={data.claim} /></div></div>
-            </div>
-            <p className="aic-qtext">选一句驳倒 TA：</p>
-            <div className="aic-opts">
-              {data.options.map((opt, oi) => {
-                let cls = 'aic-opt'
-                if (answered) { if (oi === data.correctIndex) cls += ' correct'; else if (oi === picked) cls += ' wrong' }
-                return <button key={oi} className={cls} disabled={answered} onClick={() => {
-                  if (picked != null) return   // 已答过不重复记账
-                  setPicked(oi)
-                  //  辩论也是选择题、引擎判对错 → 同样计入进度（键=同一 factId，错题本标签用事实名/主张）
-                  onFactAnswer?.(data.factId, oi === data.correctIndex, expId, data.provenance.label || data.claim)
-                }}>{opt}</button>
-              })}
-            </div>
-            {answered && (
-              <>
-                <p className="aic-explain">
-                  {picked === data.correctIndex ? '✓ 驳倒了！同学：哦……好像真是我错了。' : `✗ 没驳到点上。正解：${data.answer}。同学：看吧，你也没搞对。`}
-                </p>
-                <CiteChip step={data.provenance.step} label={data.provenance.label} evidence={data.provenance.evidence} onCite={onCite} />
-                <button className="aic-go" onClick={start}>换个点再辩</button>
-              </>
-            )}
           </>}
       {error && <p className="aic-err">出错了：{error}</p>}
     </div>

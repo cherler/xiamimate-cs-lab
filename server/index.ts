@@ -13,7 +13,6 @@
  *   POST /lab/ai/review        复习包 { expId, useLLM? }（钉死事实卡 + 概念卡 + 小结）
  *   POST /lab/ai/interview     模拟面试 { expId | expIds[]+trackTitle, history, useLLM? }（AI 面试官:问→答→点评+追问→评分;传 expIds 即整轨跨主题面试）
  *   POST /lab/ai/interview-answer 看参考答案 { expId | expIds[]+trackTitle, history, useLLM? }（给面试官刚问那道题一个基于钉死要点的参考答案）
- *   POST /lab/ai/debate        辩论/抬杠 { expId, factId?, useLLM? }（会反驳的 AI 同学:抛错主张→你选反驳→引擎判对错,选择题版）
  *
  * 鉴权/计费：浏览器请求的 xm_session Cookie 原样转发给主站（见 llm.ts 的 Principal）。
  * 本机开发未配 XM_API_BASE 时全程透明、不计费、不报错。
@@ -23,7 +22,6 @@ import { buildQuiz } from './quiz.ts'
 import { askAboutExperiment, suggestQuestions } from './ask.ts'
 import { buildReview } from './review.ts'
 import { interview, interviewAnswer, type Turn } from './interview.ts'
-import { debate } from './debate.ts'
 import { listExperiments } from './catalog.ts'
 import type { Principal } from './llm.ts'
 
@@ -114,14 +112,6 @@ const server = createServer(async (req, res) => {
       try { body = raw ? JSON.parse(raw) : {} } catch { return send(res, 400, { error: '请求体不是合法 JSON' }) }
       if (!body.expId && !(body.expIds && body.expIds.length)) return send(res, 400, { error: '缺少 expId 或 expIds' })
       const result = await interviewAnswer(body.expId ?? '', { expIds: body.expIds, trackTitle: body.trackTitle, history: body.history, useLLM: body.useLLM, principal: principalOf(req) })
-      return send(res, 200, result)
-    }
-    if (req.method === 'POST' && path === '/lab/ai/debate') {
-      const raw = await readBody(req)
-      let body: { expId?: string; factId?: string; useLLM?: boolean } = {}
-      try { body = raw ? JSON.parse(raw) : {} } catch { return send(res, 400, { error: '请求体不是合法 JSON' }) }
-      if (!body.expId) return send(res, 400, { error: '缺少 expId' })
-      const result = await debate(body.expId, { factId: body.factId, useLLM: body.useLLM, principal: principalOf(req) })
       return send(res, 200, result)
     }
     return send(res, 404, { error: `未知路由 ${req.method} ${path}` })
