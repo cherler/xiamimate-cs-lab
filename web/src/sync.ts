@@ -85,6 +85,9 @@ export function mergeRecord(a: QRecord | undefined, b: QRecord | undefined): QRe
   if (!b) return a
   const newer = fresher(a, b)
   const first = [a.firstCorrectAt, b.firstCorrectAt].filter((x): x is number => typeof x === 'number')
+  //  meta(AI 事实题的 expId+题面)要留住 —— 否则同步一次错题本就认不出这条 AI 错题了。
+  //  取更新那条的 meta(题面较新);它没有就退而取任一有的(expId 稳定、跨设备一致)。
+  const meta = newer.meta ?? a.meta ?? b.meta
   return {
     attempts: Math.max(a.attempts, b.attempts),
     wrong: Math.max(a.wrong, b.wrong),
@@ -92,6 +95,7 @@ export function mergeRecord(a: QRecord | undefined, b: QRecord | undefined): QRe
     lastCorrect: newer.lastCorrect,
     lastAt: newer.lastAt,
     ...(first.length ? { firstCorrectAt: Math.min(...first) } : {}),
+    ...(meta ? { meta } : {}),
   }
 }
 
@@ -114,10 +118,14 @@ export function sanitize(payload: unknown): Store {
       if (typeof r?.attempts !== 'number' || typeof r?.wrong !== 'number'
         || typeof r?.streak !== 'number' || typeof r?.lastAt !== 'number'
         || typeof r?.lastCorrect !== 'boolean') continue
+      //  AI 事实题的 meta(出处实验+题面)要留住 —— 形状不对就只丢 meta、记录本身还留。
+      const m = r.meta
+      const metaOk = !!m && typeof m === 'object' && typeof m.expId === 'string' && typeof m.label === 'string'
       q[k] = {
         attempts: r.attempts, wrong: r.wrong, streak: r.streak,
         lastCorrect: r.lastCorrect, lastAt: r.lastAt,
         ...(typeof r.firstCorrectAt === 'number' ? { firstCorrectAt: r.firstCorrectAt } : {}),
+        ...(metaOk ? { meta: { expId: m!.expId, label: m!.label } } : {}),
       }
     }
   }
