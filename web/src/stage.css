@@ -3820,6 +3820,16 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .ganlegend .gl { display:flex; align-items:center; gap:5px; }
 .ganlegend .gld { width:9px; height:9px; border-radius:50%; }
 .ganlegend .gld.ring { background:transparent; border:1px dashed #3b82f6; border-radius:50%; }
+/* GAN 深化:自适应判别边界 + 质心 + 骗过环 */
+.ganlegend .gld.line { width:16px; height:0; border-radius:0; border-top:2px dashed var(--now); }
+.ganbound { stroke:var(--now); stroke-width:2; stroke-dasharray:4 2.5; filter:drop-shadow(0 0 2px color-mix(in srgb,var(--now) 45%,transparent)); }
+.ganpt.real { fill:#3b82f6; opacity:.92; }
+.ganpt.fake { fill:var(--miss); opacity:.95; }
+.ganpt-ring { fill:none; stroke:var(--miss); stroke-width:1.2; opacity:.7; }
+.gancen line { stroke-width:1.8; }
+.gancen.real line { stroke:#1e40af; }
+.gancen.fake line { stroke:var(--miss); }
+.ganfloor { stroke:var(--hit); stroke-width:1; stroke-dasharray:2 2; opacity:.6; }
 
 /* ── AI 学伴（坞的一个页签） ── */
 .aic { display:flex; flex-direction:column; gap:8px; font-size:12.5px; color:var(--ink); }

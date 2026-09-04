@@ -250,9 +250,9 @@ export const DL_STATS_ENTRIES: CatalogEntry[] = [
         distractors: numDistractors,
       },
       {
-        id: 'inside_eq', label: '均衡时混进真数据区、骗过 D 的假数据个数', kind: 'number',
-        ask: '对抗均衡时，6 个假数据里有几个混进了真数据区、骗过了 D?',
-        compute: t => { const f = last(t); return { answer: String(f.fakeInside), step: t.length - 1, evidence: String(f.log ?? '') } },
+        id: 'inside_eq', label: '均衡时钻过 D 边界、骗过 D 的假数据个数', kind: 'number',
+        ask: '对抗均衡时，6 个假数据里有几个钻过了 D 的判别边界、骗过了 D?',
+        compute: t => { const f = last(t); return { answer: String((f.fooled as boolean[]).filter(Boolean).length), step: t.length - 1, evidence: String(f.log ?? '') } },
         distractors: numDistractors,
       },
       {

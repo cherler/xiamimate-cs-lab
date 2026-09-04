@@ -4813,13 +4813,14 @@ export const GUIDES: Record<string, Guide> = {
   gan: {
     question: '不预设分布，怎么让 AI 生成以假乱真的数据？',
     step: (s: never) => {
-      const st = s as { phase: string; round: number; acc: number; fakeInside: number }
+      const st = s as { phase: string; round: number; acc: number; fooled: boolean[] }
+      const nf = (st.fooled ?? []).filter(Boolean).length
       return [
         { k: '本步输入', v: st.round === 0 && st.phase !== 'done' ? '真数据(蓝) + G 造的假数据(红)' : st.phase === 'done' ? 'G、D 较劲到均衡' : `第 ${st.round} 轮的真/假数据` },
-        { k: '判定规则', v: `对抗博弈:**生成器 G** 造假想骗过审查、**判别器 D** 学着分辨真假。G 要**骗过 D**、D 要**抓住 G**,轮流进步。均衡处 G 的假分布=真分布、D 分不出(准确率→50%)。` },
-        { k: '本步结果', v: st.phase === 'done' ? `假数据和真数据难分难解,D 准确率掉到 **${st.acc}%**(瞎猜)——G 学会了生成。`
+        { k: '判定规则', v: `对抗博弈:**生成器 G** 造假想骗过审查、**判别器 D** 学一条判别边界抓假。G 要**骗过 D**、D 要**抓住 G**,轮流最佳响应。均衡处 G 的假分布=真分布、两质心重合、D 分不出(准确率→50%)。` },
+        { k: '本步结果', v: st.phase === 'done' ? `假数据追上真数据(两质心重合),D 边界分不开、准确率掉到 **${st.acc}%**(瞎猜)——G 学会了生成。`
             : st.round === 0 ? `G 造的假数据乱撒,D 一眼看穿,准确率 ${st.acc}%。`
-            : `G 造得更像,${st.fakeInside}/6 假数据混进真区骗过 D,D 准确率掉到 **${st.acc}%**。` },
+            : `G 造得更像,${nf}/6 假点钻过 D 边界骗过 D,D 准确率掉到 **${st.acc}%**。` },
       ]
     },
     verdict: (s: never) => {
