@@ -178,35 +178,54 @@ export type GenResult = {
   provider: Provider
 }
 
+function isConfigured(p: Provider): boolean {
+  const c = providerConfig(p)
+  return !!(c.apiKey && c.baseURL && c.model)
+}
+
 export async function generate(opts: GenOptions): Promise<GenResult> {
-  const provider = opts.provider ?? 'minimax'
   const maxTokens = opts.maxTokens ?? 1024
-  const cfg = providerConfig(provider)
-  if (!cfg.apiKey || !cfg.baseURL || !cfg.model) {
-    throw new Error(`供应商 ${provider} 未配置(检查 .env 的 ${provider.toUpperCase()}_API_KEY/BASE_URL/MODEL)`)
+  // 主用供应商在前、另一家兜底在后;只试**配置齐全**的,没配的直接跳过。
+  // 于是:主家一抖(网络/5xx/限流/超时)就自动切兜底,而不是把整个答疑/复习/面试打回一个错误。
+  const primary = opts.provider ?? 'minimax'
+  const fallback: Provider = primary === 'minimax' ? 'deepseek' : 'minimax'
+  const candidates = [primary, fallback].filter(isConfigured)
+  if (candidates.length === 0) {
+    throw new Error('没有可用的大模型供应商(检查 .env 的 MINIMAX_*/DEEPSEEK_* 是否配齐 API_KEY/BASE_URL/MODEL)')
   }
 
-  const meter = new Meter(opts.module, opts.task)
   // 估额：提示词约按 1 token≈2 汉字/4 字符粗估 + 最坏输出。冻多退多，估粗无害。
   const estIn = Math.ceil((opts.system.length + opts.prompt.length) / 3)
-  await meter.reserve(estIn + maxTokens, opts.principal ?? null)
 
-  const client = new Anthropic({ apiKey: cfg.apiKey, baseURL: cfg.baseURL })
-  try {
-    const r = await client.messages.create({
-      model: cfg.model,
-      max_tokens: maxTokens,
-      system: opts.system,
-      messages: [{ role: 'user', content: opts.prompt }],
-    })
-    const text = r.content
-      .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-      .map(b => b.text).join('')
-    const usage = { input: r.usage?.input_tokens ?? 0, output: r.usage?.output_tokens ?? 0 }
-    await meter.commit(usage.input + usage.output)
-    return { text, usage, billing: meter.summary(), provider }
-  } catch (e) {
-    await meter.release()
-    throw e
+  let lastErr: unknown
+  for (let i = 0; i < candidates.length; i++) {
+    const provider = candidates[i]!
+    const cfg = providerConfig(provider)
+    //  每次尝试各自一套计费:失败的那次 release 退回冻结、成功的那次 commit 结算。
+    //  幂等键在 Meter 里每次唯一,两次尝试是两笔独立的账,不会互相污染。
+    const meter = new Meter(opts.module, opts.task)
+    await meter.reserve(estIn + maxTokens, opts.principal ?? null)
+    const client = new Anthropic({ apiKey: cfg.apiKey, baseURL: cfg.baseURL })
+    try {
+      const r = await client.messages.create({
+        model: cfg.model,
+        max_tokens: maxTokens,
+        system: opts.system,
+        messages: [{ role: 'user', content: opts.prompt }],
+      })
+      const text = r.content
+        .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+        .map(b => b.text).join('')
+      const usage = { input: r.usage?.input_tokens ?? 0, output: r.usage?.output_tokens ?? 0 }
+      await meter.commit(usage.input + usage.output)
+      return { text, usage, billing: meter.summary(), provider }
+    } catch (e) {
+      await meter.release()   // 这次没成 → 退回冻结额度,不扣分
+      lastErr = e
+      const next = candidates[i + 1]
+      if (next) console.warn(`[llm] 供应商 ${provider} 调用失败,切兜底 ${next}:`, (e as Error).message)
+    }
   }
+  // 所有配置齐全的供应商都失败了 → 抛最后一个错(调用方各自有 fallback 兜底题面/错误提示)
+  throw lastErr
 }
