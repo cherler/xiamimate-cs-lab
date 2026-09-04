@@ -75,7 +75,7 @@ export function GuidedNote({
               <b key={i} className={i <= index ? 'on' : ''} />)}
           </i>
         </span>
-        <button className="gnx" onClick={onClose}>关闭笔记 ✕</button>
+        <button className="gnx" onClick={onClose}>关闭导览 ✕</button>
       </header>
 
       <div className="gnbody">
@@ -127,7 +127,7 @@ export function GuidedNote({
               </li>
             ))}
           </ol>
-          <p className="gnhint">关掉笔记就回到实验台 —— 底下那台仪器一直在跑，笔记只是盖着。</p>
+          <p className="gnhint">关掉导览就回到实验台 —— 底下那台仪器一直在跑，导览只是盖着。</p>
         </aside>
       </div>
     </section>

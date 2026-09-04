@@ -622,6 +622,13 @@ export default function App() {
     group,
     items: list.map(e => ({ e, soft: e.group !== group, num: ++__navSeq })),
   }))
+  //  当前实验在本学科里的顺序号 —— 和左栏徽标是同一个数(不再用会跳号的全局下标)。
+  //  导览笔记头上的「实验 NN」用它,才和目录对得上。
+  const expNo = (() => {
+    let n = 0
+    for (const [, list] of activeGroups) for (const e of list) { n++; if (e.id === expId) return String(n).padStart(2, '0') }
+    return String(EXPERIMENTS.indexOf(exp) + 1).padStart(2, '0')  // 兜底:当前实验不在本学科(理论上不会发生)
+  })()
 
   //  搜索:跨全部职业按 标题/副标题/id/组名 匹配(只搜可导航的=组落在某职业里)。
   const searchResults = useMemo(() => {
@@ -925,7 +932,7 @@ export default function App() {
           {brief && briefOpen && (
             <GuidedNote
               title={exp.title}
-              no={String(EXPERIMENTS.indexOf(exp) + 1).padStart(2, '0')}
+              no={expNo}
               question={GUIDES[exp.id]?.question ?? exp.subtitle}
               parts={whyParts}
               tone={state ? exp.tone(state) : null}
