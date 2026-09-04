@@ -1,0 +1,1890 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"/>
+<title>算法卡牌 · 原型 v12</title>
+<style>html,body{margin:0;height:100%;background:#070d16;overflow:hidden;
+font-family:"PingFang SC","Noto Sans SC",system-ui,sans-serif;color:#dfe8f2}
+#c{display:block;width:100vw;height:100vh}</style></head><body><canvas id="c"></canvas>
+<script type="module">
+/* ═══ 1. 调参 ═══ */
+let PASSMUL=13  // 有序度换成严格口径后(相等的相邻柱不算有序),冒泡换不动相等对,
+                // 排序引擎整体变钝 —— 趟数从 6 补到 11 才回到原来的手感   // 实测:×2→sort 2.5% / ×6→41.5% / ×8→51.5%
+const T={VMIN:3,VMAX:20,BUDGET:60,STEPS:3,HAND:5,COST_DIV:6,DEBT_PEN:2,HANDMAX:9}
+const rng=s=>()=>{s|=0;s=s+0x6D2B79F5|0;let t=Math.imul(s^s>>>15,1|s);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}
+
+/* ═══ 2. 敌人:性质决定哪些算法好用 ═══ */
+const FOE={
+ shuffled:{n:36,shape:'random',inflow:1,shuffle:1,name:'一团乱序数字',note:'每回合涌入 +1、自我打乱(有序 −1)',kind:'小怪'},
+ tape:    {n:38,shape:'nearly',inflow:1,shuffle:0,seqOnly:.7,name:'只能从头读的磁带',note:'顺序访问:二分查找效果打七折',kind:'小怪'},
+ dupes:   {n:40,shape:'heavy',inflow:2,shuffle:0,vmax:8,name:'爬虫抓回来的重复页',note:'值域窄、量大:平铺处理占便宜',kind:'小怪'},
+ stream:  {n:38,shape:'tail',inflow:2,shuffle:1,memoDecay:6,name:'实时价格流',note:'数据在变:预处理值每回合 −6',kind:'小怪'},
+ graph:   {n:38,shape:'sparse',inflow:1,shuffle:0,dense:.5,name:'社交网络的六度关系',note:'稠密:每多切两段,每回合多涌入 1',kind:'小怪'},
+ // 对抗性输入(精英):专门克制某一条流派
+ worst:   {n:54,shape:'reversed',inflow:1,shuffle:0,antiSort:1,name:'最坏用例',note:'完全倒序 + 排序卡趟数打五五折 —— 有序度要从零建起',kind:'精英'},
+ collide: {n:42,shape:'heavy',inflow:1,shuffle:0,evict:1,name:'哈希碰撞',note:'通用:每回合末随机丢 1 张手牌(键撞了,取不回来)',kind:'精英'},
+ regret:  {n:41,shape:'nearly',inflow:1,shuffle:0,antiGreedy:1,name:'反悔陷阱',note:'专克贪心流:债务惩罚 ×2.2',kind:'精英'},
+ explode2:{n:42,shape:'random',inflow:1,shuffle:0,memoCap:20,name:'状态爆炸',note:'专克预处理流:预处理值上限 20',kind:'精英'},
+ atomic:  {n:45,shape:'blocks',inflow:1,shuffle:0,noSplit:2,name:'不可分问题',note:'专克拆解流:段数上限 2、并行处理只剩四成',kind:'精英'},
+ // Boss
+}
+/* 第二类 · 失误:攻击的是「你的执行」,不是提供可被处理的对象 → 环境效果 */
+const GFOE={
+ netsplit:{graph:1,n:36,cut:3,name:'断开的社交网络',note:'每回合断 3 条边 —— 桥优先',kind:'小怪'},
+ shatter: {graph:1,n:40,cut:4,name:'分区故障',note:'每回合断 4 条边',kind:'小怪'},
+ partition:{graph:1,n:44,cut:5,name:'脑裂',note:'每回合断 5 条边,而且专断桥',kind:'精英'},
+}
+const FLAW={
+ offByOne:{name:'差一错误', note:'移除 ≥6 时 −1 个、处理量 −10%(边界都差一格)'},
+ nullPtr: {name:'空指针',   note:'每回合随机一张手牌不可用'},
+ race:    {name:'竞态条件', note:'你出的平铺类卡有 25% 概率只生效一半(顺序乱了)'},
+ leak:    {name:'内存泄漏', note:'每回合末额外 −1 预算'},
+ stackOv: {name:'栈溢出',   note:'段数 ≥3 时每回合末额外 −2 预算'},
+ infinite:{name:'死循环',   note:'每三回合有一回合的第一张卡只生效 70%,除非出「边界条件」'},
+}
+const FOE2={
+ expo:    {n:22,shape:'random',mult:1.35,shuffle:0,name:'指数爆炸',note:'每回合末规模 ×倍率 — 加输出没用,得剪枝降阶',kind:'Boss'},
+}
+Object.assign(FOE,FOE2,GFOE)
+/* ═══ 3. 卡池 ═══ */
+const C={},def=(id,name,cost,tag,note,fn,ex)=>C[id]={id,name,cost,tag,note,fn,exhaust:!!ex}
+def('scan','遍历',1,'base','16 点处理量,平均分给每个元素',S=>workTotal(S,16))
+def('batch','批处理',1,'base','预算 +5',S=>{S.budget+=5})
+def('watch','观察',1,'base','抽 2',S=>drawN(S,2))
+def('bubble','冒泡排序',1,'sort','有序 +1',S=>addSort(S,S.E.antiSort?ASORT:1))
+def('merge','归并排序',2,'sort','有序 +3',S=>addSort(S,S.E.antiSort?ASORT*3:3))
+def('quick','快速排序',2,'sort','有序 +4(最坏用例下只 +1)',S=>{if(S.E.antiSort)S.diag.lostSort+=3;addSort(S,S.E.antiSort?ASORT*4:4)})
+def('bsearch','二分查找',1,'sort','移除 2+有序层数×2 个(顺序访问下打七折)',S=>{const full=2+tier(S)*2,act=S.E.seqOnly?Math.max(1,Math.round(full*S.E.seqOnly)):full;S.diag.lostKill+=full-act;kill(S,act)})
+/* 插入排序的趟数正比于逆序对数量:几乎有序 → 一趟排完;倒序 → 退化成 O(n²)。
+   这正是「笨办法有时更快」那一课,而且它是「几乎有序」这个形状的唯一解法。 */
+def('insertion','插入排序',2,'sort','有序度 ≥50% 时【一次排完】;否则只 +1 层(逆序对太多,退化)',
+  S=>{const a=alive(S)
+   if(sortedness(S)>=.5){const vs=a.map(b=>b.v).sort((x,y)=>x-y);a.forEach((b,i)=>b.v=vs[i])}
+   else addSort(S,S.E.antiSort?ASORT:1)})
+def('counting','计数排序',2,'sort','按值分桶:移除所有【值 ≤ 最矮+2】的元素 —— 值域越窄清得越多',
+  S=>{const a=alive(S);if(!a.length)return
+   const mn=Math.min(...a.map(b=>b.v)),cut=mn+2
+   a.forEach(b=>{if(b.v<=cut)b.dead=true})})
+def('topk','取前 K 大',2,'tool','建堆取 Top-K:移除最高的 3 根 —— 长尾数据一刀砍掉大头',
+  S=>{const a=alive(S).slice().sort((x,y)=>y.v-x.v)
+   for(let i=0;i<Math.min(3,a.length);i++)a[i].dead=true},1)
+def('median','中位数',2,'sort','需有序≥3:移除 1/3 元素',S=>{if(tier(S)>=3)kill(S,Math.ceil(N(S)/3))},1)
+def('recur','递归到底',2,'dc','需段数≥3:移除 1/3 元素',S=>{if(S.splits>=3)kill(S,Math.ceil(N(S)/3))},1)
+def('divide','分治',2,'dc','段数 +1(最多 4)',S=>{S.splits=Math.min(S.E.noSplit??4,S.splits+1)})
+def('mergeup','逐层合并',1,'dc','每段移除 2 个',S=>killSeg(S,2))
+def('parallel','并行处理',2,'dc','段数×11 点处理量,平均分给每个元素(不可分下只剩四成)',S=>workTotal(S,S.splits*11*(S.E.noSplit?PARCUT:1)))
+def('pre','预处理',1,'memo','预处理值 +8',S=>{const b=S.memo;addMemo(S,8);S.diag.lostMemo+=8-(S.memo-b)})
+def('table','建表',2,'memo','预处理值 + 10+规模/4',S=>{const g=10+Math.ceil(N(S)/4),b=S.memo;addMemo(S,g);S.diag.lostMemo+=g-(S.memo-b)})
+def('lookup','查表',0,'memo','处理量 = 预处理值,平均分给每个元素;不消耗预处理值',S=>workTotal(S,S.memo))
+def('dp','动态规划',2,'memo','处理量 = 预处理值×2,平均分给每个元素',S=>workTotal(S,S.memo*2))
+def('approx','近似算法',2,'greedy','移除 1/4 元素,债务 +3',S=>{kill(S,Math.ceil(N(S)/4));S.debt+=3},1)
+def('greedy','贪心',0,'greedy','移除 2 个,债务 +1',S=>{kill(S,2);S.debt++})
+def('local','局部最优',1,'greedy','移除 5 个,债务 +2',S=>{kill(S,5);S.debt+=2})
+def('heur','启发式',1,'greedy','移除 2+债务 个(债务按 6 封顶)',S=>kill(S,2+Math.min(S.debt,6)))
+def('anneal','模拟退火',2,'greedy','移除 债务×2 个,清空债务',S=>{kill(S,S.debt*2);S.debt=0})
+/* ── 对自己的牌库用算法 ──
+   抽牌是 draw.pop(),取的是数组末尾 —— 所以「先抽到」= 排在末尾。 */
+def('sortdeck','整理牌库',1,'deck','牌库按费用排序 —— 接下来先抽到便宜的',
+  S=>{S.draw.sort((a,b)=>C[b].cost-C[a].cost)})
+def('fetch','按需检索',1,'deck','从牌库里直接翻出最贵的一张到手上',
+  S=>{if(!S.draw.length||S.hand.length>=T.HANDMAX)return
+   let bi=0;for(let i=1;i<S.draw.length;i++)if(C[S.draw[i]].cost>C[S.draw[bi]].cost)bi=i
+   S.hand.push(S.draw.splice(bi,1)[0])})
+def('prefetch','预读',0,'deck','看牌库顶 3 张,最贵的一张进手,其余放回',
+  S=>{const top=S.draw.splice(-3);if(!top.length)return
+   let bi=0;for(let i=1;i<top.length;i++)if(C[top[i]].cost>C[top[bi]].cost)bi=i
+   if(S.hand.length<T.HANDMAX)S.hand.push(top.splice(bi,1)[0])
+   S.draw.push(...top)})
+let GCLUST=6, GDENS=3   // 图:每簇几个节点 / 簇内每点连几个邻居(1 = 链状,桥多)
+let HEAPCUT=7   // 堆自动弹出的高度门槛
+let PREFIX=1.25 // 前缀和对摊平类的放大
+let SHUFMUL=1   // 同上:严格口径下每次打乱的破坏力变大,强度要下调
+let ASORT=.3,PARCUT=.4,AGREED=2.2   // 精英的专克强度,留成变量方便扫参
+def('memoize','复用上一步',1,'deck','立刻重放你这回合打出的上一张牌',
+  S=>{const id=S.lastPlayed;if(id)C[id].fn(S)},1)
+def('compress','压缩',1,'deck','弃牌堆立刻洗回牌库,再抽 1',
+  S=>{if(S.discard.length){S.draw.push(...S.discard);S.discard=[];shuffle(S)}drawN(S,1)})
+/* ── 流派五 · 堆(优先队列)。新动词:留在场上持续生效 ──
+   前面所有卡都是「打完就没了」。堆建起来之后每回合自动干活,不占你的步数。 */
+def('buildheap','建堆',2,'heap','建立最小堆:此后每回合末自动弹出 1 个高度 ≤7 的元素',
+  S=>{S.heapLv=Math.max(S.heapLv||0,1)})
+def('heapify','堆化',1,'heap','最小堆每回合多弹出 1 个(上限 3;要先建堆)',
+  S=>{if(S.heapLv)S.heapLv=Math.min(3,S.heapLv+1)})
+def('poptop','弹出堆顶',1,'heap','立刻移除最矮的 2 根',
+  S=>{const a=alive(S).slice().sort((x,y)=>x.v-y.v)
+   for(let i=0;i<Math.min(2,a.length);i++)a[i].dead=true})
+def('heapsort','堆排序',2,'heap','有序 +2,并且立刻移除最矮的 2 根',
+  S=>{addSort(S,S.E.antiSort?ASORT*2:2)
+   const a=alive(S).slice().sort((x,y)=>x.v-y.v)
+   for(let i=0;i<Math.min(2,a.length);i++)a[i].dead=true})
+def('medstream','中位数流',2,'heap','移除所有【严格低于中位数】的元素',
+  S=>{const a=alive(S);if(!a.length)return
+   const vs=a.map(b=>b.v).sort((x,y)=>x-y),med=vs[vs.length>>1]
+   a.forEach(b=>{if(b.v<med)b.dead=true})},1)
+
+/* ── 流派六 · 双指针(区间)。新动词:一次处理连续的一段 ──
+   前面所有卡要么打全体、要么打「前 N 个」。这条流派按【位置】操作。 */
+def('twoptr','两端逼近',1,'twop','从最左和最右各移除 2 根',
+  S=>{const a=alive(S)
+   for(let i=0;i<Math.min(2,a.length);i++)a[i].dead=true
+   for(let i=0;i<Math.min(2,a.length);i++)a[a.length-1-i].dead=true})
+def('window','滑动窗口',1,'twop','移除连续的 3 根(从最左开始)',
+  S=>{const a=alive(S);for(let i=0;i<Math.min(3,a.length);i++)a[i].dead=true})
+def('prefix','前缀和',2,'twop','建立前缀和:此后所有【摊平类】卡的处理量 +25%',
+  S=>{S.prefix=true})
+def('diff','差分数组',1,'twop','连续 6 根各降低 4 点',
+  S=>{const a=alive(S);for(let i=0;i<Math.min(6,a.length);i++){a[i].v-=4;if(a[i].v<=0)a[i].dead=true}})
+def('merge2','区间合并',2,'twop','相邻等高的柱子合并 —— 重复越多清得越多',
+  S=>{const a=alive(S);let c=0
+   for(let i=1;i<a.length;i++)if(a[i].v===a[i-1].v&&!a[i-1].dead){a[i].dead=true;c++}
+   return c})
+def('monoq','单调队列',2,'twop','此后每回合末保留 1 张手牌,不进弃牌堆',
+  S=>{S.monoq=true})
+
+/* ── 转化:把一条流派攒的计数器换成另一条的 ──
+   六条流派以前各攒各的、互不相通。转化卡第一次让「跨流派组合」成为可能:
+   打分治攒段数 → 编译优化换成有序层数 → 二分查找收割。 */
+def('trade_st','空间换时间',1,'conv','预处理值 −10,预算 +12',
+  S=>{const d=Math.min(10,S.memo);S.memo-=d;S.budget+=Math.round(d*1.2)})
+def('trade_ts','时间换空间',1,'conv','预算 −8,预处理值 +14',
+  S=>{if(S.budget<=8)return;S.budget-=8;addMemo(S,14)})
+def('inline','编译优化',2,'conv','段数 −2,有序层数 +2',
+  S=>{if(S.splits<3)return;S.splits-=2;addSort(S,S.E.antiSort?ASORT*2:2)})
+def('vector','向量化',2,'conv','有序层数 −2,段数 +2',
+  S=>{if(tier(S)<2)return
+   const a=alive(S);for(let k=0;k<Math.ceil(a.length/3);k++){
+    const i=Math.floor(S.R()*a.length),j=Math.floor(S.R()*a.length)
+    const t=a[i].v;a[i].v=a[j].v;a[j].v=t}
+   S.splits=Math.min(S.E.noSplit??4,S.splits+2)})
+def('amort','摊还分析',2,'conv','债务清零 · 每清 1 点债务换 7 点处理量',
+  S=>{if(!S.debt)return;const d=S.debt;S.debt=0;workTotal(S,d*7)})
+
+/* ── 协同:本回合的【出牌顺序】决定效果 ──
+   以前每张牌的效果只看全局计数器,和「这回合先出了什么」完全无关。 */
+def('pipeline','流水线',1,'combo','本回合已出 ≥2 张时移除 6 个,否则只移除 2 个',
+  S=>kill(S,S.turnPlays>=2?6:2))
+def('shortcut','短路求值',0,'combo','若这是本回合第一张牌:抽 2 且步数 +1',
+  S=>{if(S.turnPlays===0){drawN(S,2);S.steps++}})
+def('tailrec','尾递归',2,'combo','若这是本回合第 3 张或更后:移除 1/4 元素',
+  S=>{if(S.turnPlays>=2)kill(S,Math.ceil(N(S)/4))})
+
+/* ── 条件触发:装上之后自动响,不占后续步数 ──
+   以前所有卡都是「打出即结算」,没有任何东西会在别的事件发生时自己触发。 */
+def('refcount','引用计数',1,'trig','此后每移除 1 个元素,预算 +1(每回合最多 +4)',
+  S=>{S.trig.ref=true})
+def('listener','事件监听',2,'trig','此后敌人每涌入 1 个,立刻移除 1 个',
+  S=>{S.trig.listen=true})
+def('assertx','断言',1,'trig','此后有序层数每上升 1 级,移除 2 个',
+  S=>{S.trig.assert=true})
+
+/* ── 防御:本回合末少交开销 ──
+   在此之前你只能往前推。回合末开销 = ⌈规模÷6⌉,完全不可控,
+   所以每回合的答案永远是「能出的全出光」(实测 100% 的回合都是这样)。
+   这四张卡和输出卡抢同一份步数 —— 取舍第一次出现。 */
+def('cache','缓存命中',1,'def','本回合末开销 −7(缓存命中就不用重算)',
+  S=>{S.shield=(S.shield||0)+7})
+def('lazy','惰性求值',1,'def','本回合末不收开销;下回合末双倍',
+  S=>{S.skipCost=true;S.doubleNext=true})
+def('batchc','批量提交',2,'def','本回合末开销固定为 4,不管规模多大',
+  S=>{S.fixCost=4})
+def('incr','增量更新',1,'def','本回合末按【上回合的规模】收开销',
+  S=>{S.useLastN=true})
+/* ── 流派七 · 图算法。战场不是柱状图,是节点和边 ──
+   胜利条件也不同:不是「减到 0」,是「让所有点连通」。
+   玩家加边,敌人断边。开销按连通块数收 —— 越散越贵,合并有即时回报。 */
+def('bfs','广度优先',1,'graph','从最大块【同时】向外并入 1 个最近的节点',
+  S=>{if(S.G)gLink(S.G,S.G.mainComp,1,false)})
+def('dfs','深度优先',1,'graph','沿一条链【连续】并入 2 个 —— 伸出一条须',
+  S=>{if(S.G)gLink(S.G,S.G.mainComp,2,true)})
+def('dsu','并查集',2,'graph','直接合并最大的两块 —— 不看距离',
+  S=>{if(S.G)gMerge(S.G)})
+def('sp','最短路',2,'graph','把最大块连到【最远的】那一块',
+  S=>{if(!S.G)return;const G=S.G
+   const main=G.nodes.filter(n=>n.comp===G.mainComp)
+   let bi=null,bj=null,bd=-1
+   for(const a of main)for(const b of G.nodes){ if(b.comp===a.comp)continue
+    const d=gd(a,b);if(d>bd){bd=d;bi=a;bj=b}}
+   if(bi){G.edges.push({a:bi.id,b:bj.id,alive:true,mine:true});comps(G);gMain(G)}})
+def('mst','生成树',2,'graph','一口气并入 3 个最近的节点',
+  S=>{if(S.G)gLink(S.G,S.G.mainComp,3,false)},1)
+def('bridge','桥加固',1,'graph','把最关键的 3 条边加固 —— 敌人断不掉,进展就锁住了',
+  S=>{if(!S.G)return;const G=S.G,live=G.edges.filter(e=>e.alive&&!e.safe)
+   const scored=live.map(e=>{e.alive=false;const nc=comps(G);e.alive=true;return{e,nc}})
+    .sort((a,b)=>b.nc-a.nc)
+   scored.slice(0,3).forEach(o=>o.e.safe=true);comps(G);gMain(G)})
+def('prune','剪枝',1,'tool','增长倍率 −0.25;涌入 −1',S=>{S.mult=Math.max(1,S.mult-.25);S.inflow=Math.max(0,S.inflow-1)})
+def('backtrack','回溯',2,'tool','预算 +12(每场限一次)',S=>{S.budget+=12},1)
+def('guard','边界条件',1,'tool','解除死循环;本回合免疫失误',S=>{S.guarded=true;S.loopBroken=true})
+def('hash','哈希',1,'tool','抽 1;移除 2 个',S=>{drawN(S,1);kill(S,2)})
+
+/* 起始牌组 v12:原来四条流派共用 遍历×5 + 批处理×4 + 观察×1 —— 9/10 张只有两种效果,
+   而「观察」实测在三条流派里一次都没出过。
+   改成每条流派各有起手牌(杀戮尖塔的做法),顺便让四条路一开局就不一样。
+   注意:牌库操作卡本质上等于精简牌组(提升抽牌质量),加它们必须同时加强敌人。 */
+const STARTERS={
+ base:  ['scan','scan','scan','scan','scan','batch','batch','batch','batch','watch'],
+ sort:  ['scan','scan','scan','scan','batch','batch','batch','cache','prefetch','sortdeck'],
+ dc:    ['scan','scan','scan','batch','batch','batch','cache','prefetch','memoize','sortdeck'],
+ memo:  ['scan','scan','scan','batch','batch','batch','cache','prefetch','memoize','sortdeck'],
+ greedy:['scan','scan','scan','scan','batch','batch','batch','cache','prefetch','memoize'],
+ heap:  ['scan','scan','scan','batch','batch','batch','cache','prefetch','memoize','sortdeck'],
+ twop:  ['scan','scan','scan','batch','batch','batch','cache','prefetch','memoize','sortdeck'],
+ graph: ['batch','batch','batch','batch','cache','cache','prefetch','memoize','sortdeck','bridge'],
+}
+const starterOf=k=>STARTERS[k]||STARTERS.base
+const KITS={base:[],sort:['insertion','merge','quick','bsearch','counting','median'],
+ dc:['divide','divide','mergeup','mergeup','parallel','recur'],
+ memo:['pre','pre','table','lookup','lookup','dp'],
+ greedy:['greedy','local','heur','heur','anneal','approx'],
+ heap:['buildheap','heapify','poptop','heapsort','medstream','poptop'],
+ twop:['twoptr','window','prefix','diff','merge2','monoq'],
+ graph:['bfs','dfs','dsu','bridge','bridge','mst']}
+const DECKCARDS=['sortdeck','fetch','prefetch','memoize','compress']
+const REWARD_POOL=[...new Set([...KITS.sort,...KITS.dc,...KITS.memo,...KITS.greedy,...KITS.heap,...KITS.twop]),
+ ...DECKCARDS,'prune','prune','prune','prune','backtrack','hash','guard','guard','topk','topk',
+ 'cache','lazy','batchc','incr']
+
+/* ═══ 4. 战斗引擎 ═══ */
+const alive=S=>S.bars.filter(b=>!b.dead),N=S=>alive(S).length
+/* 只数【严格】的顺序对。相等的相邻柱不提供任何顺序信息 ——
+   把 a[i]<=a[i+1] 算成有序会让倒序数组显示 59% 有序、
+   让稀疏和重复值扎堆的数据白白把二分查找喂满。 */
+function sortedness(S){const a=alive(S);if(a.length<2)return 1
+ let up=0,down=0
+ for(let i=0;i<a.length-1;i++){const d=a[i+1].v-a[i].v;if(d>0)up++;else if(d<0)down++}
+ if(!up&&!down)return .5
+ return Math.max(0,Math.min(1,(up/(up+down)-.5)*2))}
+const tier=S=>Math.floor(sortedness(S)*4.999)
+function shuffle(S){for(let i=S.draw.length-1;i>0;i--){const j=Math.floor(S.R()*(i+1));[S.draw[i],S.draw[j]]=[S.draw[j],S.draw[i]]}}
+function drawN(S,n){for(let i=0;i<n;i++){if(S.hand.length>=T.HANDMAX)return
+ if(!S.draw.length){if(!S.discard.length)return;S.draw=S.discard;S.discard=[];shuffle(S)}
+ S.hand.push(S.draw.pop())}}
+function work(S,per){alive(S).forEach(b=>{b.v-=per;if(b.v<=0)b.dead=true})}
+function workTotal(S,tot){if(S.prefix)tot*=PREFIX
+ if(S.halfNext)tot*=.7
+ if(S.flawId==='offByOne'&&!S.guarded){S.diag.flawLoss+=tot*.1;tot*=.9}
+ const a=alive(S);if(!a.length)return;const per=tot/a.length
+ a.forEach(b=>{b.v-=per;if(b.v<=0)b.dead=true})}
+function fireRef(S,killed){ if(!S.trig.ref||killed<=0)return
+ const g=Math.min(killed,4-S.refGain); if(g<=0)return
+ S.refGain+=g;S.budget+=g;S.trigHit=(S.trigHit||[]).concat([['◆ 引用计数 · 预算 +'+g,CO.green]])}
+function fireAssert(S){ if(!S.trig.assert)return
+ const t=tier(S); if(t>S.lastTier){const d=t-S.lastTier;S.lastTier=t
+  const a=alive(S);for(let i=0;i<Math.min(d*2,a.length);i++)a[i].dead=true
+  S.trigHit=(S.trigHit||[]).concat([['◆ 断言 · 有序层数升级,移除 '+(d*2)+' 个',CO.amber]])}
+ else S.lastTier=t}
+function kill(S,n){if(S.halfNext)n=Math.ceil(n*.7)
+ if(S.flawId==='offByOne'&&!S.guarded&&n>=6){S.diag.flawLoss+=1;n-=1}
+ const a=alive(S),k=Math.min(n,a.length);for(let i=0;i<k;i++)a[i].dead=true
+ fireRef(S,k)}
+function killSeg(S,n){const a=alive(S),seg=Math.ceil(a.length/S.splits)
+ for(let s=0;s<S.splits;s++)for(let i=0;i<n;i++){const b=a[s*seg+i];if(b)b.dead=true}}
+function addSort(S,n){const a=alive(S)
+ const P=Math.round(n*PASSMUL);for(let pass=0;pass<P;pass++)
+  for(let i=0;i<a.length-1;i++)
+   if(a[i].v>a[i+1].v){const t=a[i].v;a[i].v=a[i+1].v;a[i+1].v=t}}
+function addMemo(S,n){S.memo=Math.min(S.E.memoCap??999,S.memo+n)}
+let FLAWBONUS=4    // 挂失误的关卡补多少预算。实测:+10 时失误反而是净收益 +7.9 点(方向反了),
+                   // +5 中性,+3 净惩罚 5 点。取 4 —— 既不判死,也确实更难
+let DEPTHMUL=.075  // 每深一关:规模 +8.5%(唯一的连续难度轴。加入敌人招牌动作后从 .085 下调)
+/* 十一个敌人以前共用一行 `v = 3 + random(vmax-2)` —— 名字讲了十一种数据,形状只有一种。
+   形状不只是好看:它决定哪一类卡划算。几乎有序的数组不该再排序,
+   稀疏的数据一次摊平就能清一大片,长尾的工作量集中在少数几根上。 */
+const SHAPES={
+ random:{name:'均匀随机',hint:'没有可利用的结构 —— 老老实实排序或摊平',
+  gen(n,vmax,R,VMIN){return Array.from({length:n},()=>VMIN+Math.floor(R()*(vmax-VMIN+1)))}},
+ nearly:{name:'几乎有序',hint:'已经差不多排好了 —— 别再花回合排序,直接查找',
+  gen(n,vmax,R,VMIN){const a=Array.from({length:n},(_,i)=>VMIN+Math.round(i*(vmax-VMIN)/(n-1)))
+   for(let k=0;k<Math.max(2,Math.floor(n/12));k++){const i=Math.floor(R()*n),j=Math.floor(R()*n)
+    const t=a[i];a[i]=a[j];a[j]=t}
+   return a}},
+ reversed:{name:'完全倒序',hint:'最坏用例 —— 有序度为零,排序要从头做起',
+  gen(n,vmax,R,VMIN){return Array.from({length:n},(_,i)=>vmax-Math.round(i*(vmax-VMIN)/(n-1)))}},
+ blocks:{name:'分块有序',hint:'每一段内部是好的,乱的是段与段之间 —— 分治的天堂',
+  gen(n,vmax,R,VMIN){const a=[],B=8
+   for(let s2=0;s2<n;s2+=B){const seg=[]
+    for(let i=0;i<Math.min(B,n-s2);i++)seg.push(VMIN+Math.floor(R()*(vmax-VMIN+1)))
+    seg.sort((x,y)=>x-y);a.push(...seg)}
+   return a}},
+ tail:{name:'长尾',hint:'少数几根扛着大部分工作量 —— 摊平型很亏',
+  gen(n,vmax,R,VMIN){return Array.from({length:n},()=>
+   R()<.18?Math.round(vmax*.75+R()*vmax*.25):VMIN+Math.floor(R()*3))}},
+ sparse:{name:'稀疏',hint:'大片接近空 —— 一次摊平就能清掉一大批',
+  gen(n,vmax,R,VMIN){return Array.from({length:n},()=>
+   R()<.7?VMIN:VMIN+Math.floor(R()*(vmax-VMIN+1)))}},
+ heavy:{name:'重复值扎堆',hint:'值域窄且大量重复 —— 按值分桶比逐个比较快',
+  gen(n,vmax,R,VMIN){const pool=[VMIN,VMIN+2,VMIN+4,Math.min(vmax,VMIN+5)]
+   return Array.from({length:n},()=>pool[Math.floor(R()*pool.length)])}},
+}
+function scaleFoe(E,d){ if(!d)return E
+ return{...E,n:Math.round(E.n*(1+DEPTHMUL*d)),inflow:E.inflow??0,
+   mult:E.mult,depth:d}}
+/* 敌人以前只是「一堆被动标志位」—— 它从不【行动】,所以你无从反应,所以它们都一样。
+   杀戮尖塔的答案是意图:提前亮出下回合要干什么,你据此调整出牌。
+   这里给每个敌人一个三回合一次的招牌动作,并提前一回合预告。 */
+const ACTS={
+ shuffled:{name:'重新洗牌',desc:'有序度砍掉一半',
+  fn(S){const a=alive(S);for(let k=0;k<Math.ceil(a.length/3);k++){
+   const i=Math.floor(S.R()*a.length),j=Math.floor(S.R()*a.length)
+   const t=a[i].v;a[i].v=a[j].v;a[j].v=t}}},
+ tape:{name:'倒带',desc:'最左边 3 根恢复到满高',
+  fn(S){alive(S).slice(0,3).forEach(b=>{S.totalWork+=Math.max(0,S.vmax-b.v);b.v=S.vmax})}},
+ dupes:{name:'再抓一批',desc:'一次涌入 4 个同值元素',
+  fn(S){const v=T.VMIN+Math.floor(S.R()*3)
+   for(let i=0;i<4;i++){const b={id:_uid++,v,dead:false};S.totalWork+=v;S.bars.push(b)}}},
+ stream:{name:'行情跳水',desc:'所有柱子高度 +2',
+  fn(S){alive(S).forEach(b=>{b.v+=2;S.totalWork+=2})}},
+ graph:{name:'六度扩散',desc:'一次涌入 3 个',fn(S){for(let i=0;i<3;i++)push1(S)}},
+ worst:{name:'构造反例',desc:'把最左边一半重排成倒序',
+  fn(S){const a=alive(S).slice(0,Math.ceil(alive(S).length/2))
+   const vs=a.map(b=>b.v).sort((x,y)=>y-x);a.forEach((b,i)=>b.v=vs[i])}},
+ collide:{name:'雪崩',desc:'丢掉 1 张手牌',
+  fn(S){for(let k=0;k<1&&S.hand.length;k++){const i=Math.floor(S.R()*S.hand.length)
+   S.exhaust.push(S.hand.splice(i,1)[0]);S.diag.evicted=(S.diag.evicted||0)+1}}},
+ regret:{name:'反悔',desc:'你上一张打出的牌被退回牌库',
+  fn(S){if(S.discard.length){S.draw.push(S.discard.pop());shuffle(S)}}},
+ explode2:{name:'状态翻倍',desc:'预处理值砍半',
+  fn(S){const d=Math.floor(S.memo/2);S.diag.lostMemo+=d;S.memo-=d}},
+ atomic:{name:'凝固',desc:'段数 −1',fn(S){S.splits=Math.max(1,S.splits-1)}},
+ netsplit:{name:'网络分裂',desc:'一次断掉 3 条边',fn(S){gCut(S.G,3)}},
+ shatter:{name:'级联故障',desc:'一次断掉 4 条边',fn(S){gCut(S.G,4)}},
+ partition:{name:'脑裂',desc:'断掉 5 条边,加固全部失效',
+  fn(S){S.G.edges.forEach(e=>e.safe=false);gCut(S.G,5)}},
+ expo:{name:'链式爆炸',desc:'这一次额外 +25% 规模',
+  fn(S){const add=Math.ceil(N(S)*.25);for(let i=0;i<add;i++)push1(S)}},
+}
+let ACTEVERY=5   // 一场 9~17 回合,五回合一次 = 打出 2~3 次
+function newFight(seed,deck,foeId,budget,flawId,depth=0){
+ const E=scaleFoe(FOE[foeId],depth),R=rng(seed),vmax=E.vmax??T.VMAX,FL=flawId?FLAW[flawId]:null
+ const S={R,E,foeId,bars:(SHAPES[E.shape]||SHAPES.random).gen(E.n,vmax,R,T.VMIN).map((v,i)=>({id:i,v,dead:false})),
+  splits:1,budget:budget+(FL?FLAWBONUS:0),steps:T.STEPS,turn:1,memo:0,debt:0,
+  inflow:E.inflow??0,mult:E.mult??1,vmax,flawId:flawId||null,FL,locked:null,guarded:false,loopBroken:false,firstPlay:true,lastPlayed:null,heapLv:0,prefix:false,monoq:false,actIn:ACTEVERY,turnPlays:0,trig:{},refGain:0,lastTier:0,
+  film:[],turnCards:[],n0:0,shield:0,skipCost:false,doubleNext:false,fixCost:0,useLastN:false,lastN:0,
+  draw:[...deck],hand:[],discard:[],exhaust:[],over:null,
+  totalWork:0,diag:{plays:{},lostKill:0,lostWork:0,evicted:0,lostMemo:0,lostSort:0,flawLoss:0,extraDebt:0,extraInflow:0,sortDecay:0,memoDecayed:0,spent:0,turns:0}}
+ S.totalWork=S.bars.reduce((a,b)=>a+b.v,0);S.n0=S.bars.length
+ if(E.graph){ // 图战场:没有柱子,只有节点和边
+  S.mode='graph';S.bars=[]
+  const A={x:300,y:200,w:900,h:470}
+  S.G=makeGraph(Math.round(E.n*(1+DEPTHMUL*depth)),R,A)
+  gMain(S.G);S.nc0=S.G.nc;S.totalWork=1;S.n0=S.G.nodes.length}
+ shuffle(S);drawN(S,T.HAND);return S}
+const canPlay=(S,i)=>{const c=C[S.hand[i]];return c&&S.steps>=c.cost&&!S.over&&!(S.locked===i&&!S.guarded)}
+function play(S,i){if(!canPlay(S,i))return false
+ const c=C[S.hand[i]];S.steps-=c.cost;S.hand.splice(i,1)
+ if(S.locked!=null&&i<S.locked)S.locked--   // 手牌左移,锁定的下标要跟着挪,否则锁到别人头上
+ ;S.diag.plays[c.id]=(S.diag.plays[c.id]||0)+1
+ if(S.flawId==='infinite'&&S.firstPlay&&!S.loopBroken&&c.id!=='guard'&&S.turn%3===0){
+  S.firstPlay=false;S.diag.flawLoss+=2;(c.exhaust?S.exhaust:S.discard).push(c.id)
+  S.halfNext=true;c.fn(S);S.halfNext=false;check(S);return true}
+ S.firstPlay=false
+ if(S.flawId==='race'&&!S.guarded&&S.R()<.25&&['scan','lookup','dp','parallel'].includes(c.id)){
+  S.diag.flawLoss+=2;(c.exhaust?S.exhaust:S.discard).push(c.id);workTotal(S,8);check(S);return true}
+ ;(c.exhaust?S.exhaust:S.discard).push(c.id);c.fn(S)
+ fireAssert(S);S.turnPlays++;S.turnCards.push(c.id)
+ if(c.id!=='memoize')S.lastPlayed=c.id
+ check(S);return true}
+function endTurn(S){if(S.over)return
+ if(S.mode==='graph'){
+  const G=S.G, b0=G.nc
+  // 越散越贵 —— 合并有即时回报,这就是「让所有点连通」和「活下去」对齐的地方
+  let cost=2+G.nc*2
+  cost=Math.max(0,cost-(S.shield||0))
+  if(S.skipCost)cost=0
+  S.diag.spent+=cost;S.diag.turns++;S.budget-=cost
+  const cut=gCut(G,S.E.cut||1)
+  S.film.push({v:[],cards:S.turnCards.slice(),act:S.lastAct||null,nc:G.nc,big:G.big})
+  const ACT2=ACTS[S.foeId]
+  if(ACT2){S.actIn--;if(S.actIn<=0){ACT2.fn(S);S.actIn=ACTEVERY;S.lastAct=ACT2.name}else S.lastAct=null}
+  S.shield=0;S.skipCost=false;S.turnPlays=0;S.turnCards=[];S.lastCut=cut;S.lastNc=b0
+  S.discard.push(...S.hand);S.hand=[];S.steps=T.STEPS;S.turn++;S.guarded=false;S.firstPlay=true
+  drawN(S,T.HAND);check(S);return}
+ const _b={n:N(S),budget:S.budget,memo:S.memo,tier:tier(S),hand:S.hand.length,ex:S.exhaust.length}
+ let sizeFor=S.useLastN&&S.lastN?S.lastN:N(S)
+ let base=S.fixCost?S.fixCost:Math.ceil(sizeFor/T.COST_DIV)
+ const debtPen=S.debt*T.DEBT_PEN*(S.E.antiGreedy?AGREED:1)
+ // 护盾抵【总额】而不是只抵基础开销 —— 否则贪心流(大头是债务惩罚)几乎用不上防御
+ base=Math.max(0,base+debtPen-(S.shield||0))-debtPen
+ if(S.doubleThis)base*=2
+ if(S.skipCost)base=-debtPen
+ if(S.E.antiGreedy)S.diag.extraDebt+=S.debt*T.DEBT_PEN
+ S.diag.spent+=base+debtPen;S.diag.turns++
+ S.budget-=base+debtPen
+ if(S.E.shuffle){S.diag.sortDecay+=S.E.shuffle
+  const a=alive(S);for(let k=0;k<S.E.shuffle*SHUFMUL;k++){
+   const i=Math.floor(S.R()*a.length),j=Math.floor(S.R()*a.length)
+   const t=a[i].v;a[i].v=a[j].v;a[j].v=t}}
+ if(S.E.memoDecay){S.diag.memoDecayed+=Math.min(S.memo,S.E.memoDecay);S.memo=Math.max(0,S.memo-S.E.memoDecay)}
+ if(S.mult>1){const add=Math.ceil(N(S)*(S.mult-1));for(let i=0;i<add;i++)push1(S)}
+ const dExtra=S.E.dense?Math.floor((S.splits-1)*S.E.dense):0;S.diag.extraInflow+=dExtra
+ const inf=S.inflow+dExtra
+ for(let i=0;i<inf;i++)push1(S)
+ if(S.flawId==='leak'&&!S.guarded){S.budget-=1;S.diag.flawLoss+=1}
+ if(S.flawId==='stackOv'&&S.splits>=3){S.budget-=2;S.diag.flawLoss+=2}
+ if(S.heapLv){const a=alive(S).slice().sort((x,y)=>x.v-y.v)
+  // 堆只弹得动「已经被削矮」的元素 —— 不设这条它能零成本白嫖整场
+  for(let i=0;i<Math.min(S.heapLv,a.length);i++)if(a[i].v<=HEAPCUT)a[i].dead=true
+  S.diag.heapKill=(S.diag.heapKill||0)+Math.min(S.heapLv,a.length)}
+ let keep=[]
+ if(S.monoq&&S.hand.length){let bi=0
+  for(let i=1;i<S.hand.length;i++)if(C[S.hand[i]].cost>C[S.hand[bi]].cost)bi=i
+  keep=[S.hand.splice(bi,1)[0]]}
+ // 招牌动作:倒计时到了就发动,并重新起算
+ const ACT=ACTS[S.foeId]
+ if(ACT){S.actIn--
+  if(S.actIn<=0){ACT.fn(S);S.actIn=ACTEVERY;S.lastAct=ACT.name
+   S.diag.actFired=(S.diag.actFired||0)+1}else S.lastAct=null}
+ // 存一帧:这一回合结束时的全部柱子 + 你出了什么 + 敌人发没发招
+ S.film.push({v:alive(S).map(b=>b.v),cards:S.turnCards.slice(),act:S.lastAct||null,
+   tier:tier(S),budget:S.budget})
+ // 防御只管这一回合,用完清掉;惰性求值的账下回合还
+ S.lastN=N(S);S.doubleThis=S.doubleNext;S.doubleNext=false
+ S.shield=0;S.skipCost=false;S.fixCost=0;S.useLastN=false
+ S.turnPlays=0;S.refGain=0;S.turnCards=[]
+ S.discard.push(...S.hand);S.hand=keep;S.steps=T.STEPS;S.turn++;S.guarded=false;S.firstPlay=true
+ drawN(S,T.HAND)
+ if(S.E.evict&&S.hand.length){const i=Math.floor(S.R()*S.hand.length)
+  S.diag.evicted=(S.diag.evicted||0)+1;S.exhaust.push(S.hand.splice(i,1)[0])}
+ S.locked=null
+ if(S.flawId==='nullPtr'&&S.hand.length){
+  const bi=Math.floor(S.R()*S.hand.length)   // 随机,不是最贵 —— 锁最贵等于系统性锁掉收尾牌,那是专克
+  S.locked=bi;S.diag.flawLoss+=C[S.hand[bi]].cost}
+ if(typeof foeTurnReport==='function')foeTurnReport(_b,S)
+ check(S)}
+let _uid=1e6
+const push1=S=>{const b={id:_uid++,v:T.VMIN+Math.floor(S.R()*(S.vmax-T.VMIN+1)),dead:false}
+ S.totalWork+=b.v;S.bars.push(b)
+ if(S.trig.listen){const a=alive(S);if(a.length){a[0].dead=true
+  S.trigHit=(S.trigHit||[]).concat([['◆ 事件监听 · 涌入即清',CO.cyan]])}}}
+function check(S){
+ if(S.mode==='graph'){ if(S.G.nc<=1)S.over='win';else if(S.budget<=0)S.over='lose';return}
+ if(N(S)<=0)S.over='win';else if(S.budget<=0)S.over='lose'
+ // 牌被吃光后无牌可出:直接判负,不要拖成 70 回合的空转
+ else if(!S.hand.length&&!S.draw.length&&!S.discard.length){S.over='lose';S.diag.decked=1}}
+
+/* ═══ 5. RUN:三选一构筑 ═══ */
+const BUDGET_GROW=3   // 每过一关预算上限 +3:玩家侧的成长
+const MOBS=['shuffled','tape','dupes','stream','graph']
+const ELITES=['worst','collide','regret','explode2','atomic']
+const SHAPE=['MOB','MOB','ELITE','MOB','MOB','ELITE','MOB','BOSS']
+const PATH=SHAPE                                   // 关卡数 = SHAPE.length
+function newRun(seed,kit){const R=rng(seed)
+ // films:整局八关的胶片,用来拼长图
+ return{R,seed,deck:[...starterOf(kit),...KITS[kit]],kit,budget:T.BUDGET,cap:T.BUDGET,node:0,over:null,offer:null,
+   used:[],opts:null,log:[],films:[]}}
+const FLAWIDS=Object.keys(FLAW)
+function nodeFlaw(RUN,i){ if(i<1)return null              // 第 1 关不挂失误
+ return RUN.R()<Math.min(.8,.35+.07*i)?FLAWIDS[Math.floor(RUN.R()*FLAWIDS.length)]:null}
+function pickFoe(R,pool,used){const av=pool.filter(x=>!used.includes(x))
+ const p=av.length?av:pool;return p[Math.floor(R()*p.length)]}
+/* 每关 roll 出两个候选 → 玩家看情报后二选一(Boss 关没得选) */
+function rollNode(RUN,i){const t=SHAPE[i]
+ if(t==='BOSS')return[{foe:'expo',flaw:nodeFlaw(RUN,i)}]
+ if(t==='ELITE')return[{foe:pickFoe(RUN.R,ELITES,RUN.used),flaw:nodeFlaw(RUN,i)}]
+ const a=pickFoe(RUN.R,MOBS,RUN.used),b=pickFoe(RUN.R,MOBS,[...RUN.used,a])
+ return[{foe:a,flaw:nodeFlaw(RUN,i)},{foe:b,flaw:nodeFlaw(RUN,i)}]}
+function nodeFoe(RUN,i){return rollNode(RUN,i)[0].foe}   // 兼容旧调用
+function offer3(RUN){const o=[];while(o.length<3){const c=REWARD_POOL[Math.floor(RUN.R()*REWARD_POOL.length)];if(!o.includes(c))o.push(c)}return o}
+
+/* ═══ 6. 批量模拟 ═══ */
+const POL={
+ base:S=>pick(S,['scan','batch','watch']),
+ sort:S=>{ // 有序度过半就该插入排序一次排完,而不是继续冒泡
+   if(sortedness(S)>=.5){const i=S.hand.indexOf('insertion');if(i>=0&&canPlay(S,i))return i}
+   return tier(S)>=3?pick(S,['median','bsearch','counting','quick','merge','insertion','scan','hash','batch'])
+                    :pick(S,['quick','merge','insertion','bsearch','counting','scan','hash','batch'])},
+ dc:S=>S.splits<3?pick(S,['divide','mergeup','parallel','scan','hash','batch'])
+                 :pick(S,['recur','parallel','mergeup','divide','scan','hash','batch']),
+ memo:S=>S.memo>=17?pick(S,['dp','lookup','table','pre','scan','hash','batch'])
+                   :pick(S,['table','pre','lookup','scan','hash','batch']),
+ greedy:S=>S.debt>=4?pick(S,['anneal','heur','local','greedy','scan','hash','batch'])
+                    :pick(S,['approx','greedy','local','heur','scan','hash','batch']),
+ // 堆流:先把堆建起来,它每回合白干活;建好了再堆化叠层
+ heap:S=>!S.heapLv?pick(S,['buildheap','poptop','heapsort','scan','hash','batch'])
+       :pick(S,['heapify','medstream','poptop','heapsort','buildheap','scan','hash','batch']),
+ // 区间流:先铺前缀和(放大所有摊平类),再靠位置操作切
+ twop:S=>!S.prefix?pick(S,['prefix','window','twoptr','diff','scan','hash','batch'])
+       :pick(S,['window','merge2','twoptr','diff','scan','monoq','hash','batch']),
+ // 图算法:块多先用并查集直接合并(不看距离),块少了再用便宜的就近并入
+ graph:S=>{const G=S.G
+   if(G&&G.nc>=4){const i=S.hand.indexOf('dsu');if(i>=0&&canPlay(S,i))return i}
+   if(G&&G.nc<=2){const i=S.hand.indexOf('sp');if(i>=0&&canPlay(S,i))return i}
+   // 连上的边如果不固住,下回合就被断回去 —— 有未加固的跨块边就先固
+   if(G){const weak=G.edges.filter(e=>e.alive&&!e.safe&&G.nodes[e.a].cl!==G.nodes[e.b].cl).length
+    if(weak>=1||S.actIn<=1){const i=S.hand.indexOf('bridge');if(i>=0&&canPlay(S,i))return i}}
+   return pick(S,['mst','dsu','bfs','dfs','sp','batch','prefetch','cache'])}}
+function pick(S,order){
+ if(S.E.antiGreedy)order=order.filter(x=>!['greedy','local'].includes(x))   // 债务翻倍:别再借
+ // 牌库卡各有各的时机 —— 不写清楚 AI 只会拿它们当兜底,量出来的平衡就是假的
+ // 防御:算一下这回合末会不会被打死 / 下回合是不是就要挨招牌动作
+ {const cost=Math.ceil(N(S)/T.COST_DIV)+S.debt*T.DEBT_PEN*(S.E.antiGreedy?AGREED:1)
+  const danger=S.budget-cost<12, incoming=S.actIn<=1
+  if((danger||incoming)&&!S.shield&&!S.skipCost&&!S.fixCost){
+   for(const d of (cost>=10?['lazy','batchc','cache','incr']:['cache','batchc','lazy','incr'])){
+    const i=S.hand.indexOf(d);if(i>=0&&canPlay(S,i))return i}}}
+ if(S.lastPlayed&&['median','recur','anneal','approx','bsearch','dp','parallel'].includes(S.lastPlayed)){
+  const i=S.hand.indexOf('memoize');if(i>=0&&canPlay(S,i))return i}       // 刚出完大牌,立刻复用
+ if(!S.draw.length&&S.discard.length>=4){const i=S.hand.indexOf('compress')
+  if(i>=0&&canPlay(S,i))return i}                                          // 牌库空了,压缩回冲
+ if(S.turn<=2){const i=S.hand.indexOf('sortdeck');if(i>=0&&canPlay(S,i))return i}  // 越早排越划算
+ if(S.hand.length<=3){for(const d of ['prefetch','fetch']){
+  const i=S.hand.indexOf(d);if(i>=0&&canPlay(S,i))return i}}               // 手牌少了就去牌库拿
+ if(S.flawId==='infinite'&&!S.loopBroken){const i=S.hand.indexOf('guard');if(i>=0&&canPlay(S,i))return i}
+ {const a=alive(S)
+  if(a.length){const mn=Math.min(...a.map(b=>b.v))
+   if(a.filter(b=>b.v<=mn+2).length>=6){const i=S.hand.indexOf('counting');if(i>=0&&canPlay(S,i))return i}
+   const t=a.slice().sort((x,y)=>y.v-x.v)
+   if(t.length>3&&t[0].v>=t[Math.floor(t.length/2)].v*2.4){const i=S.hand.indexOf('topk');if(i>=0&&canPlay(S,i))return i}}}
+ if(S.mult>1){const i=S.hand.indexOf('prune');if(i>=0&&canPlay(S,i))return i}
+ if(S.budget<14){const i=S.hand.indexOf('backtrack');if(i>=0&&canPlay(S,i))return i}
+ for(const id of order){const i=S.hand.indexOf(id);if(i>=0&&canPlay(S,i))return i}
+ for(let i=0;i<S.hand.length;i++)if(canPlay(S,i))return i;return -1}
+function fight(kit,seed,foeId,deck,budget,maxTurn=45,flawId,depth=0){
+ const S=newFight(seed,deck??[...starterOf(kit),...KITS[kit]],foeId,budget??T.BUDGET,flawId,depth),p=POL[kit]
+ while(!S.over&&S.turn<=maxTurn){let g=0
+  while(!S.over&&g++<14){const i=p(S);if(i<0)break;if(!play(S,i))break}
+  if(!S.over)endTurn(S)}
+ return{over:S.over||'timeout',turn:S.turn,budget:S.budget,left:N(S)}}
+function batchFoe(kit,foeId,n=250){let w=0,t=0
+ for(let s=1;s<=n;s++){const r=fight(kit,s*7919,foeId);if(r.over==='win'){w++;t+=r.turn}}
+ return{win:+(w/n*100).toFixed(0),turn:w?+(t/w).toFixed(1):null}}
+function chooseNode(RUN,opts){ if(opts.length<2)return opts[0]
+ const sc=o=>intelOf(RUN.deck,o.foe,o.flaw).score
+ return sc(opts[0])>=sc(opts[1])?opts[0]:opts[1]}
+function runOnce(kit,seed){const RUN=newRun(seed,kit)
+ for(let i=0;i<SHAPE.length;i++){
+  const ch=chooseNode(RUN,rollNode(RUN,i));RUN.used.push(ch.foe)
+  const f=ch.foe,fl=ch.flaw,r=fight(kit,seed*31+i,f,RUN.deck,RUN.budget,45,fl,i)
+  if(r.over!=='win')return{over:'lose',node:i,foe:f,flaw:fl,deck:RUN.deck.length}
+  RUN.cap+=BUDGET_GROW;RUN.budget=RUN.cap   // 每关重置,且上限随进度抬高
+  const o=offer3(RUN);const own=RUN.deck.filter(c=>KITS[kit].includes(c)).length
+  const best=(i>=2&&o.includes('prune'))?'prune':(i>=2&&o.includes('guard')&&!RUN.deck.includes('guard'))?'guard'
+    :(own>=8?(o.find(c=>C[c].tag==='tool')??o[0]):(o.find(c=>KITS[kit].includes(c))??o.find(c=>C[c].tag==='tool')))
+  if(best)RUN.deck.push(best)}
+ return{over:'win',node:SHAPE.length,deck:RUN.deck.length,budget:RUN.budget}}
+function batchRun(kit,n=250){let w=0,d=0;const stuck={}
+ for(let s=1;s<=n;s++){const r=runOnce(kit,s*104729)
+  if(r.over==='win'){w++;d+=r.deck}else stuck[r.foe]=(stuck[r.foe]||0)+1}
+ return{kit,win:+(w/n*100).toFixed(1),avgDeck:w?+(d/w).toFixed(1):null,stuck}}
+Object.assign(window,{__newRun:newRun,__rollNode:rollNode,__chooseNode:chooseNode,__offer3:offer3,__SETDEPTH:v=>{DEPTHMUL=v},__SETASORT:v=>{ASORT=v},__SETSHUF:v=>{SHUFMUL=v},__SETPASS:v=>{PASSMUL=v},__SETPAR:v=>{PARCUT=v},__SETAG:v=>{AGREED=v},__sortedness:sortedness,__SHAPES:()=>SHAPES,__ALLCARDS:()=>Object.keys(C),__newFightD:(kit,foe,seed,deck,budget,flaw,depth)=>newFight(seed,deck,foe,budget,flaw,depth),__canPlay:canPlay,__POL:k=>POL[k],__play2:play,__endTurn2:endTurn,
+ __newFightX:(kit,foe,seed,depth)=>newFight(seed,[...starterOf(kit),...KITS[kit]],foe,T.BUDGET,null,depth),
+ __batchPolD:(kit,foeId,n,pol,depth)=>{let w=0
+  for(let s2=1;s2<=n;s2++){const S=newFight(s2*7919,[...starterOf(kit),...KITS[kit]],foeId,T.BUDGET,null,depth)
+   const P=pol||POL[kit]
+   while(!S.over&&S.turn<=45){let g=0
+    while(!S.over&&g++<14){const i=P(S);if(i<0)break;if(!play(S,i))break}
+    if(!S.over)endTurn(S)}
+   if(S.over==='win')w++}
+  return +(w/n*100).toFixed(0)},
+ __batchPol:(kit,foeId,n,pol)=>{let w=0
+  for(let s2=1;s2<=n;s2++){const S=newFight(s2*7919,[...starterOf(kit),...KITS[kit]],foeId,T.BUDGET)
+   while(!S.over&&S.turn<=45){let g=0
+    while(!S.over&&g++<14){const i=pol(S);if(i<0)break;if(!play(S,i))break}
+    if(!S.over)endTurn(S)}
+   if(S.over==='win')w++}
+  return +(w/n*100).toFixed(0)},
+ __batchFoe:batchFoe,__batchRun:batchRun,__FOE:FOE,__FLAW:FLAW,__KITS:KITS,__fight:fight,__fightF:fight,__runOnce:runOnce,__PATH:PATH,__nodeFoe:nodeFoe,__nodeFlaw:nodeFlaw,__newRun:newRun,__T:T})
+
+/* ═══ 6.5 A:进关前情报 · 牌组适配度 ═══ */
+const PROPS=[
+ {k:'seqOnly', txt:'顺序访问:二分查找效果打七折',      hit:d=>cnt(d,'bsearch'),                 dir:-1},
+ {k:'shuffle', txt:e=>`自我打乱:有序度每回合 −${e.shuffle} 层`, hit:d=>cnt(d,'bubble','merge','quick'), dir:-1},
+ {k:'antiSort',txt:'最坏用例:快速排序只 +1 有序',    hit:d=>cnt(d,'quick'),                   dir:-1},
+{k:'evict',    txt:'每回合末随机丢 1 张手牌',              hit:d=>d.length,                         dir:-1},
+ {k:'memoCap', txt:e=>`预处理值上限 ${e.memoCap}`,    hit:d=>cnt(d,'pre','table'),             dir:-1},
+ {k:'memoDecay',txt:e=>`预处理值每回合 −${e.memoDecay}`,hit:d=>cnt(d,'pre','table','lookup','dp'),dir:-1},
+ {k:'antiGreedy',txt:'债务惩罚翻倍(每点 −4 预算)',   hit:d=>cnt(d,'greedy','local','heur','anneal'),dir:-1},
+ {k:'dense',   txt:'稠密:每多切一段,每回合多涌入 1', hit:d=>cnt(d,'divide'),                  dir:-1},
+ {k:'mult',    txt:e=>`规模每回合 ×${e.mult} — 加输出没用,得降阶`, hit:d=>cnt(d,'prune')-2,   dir:-1,
+   lbl:n=>n<0?[`缺 ${-n} 张剪枝`,'red']:[`剪枝 ${n+2} 张 ✓`,'green']},
+]
+const cnt=(deck,...ids)=>deck.filter(c=>ids.includes(c)).length
+function intelOf(deck,foeId,flawId,depth=0){
+ const E=scaleFoe(FOE[foeId],depth),rows=[]
+ for(const P of PROPS){ if(!E[P.k])continue
+  const n=P.hit(deck)
+  rows.push({txt:typeof P.txt==='function'?P.txt(E):P.txt,n,dir:P.dir,lbl:P.lbl}) }
+ const A2=ACTS[foeId]
+ if(A2)rows.push({txt:'每 '+ACTEVERY+' 回合发动「'+A2.name+'」:'+A2.desc,n:0,dir:-1,
+   lbl:()=>['招牌动作','amber']})
+ const SH=SHAPES[E.shape||'random']
+ if(E.shape&&E.shape!=='random')rows.push({txt:'形状「'+SH.name+'」:'+SH.hint,n:0,dir:1,
+   lbl:()=>[SH.name,'cyan']})
+ if(E.noSplit)rows.push({txt:`不可分:段数上限 ${E.noSplit}、并行处理只剩四成`,n:cnt(deck,'divide','parallel'),dir:-1})
+ if(flawId){const F=FLAW[flawId]
+  rows.push({txt:`【失误】${F.name}:${F.note}`,n:flawId==='infinite'?(cnt(deck,'guard')?0:-1):1,dir:-1})}
+ if(E.vmax&&E.vmax<T.VMAX)rows.push({txt:`值域窄(${T.VMIN}–${E.vmax}):平铺处理占便宜`,
+   n:cnt(deck,'scan','lookup','dp','parallel'),dir:1})
+ const bad=rows.filter(r=>r.dir<0).reduce((a,r)=>a+Math.abs(r.n),0)
+ const good=rows.filter(r=>r.dir>0).reduce((a,r)=>a+r.n,0)
+ const load=(E.n-38)/5+(E.inflow??0)-1.5              // 体量本身就是难度
+ const pruneOK=E.mult&&cnt(deck,'prune')>=2?4:0       // Boss 带够剪枝就是顺手
+ const score=good-bad-load+pruneOK
+ return{E,flaw:flawId?FLAW[flawId]:null,rows,score,load,verdict:score>=1.5?['顺手','#8fd98f']:score<=-4?['不利','#ff7a6b']:score<=-1.5?['吃亏','#ffc46b']:['中性','#aebfd2']}
+}
+
+/* ═══ 6.6 B:失败诊断 ═══ */
+function diagnose(S){
+ const d=S.diag,out=[]
+ if(d.lostKill>0)out.push({w:d.lostKill*11,t:`二分查找被打折:你出了 ${d.plays.bsearch||0} 张,少移除 ${Math.round(d.lostKill)} 个元素`})
+ if(d.decked)out.push({w:900,t:'牌库、手牌、弃牌堆全空了 — 你没牌可出了'})
+ if(d.evicted>0)out.push({w:d.evicted*9,t:`哈希碰撞:累计有 ${d.evicted} 张手牌被丢进消耗区,再也抽不到`})
+ if(d.lostMemo>0)out.push({w:d.lostMemo*2,t:`预处理值撞上限:白投了 ${Math.round(d.lostMemo)} 点`})
+ if(d.memoDecayed>0)out.push({w:d.memoDecayed*2,t:`数据在变:预处理值累计被侵蚀 ${d.memoDecayed} 点`})
+ if(d.lostSort>0)out.push({w:d.lostSort*8,t:`最坏用例:快速排序累计少给 ${d.lostSort} 层有序`})
+ if(d.extraDebt>0)out.push({w:d.extraDebt*3,t:`债务惩罚翻倍:额外烧掉 ${d.extraDebt} 点预算`})
+ if(d.extraInflow>0)out.push({w:d.extraInflow*11,t:`稠密图惩罚切段:你切了 ${S.splits} 段,累计多涌入 ${d.extraInflow} 个元素`})
+ if(d.sortDecay>0)out.push({w:d.sortDecay*6,t:`数据自我打乱:${d.turns} 回合累计掉 ${d.sortDecay} 层有序,你一直在填坑`})
+ if(d.flawLoss>0)out.push({w:d.flawLoss*4,t:`【失误】${S.FL.name}:累计损失约 ${Math.round(d.flawLoss)} 点(移除/处理量/预算)`})
+ if(S.E.noSplit)out.push({w:60,t:`不可分问题:段数被压到 ${S.E.noSplit},并行处理只剩四成`})
+ if(S.mult>1)out.push({w:999,t:`增长倍率还有 ${S.mult.toFixed(2)} — 线性削减追不上,得靠剪枝降阶`})
+ out.sort((a,b)=>b.w-a.w)
+ return{lines:out.slice(0,3),turns:d.turns,spent:d.spent,left:N(S)}
+}
+const remainWork=S=>alive(S).reduce((a,b)=>a+b.v,0)
+const hpPct=S=>Math.max(0,Math.round(remainWork(S)/Math.max(S.totalWork,1)*100))
+Object.assign(window,{__intel:intelOf,__diag:diagnose,__hp:hpPct})
+
+/* ═══ 7. 渲染(复刻概念图) ═══ */
+const cv=document.getElementById('c'),ctx=cv.getContext('2d')
+let W,H,DPR=Math.min(devicePixelRatio||1,2)
+const fit=()=>{W=innerWidth;H=innerHeight;cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0)}
+addEventListener('resize',fit);fit()
+let RUN=null,S=null,offer=null,intel=null,parts=[],KIT='sort',anim=null,hist=[],poster=null
+const CO={bg0:'#050a12',bg1:'#0a141f',line:'rgba(90,150,190,.22)',panel:'rgba(12,24,38,.72)',
+ ink:'#e6eef7',dim:'#8ba3bb',faint:'#4d6076',cyan:'#5fd0e8',amber:'#f0a94a',red:'#ff6b5e',green:'#7fd98f',
+ tag:{base:'#a8c0d6',sort:'#f0a94a',dc:'#b39ddb',memo:'#7fd98f',greedy:'#ff8f6b',tool:'#5fd0e8',deck:'#9ecbff',heap:'#ffb3d9',twop:'#8ee6c8',def:'#c8b4ff',graph:'#7fd1ff'}}
+const TAGNAME={base:'起始',sort:'排序流',dc:'拆解流',memo:'复利流',greedy:'激进流',tool:'工具',deck:'牌库',heap:'堆流',twop:'区间流',def:'防御',graph:'图算法'}
+function startRun(k){KIT=k;RUN=newRun(Date.now()&0xffff,k);enter()}
+function enter(){RUN.opts=rollNode(RUN,RUN.node)
+ intel=RUN.opts.map(o=>Object.assign(intelOf(RUN.deck,o.foe,o.flaw,RUN.node),o))
+ offer=null;hist=[100];flo=null
+ S=newFight(1,RUN.deck,RUN.opts[0].foe,RUN.budget,RUN.opts[0].flaw,RUN.node)}
+function pickNode(k){const o=RUN.opts[k];RUN.used.push(o.foe)
+ S=newFight((Date.now()&0xffff)+RUN.node,RUN.deck,o.foe,RUN.budget,o.flaw,RUN.node)
+ intel=null;hist=[100]}
+function stashFilm(){ if(!S||!RUN)return
+ RUN.films.push({foe:S.foeId,name:S.E.name,shape:S.E.shape||'random',
+  film:S.film,won:S.over==='win',turns:S.turn,node:RUN.node,
+  diag:S.over==='lose'?diagnose(S).lines.map(l=>l.t):[]})}
+function afterFight(){ stashFilm()
+ if(S.over==='lose'){RUN.over='lose';return}
+ RUN.cap+=BUDGET_GROW;RUN.budget=RUN.cap;RUN.node++
+ if(RUN.node>=SHAPE.length){RUN.over='win';return} offer=offer3(RUN)}
+function takeCard(id){if(id)RUN.deck.push(id);offer=null;enter()}
+function snap(){return alive(S).map(b=>({id:b.id,v:b.v}))}
+/* 组合一直都在(排序→有序层数→二分查找),但它在画面上从来只是「一个数变了」。
+   小丑牌的做法:每一环依次点亮,300ms 的动画代替整页说明书。
+   CHAIN 在出牌【之前】把因果链算出来,然后一环一环演。 */
+const CHAIN={
+ bsearch:S=>{const t=tier(S),full=2+t*2,seq=S.E.seqOnly
+  const o=[['基础 2',CO.faint],['有序层数 '+t+' × 2',CO.amber]]
+  if(seq)o.push(['顺序访问 ×'+seq,CO.red])
+  return o.concat([['移除 '+(seq?Math.max(1,Math.round(full*seq)):full)+' 个',CO.green]])},
+ mergeup:S=>[['每段 2 个',CO.faint],['段数 '+S.splits,'#b39ddb'],['移除 '+(2*S.splits)+' 个',CO.green]],
+ parallel:S=>{const h=S.E.noSplit?PARCUT:1,tot=Math.round(S.splits*11*h)
+  const o=[['段数 '+S.splits+' × 11','#b39ddb']]
+  if(h<1)o.push(['不可分 ×'+h,CO.red])
+  if(S.prefix)o.push(['前缀和 ×'+PREFIX,'#8ee6c8'])
+  return o.concat([['处理量 '+Math.round(tot*(S.prefix?PREFIX:1))+' ÷ '+N(S)+' 个',CO.green]])},
+ lookup:S=>{const o=[['预处理值 '+S.memo,CO.green]]
+  if(S.prefix)o.push(['前缀和 ×'+PREFIX,'#8ee6c8'])
+  return o.concat([['处理量 '+Math.round(S.memo*(S.prefix?PREFIX:1))+' ÷ '+N(S)+' 个',CO.green]])},
+ dp:S=>[['预处理值 '+S.memo,CO.green],['动态规划 ×2',CO.amber],
+        ['处理量 '+(S.memo*2)+' ÷ '+N(S)+' 个',CO.green]],
+ heur:S=>[['基础 2',CO.faint],['债务 '+Math.min(S.debt,6)+'(封顶 6)',CO.red],
+          ['移除 '+(2+Math.min(S.debt,6))+' 个',CO.green]],
+ anneal:S=>[['债务 '+S.debt,CO.red],['× 2',CO.amber],
+            ['移除 '+(S.debt*2)+' 个 · 债务清零',CO.green]],
+ median:S=>[['需有序 ≥3 · 现在 '+tier(S),CO.amber],['规模 '+N(S)+' ÷ 3',CO.faint],
+            [tier(S)>=3?'移除 '+Math.ceil(N(S)/3)+' 个':'条件不满足 · 落空',tier(S)>=3?CO.green:CO.red]],
+ recur:S=>[['需段数 ≥3 · 现在 '+S.splits,'#b39ddb'],['规模 '+N(S)+' ÷ 3',CO.faint],
+           [S.splits>=3?'移除 '+Math.ceil(N(S)/3)+' 个':'条件不满足 · 落空',S.splits>=3?CO.green:CO.red]],
+ approx:S=>[['规模 '+N(S)+' ÷ 4',CO.faint],['债务 '+S.debt+' → '+(S.debt+3),CO.red],
+            ['移除 '+Math.ceil(N(S)/4)+' 个',CO.green]],
+ counting:S=>{const a=alive(S);if(!a.length)return null
+  const mn=Math.min(...a.map(b=>b.v))
+  return [['最矮的是 '+mn,CO.faint],['清掉 值 ≤ '+(mn+2)+' 的',CO.amber],
+          ['移除 '+a.filter(b=>b.v<=mn+2).length+' 个',CO.green]]},
+ insertion:S=>{const sd=Math.round(sortedness(S)*100)
+  return [['有序度 '+sd+'%',CO.amber],[sd>=50?'≥50% · 逆序对够少':'<50% · 逆序对太多',sd>=50?CO.green:CO.red],
+          [sd>=50?'一趟排完 → 有序层数 4':'只 +1 层',sd>=50?CO.green:CO.red]]},
+ scan:S=>{const w=wprev(16);if(!w)return null
+  const o=[['处理量 16',CO.faint]]
+  if(S.prefix)o.push(['前缀和 ×'+PREFIX,'#8ee6c8'])
+  return o.concat([['÷ '+w.n+' 个元素',CO.faint],['每根矮 '+w.per+' · 血条 −'+w.hp+'%',CO.cyan]])},
+ medstream:S=>{const a=alive(S);if(!a.length)return null
+  const vs=a.map(b=>b.v).sort((x,y)=>x-y),med=vs[vs.length>>1]
+  return [['中位数 '+med,CO.faint],['清掉严格低于它的','#ffb3d9'],
+          ['移除 '+a.filter(b=>b.v<med).length+' 个',CO.green]]},
+ memoize:S=>S.lastPlayed?[['上一张是「'+C[S.lastPlayed].name+'」','#9ecbff'],['重放它',CO.amber],
+   ['效果再来一次',CO.green]]:null,
+ merge2:S=>{const a=alive(S);let c=0
+  for(let i=1;i<a.length;i++)if(a[i].v===a[i-1].v)c++
+  return [['相邻等高 '+c+' 对','#8ee6c8'],['合并',CO.amber],['移除 '+c+' 个',c?CO.green:CO.red]]},
+}
+const stat=()=>({n:N(S),work:remainWork(S),budget:S.budget,memo:S.memo,debt:S.debt,
+  splits:S.splits,tier:tier(S),hand:S.hand.length,mult:S.mult,inflow:S.inflow,ex:S.exhaust.length,
+  draw:S.draw.length,disc:S.discard.length,top:S.draw.slice(-3).map(x=>C[x].name).join('')})
+/* 牌库操作不改任何被 stat 追踪的战场数值 —— 不特判它们就会显示「这张没起作用」 */
+const DECKSAY={
+ sortdeck:(a,b)=>['牌库已排序 · 接下来先抽便宜的','#9ecbff'],
+ sortdeck2:null,
+ compress:(a,b)=>['弃牌堆 '+a.disc+' 张洗回牌库','#9ecbff'],
+}
+function readout(a,b){const o=[],G=CO.green,A=CO.amber,R=CO.red,Cy=CO.cyan,P='#b39ddb'
+ if(b.n<a.n)      o.push(['−'+(a.n-b.n)+' 个元素',G])
+ else if(b.work<a.work) o.push(['每根柱子矮了一截 · 血条 −'+(Math.round((a.work-b.work)/Math.max(S.totalWork,1)*1000)/10)+'%',G])
+ if(b.tier>a.tier)o.push(['有序层数 '+a.tier+' → '+b.tier,A])
+ if(b.splits>a.splits)o.push(['段数 '+a.splits+' → '+b.splits,P])
+ if(b.memo>a.memo)o.push(['预处理值 +'+(b.memo-a.memo),G])
+ if(b.budget>a.budget)o.push(['预算 +'+(b.budget-a.budget),G])
+ const drew=(b.hand-a.hand)+1; if(drew>0)o.push(['抽 '+drew+' 张',Cy])
+ if(b.debt>a.debt)o.push(['债务 +'+(b.debt-a.debt),R])
+ if(b.debt<a.debt)o.push(['债务清零',G])
+ if(b.mult<a.mult)o.push(['增长倍率 '+a.mult.toFixed(2)+' → '+b.mult.toFixed(2),G])
+ if(b.inflow<a.inflow)o.push(['涌入 '+a.inflow+' → '+b.inflow,G])
+ if(b.draw>a.draw&&b.disc<a.disc)o.push(['弃牌堆 '+a.disc+' 张洗回牌库','#9ecbff'])
+ else if(b.top!==a.top&&b.n===a.n&&b.draw===a.draw)o.push(['牌库已重排 · 接下来先抽便宜的','#9ecbff'])
+ if(!o.length)o.push(['这张没起作用',R])
+ return o}
+let flo=null
+/* 回合末飘字 —— 和出牌飘字对称:那边说「我做了什么」,这边说「它做了什么」 */
+function foeTurnReport(b,S2){ if(S2!==S)return
+ const o=[],G=CO.green,A=CO.amber,R=CO.red
+ o.push(['预算 '+b.budget+' → '+S.budget+'(按规模 '+N(S)+' 收的开销)',R])
+ if(N(S)>b.n)   o.push(['涌入 +'+(N(S)-b.n)+' 个'+(S.mult>1?'(指数增长)':''),R])
+ if(tier(S)<b.tier) o.push(['自我打乱 · 有序层数 '+b.tier+' → '+tier(S),A])
+ if(S.memo<b.memo)  o.push(['数据在变 · 预处理值 '+b.memo+' → '+S.memo,A])
+ if(S.lastAct)o.unshift(['◆ '+S.lastAct+' 发动了!',R])
+ if(S.exhaust.length>b.ex) o.push(['哈希碰撞 · 丢了 '+(S.exhaust.length-b.ex)+' 张手牌',R])
+ if(S.locked!=null) o.push(['空指针 · 锁住了「'+C[S.hand[S.locked]].name+'」',R])
+ if(o.length>1||N(S)>b.n) flo={lines:o.slice(0,4),name:'敌人回合',t0:performance.now(),dur:1700}}
+function uiPlay(i){
+ // 动画期间不该把点击默默吞掉 —— 直接把当前动画收尾,让这一下立刻生效
+ if(anim)anim=null
+ if(!canPlay(S,i))return
+ const id=S.hand[i],before=snap(),s0=stat()
+ const ch=CHAIN[id]?CHAIN[id](S):null      // 必须在 play 之前算 —— 之后状态就变了
+ play(S,i); hist.push(hpPct(S))
+ const kind=AK[id]||'gen', dur=kind==='sort'?1150:kind==='gen'?700:860
+ anim={id,kind,t0:performance.now(),dur,before,
+  after:new Map(S.bars.map(b=>[b.id,b.dead?null:b.v]))}
+ flo={lines:readout(s0,stat()),name:C[id].name,t0:performance.now(),dur:ch?2100:1500,chain:ch}
+ if(S.over)setTimeout(afterFight,700)
+ else if(S.steps<=0)setTimeout(()=>{if(!S.over){endTurn(S);hist.push(hpPct(S));if(S.over)afterFight()}},dur+300)}
+const AK={scan:'sweep',lookup:'sweep',dp:'sweep',parallel:'sweep',
+ bubble:'sort',merge:'sort',quick:'sort',insertion:'sort',
+ bsearch:'split',median:'split',divide:'split',recur:'split',counting:'bucket',topk:'sortic',
+ greedy:'burst',local:'burst',heur:'burst',anneal:'burst',approx:'burst',mergeup:'burst',hash:'burst',counting:'burst',topk:'burst',
+ poptop:'burst',heapsort:'sort',medstream:'split',twoptr:'split',window:'sweep',diff:'sweep',merge2:'burst'}
+function autoTurn(){ if(!S||S.over||offer||RUN.over||anim)return
+ const i=POL[KIT](S); if(i<0){endTurn(S);hist.push(hpPct(S));if(S.over)afterFight();return}
+ uiPlay(i)}
+let autoTimer=null
+window.__demo=(foe,flaw,kit)=>{ if(kit)KIT=kit
+ RUN=RUN||newRun(1,KIT); RUN.over=null
+ S=newFight(7,RUN.deck,foe,T.BUDGET,flaw); offer=null;hist=[100];intel=null}
+Object.assign(window,{__POL2:S=>POL[KIT](S),__SETG:(c,d)=>{GCLUST=c;GDENS=d},__SETCUT:(f,v)=>{FOE[f].cut=v},__mkGraph:makeGraph,__drawGraph:drawGraph,__comps:comps,__poster:posterCanvas,
+ __fightFilm:(kit,seed)=>{const RUN=newRun(seed,kit),out=[]
+  for(let i=0;i<8;i++){
+   const ch=chooseNode(RUN,rollNode(RUN,i));RUN.used.push(ch.foe)
+   const S2=newFight(seed*31+i,RUN.deck,ch.foe,RUN.budget,ch.flaw,i),P=POL[kit]
+   while(!S2.over&&S2.turn<=45){let g=0
+    while(!S2.over&&g++<14){const j=P(S2);if(j<0)break;if(!play(S2,j))break}
+    if(!S2.over)endTurn(S2)}
+   out.push({foe:ch.foe,name:S2.E.name,shape:S2.E.shape||'random',film:S2.film,
+     won:S2.over==='win',turns:S2.turn,node:i,
+     diag:S2.over==='lose'?diagnose(S2).lines.map(l=>l.t):[]})
+   if(S2.over!=='win')break
+   RUN.cap+=BUDGET_GROW;RUN.budget=RUN.cap
+   const o=offer3(RUN),own=RUN.deck.filter(c=>KITS[kit].includes(c)).length
+   const b2=o.includes('prune')?'prune':(own>=8?(o.find(c=>C[c].tag==='tool')??o[0]):(o.find(c=>KITS[kit].includes(c))??o[0]))
+   if(b2)RUN.deck.push(b2)}
+  return out},__anim:()=>!!anim,__auto:autoTurn,__S:()=>S,__RUN:()=>RUN,__offer:()=>offer,__intel2:()=>intel,
+ __play:i=>uiPlay(i),__end:()=>{if(!anim){endTurn(S);hist.push(hpPct(S));if(S.over)afterFight()}},
+ __draw:()=>draw(),__FB:v=>{FLAWBONUS=v},__HITBOX:()=>HITBOX,__CARD:id=>C[id],__take:takeCard,__startRun:startRun,__skipIntel:()=>{if(intel)pickNode(0)},__pickNode:k=>pickNode(k),__SHAPE:SHAPE})
+
+/* ── 图上的操作:玩家加边,敌人断边 ── */
+function gAdj(G){const a={};for(const e of G.edges)if(e.alive){
+ (a[e.a]=a[e.a]||[]).push(e.b);(a[e.b]=a[e.b]||[]).push(e.a)}return a}
+function gMain(G){let best=-1,bn=-1
+ for(const c in G.cnt)if(G.cnt[c]>bn){bn=G.cnt[c];best=+c}
+ G.mainComp=best;return best}
+const gd=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y)
+/* 从 from 这些节点里,找离它们最近的一个「不同块」的节点,连上 */
+function gLink(G,fromComp,maxLinks,chain){
+ let added=0,src=G.nodes.filter(n=>n.comp===fromComp)
+ for(let k=0;k<maxLinks;k++){
+  let bi=null,bj=null,bd=1e9
+  for(const a of src)for(const b of G.nodes){
+   if(b.comp===a.comp)continue
+   const d=gd(a,b);if(d<bd){bd=d;bi=a;bj=b}}
+  if(!bi)break
+  G.edges.push({a:bi.id,b:bj.id,alive:true,mine:true});added++
+  comps(G);gMain(G)
+  src=chain?[bj]:G.nodes.filter(n=>n.comp===G.nodes[bj.id].comp)}
+ return added}
+/* 合并「最大的两块」——不看距离,所以贵 */
+function gMerge(G){
+ const ord=Object.entries(G.cnt).sort((a,b)=>b[1]-a[1])
+ if(ord.length<2)return 0
+ const A2=+ord[0][0],B2=+ord[1][0]
+ let bi=null,bj=null,bd=1e9
+ for(const a of G.nodes)if(a.comp===A2)for(const b of G.nodes)if(b.comp===B2){
+  const d=gd(a,b);if(d<bd){bd=d;bi=a;bj=b}}
+ if(!bi)return 0
+ G.edges.push({a:bi.id,b:bj.id,alive:true,mine:true});comps(G);gMain(G);return 1}
+/* 敌人断边:优先断「桥」——断掉就会多出一块 */
+function gCut(G,k){let cut=0
+ for(let t=0;t<k;t++){
+  const live=G.edges.filter(e=>e.alive&&!e.safe);if(!live.length)break
+  let best=null,bestGain=-1
+  for(const e of live){e.alive=false;const nc=comps(G);e.alive=true
+   const gain=nc-G.nc0
+   if(gain>bestGain){bestGain=gain;best=e}}
+  if(best){best.alive=false;cut++;comps(G);gMain(G)}}
+ return cut}
+
+/* ═══ 图战场:节点 + 边 + 连通块 ═══
+   数组的胜利条件是「减到 0」,图的胜利条件是「让所有点连通」——
+   换数据结构会顺带换掉胜负轴。这一段是渲染与布局,先看长什么样。 */
+function makeGraph(n,R,A){
+ const nodes=[],MIN=52
+ for(let i=0;i<n;i++){ // 拒绝采样撒点,再做几轮斥力松弛,避免重叠
+  let best=null,bd=-1
+  for(let t=0;t<24;t++){
+   const x=A.x+40+R()*(A.w-80), y=A.y+40+R()*(A.h-80)
+   let d=1e9;for(const m of nodes)d=Math.min(d,Math.hypot(m.x-x,m.y-y))
+   if(!nodes.length){best={x,y};break}
+   if(d>bd){bd=d;best={x,y}}}
+  nodes.push({id:i,x:best.x,y:best.y,comp:i,reached:false,dist:-1})}
+ for(let it=0;it<70;it++)for(const a2 of nodes)for(const b2 of nodes){
+  if(a2===b2)continue
+  const dx=a2.x-b2.x,dy=a2.y-b2.y,d=Math.hypot(dx,dy)||1
+  if(d<MIN){const f=(MIN-d)/d*.5;a2.x+=dx*f;a2.y+=dy*f;b2.x-=dx*f;b2.y-=dy*f}}
+ for(const m of nodes){m.x=Math.max(A.x+26,Math.min(A.x+A.w-26,m.x))
+  m.y=Math.max(A.y+26,Math.min(A.y+A.h-26,m.y))}
+ // 连最近的 k 个邻居(不能用固定像素阈值 —— 那会随画布大小失效)
+ const edges=[],seen=new Set()
+ const add=(i,j)=>{const k=i<j?i+'_'+j:j+'_'+i
+  if(seen.has(k))return;seen.add(k);edges.push({a:i,b:j,alive:true})}
+ for(let i=0;i<n;i++){
+  const near=nodes.map((m,j)=>({j,d:Math.hypot(m.x-nodes[i].x,m.y-nodes[i].y)}))
+   .filter(o=>o.j!==i).sort((a2,b2)=>a2.d-b2.d)
+  const k=1+(R()<.55?1:0)          // 每个点连 1~2 个最近邻 → 自然长出好几个连通块
+  for(let t=0;t<k&&t<near.length;t++)add(i,near[t].j)}
+ const G={nodes,edges};comps(G)
+ // 断桥会把叶子一个个剥下来 —— 得到一堆单点,不好看也不好玩。
+ // 改成按【空间位置】分簇:每个节点归到最近的簇心,只保留簇内的边。
+ // 这样天然长出几个大小相当的「小圈子」,正是社交网络的样子。
+ const K=Math.max(3,Math.min(8,Math.round(Math.sqrt(n)*0.9)))
+ const cent=[]
+ for(let i=0;i<K;i++){let best=null,bd=-1
+  for(let t=0;t<40;t++){const c={x:A.x+60+R()*(A.w-120),y:A.y+60+R()*(A.h-120)}
+   let d=1e9;for(const m of cent)d=Math.min(d,Math.hypot(m.x-c.x,m.y-c.y))
+   if(!cent.length){best=c;break}
+   if(d>bd){bd=d;best=c}}
+  cent.push(best)}
+ for(const nd of G.nodes){let bi=0,bd=1e9
+  cent.forEach((c,i)=>{const d=Math.hypot(c.x-nd.x,c.y-nd.y);if(d<bd){bd=d;bi=i}})
+  nd.cl=bi}
+ for(const e of G.edges)if(G.nodes[e.a].cl!==G.nodes[e.b].cl)e.alive=false
+ // 簇内补边,保证每个簇自己是连通的
+ for(let c=0;c<K;c++){const grp=G.nodes.filter(nd=>nd.cl===c)
+  for(const a2 of grp){let near=grp.filter(b2=>b2!==a2)
+    .sort((x,y)=>Math.hypot(x.x-a2.x,x.y-a2.y)-Math.hypot(y.x-a2.x,y.y-a2.y))
+   for(let t=0;t<GDENS&&t<near.length;t++){
+    const i=a2.id,j=near[t].id
+    const ex=G.edges.find(e=>(e.a===i&&e.b===j)||(e.a===j&&e.b===i))
+    if(ex)ex.alive=true;else G.edges.push({a:i,b:j,alive:true})}}}
+ comps(G);gMain(G);return G}
+function comps(G){ // 并查集:算连通块
+ const p=G.nodes.map((_,i)=>i)
+ const find=x=>{while(p[x]!==x){p[x]=p[p[x]];x=p[x]}return x}
+ for(const e of G.edges)if(e.alive){const a2=find(e.a),b2=find(e.b);if(a2!==b2)p[a2]=b2}
+ const map=new Map()
+ G.nodes.forEach(nd=>{const r=find(nd.id);if(!map.has(r))map.set(r,map.size);nd.comp=map.get(r)})
+ G.nc0=G.nc||map.size;G.nc=map.size
+ const cnt={};G.nodes.forEach(nd=>cnt[nd.comp]=(cnt[nd.comp]||0)+1)
+ G.big=Math.max(...Object.values(cnt));G.cnt=cnt
+ return G.nc}
+const COMPC=['#43C3E0','#B39DDB','#8EE6C8','#FFB3D9','#E5A245','#9ECBFF','#FF8F6B']
+function drawGraph(A,G,ripple){
+ // 边:同块的用该块的颜色,亮;跨块的暗
+ for(const e of G.edges){ if(!e.alive)continue
+  const a2=G.nodes[e.a],b2=G.nodes[e.b], same=a2.comp===b2.comp
+  const col=COMPC[a2.comp%COMPC.length]
+  if(same){ // 先描一道更粗的暗色底,再压一道亮线 —— 交叉处不会糊
+   ctx.strokeStyle='rgba(6,12,20,.9)';ctx.lineWidth=4.5
+   ctx.beginPath();ctx.moveTo(a2.x,a2.y);ctx.lineTo(b2.x,b2.y);ctx.stroke()
+   ctx.strokeStyle=col.replace('#','rgba(')&&col;ctx.globalAlpha=.5;ctx.lineWidth=1.8
+   ctx.beginPath();ctx.moveTo(a2.x,a2.y);ctx.lineTo(b2.x,b2.y);ctx.stroke();ctx.globalAlpha=1
+  }else{ctx.strokeStyle='rgba(140,175,205,.10)';ctx.lineWidth=1
+   ctx.beginPath();ctx.moveTo(a2.x,a2.y);ctx.lineTo(b2.x,b2.y);ctx.stroke()}}
+ // BFS 波纹
+ if(ripple){const {cx,cy,t}=ripple
+  for(let k=0;k<3;k++){const r=(t*1.15-k*.16)
+   if(r<=0||r>1)continue
+   ctx.strokeStyle='rgba(95,208,232,'+(0.5*(1-r))+')';ctx.lineWidth=1.4
+   ctx.setLineDash([3,5]);ctx.beginPath();ctx.arc(cx,cy,r*360,0,7);ctx.stroke();ctx.setLineDash([])}}
+ // 节点:先铺一层辉光,再画实心圆和环
+ for(const nd of G.nodes){
+  const col=COMPC[nd.comp%COMPC.length], main=nd.comp===G.mainComp, r=main?12:10
+  const gg=ctx.createRadialGradient(nd.x,nd.y,r*.4,nd.x,nd.y,r*3.2)
+  gg.addColorStop(0,col);gg.addColorStop(1,'rgba(0,0,0,0)')
+  ctx.globalAlpha=main?.30:.16;ctx.fillStyle=gg
+  ctx.beginPath();ctx.arc(nd.x,nd.y,r*3.2,0,7);ctx.fill();ctx.globalAlpha=1
+  ctx.fillStyle='#080E16';ctx.beginPath();ctx.arc(nd.x,nd.y,r,0,7);ctx.fill()
+  ctx.fillStyle=col;ctx.globalAlpha=main?.24:.10
+  ctx.beginPath();ctx.arc(nd.x,nd.y,r,0,7);ctx.fill();ctx.globalAlpha=1
+  ctx.strokeStyle=col;ctx.lineWidth=main?2.2:1.4
+  ctx.beginPath();ctx.arc(nd.x,nd.y,r,0,7);ctx.stroke()
+  if(nd.dist>=0){ctx.fillStyle=col;ctx.font='700 10px "IBM Plex Mono",monospace'
+   ctx.textAlign='center';ctx.fillText(String(nd.dist),nd.x,nd.y+3.6);ctx.textAlign='left'}}
+}
+
+/* ═══ 「这堆数据的一生」——把一整局压成一张竖版海报 ═══
+   排序在视觉上就是「噪声收敛成梯度」。把每一回合的柱子压成一行、行行相接,
+   整局就是一块织物:上面是彩噪,下面收敛成平滑色带,中间被敌人的招牌动作打断。
+   越往后的关卡收敛得越快 —— 那是「我变强了」的可视化证明,不需要任何文案。 */
+function posterCanvas(films,kit){
+ const W=1080, PAD=56, RIGHT=232, BODY=W-PAD*2-RIGHT
+ const rows=films.reduce((a,f)=>a+f.film.length,0)
+ const rowH=Math.max(7,Math.min(19,Math.round(1180/Math.max(rows,1))))
+ const bandH=44                                   // 每关的小标题条
+ const H=250+films.length*bandH+rows*rowH+230
+ const c=document.createElement('canvas');c.width=W;c.height=H
+ const g=c.getContext('2d')
+ // 底
+ const bg=g.createLinearGradient(0,0,0,H);bg.addColorStop(0,'#0B121B');bg.addColorStop(1,'#060A10')
+ g.fillStyle=bg;g.fillRect(0,0,W,H)
+ g.strokeStyle='rgba(70,130,170,.05)';g.lineWidth=1
+ for(let x=0;x<W;x+=54){g.beginPath();g.moveTo(x+.5,0);g.lineTo(x+.5,H);g.stroke()}
+ // 在游戏自己的三个颜色之间插值(青→琥珀→橙红),不走色相环,避开绿色
+ const STOPS=[[67,195,224],[229,162,69],[214,86,52]]
+ const tint=(v,mx)=>{const raw=Math.min(1,Math.max(0,v/Math.max(mx,1)))
+  const t=Math.pow(raw,1.45)          // 伽马:把中间段推向青色一侧,别让整张图糊成橙的
+  const k=t<.5?0:1, u=t<.5?t*2:(t-.5)*2, a=STOPS[k], b2=STOPS[k+1]
+  const m=.5+.5*raw                    // 亮度按原值走,低值保持可见的青而不是黑
+  return 'rgb('+Math.round((a[0]+(b2[0]-a[0])*u)*m)+','+Math.round((a[1]+(b2[1]-a[1])*u)*m)+','
+    +Math.round((a[2]+(b2[2]-a[2])*u)*m)+')'}
+ let y=0
+ // ── 抬头 ──
+ g.textAlign='left'
+ g.font='600 13px "IBM Plex Mono",monospace';g.fillStyle='#43C3E0'
+ g.letterSpacing='5px';g.fillText('这 堆 数 据 的 一 生',PAD,86);g.letterSpacing='0px'
+ const won=films.length&&films[films.length-1].won&&films.length>=8
+ g.font='800 58px system-ui';g.fillStyle='#E8F1F8'
+ g.fillText(films.length>=8&&films.every(f=>f.won)?'通关':'第 '+films.length+' 关',PAD,152)
+ const totT=films.reduce((a,f)=>a+f.turns,0)
+ g.font='400 17px system-ui';g.fillStyle='#7E93A8'
+ g.fillText(({sort:'排序流',dc:'分治流',memo:'预处理流',greedy:'贪心流',heap:'堆流',twop:'区间流',base:'不构筑'}[kit]||kit)
+   +'  ·  '+films.length+' 关  ·  共 '+totT+' 回合',PAD,184)
+ // 右上角:总回合数(可比较的成绩)
+ g.textAlign='right'
+ g.font='800 64px system-ui';g.fillStyle='#E5A245';g.fillText(String(totT),W-PAD,152)
+ g.font='500 12px "IBM Plex Mono",monospace';g.fillStyle='#5A6E82'
+ g.letterSpacing='3px';g.fillText('TURNS',W-PAD,176);g.letterSpacing='0px'
+ g.textAlign='left'
+ y=250
+ // ── 每一关:小标题条 + 时间瀑布 ──
+ films.forEach((f,fi)=>{
+  const SH=SHAPES[f.shape]||SHAPES.random
+  g.fillStyle='rgba(255,255,255,.035)';g.fillRect(PAD,y-4,W-PAD*2,bandH-8)
+  g.font='700 15px system-ui';g.fillStyle=f.won?'#8FD4A8':'#FF8F6B'
+  g.fillText(String(fi+1).padStart(2,'0'),PAD+12,y+19)
+  g.fillStyle='#D6E3EF';g.fillText(f.name,PAD+44,y+19)
+  const nw=g.measureText(f.name).width          // 必须用画名字时的字号量
+  g.font='400 12.5px system-ui';g.fillStyle='#5FD0E8'
+  g.fillText(SH.name,PAD+44+nw+16,y+19)
+  g.textAlign='right';g.font='500 12.5px "IBM Plex Mono",monospace';g.fillStyle='#7E93A8'
+  g.fillText(f.turns+' 回合',W-PAD-12,y+19);g.textAlign='left'
+  y+=bandH
+  const mxN=Math.max(...f.film.map(r=>r.v.length),1)
+  const mxV=Math.max(...f.film.flatMap(r=>r.v),1)
+  const cw=BODY/mxN
+  f.film.forEach(r=>{
+   const w=r.v.length*cw, x0=PAD+(BODY-w)/2
+   r.v.forEach((v,i)=>{g.fillStyle=tint(v,mxV)
+    g.fillRect(x0+i*cw,y,Math.ceil(cw),rowH)})
+   // 敌人发招:一条红线横穿整张图
+   if(r.act){g.strokeStyle='rgba(255,90,74,.9)';g.lineWidth=1.5
+    g.beginPath();g.moveTo(PAD-14,y+rowH/2);g.lineTo(W-PAD-RIGHT+8,y+rowH/2);g.stroke()
+    g.font='700 10px system-ui';g.fillStyle='#FF5A4A'
+    g.fillText('◆ '+r.act,W-PAD-RIGHT+14,y+rowH/2+4)}
+   else if(r.cards.length){
+    g.font='400 10px system-ui';g.fillStyle='rgba(180,200,218,.62)'
+    let t=r.cards.map(id=>C[id]?C[id].name:id).join(' ')
+    while(g.measureText(t).width>RIGHT-18)t=t.slice(0,-1)
+    g.fillText(t,W-PAD-RIGHT+14,y+rowH/2+3.5)}
+   y+=rowH})
+  y+=22
+ })
+ // ── 页脚 ──
+ y+=18
+ g.strokeStyle='rgba(88,140,175,.22)';g.lineWidth=1
+ g.beginPath();g.moveTo(PAD,y);g.lineTo(W-PAD,y);g.stroke()
+ y+=40
+ const last=films[films.length-1]
+ const allWon=films.length>=8&&films.every(f=>f.won)
+ if(!allWon&&last&&last.diag.length){
+  g.font='600 19px system-ui';g.fillStyle='#FF8F6B';g.fillText('你输在这里',PAD,y);y+=32
+  g.font='400 15.5px system-ui';g.fillStyle='#B7C7D6'
+  last.diag.slice(0,2).forEach(t=>{let s2=t
+   while(g.measureText(s2).width>W-PAD*2)s2=s2.slice(0,-1)
+   g.fillText(s2,PAD,y);y+=26})
+ }else if(allWon){
+  g.font='600 19px system-ui';g.fillStyle='#8FD4A8';g.fillText('八关全过',PAD,y);y+=30
+ }else{
+  g.font='600 19px system-ui';g.fillStyle='#7E93A8'
+  g.fillText('倒在「'+(last?last.name:'')+'」',PAD,y);y+=30}
+ y+=12
+ g.font='400 12.5px "IBM Plex Mono",monospace';g.fillStyle='#4A5C6E'
+ g.fillText('算法卡牌 · 卡是算法,敌人是有性质的数据',PAD,y)
+ return c}
+
+/* ── 面板与基础件 ── */
+function panel(x,y,w,h,title){
+ ctx.fillStyle=CO.panel;ctx.fillRect(x,y,w,h)
+ ctx.strokeStyle=CO.line;ctx.lineWidth=1;ctx.strokeRect(x+.5,y+.5,w-1,h-1)
+ ctx.strokeStyle='rgba(95,208,232,.55)';ctx.lineWidth=1.5
+ const c=9;[[x,y,1,1],[x+w,y,-1,1],[x,y+h,1,-1],[x+w,y+h,-1,-1]].forEach(([px,py,sx,sy])=>{
+  ctx.beginPath();ctx.moveTo(px+sx*c,py);ctx.lineTo(px,py);ctx.lineTo(px,py+sy*c);ctx.stroke()})
+ if(title){ctx.textAlign='left';ctx.font='600 10.5px system-ui';ctx.fillStyle=CO.faint
+  ctx.letterSpacing='2px';ctx.fillText(title,x+14,y+22);ctx.letterSpacing='0px'}}
+function hex(cx,cy,r,fill){ctx.beginPath()
+ for(let i=0;i<6;i++){const a=Math.PI/180*(60*i-30);const px=cx+r*Math.cos(a),py=cy+r*Math.sin(a)
+  i?ctx.lineTo(px,py):ctx.moveTo(px,py)} ctx.closePath();ctx.fillStyle=fill;ctx.fill()}
+function bar(x,y,w,h,v,mx,dim){const hue=v<=mx*.35?188:v<=mx*.7?38:22
+ const g=ctx.createLinearGradient(0,y,0,y+h)
+ g.addColorStop(0,`hsl(${hue} 88% ${62}%)`);g.addColorStop(1,`hsl(${hue} 78% 30%)`)
+ ctx.globalAlpha=dim??1;ctx.fillStyle=g;ctx.fillRect(x,y,w,h)
+ ctx.fillStyle=`hsla(${hue} 100% 78% / .9)`;ctx.fillRect(x,y,w,2);ctx.globalAlpha=1}
+function btn(x,y,w,h,t,c){c=c||CO.amber
+ ctx.fillStyle='rgba(240,169,74,.14)';ctx.fillRect(x,y,w,h)
+ ctx.strokeStyle=c;ctx.lineWidth=1.4;ctx.strokeRect(x+.5,y+.5,w-1,h-1)
+ ctx.fillStyle=c;ctx.font='700 13.5px system-ui';ctx.textAlign='center'
+ ctx.letterSpacing='1px';ctx.fillText(t,x+w/2,y+h/2+5);ctx.letterSpacing='0px';ctx.textAlign='left'
+ btn.last=[x,y,w,h]}
+
+/* ── 卡面小示意图(「卡面可推、不许查表」的视觉落地)── */
+const ICON={
+ sweep(x,y,w,h){const n=6,bw=w/(n*1.7)
+  for(let i=0;i<n;i++){const bh=h*(.3+.55*Math.abs(Math.sin(i*1.9)))
+   ctx.fillStyle=i<3?'rgba(95,208,232,.35)':'rgba(95,208,232,.85)';ctx.fillRect(x+i*bw*1.7,y+h-bh,bw,bh)}
+  ctx.strokeStyle='#bff2ff';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x-2,y+h*.55);ctx.lineTo(x+w*.62,y+h*.55);ctx.stroke()
+  ctx.fillStyle='#bff2ff';ctx.beginPath();ctx.moveTo(x+w*.62,y+h*.55-4);ctx.lineTo(x+w*.72,y+h*.55);ctx.lineTo(x+w*.62,y+h*.55+4);ctx.fill()},
+ sortic(x,y,w,h){const n=4,bw=w*.36/n
+  const a=[.9,.35,.7,.5],b=[.3,.5,.7,.95]
+  a.forEach((v,i)=>{ctx.fillStyle='rgba(240,169,74,.5)';ctx.fillRect(x+i*bw*1.35,y+h-h*v,bw,h*v)})
+  b.forEach((v,i)=>{ctx.fillStyle='#f0a94a';ctx.fillRect(x+w*.62+i*bw*1.35,y+h-h*v,bw,h*v)})
+  ctx.strokeStyle=CO.dim;ctx.lineWidth=1.4;ctx.beginPath()
+  ctx.moveTo(x+w*.44,y+h*.5);ctx.lineTo(x+w*.57,y+h*.5);ctx.stroke()
+  ctx.fillStyle=CO.dim;ctx.beginPath();ctx.moveTo(x+w*.57,y+h*.5-3);ctx.lineTo(x+w*.62,y+h*.5);ctx.lineTo(x+w*.57,y+h*.5+3);ctx.fill()},
+ split(x,y,w,h){const n=7,bw=w/(n*1.6)
+  for(let i=0;i<n;i++){const bh=h*(.25+.1*i)
+   ctx.fillStyle=i<3?'rgba(240,169,74,.22)':'#f0a94a';ctx.fillRect(x+i*bw*1.6,y+h-bh,bw,bh)}
+  ctx.strokeStyle='#ffd88a';ctx.lineWidth=1.6;ctx.setLineDash([3,3])
+  ctx.beginPath();ctx.moveTo(x+w*.44,y-2);ctx.lineTo(x+w*.44,y+h+2);ctx.stroke();ctx.setLineDash([])},
+ divideic(x,y,w,h){const bw=w*.1
+  for(let i=0;i<3;i++){ctx.fillStyle='#b39ddb';ctx.fillRect(x+i*bw*1.4,y+h*.35,bw,h*.6)}
+  for(let i=0;i<3;i++){ctx.fillStyle='rgba(179,157,219,.75)';ctx.fillRect(x+w*.6+i*bw*1.4,y+h*.35,bw,h*.6)}
+  ctx.strokeStyle=CO.dim;ctx.lineWidth=1.3
+  ctx.beginPath();ctx.moveTo(x+w*.5,y);ctx.lineTo(x+w*.5,y+h);ctx.stroke()},
+ stack(x,y,w,h){for(let i=0;i<3;i++){ctx.fillStyle=`rgba(127,217,143,${.45+i*.2})`
+  ctx.fillRect(x+w*.18,y+h-(i+1)*h*.28+2,w*.4,h*.24)}
+  ctx.fillStyle='#7fd98f';ctx.font='700 13px system-ui';ctx.fillText('+',x+w*.68,y+h*.55)},
+ table(x,y,w,h){ctx.fillStyle='rgba(127,217,143,.35)';ctx.fillRect(x,y+h*.2,w*.34,h*.7)
+  ctx.strokeStyle='#7fd98f';ctx.lineWidth=1;ctx.strokeRect(x+.5,y+h*.2+.5,w*.34,h*.7)
+  for(let i=1;i<3;i++){ctx.beginPath();ctx.moveTo(x,y+h*.2+i*h*.23);ctx.lineTo(x+w*.34,y+h*.2+i*h*.23);ctx.stroke()}
+  ctx.strokeStyle=CO.dim;ctx.beginPath();ctx.moveTo(x+w*.42,y+h*.55);ctx.lineTo(x+w*.56,y+h*.55);ctx.stroke()
+  ctx.fillStyle=CO.dim;ctx.beginPath();ctx.moveTo(x+w*.56,y+h*.55-3);ctx.lineTo(x+w*.62,y+h*.55);ctx.lineTo(x+w*.56,y+h*.55+3);ctx.fill()
+  for(let i=0;i<3;i++){const bh=h*(.3+.2*i);ctx.fillStyle='#7fd98f';ctx.fillRect(x+w*.68+i*w*.11,y+h-bh,w*.08,bh)}},
+ strike(x,y,w,h){for(let i=0;i<4;i++){const bh=h*(.4+.15*i)
+   ctx.fillStyle=i===1?'rgba(255,143,107,.3)':'#ff8f6b';ctx.fillRect(x+i*w*.2,y+h-bh,w*.13,bh)}
+  ctx.strokeStyle='#ff6b5e';ctx.lineWidth=2
+  ctx.beginPath();ctx.moveTo(x+w*.16,y+h*.25);ctx.lineTo(x+w*.34,y+h*.85)
+  ctx.moveTo(x+w*.34,y+h*.25);ctx.lineTo(x+w*.16,y+h*.85);ctx.stroke()},
+ prune(x,y,w,h){ctx.strokeStyle='#5fd0e8';ctx.lineWidth=1.6
+  ctx.beginPath();ctx.moveTo(x+w*.5,y+h);ctx.lineTo(x+w*.5,y+h*.55)
+  ctx.moveTo(x+w*.5,y+h*.55);ctx.lineTo(x+w*.24,y+h*.2)
+  ctx.moveTo(x+w*.5,y+h*.55);ctx.lineTo(x+w*.76,y+h*.2);ctx.stroke()
+  ctx.strokeStyle='rgba(255,107,94,.85)';ctx.setLineDash([2,3])
+  ctx.beginPath();ctx.moveTo(x+w*.62,y+h*.42);ctx.lineTo(x+w*.9,y+h*.1);ctx.stroke();ctx.setLineDash([])
+  ctx.strokeStyle='#ff6b5e';ctx.lineWidth=2
+  ctx.beginPath();ctx.moveTo(x+w*.58,y+h*.3);ctx.lineTo(x+w*.72,y+h*.46)
+  ctx.moveTo(x+w*.72,y+h*.3);ctx.lineTo(x+w*.58,y+h*.46);ctx.stroke()},
+ undo(x,y,w,h){ctx.strokeStyle='#5fd0e8';ctx.lineWidth=2
+  ctx.beginPath();ctx.arc(x+w*.5,y+h*.55,h*.34,Math.PI*.7,Math.PI*2.1);ctx.stroke()
+  ctx.fillStyle='#5fd0e8';ctx.beginPath()
+  ctx.moveTo(x+w*.5-h*.34,y+h*.55-6);ctx.lineTo(x+w*.5-h*.34-6,y+h*.55+3);ctx.lineTo(x+w*.5-h*.34+6,y+h*.55+3);ctx.fill()},
+ shield(x,y,w,h){const cx=x+w*.36,cy=y+h*.5,r=h*.4
+  ctx.strokeStyle='#a8c0d6';ctx.lineWidth=1.8;ctx.beginPath();ctx.arc(cx,cy,r,0,7);ctx.stroke()
+  ctx.beginPath();ctx.moveTo(cx,cy-r*.55);ctx.lineTo(cx,cy);ctx.lineTo(cx+r*.5,cy+r*.28);ctx.stroke()
+  ctx.fillStyle='#7fd98f';ctx.font='700 15px system-ui';ctx.fillText('+5',x+w*.62,cy+5)},
+ eye(x,y,w,h){ctx.strokeStyle='#9fb3c8';ctx.lineWidth=1.6;ctx.beginPath()
+  ctx.ellipse(x+w*.5,y+h*.5,w*.36,h*.3,0,0,7);ctx.stroke()
+  ctx.fillStyle='#9fb3c8';ctx.beginPath();ctx.arc(x+w*.5,y+h*.5,h*.14,0,7);ctx.fill()},
+ bucket(x,y,w,h){for(let i=0;i<3;i++){ctx.strokeStyle='rgba(95,208,232,.7)';ctx.lineWidth=1.2
+   ctx.strokeRect(x+i*w*.34+.5,y+h*.55+.5,w*.24,h*.42)
+   ctx.fillStyle='#5fd0e8';ctx.beginPath();ctx.arc(x+i*w*.34+w*.12,y+h*.22,3,0,7);ctx.fill()
+   ctx.strokeStyle='rgba(95,208,232,.5)';ctx.beginPath()
+   ctx.moveTo(x+i*w*.34+w*.12,y+h*.3);ctx.lineTo(x+i*w*.34+w*.12,y+h*.5);ctx.stroke()}},
+}
+const CARDIC={scan:'sweep',lookup:'table',dp:'table',parallel:'sweep',batch:'shield',watch:'eye',
+ bubble:'sortic',merge:'sortic',quick:'sortic',insertion:'sortic',counting:'bucket',topk:'stack',bsearch:'split',median:'split',
+ divide:'divideic',mergeup:'divideic',recur:'divideic',
+ sortdeck:'sortic',fetch:'table',prefetch:'eye',memoize:'stack',compress:'bucket',
+ cache:'shield',lazy:'shield',batchc:'shield',incr:'shield',
+ buildheap:'stack',heapify:'stack',poptop:'strike',heapsort:'sortic',medstream:'split',
+ twoptr:'split',window:'sweep',prefix:'stack',diff:'sweep',merge2:'bucket',monoq:'shield',pre:'stack',table:'stack',
+ greedy:'strike',local:'strike',heur:'strike',anneal:'strike',approx:'strike',
+ prune:'prune',backtrack:'undo',hash:'bucket'}
+
+/* ── 主绘制 ── */
+function draw(){
+ const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,CO.bg1);g.addColorStop(1,CO.bg0)
+ ctx.fillStyle=g;ctx.fillRect(0,0,W,H)
+ grid()
+ if(window.__GDEMO){const G=window.__GDEMO
+  const A={x:236,y:150,w:W-236-244,h:H-330}
+  panel(16,150,204,300,'图 战 场')
+  let yy=196
+  const kv2=(k,v,c)=>{ctx.font='400 11.5px system-ui';ctx.fillStyle=CO.dim;ctx.fillText(k,30,yy)
+   ctx.textAlign='right';ctx.font='700 14px system-ui';ctx.fillStyle=c||CO.ink
+   ctx.fillText(v,206,yy);ctx.textAlign='left';yy+=26}
+  kv2('节点',String(G.nodes.length))
+  kv2('边',String(G.edges.filter(e=>e.alive).length))
+  kv2('连通块',String(G.nc),G.nc>1?CO.amber:CO.green)
+  kv2('最大块',G.big+' / '+G.nodes.length,CO.cyan)
+  yy+=8
+  ctx.font='600 10px system-ui';ctx.fillStyle=CO.faint;ctx.letterSpacing='2px'
+  ctx.fillText('连 通 块',30,yy);ctx.letterSpacing='0px';yy+=18
+  Object.entries(G.cnt).sort((a2,b2)=>b2[1]-a2[1]).slice(0,5).forEach(([c,k])=>{
+   ctx.fillStyle=COMPC[c%COMPC.length];ctx.beginPath();ctx.arc(36,yy-3.5,4.5,0,7);ctx.fill()
+   ctx.font='400 11px system-ui';ctx.fillStyle=+c===G.mainComp?CO.ink:CO.dim
+   ctx.fillText(k+' 个节点'+(+c===G.mainComp?'  ← 最大':''),48,yy);yy+=16})
+  const cx2=W/2
+  ctx.textAlign='center'
+  ctx.font='600 10.5px system-ui';ctx.letterSpacing='3px';ctx.fillStyle=CO.dim
+  ctx.fillText('敌人 · 图',cx2,72);ctx.letterSpacing='0px'
+  ctx.font='700 23px system-ui';ctx.fillStyle=CO.ink;ctx.fillText('断开的社交网络',cx2,102)
+  const bw3=Math.min(440,A.w*.62),bx3=cx2-bw3/2,pr=G.big/G.nodes.length
+  ctx.fillStyle='rgba(255,255,255,.06)';ctx.fillRect(bx3,112,bw3,11)
+  const hg3=ctx.createLinearGradient(bx3,0,bx3+bw3,0)
+  hg3.addColorStop(0,'#43C3E0');hg3.addColorStop(1,'#8EE6C8')
+  ctx.fillStyle=hg3;ctx.fillRect(bx3,112,bw3*pr,11)
+  ctx.strokeStyle=CO.line;ctx.strokeRect(bx3+.5,112.5,bw3-1,11)
+  ctx.font='700 14px system-ui';ctx.fillStyle=CO.ink
+  ctx.fillText('最大连通块 '+G.big+' / '+G.nodes.length+' 个节点',cx2,150)
+  ctx.font='400 10.5px system-ui';ctx.fillStyle=CO.cyan
+  ctx.fillText('全部连通即胜  ·  现在还有 '+G.nc+' 块散着',cx2,166)
+  ctx.textAlign='left'
+  drawGraph(A,G,window.__RIP)
+  return req()}
+ if(poster){const sc=Math.min((H-40)/poster.height,1)
+  ctx.fillStyle='rgba(4,8,13,.97)';ctx.fillRect(0,0,W,H)
+  ctx.drawImage(poster,(W-poster.width*sc)/2,20,poster.width*sc,poster.height*sc)
+  ctx.textAlign='center';ctx.font='600 12px system-ui';ctx.fillStyle=CO.dim
+  ctx.fillText('P 收起 · S 保存 PNG',W/2,H-8);ctx.textAlign='left'
+  return req()}
+ if(RUN.over)  {overScreen();return req()}
+ if(intel)     {intelScreen();return req()}
+ if(offer)     {offerScreen();return req()}
+ fightScreen();req()}
+function grid(){ctx.strokeStyle='rgba(70,130,170,.07)';ctx.lineWidth=1
+ for(let x=0;x<W;x+=48){ctx.beginPath();ctx.moveTo(x+.5,0);ctx.lineTo(x+.5,H);ctx.stroke()}
+ for(let y=0;y<H;y+=48){ctx.beginPath();ctx.moveTo(0,y+.5);ctx.lineTo(W,y+.5);ctx.stroke()}}
+
+function fightScreen(){
+ const HANDY=H-172,ARENA={x:236,y:150,w:W-236-244,h:HANDY-190}
+ topBar(); enemyHeader(ARENA)
+ legendPanel(16,150,204,(S.mult>1?452:430)+(S.FL?66:0))
+ const th=traitPanel(W-228,150,212)
+ statsPanel(W-228,150+th+12,212,ARENA.h+28-th)
+ if(S.mode==='graph'){graphArena(ARENA)}else{arena(ARENA)}
+ flawBanner()
+ deckPile(16,HANDY+16); handRow(HANDY)
+ btn(W-166,H-58,148,40,'结束回合'); discardPile(W-166,HANDY+16)}
+
+function topBar(){
+ ctx.font='600 10.5px system-ui';ctx.letterSpacing='2px';ctx.fillStyle=CO.faint
+ ctx.fillText('预算',20,28);ctx.fillText('步数',188,28);ctx.letterSpacing='0px'
+ ctx.font='700 30px system-ui';ctx.fillStyle=S.budget>18?CO.ink:CO.red
+ ctx.fillText(String(S.budget),20,60)
+ ctx.font='600 12px system-ui';ctx.fillStyle=CO.faint;ctx.fillText('/ '+(RUN?RUN.cap:T.BUDGET),20+ctx.measureText(String(S.budget)).width+34,60)
+ for(let i=0;i<T.STEPS;i++)hex(196+i*26,50,10,i<S.steps?CO.amber:'rgba(120,150,180,.22)')
+ ctx.textAlign='right';ctx.font='600 10.5px system-ui';ctx.letterSpacing='2px';ctx.fillStyle=CO.faint
+ ctx.fillText('回合',W-20,28);ctx.letterSpacing='0px'
+ ctx.font='700 30px system-ui';ctx.fillStyle=CO.ink;ctx.fillText(String(S.turn),W-20,60);ctx.textAlign='left'
+ ctx.font='600 11px system-ui';ctx.fillStyle=CO.faint;ctx.textAlign='center'
+ ctx.fillText(`第 ${RUN.node+1} / ${PATH.length} 关`,W/2,28);ctx.textAlign='left'}
+
+function enemyHeader(A){
+ const cx=W/2,kc=S.E.kind==='Boss'?CO.red:S.E.kind==='精英'?CO.amber:CO.dim
+ ctx.textAlign='center'
+ ctx.font='600 10.5px system-ui';ctx.letterSpacing='3px';ctx.fillStyle=kc
+ ctx.fillText(`敌人 · ${S.E.kind}`,cx,72);ctx.letterSpacing='0px'
+ ctx.font='700 23px system-ui';ctx.fillStyle=CO.ink;ctx.fillText(S.E.name,cx,102)
+ // 主条 = 胜利条件(元素数归零就赢);副条 = 剩余工作量(削矮了多少,但还没清掉)
+ // 以前只画后者,而它和真实进度平均差 13 个点、最坏差 60 个点 —— 最显眼的条不是胜负标准
+ if(S.mode==='graph'){const G=S.G,bw4=Math.min(440,A.w*.62),bx4=cx-bw4/2,pr=G.big/G.nodes.length
+  ctx.fillStyle='rgba(255,255,255,.06)';ctx.fillRect(bx4,112,bw4,11)
+  const g4=ctx.createLinearGradient(bx4,0,bx4+bw4,0)
+  g4.addColorStop(0,'#43C3E0');g4.addColorStop(1,'#8EE6C8')
+  ctx.fillStyle=g4;ctx.fillRect(bx4,112,bw4*pr,11)
+  ctx.strokeStyle=CO.line;ctx.strokeRect(bx4+.5,112.5,bw4-1,11)
+  ctx.font='700 14px system-ui';ctx.fillStyle=CO.ink
+  ctx.fillText('最大连通块 '+G.big+' / '+G.nodes.length+' 个节点',cx,150)
+  ctx.font='400 10.5px system-ui';ctx.fillStyle=CO.cyan
+  ctx.fillText('全部连通即胜  ·  现在还散成 '+G.nc+' 块',cx,166)
+  ctx.font='400 11.5px system-ui';ctx.fillStyle=CO.faint;ctx.fillText(S.E.note,cx,188)
+  const ACT3=ACTS[S.foeId]
+  if(ACT3){const t3=(S.actIn<=1?'下回合 ▶ ':'再 '+S.actIn+' 回合 ▶ ')+ACT3.name+' · '+ACT3.desc
+   ctx.font='700 12px system-ui';const tw3=ctx.measureText(t3).width
+   const soon3=S.actIn<=1
+   ctx.fillStyle=soon3?'rgba(255,107,94,.18)':'rgba(240,169,74,.10)'
+   ctx.fillRect(cx-tw3/2-30,196,tw3+60,24)
+   ctx.strokeStyle=soon3?CO.red:'rgba(240,169,74,.5)';ctx.lineWidth=soon3?1.6:1
+   ctx.strokeRect(cx-tw3/2-29.5,196.5,tw3+59,23)
+   ctx.fillStyle=soon3?CO.red:CO.amber;ctx.fillText(t3,cx,212)}
+  ctx.textAlign='left';return}
+ const nLeft=N(S), nAll=Math.max(S.n0||nLeft,1), np=Math.round(nLeft/nAll*100)
+ const hp=hpPct(S), bw=Math.min(440,A.w*.62), bx=cx-bw/2, by=112
+ ctx.fillStyle='rgba(255,255,255,.06)';ctx.fillRect(bx,by,bw,11)
+ const hg=ctx.createLinearGradient(bx,0,bx+bw,0)
+ hg.addColorStop(0,'#ff8f6b');hg.addColorStop(1,'#f0a94a')
+ ctx.fillStyle=hg;ctx.fillRect(bx,by,bw*np/100,11)
+ ctx.strokeStyle=CO.line;ctx.strokeRect(bx+.5,by+.5,bw-1,11)
+ ctx.fillStyle='rgba(255,255,255,.05)';ctx.fillRect(bx,by+14,bw,4)
+ ctx.fillStyle='rgba(95,208,232,.55)';ctx.fillRect(bx,by+14,bw*hp/100,4)
+ ctx.font='700 14px system-ui';ctx.fillStyle=CO.ink
+ ctx.fillText('还剩 '+nLeft+' 个元素',cx,by+38)
+ ctx.font='400 10.5px system-ui';ctx.fillStyle=CO.cyan
+ ctx.fillText('清零即胜  ·  下面这条细的是剩余工作量 '+hp+'%(削矮了,但还没清掉)',cx,by+54)
+ ctx.font='400 11.5px system-ui';ctx.fillStyle=CO.faint;ctx.fillText(S.E.note,cx,by+72)
+ // 意图:提前亮出招牌动作 —— 敌人第一次真正「要做什么」而不只是「有什么属性」
+ const ACT=ACTS[S.foeId]
+ if(ACT){const soon=S.actIn<=1
+  const t=(S.actIn<=1?'下回合 ▶ ':'再 '+S.actIn+' 回合 ▶ ')+ACT.name+' · '+ACT.desc
+  ctx.font='700 12px system-ui';const tw2=ctx.measureText(t).width
+  const bx2=cx-tw2/2-30,by2=by+80,bw2=tw2+60,bh2=24
+  ctx.fillStyle=soon?'rgba(255,107,94,.18)':'rgba(240,169,74,.10)'
+  ctx.fillRect(bx2,by2,bw2,bh2)
+  ctx.strokeStyle=soon?CO.red:'rgba(240,169,74,.5)';ctx.lineWidth=soon?1.6:1
+  ctx.strokeRect(bx2+.5,by2+.5,bw2-1,bh2-1)
+  ctx.fillStyle=soon?CO.red:CO.amber;ctx.fillText(t,cx,by2+16)
+  // 倒计时格子
+  for(let i=0;i<ACTEVERY;i++){const px=bx2+10+i*8
+   ctx.fillStyle=i<(ACTEVERY-S.actIn)?(soon?CO.red:CO.amber):'rgba(255,255,255,.18)'
+   ctx.fillRect(px,by2+9,5,6)}}
+ ctx.textAlign='left'}
+function flawBanner(){ if(!S.FL)return
+ const cx=W/2,t=`⚠ ${S.FL.name} · ${S.FL.note}`
+ ctx.textAlign='center';ctx.font='600 11.5px system-ui';const tw=ctx.measureText(t).width
+ ctx.fillStyle='rgba(10,18,28,.94)';ctx.fillRect(cx-tw/2-12,172,tw+24,22)
+ ctx.strokeStyle='rgba(255,107,94,.55)';ctx.lineWidth=1;ctx.strokeRect(cx-tw/2-11.5,172.5,tw+23,21)
+ ctx.fillStyle=CO.red;ctx.fillText(t,cx,187);ctx.textAlign='left'}
+
+function legendPanel(x,y,w,h){
+ panel(x,y,w,h,'图 例 / 状 态')
+ let yy=y+46
+ const row=(sw,label,val,c)=>{
+  if(sw==='bar'){ctx.fillStyle=c;ctx.fillRect(x+14,yy-8,10,10)}
+  else if(sw==='line'){ctx.strokeStyle=c;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x+14,yy-3);ctx.lineTo(x+26,yy-3);ctx.stroke()}
+  ctx.font='400 11.5px system-ui';ctx.fillStyle=CO.dim;ctx.fillText(label,x+32,yy)
+  if(val!=null){ctx.textAlign='right';ctx.font='700 12px system-ui'
+   ctx.fillStyle=val?c:CO.faint;ctx.fillText(String(val),x+w-14,yy);ctx.textAlign='left'}
+  yy+=23}
+ if(S.mode==='graph'){
+  ctx.font='600 10px system-ui';ctx.fillStyle=CO.faint
+  ctx.fillText('圆 = 一个节点,线 = 一条边',x+14,yy);yy+=20
+  ctx.font='400 11px system-ui';ctx.fillStyle=CO.cyan;ctx.fillText('你加边',x+14,yy)
+  ctx.fillStyle=CO.dim;ctx.fillText('把散块并进最大块',x+62,yy);yy+=17
+  ctx.fillStyle=CO.red;ctx.fillText('它断边',x+14,yy)
+  ctx.fillStyle=CO.dim;ctx.fillText('优先断「桥」—— 断了就多一块',x+62,yy);yy+=17
+  ctx.fillStyle=CO.amber;ctx.fillText('开销',x+14,yy)
+  ctx.fillStyle=CO.dim;ctx.fillText('按块数收 —— 越散越贵',x+62,yy);yy+=20
+  return}
+ ctx.font='600 10px system-ui';ctx.fillStyle=CO.faint;ctx.fillText('柱 = 一个元素,高 = 剩余处理量',x+14,yy);yy+=20
+ row('bar','值小',null,'hsl(188 88% 58%)')
+ row('bar','值中',null,'hsl(38 88% 58%)')
+ row('bar','值大',null,'hsl(22 88% 58%)')
+ yy+=10
+ ctx.font='600 10.5px system-ui';ctx.fillStyle=CO.faint;ctx.letterSpacing='1.5px'
+ ctx.fillText('两 类 卡',x+14,yy);ctx.letterSpacing='0px';yy+=18
+ ctx.font='400 11px system-ui';ctx.fillStyle=CO.cyan;ctx.fillText('摊平',x+14,yy)
+ ctx.fillStyle=CO.dim;ctx.fillText('总量 ÷ 元素数,每根矮一点',x+46,yy);yy+=15
+ ctx.fillStyle=CO.faint;ctx.font='400 10px system-ui'
+ ctx.fillText('规模越大越吃亏 · 遍历/并行/查表/DP',x+22,yy);yy+=19
+ ctx.font='400 11px system-ui';ctx.fillStyle=CO.amber;ctx.fillText('点杀',x+14,yy)
+ ctx.fillStyle=CO.dim;ctx.fillText('直接整根移除,不看高矮',x+46,yy);yy+=15
+ ctx.fillStyle=CO.faint;ctx.font='400 10px system-ui'
+ ctx.fillText('二分/中位数/贪心/逐层合并…',x+22,yy);yy+=16
+ ctx.strokeStyle=CO.line;ctx.beginPath();ctx.moveTo(x+14,yy-10);ctx.lineTo(x+w-14,yy-10);ctx.stroke();yy+=6
+ ctx.font='600 10px system-ui';ctx.fillStyle=CO.faint;ctx.fillText('你的乘区',x+14,yy);yy+=20
+ row('bar','预处理值 · 查表按它结算',S.memo,CO.green)
+ row('bar','债务 · 回合末每点 −2 预算',S.debt,'#ff8f6b')
+ row('bar','段数 · 逐层类按它放大',S.splits,'#b39ddb')
+ if(S.heapLv)row('bar','堆 · 每回合末自动清',S.heapLv,'#ffb3d9')
+ if(S.prefix)row('bar','前缀和 · 摊平类 ×1.25',1,'#8ee6c8')
+ if(S.monoq)row('bar','单调队列 · 每回合留 1 张',1,'#8ee6c8')
+ if(S.mult>1)row('bar','增长倍率 · 剪枝可降',S.mult.toFixed(2),CO.red)
+ yy+=6
+ ctx.strokeStyle=CO.line;ctx.beginPath();ctx.moveTo(x+14,yy-10);ctx.lineTo(x+w-14,yy-10);ctx.stroke();yy+=6
+ ctx.font='600 10px system-ui';ctx.fillStyle=CO.faint;ctx.fillText('区',x+14,yy);yy+=20
+ row('bar','牌库',S.draw.length,CO.dim)
+ row('bar','弃牌堆',S.discard.length,CO.dim)
+ row('bar','消耗区 · 本局不再出现',S.exhaust.length,'#ff8f6b')
+ if(S.FL){yy+=6;ctx.strokeStyle=CO.line;ctx.beginPath();ctx.moveTo(x+14,yy-10);ctx.lineTo(x+w-14,yy-10);ctx.stroke();yy+=6
+  ctx.font='600 10px system-ui';ctx.fillStyle=CO.red;ctx.fillText('失误(环境)',x+14,yy);yy+=18
+  ctx.font='400 11px system-ui';ctx.fillStyle='#ff9f8a';wrap2(S.FL.name+':'+S.FL.note,x+14,yy,w-28,15)}}
+function wrap2(t,x,y,w,lh){let l='',yy=y
+ for(const ch of t){if(ctx.measureText(l+ch).width>w){ctx.fillText(l,x,yy);l=ch;yy+=lh}else l+=ch}
+ ctx.fillText(l,x,yy)}
+
+/* 十一个敌人共 13 个机制杠杆,每个身上生效 2~4 个。
+   这些差异一直只写在顶部那一行 note 里,打起来根本注意不到。
+   这里逐条摆出来,并且带上「此刻造成了多少」。 */
+function traits(){const E=S.E,o=[]
+ const add=(t,v,c)=>o.push([t,v,c])
+ const sh=SHAPES[E.shape||'random']
+ add('数据形状 · '+sh.name,sh.hint,CO.cyan)
+ if(E.shuffle)   add('自我打乱','每回合乱 '+(E.shuffle*3)+' 次 · 已累计 −'+S.diag.sortDecay+' 层',CO.amber)
+ if(E.seqOnly)   add('顺序访问','二分查找 ×'+E.seqOnly+' · 已少移除 '+Math.round(S.diag.lostKill)+' 个',CO.amber)
+ if(E.vmax&&E.vmax<T.VMAX) add('值域窄','柱高只到 '+E.vmax+'(常规 '+T.VMAX+')· 摊平型占便宜',CO.cyan)
+ if(E.memoDecay) add('数据在变','预处理值每回合 −'+E.memoDecay+' · 已侵蚀 '+S.diag.memoDecayed,CO.amber)
+ if(E.dense)     add('稠密','每多切 '+Math.round(1/E.dense)+' 段多涌入 1 · 已多来 '+S.diag.extraInflow+' 个',CO.amber)
+ if(E.antiSort)  add('专克排序流','排序卡趟数 ×0.25 · 快排已少给 '+S.diag.lostSort+' 层',CO.red)
+ if(E.antiGreedy)add('专克激进流','债务惩罚 ×2.2 · 已多烧 '+S.diag.extraDebt+' 预算',CO.red)
+ if(E.memoCap)   add('专克复利流','预处理值上限 '+E.memoCap+' · 已白投 '+Math.round(S.diag.lostMemo),CO.red)
+ if(E.noSplit)   add('专克拆解流','段数上限 '+E.noSplit+' · 并行处理只剩四成',CO.red)
+ if(E.evict)     add('通用压制','每回合末随机丢 1 张手牌 · 已丢 '+(S.diag.evicted||0)+' 张',CO.red)
+ if(E.mult>1)    add('指数增长','规模每回合 ×'+S.mult.toFixed(2)+' — 线性削减追不上',CO.red)
+ if(S.FL)        add('【失误】'+S.FL.name,S.FL.note,CO.red)
+ return o}
+function traitPanel(x,y,w){const ts=traits()
+ const h=44+ts.length*34
+ panel(x,y,w,h,'这 个 敌 人 在 做 什 么')
+ let yy=y+48
+ if(!ts.length){ctx.font='400 11.5px system-ui';ctx.fillStyle=CO.faint
+  ctx.fillText('只是量大,没有额外机制',x+14,yy);return h}
+ ts.forEach(([t,v,c])=>{
+  ctx.fillStyle=c;ctx.fillRect(x+14,yy-8,3,10)
+  ctx.font='600 11.5px system-ui';ctx.fillStyle=c;ctx.fillText(t,x+23,yy)
+  ctx.font='400 10.5px system-ui';ctx.fillStyle=CO.dim
+  let s2=v;while(ctx.measureText(s2).width>w-38)s2=s2.slice(0,-2)
+  ctx.fillText(s2,x+23,yy+14);yy+=34})
+ return h}
+function statsPanel(x,y,w,h){
+ panel(x,y,w,h,'数 据 性 质')
+ let yy=y+50
+ if(S.mode==='graph'){const G=S.G
+  const kv3=(k,v,c)=>{ctx.font='400 11.5px system-ui';ctx.fillStyle=CO.dim;ctx.fillText(k,x+14,yy)
+   ctx.textAlign='right';ctx.font='700 14px system-ui';ctx.fillStyle=c||CO.ink
+   ctx.fillText(v,x+w-14,yy);ctx.textAlign='left';yy+=26}
+  kv3('节点',String(G.nodes.length))
+  kv3('活着的边',String(G.edges.filter(e=>e.alive).length))
+  kv3('连通块',String(G.nc),G.nc>1?CO.amber:CO.green)
+  kv3('最大块',G.big+' / '+G.nodes.length,CO.cyan)
+  kv3('加固的边',String(G.edges.filter(e=>e.alive&&e.safe).length),CO.green)
+  kv3('回合末开销','−'+Math.max(0,2+G.nc*2-(S.shield||0)),CO.red)
+  yy+=8
+  ctx.font='600 10px system-ui';ctx.fillStyle=CO.faint;ctx.letterSpacing='2px'
+  ctx.fillText('连 通 块',x+14,yy);ctx.letterSpacing='0px';yy+=18
+  Object.entries(G.cnt).sort((a,b)=>b[1]-a[1]).slice(0,6).forEach(([c,k])=>{
+   ctx.fillStyle=COMPC[c%COMPC.length];ctx.beginPath();ctx.arc(x+20,yy-3.5,4.5,0,7);ctx.fill()
+   ctx.font='400 11px system-ui';ctx.fillStyle=+c===G.mainComp?CO.ink:CO.dim
+   ctx.fillText(k+' 个节点'+(+c===G.mainComp?'  ← 最大':''),x+32,yy);yy+=16})
+  return}
+ const sd=sortedness(S),tr=tier(S)
+ const kv=(k,v,c)=>{ctx.font='400 11.5px system-ui';ctx.fillStyle=CO.dim;ctx.fillText(k,x+14,yy)
+  ctx.textAlign='right';ctx.font='700 14px system-ui';ctx.fillStyle=c||CO.ink
+  ctx.fillText(v,x+w-14,yy);ctx.textAlign='left';yy+=26}
+ kv('元素数',String(N(S)))
+ kv('有序度',(sd*100|0)+'%',sd>.6?CO.green:CO.amber)
+ ctx.fillStyle='rgba(255,255,255,.08)';ctx.fillRect(x+14,yy-16,w-28,3)
+ ctx.fillStyle=sd>.6?CO.green:CO.amber;ctx.fillRect(x+14,yy-16,(w-28)*sd,3);yy+=12
+ kv('混乱度',(100-(sd*100|0))+'%',CO.faint)
+ kv('有序层数',String(tr)+' / 4',tr>=3?CO.green:CO.amber)
+ kv('每回合涌入','+'+(S.inflow+(S.E.dense?Math.floor((S.splits-1)*S.E.dense):0)),CO.red)
+ {const dp=S.debt*T.DEBT_PEN*(S.E.antiGreedy?AGREED:1)
+  const raw=(S.fixCost?S.fixCost:Math.ceil((S.useLastN&&S.lastN?S.lastN:N(S))/T.COST_DIV))+dp
+  let eff=Math.max(0,raw-(S.shield||0)); if(S.doubleThis)eff*=2; if(S.skipCost)eff=0
+  kv('回合末开销',eff===raw?'−'+Math.round(raw):('−'+Math.round(raw)+' → −'+Math.round(eff)),
+    eff<raw?CO.green:eff>raw?CO.red:CO.red)}
+ // 进度折线
+ ctx.font='600 10px system-ui';ctx.fillStyle=CO.faint;ctx.fillText('剩余工作量走势',x+14,yy+4)
+ const gx=x+14,gy=yy+14,gw=w-28,gh=44
+ ctx.strokeStyle=CO.line;ctx.strokeRect(gx+.5,gy+.5,gw,gh)
+ if(hist.length>1){ctx.strokeStyle=CO.amber;ctx.lineWidth=1.6;ctx.beginPath()
+  hist.slice(-40).forEach((v,i,arr)=>{const px=gx+gw*(i/Math.max(arr.length-1,1)),py=gy+gh*(1-v/100)
+   i?ctx.lineTo(px,py):ctx.moveTo(px,py)});ctx.stroke()}}
+
+/* 十一个敌人本来共用同一套直方图 —— 名字讲了很多不一样,画面一个都没兑现。
+   这一层只画「这堆数据长什么样」,不参与任何判定。
+   back 画在柱子后面(压低透明度保证柱子可读),front 画在柱子上面。 */
+const MOTIF={
+ shuffled:{back(c){ // 乱序:顶端一条参差折线,直观「毫无秩序」
+   const{ctx:X,a,x0,bw,base,hM,S}=c;X.strokeStyle='rgba(255,140,110,.35)';X.lineWidth=1.2;X.beginPath()
+   a.forEach((b,i)=>{const x=x0+i*bw+bw/2,y=base-(b.v/S.vmax)*hM-7;i?X.lineTo(x,y):X.moveTo(x,y)});X.stroke()}},
+ tape:{front(c){ // 磁带:底部走带 + 齿孔 + 只能从这头读
+   const{ctx:X,x0,tw,base,A}=c,y=base+6
+   X.strokeStyle='rgba(240,169,74,.5)';X.lineWidth=1;X.strokeRect(x0-6,y,tw+12,13)
+   X.fillStyle='rgba(240,169,74,.45)'
+   for(let x=x0;x<x0+tw;x+=13)X.fillRect(x,y+5,5,3)
+   X.fillStyle=CO.amber;X.beginPath();X.moveTo(x0-14,y-4);X.lineTo(x0-3,y+6.5);X.lineTo(x0-14,y+17);X.closePath();X.fill()
+   X.font='600 10px system-ui';X.textAlign='left';X.fillText('读头 · 只能从这头往后读',x0+6,y+30);X.textAlign='left'}},
+ dupes:{back(c){ // 重复页:同值的柱子框成一组
+   const{ctx:X,a,x0,bw,base,hM,S}=c;let i=0
+   while(i<a.length){let j=i;while(j+1<a.length&&a[j+1].v===a[i].v)j++
+    if(j>i){X.strokeStyle='rgba(95,208,232,.3)';X.setLineDash([3,3]);X.lineWidth=1
+     X.strokeRect(x0+i*bw-2,base-(a[i].v/S.vmax)*hM-5,(j-i+1)*bw+1,(a[i].v/S.vmax)*hM+8);X.setLineDash([])}
+    i=j+1}}},
+ stream:{back(c){ // 价格流:一条流动的行情线
+   const{ctx:X,a,x0,bw,base,hM,S,t}=c;X.strokeStyle='rgba(127,217,143,.4)';X.lineWidth=1.4;X.beginPath()
+   a.forEach((b,i)=>{const x=x0+i*bw+bw/2
+    const y=base-(b.v/S.vmax)*hM-10-Math.sin(i*.6+t*3)*5;i?X.lineTo(x,y):X.moveTo(x,y)});X.stroke()}},
+ graph:{front(c){ // 稠密图:柱顶之间的连线网
+   const{ctx:X,a,x0,bw,base,hM,S}=c;X.strokeStyle='rgba(179,157,219,.26)';X.lineWidth=.9;X.beginPath()
+   for(let i=0;i<a.length;i++)for(const d of [3,7]){const j=i+d;if(j>=a.length)continue
+    X.moveTo(x0+i*bw+bw/2,base-(a[i].v/S.vmax)*hM-3)
+    X.lineTo(x0+j*bw+bw/2,base-(a[j].v/S.vmax)*hM-3)}X.stroke()}},
+ worst:{back(c){ // 最坏用例:警戒斜纹
+   const{ctx:X,A}=c;X.save();X.beginPath();X.rect(A.x,A.y,A.w,A.h);X.clip()
+   X.strokeStyle='rgba(255,107,94,.09)';X.lineWidth=9
+   for(let x=A.x-A.h;x<A.x+A.w;x+=34){X.beginPath();X.moveTo(x,A.y+A.h);X.lineTo(x+A.h,A.y);X.stroke()}X.restore()}},
+ collide:{front(c){ // 哈希碰撞:底部的桶,有的桶挤了好几根
+   const{ctx:X,x0,tw,base,a,bw}=c,B=8,w=tw/B
+   for(let k=0;k<B;k++){const x=x0+k*w,hit=Math.min(4,Math.round(a.length/B))
+    X.strokeStyle=hit>2?'rgba(255,107,94,.55)':'rgba(110,140,170,.3)';X.lineWidth=1
+    X.strokeRect(x+3,base+7,w-6,12)
+    X.fillStyle=hit>2?CO.red:CO.faint;X.font='600 9px system-ui';X.textAlign='center'
+    X.fillText(hit>2?'撞 '+hit:''+hit,x+w/2,base+16);X.textAlign='left'}}},
+ regret:{back(c){ // 反悔陷阱:一圈回退箭头
+   const{ctx:X,A}=c,cx=A.x+A.w/2,cy=A.y+A.h*.42,r=Math.min(A.w,A.h)*.32
+   X.strokeStyle='rgba(255,143,107,.16)';X.lineWidth=2.5
+   X.beginPath();X.arc(cx,cy,r,.6,5.4);X.stroke()
+   X.fillStyle='rgba(255,143,107,.22)';X.beginPath()
+   X.moveTo(cx+r*Math.cos(5.4),cy+r*Math.sin(5.4));X.lineTo(cx+r*Math.cos(5.4)-11,cy+r*Math.sin(5.4)-4)
+   X.lineTo(cx+r*Math.cos(5.4)-2,cy+r*Math.sin(5.4)+10);X.closePath();X.fill()}},
+ explode2:{back(c){ // 状态爆炸:放射线
+   const{ctx:X,A}=c,cx=A.x+A.w/2,cy=A.y+A.h
+   X.strokeStyle='rgba(127,217,143,.12)';X.lineWidth=1.2
+   for(let k=0;k<22;k++){const ang=-Math.PI*(k/21);X.beginPath();X.moveTo(cx,cy)
+    X.lineTo(cx+Math.cos(ang)*A.w*.62,cy+Math.sin(ang)*A.h*1.1);X.stroke()}}},
+ atomic:{front(c){ // 不可分:柱子底部焊成整块
+   const{ctx:X,x0,tw,base}=c
+   X.fillStyle='rgba(179,157,219,.3)';X.fillRect(x0-4,base+4,tw+8,7)
+   X.strokeStyle='rgba(179,157,219,.6)';X.lineWidth=1.2;X.strokeRect(x0-4.5,base+3.5,tw+9,8)
+   X.font='600 10px system-ui';X.fillStyle='rgba(179,157,219,.8)';X.textAlign='center'
+   X.fillText('焊死的一整块 · 切不开',x0+tw/2,base+26);X.textAlign='left'}},
+ expo:{back(c){ // Boss:指数曲线在背后长
+   const{ctx:X,A,t}=c;X.strokeStyle='rgba(255,107,94,.22)';X.lineWidth=2;X.beginPath()
+   for(let k=0;k<=60;k++){const u=k/60,x=A.x+u*A.w,y=A.y+A.h-Math.pow(u,2.6)*A.h*.95
+    k?X.lineTo(x,y):X.moveTo(x,y)}X.stroke()
+   X.fillStyle='rgba(255,107,94,'+(.10+.05*Math.sin(t*2))+')';X.fillRect(A.x,A.y,A.w,A.h)}},
+}
+function graphArena(A){const G=S.G
+ drawGraph({x:A.x,y:A.y,w:A.w,h:A.h},G,null)
+ ctx.textAlign='center'
+ ctx.font='400 11px system-ui';ctx.fillStyle=CO.faint
+ ctx.fillText('每回合末按连通块数收开销:2 + 块数 × 2 = '+(2+G.nc*2),A.x+A.w/2,A.y+A.h+16)
+ ctx.textAlign='left'}
+function arena(A){
+ const a=alive(S); if(!a.length)return
+ const t=anim?Math.min(1,(performance.now()-anim.t0)/anim.dur):1
+ if(anim&&t>=1)anim=null
+ const bw=Math.min(24,A.w/Math.max(a.length,1)),seg=Math.ceil(a.length/S.splits)
+ const tw=a.length*bw+(S.splits-1)*18,x0=A.x+(A.w-tw)/2,base=A.y+A.h-30,hM=A.h-46
+ const mc={ctx,A,a,x0,tw,base,hM,bw,S,t:performance.now()/1000}
+ const M=MOTIF[S.foeId]; if(M&&M.back)M.back(mc)
+ // 段分隔
+ if(S.splits>1)for(let s2=1;s2<S.splits;s2++){const sx=x0+s2*seg*bw+(s2-1)*18+9
+  ctx.strokeStyle='rgba(179,157,219,.35)';ctx.setLineDash([4,4]);ctx.lineWidth=1
+  ctx.beginPath();ctx.moveTo(sx,A.y);ctx.lineTo(sx,base);ctx.stroke();ctx.setLineDash([])}
+ a.forEach((b,i)=>{const sg=Math.floor(i/seg),x=x0+i*bw+sg*18
+  let v=b.v
+  if(anim){const before=anim.before.find(o=>o.id===b.id)
+   if(before)v=before.v+(b.v-before.v)*ease(t)}
+  const h=Math.max(2,(v/S.vmax)*hM)
+  let dim=1
+  if(anim&&anim.kind==='sweep'&&i>t*a.length)dim=.42
+  if(anim&&anim.kind==='split'){const half=a.length*.5
+   if(t<.7&&(i<half*(1-t)||i>a.length-half*(1-t)*.6))dim=.2}
+  bar(x,base-h,bw-3,h,v,S.vmax,dim)})
+ if(M&&M.front)M.front(mc)
+ // 死掉的柱子:碎裂
+ if(anim){anim.before.forEach((o,i)=>{ if(anim.after.get(o.id)!==null)return
+   const idx=anim.before.indexOf(o),x=x0+idx*bw
+   const h=(o.v/S.vmax)*hM*(1-ease(t))
+   ctx.globalAlpha=1-t;bar(x,base-h,bw-3,Math.max(1,h),o.v,S.vmax);ctx.globalAlpha=1
+   if(t<.35&&Math.random()<.3)parts.push({x:x+bw/2,y:base-h,vx:(Math.random()-.5)*3,vy:-Math.random()*3-.5,life:1,c:'#f0a94a'})})}
+ // 扫描线
+ if(anim&&anim.kind==='sweep'){const sx=x0+tw*t
+  const lg=ctx.createLinearGradient(sx-44,0,sx+44,0)
+  lg.addColorStop(0,'rgba(95,208,232,0)');lg.addColorStop(.5,'rgba(191,242,255,.95)');lg.addColorStop(1,'rgba(95,208,232,0)')
+  ctx.fillStyle=lg;ctx.fillRect(sx-44,A.y,88,A.h)}
+ // 移除类:被打掉的位置炸一下白光
+ if(anim&&anim.kind==='burst'){const k=1-ease(t)
+  anim.before.forEach(o=>{ if(anim.after.get(o.id)!==null)return
+   const idx=anim.before.indexOf(o),x=x0+idx*bw+bw/2
+   ctx.fillStyle='rgba(255,236,190,'+(k*.85)+')'
+   ctx.fillRect(x-bw*.9,base-(o.v/S.vmax)*hM-6,bw*1.8,(o.v/S.vmax)*hM+12)
+   ctx.strokeStyle='rgba(255,180,120,'+(k*.7)+')';ctx.lineWidth=2
+   ctx.beginPath();ctx.arc(x,base-8,(1-k)*38,0,7);ctx.stroke()
+   if(t<.3&&Math.random()<.55)parts.push({x,y:base-(o.v/S.vmax)*hM,
+     vx:(Math.random()-.5)*5,vy:-Math.random()*4-1,life:1,c:'#ffd08a'})})}
+ // 排序:把「正在变有序」这件事显出来 —— 相邻逆序对高亮
+ if(anim&&anim.kind==='sort'){const k=Math.sin(t*Math.PI)
+  for(let i=0;i<a.length-1;i++) if(a[i].v>a[i+1].v){
+   const sg=Math.floor(i/seg),x=x0+i*bw+sg*18
+   ctx.fillStyle='rgba(255,140,110,'+(k*.4)+')';ctx.fillRect(x,base-6,bw*2-3,5)}
+  }
+ // 二分刀口
+ if(anim&&anim.kind==='split'){const sx=x0+tw*.5
+  ctx.strokeStyle='rgba(255,216,138,'+(1-t*.5)+')';ctx.lineWidth=2;ctx.setLineDash([7,6])
+  ctx.beginPath();ctx.moveTo(sx,A.y-6);ctx.lineTo(sx,base+8);ctx.stroke();ctx.setLineDash([])}
+ parts=parts.filter(p=>p.life>0)
+ parts.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=.1;p.life-=.02
+  ctx.globalAlpha=Math.max(p.life,0);ctx.fillStyle=p.c;ctx.fillRect(p.x,p.y,2.6,2.6);ctx.globalAlpha=1})
+ floatRead(A)}
+/* 结算演出:先把因果链一环一环点亮(小丑牌手法 —— 让「为什么是这个数」自己演出来),
+   再给最终读数。不碰柱子的那些卡全靠这一段。 */
+const STEP=240
+function floatRead(A){ if(!flo)return
+ const el=performance.now()-flo.t0, ft=el/flo.dur
+ if(ft>=1){flo=null;return}
+ const cx=A.x+A.w/2
+ ctx.textAlign='center'
+ const ch=flo.chain||[]
+ const shown=Math.min(ch.length,Math.floor(el/STEP)+1)
+ const chainDone=el>=ch.length*STEP
+ // 卡名
+ const al0=ft<.08?ft/.08:ft>.82?(1-ft)/.18:1
+ ctx.globalAlpha=Math.max(0,al0)
+ ctx.font='600 11px system-ui';ctx.fillStyle=CO.faint
+ ctx.fillText(flo.name,cx,A.y+56)
+ // 因果链:一环一环点亮,最后一环放大
+ let y=A.y+78
+ for(let i=0;i<shown;i++){
+  const [txt,col]=ch[i], last=i===ch.length-1
+  const age=el-i*STEP, pop=Math.min(1,age/160)
+  ctx.globalAlpha=Math.max(0,al0)*(.35+.65*pop)
+  const fs=last?19:13.5
+  ctx.font=(last?'700 ':'500 ')+(fs*(last?.9+.1*pop:1))+'px system-ui'
+  const w=ctx.measureText(txt).width
+  ctx.fillStyle='rgba(5,10,17,.9)';ctx.fillRect(cx-w/2-13,y-fs+2,w+26,fs+11)
+  ctx.strokeStyle=col;ctx.globalAlpha=Math.max(0,al0)*(last?.75:.35)*pop;ctx.lineWidth=1
+  ctx.strokeRect(cx-w/2-12.5,y-fs+2.5,w+25,fs+10)
+  ctx.globalAlpha=Math.max(0,al0)*(.35+.65*pop)
+  ctx.fillStyle=col;ctx.fillText(txt,cx,y)
+  if(i<shown-1){ctx.strokeStyle=CO.faint;ctx.globalAlpha=Math.max(0,al0)*.3
+   ctx.beginPath();ctx.moveTo(cx,y+5);ctx.lineTo(cx,y+13);ctx.stroke()}
+  y+=fs+21
+ }
+ // 链演完了再给最终读数
+ if(chainDone)flo.lines.forEach((l,i)=>{const yy=y+i*23
+  ctx.globalAlpha=Math.max(0,al0)
+  ctx.font='700 15px system-ui';const w=ctx.measureText(l[0]).width
+  ctx.fillStyle='rgba(5,10,17,.9)';ctx.fillRect(cx-w/2-13,yy-16,w+26,24)
+  ctx.strokeStyle=l[1];ctx.globalAlpha=Math.max(0,al0)*.45;ctx.lineWidth=1
+  ctx.strokeRect(cx-w/2-12.5,yy-15.5,w+25,23)
+  ctx.globalAlpha=Math.max(0,al0);ctx.fillStyle=l[1];ctx.fillText(l[0],cx,yy)})
+ ctx.globalAlpha=1;ctx.textAlign='left'}
+const ease=t=>1-Math.pow(1-t,3)
+
+/* 卡面第二行:把「1+有序层数×2」这种公式换算成此刻的真实数字。
+   R2「卡面可推,不许查表」的补完 —— 光有规则不够,得让人看见规则算出来是多少。 */
+/* 摊平型的卡(遍历/并行处理/查表/DP)把总处理量平分给每个元素。
+   规模越大每根分到越少 —— 这是「平铺处理不随规模缩放」的手感来源,
+   但只写「总处理量 16」玩家看不出后果,得把除法和打掉几个都算出来。 */
+function wprev(tot){const a=alive(S); if(!a.length)return null
+ let t=tot; if(S.halfNext)t*=.7
+ if(S.flawId==='offByOne'&&!S.guarded)t*=.9
+ const per=t/a.length
+ const hp=Math.min(100,Math.round(t/Math.max(S.totalWork,1)*1000)/10)
+ // 「打掉 0 个」会冤枉它 —— 摊平型的贡献在血条上,不在个数上
+ return{per:per<1?per.toFixed(2):per.toFixed(1),k:a.filter(b=>b.v<=per).length,n:a.length,
+        hp,tail:(a.filter(b=>b.v<=per).length?' · 打掉 '+a.filter(b=>b.v<=per).length+' 个':'')+' · 血条 −'+hp+'%'}}
+function live(id){ if(!S)return null
+ if(S.mode!=='graph'&&!alive(S).length)return null   // 元素清零(赢了)时 wprev 返回 null,别再往下算
+ const n=N(S),t=tier(S),sp=S.splits,m=S.memo,d=S.debt,seq=S.E.seqOnly,half=S.E.noSplit?.4:1
+ const G=CO.green,A=CO.amber,Cy=CO.cyan,R=CO.red,P='#b39ddb',G2c=CO.green
+ switch(id){
+  case 'scan':{const w=wprev(16)
+    return ['16 ÷ '+w.n+' 个 = 每根矮 '+w.per+w.tail,w.k>0?G:Cy]}
+  case 'batch':    return ['预算 '+S.budget+' → '+(S.budget+5),G]
+  case 'watch':    return ['抽 2 · 牌库还剩 '+S.draw.length+' 张',Cy]
+  case 'bubble': case 'merge': case 'quick':
+    return ['有序层数 '+t+'/4'+(S.E.antiSort?' · 最坏用例下趟数只剩两五折':''),A]
+  case 'bsearch':{const f=2+t*2,act=seq?Math.max(1,Math.round(f*seq)):f
+    return ['现在移除 '+act+' 个 ← 有序层数 '+t+'/4'+(seq?' 且顺序访问打七折':''),act>=5?G:act>1?A:R]}
+  case 'median':   return t>=3?['现在移除 '+Math.ceil(n/3)+' 个 ← 规模 '+n+' 的 1/3',G]
+                              :['有序层数 '+t+',不到 3 —— 现在出会落空',R]
+  case 'divide':   return sp<(S.E.noSplit??4)?['段数 '+sp+' → '+(sp+1),G]
+                              :['段数已到上限 '+sp+' —— 现在出会落空',R]
+  case 'mergeup':  return ['现在移除 '+(2*sp)+' 个 ← 段数 '+sp+' × 每段 2',sp>=3?G:A]
+  case 'parallel':{const tot=sp*14*half,w=wprev(tot)
+    return ['段数 '+sp+'×11'+(half<1?'×四折':'')+'='+Math.round(tot)+' ÷ '+w.n+' 个 = 每根矮 '+w.per+w.tail,w.k>0?G:sp>=3?G:A]}
+  case 'recur':    return sp>=3?['现在移除 '+Math.ceil(n/3)+' 个 ← 规模 '+n+' 的 1/3',G]
+                              :['段数 '+sp+',不到 3 —— 现在出会落空',R]
+  case 'pre':      return ['预处理值 '+m+' → '+Math.min(S.E.memoCap??999,m+8),G]
+  case 'table':{const g=10+Math.ceil(n/4)
+    return ['预处理值 '+m+' → '+Math.min(S.E.memoCap??999,m+g)+'(按规模 '+n+' 算)',G]}
+  case 'lookup':{ if(!m)return['预处理值还是 0 —— 现在出会落空',R]
+    const w=wprev(m);return['预处理值 '+m+' ÷ '+w.n+' 个 = 每根矮 '+w.per+w.tail+'(不消耗)',w.k>0?G:A]}
+  case 'dp':{ if(!m)return['预处理值还是 0 —— 现在出会落空',R]
+    const w=wprev(m*2);return['预处理值 '+m+'×2='+(m*2)+' ÷ '+w.n+' 个 = 每根矮 '+w.per+w.tail,w.k>0?G:A]}
+  case 'greedy':   return ['移除 2 个 · 债务 '+d+' → '+(d+1),A]
+  case 'local':    return ['移除 5 个 · 债务 '+d+' → '+(d+2),A]
+  case 'heur':     return ['现在移除 '+(2+Math.min(d,6))+' 个 ← 债务 '+d+'(按 6 封顶)',d>=3?G:A]
+  case 'anneal':   return d>0?['现在移除 '+(d*2)+' 个,债务清零',G]:['债务是 0 —— 现在出会落空',R]
+  case 'approx':   return ['现在移除 '+Math.ceil(n/4)+' 个 ← 规模 '+n+' 的 1/4 · 债务 +3',G]
+  case 'prune':    return (S.mult>1||S.inflow>0)
+    ?['倍率 '+S.mult.toFixed(2)+' → '+Math.max(1,S.mult-.25).toFixed(2)+' · 涌入 '+S.inflow+' → '+Math.max(0,S.inflow-1),G]
+    :['倍率和涌入都到底了 —— 现在出会落空',R]
+  case 'backtrack':return ['预算 '+S.budget+' → '+(S.budget+12),G]
+  case 'guard':    return S.FL?['本回合免疫「'+S.FL.name+'」',G]:['这一关没挂失误 —— 现在出会落空',R]
+  case 'hash':     return ['抽 1 · 移除 2 个',Cy]
+  case 'bfs': case 'dfs': case 'mst': case 'sp': case 'dsu': case 'bridge':{
+    if(!S.G)return['这一关不是图战场 —— 出了会落空',R]
+    const G=S.G,k={bfs:1,dfs:2,mst:3}[id]
+    if(id==='bridge')return['加固 3 条关键边 · 现在已加固 '+G.edges.filter(e=>e.alive&&e.safe).length+' 条',G.nc>1?G2c:A]
+    if(id==='dsu')return G.nc>1?['合并最大的两块('+Object.values(G.cnt).sort((a,b)=>b-a).slice(0,2).join(' + ')+' 个节点)',G2c]
+                              :['已经全连通了 —— 出了会落空',R]
+    if(id==='sp')return G.nc>1?['连到最远的那一块 · 现在还散成 '+G.nc+' 块',G2c]:['已经全连通 —— 落空',R]
+    const out=G.nodes.length-G.big
+    return G.nc>1?['并入 '+Math.min(k,out)+' 个 · 块外还剩 '+out+' 个节点',G2c]:['已经全连通 —— 落空',R]}
+  case 'cache':{const c0=S.mode==='graph'?2+S.G.nc*2
+    :Math.ceil(N(S)/T.COST_DIV)+S.debt*T.DEBT_PEN*(S.E.antiGreedy?AGREED:1)
+    return['回合末总开销 '+Math.round(c0)+' → '+Math.max(0,Math.round(c0-7-(S.shield||0))),c0>=7?G:A]}
+  case 'lazy':{ if(S.skipCost)return['这回合已经免了 —— 现在出会落空',R]
+    const c1=S.mode==='graph'?2+S.G.nc*2:Math.ceil(N(S)/T.COST_DIV)
+    return['这回合末 '+c1+' 点开销全免 · 下回合末翻倍',c1>=8?G:A]}
+  case 'batchc':{const c0=Math.ceil(N(S)/T.COST_DIV)
+    return['回合末开销 '+c0+' → 固定 4',c0>=8?G:c0>4?A:R]}
+  case 'incr':{const c0=Math.ceil(N(S)/T.COST_DIV),c1=S.lastN?Math.ceil(S.lastN/T.COST_DIV):c0
+    return['按上回合规模收:'+c0+' → '+c1,c1<c0?G:R]}
+  case 'buildheap':return S.heapLv?['堆已经建好了('+S.heapLv+'/回合)—— 现在出会落空',R]
+                                  :['建成后每回合末自动弹出 1 个【高度 ≤7】的,不占步数',G]
+  case 'heapify':  return S.heapLv?['堆 '+S.heapLv+' → '+(S.heapLv+1)+' 个/回合',G]
+                                  :['还没建堆 —— 现在出会落空',R]
+  case 'poptop':{const a=alive(S).slice().sort((x,y)=>x.v-y.v).slice(0,2)
+    return['砍掉最矮的两根:'+a.map(b=>b.v).join('/'),a.length?G:R]}
+  case 'heapsort': return['有序 +2 · 再砍掉最矮的两根',A]
+  case 'medstream':{const a=alive(S);if(!a.length)return null
+    const vs=a.map(b=>b.v).sort((x,y)=>x-y),med=vs[vs.length>>1]
+    return['中位数是 '+med+' · 一次清掉 '+a.filter(b=>b.v<med).length+' 个(严格低于)',G]}
+  case 'twoptr':   return['两头各切 2 根 · 现在剩 '+n+' 根',n>=4?G:A]
+  case 'window':   return['从最左切走连续 3 根 · 现在剩 '+n+' 根',n>=3?G:A]
+  case 'prefix':   return S.prefix?['前缀和已经建好了 —— 现在出会落空',R]
+                                  :['此后摊平类处理量 ×1.25(遍历 16 → 20)',G]
+  case 'diff':{const a=alive(S).slice(0,6),k=a.filter(b=>b.v<=4).length
+    return['连续 6 根各降 4 点 · 其中 '+k+' 根会直接清零',k>=3?G:A]}
+  case 'merge2':{const a=alive(S);let c=0
+    for(let i=1;i<a.length;i++)if(a[i].v===a[i-1].v)c++
+    return['现在有 '+c+' 对相邻等高 —— 能合并掉 '+c+' 根',c>=5?G:c?A:R]}
+  case 'monoq':    return S.monoq?['已经生效了 —— 现在出会落空',R]
+                                 :['此后每回合末保留最贵的一张手牌',G]
+  case 'insertion':{const sd=Math.round(sortedness(S)*100)
+    return sd>=50?['有序度 '+sd+'% ≥50% —— 这一张直接把它排完',G]
+                 :['有序度 '+sd+'%,不到 50% —— 只 +1 层(逆序对太多)',R]}
+  case 'counting':{const a=alive(S);if(!a.length)return null
+    const mn=Math.min(...a.map(b=>b.v)),k=a.filter(b=>b.v<=mn+2).length
+    return['最矮的是 '+mn+' · 现在能一次清掉 '+k+' 个(值 ≤ '+(mn+2)+')',k>=6?G:k>=3?A:R]}
+  case 'topk':{const a=alive(S);if(!a.length)return null
+    const t=a.slice().sort((x,y)=>y.v-x.v).slice(0,3)
+    return['砍掉最高的三根:'+t.map(b=>b.v).join('/')+' —— 共 '+t.reduce((x,b)=>x+b.v,0)+' 点处理量',G]}
+  case 'sortdeck':{const d=S.draw;if(!d.length)return['牌库空了 —— 现在出会落空',R]
+    const cheap=d.filter(x=>C[x].cost<=1).length
+    return['牌库 '+d.length+' 张,其中 '+cheap+' 张是 1 费以下 —— 排完先抽它们',cheap>=3?G:A]}
+  case 'fetch':{if(!S.draw.length)return['牌库空了 —— 现在出会落空',R]
+    let bi=0;for(let i=1;i<S.draw.length;i++)if(C[S.draw[i]].cost>C[S.draw[bi]].cost)bi=i
+    return['翻出「'+C[S.draw[bi]].name+'」('+C[S.draw[bi]].cost+' 费)',G]}
+  case 'prefetch':{const t=S.draw.slice(-3);if(!t.length)return['牌库空了 —— 现在出会落空',R]
+    let bi=0;for(let i=1;i<t.length;i++)if(C[t[i]].cost>C[t[bi]].cost)bi=i
+    return['牌库顶是 '+t.map(x=>C[x].name).reverse().join('/')+' → 拿「'+C[t[bi]].name+'」',G]}
+  case 'memoize':{if(!S.lastPlayed)return['这回合还没出过牌 —— 现在出会落空',R]
+    return['重放「'+C[S.lastPlayed].name+'」',G]}
+  case 'compress':return S.discard.length
+    ?['弃牌堆 '+S.discard.length+' 张立刻洗回牌库 · 再抽 1',G]
+    :['弃牌堆是空的,只会抽 1 张',A]
+ }
+ return null}
+
+const HITBOX=[]
+function cardFace(id,x,y,cw,ch,on,sel,why,slot){
+ const c=C[id],col=CO.tag[c.tag]
+ ctx.fillStyle=on?'rgba(14,26,40,.96)':'rgba(12,20,30,.9)';ctx.fillRect(x,y,cw,ch)
+ ctx.strokeStyle=on?col:'rgba(70,88,108,.55)';ctx.lineWidth=on?1.8:1;ctx.strokeRect(x+.5,y+.5,cw-1,ch-1)
+ if(on){ctx.strokeStyle=col;ctx.lineWidth=2.5;ctx.beginPath()
+  ctx.moveTo(x,y+ch-12);ctx.lineTo(x,y+ch);ctx.lineTo(x+12,y+ch);ctx.stroke()}
+ ctx.globalAlpha=on?1:.34
+ hex(x+20,y+20,13,col)
+ ctx.fillStyle='#08111c';ctx.font='700 13px system-ui';ctx.textAlign='center'
+ ctx.fillText(String(c.cost),x+20,y+25);ctx.textAlign='left'
+ ctx.fillStyle=CO.ink;ctx.font='700 14.5px system-ui';ctx.fillText(c.name,x+40,y+25)
+ ctx.textAlign='right';ctx.font='600 9.5px system-ui'
+ ctx.fillStyle=col;ctx.fillText(TAGNAME[c.tag]+(c.exhaust?' · 一次性':''),x+cw-10,y+22)
+ ctx.textAlign='left'
+ const f=ICON[CARDIC[id]]; if(f)f(x+cw*.22,y+36,cw*.56,32)
+ const L=live(id)
+ if(L){ctx.fillStyle=L[1];ctx.font='600 11.5px system-ui';wrap(L[0],x+11,y+84,cw-22,14)}
+ ctx.fillStyle=CO.faint;ctx.font='400 10.5px system-ui';wrap(c.note,x+11,y+(L?116:96),cw-22,13)
+ ctx.globalAlpha=1
+ if(why){ctx.fillStyle='rgba(8,14,22,.72)';ctx.fillRect(x+1,y+ch-24,cw-2,23)
+  ctx.fillStyle=CO.amber;ctx.font='600 11px system-ui';ctx.textAlign='center'
+  ctx.fillText(why,x+cw/2,y+ch-8);ctx.textAlign='left'}
+ if(slot!=null)HITBOX[slot]=[x,y,cw,ch]}
+
+function handRow(y){
+ HITBOX.length=0
+ const n=S.hand.length; if(!n)return
+ const cw=Math.min(184,(W-460)/n-12),ch=154,gap=12
+ const x0=(W-(n*cw+(n-1)*gap))/2
+ S.hand.forEach((id,i)=>{const x=x0+i*(cw+gap),c=C[id]
+  const locked=S.locked===i&&!S.guarded
+  // 出不了要说清是哪一种:步数不够,还是被失误锁了。动画期间不再整排变灰(那看着像卡死)
+  const why=locked?null:(S.steps<c.cost?'步数不够 · 需 '+c.cost+',只剩 '+S.steps:null)
+  cardFace(id,x,y,cw,ch,canPlay(S,i),false,why,i)
+  if(locked){ctx.fillStyle='rgba(255,107,94,.14)';ctx.fillRect(x,y,cw,ch)
+   ctx.strokeStyle=CO.red;ctx.lineWidth=1.5;ctx.strokeRect(x+.5,y+.5,cw-1,ch-1)
+   ctx.fillStyle='rgba(8,14,22,.8)';ctx.fillRect(x+1,y+ch-24,cw-2,23)
+   ctx.fillStyle=CO.red;ctx.font='700 11px system-ui';ctx.textAlign='center'
+   ctx.fillText('空指针锁住了这张',x+cw/2,y+ch-8);ctx.textAlign='left'}})}
+
+function pile(x,y,label,n,c){
+ ctx.fillStyle='rgba(16,28,44,.9)';ctx.fillRect(x,y,64,88)
+ ctx.strokeStyle=c;ctx.lineWidth=1.2;ctx.strokeRect(x+.5,y+.5,63,87)
+ for(let i=1;i<3;i++){ctx.strokeStyle='rgba(110,140,170,.25)'
+  ctx.strokeRect(x+i*2.5+.5,y-i*2.5+.5,63,87)}
+ ctx.fillStyle=c;ctx.font='700 20px system-ui';ctx.textAlign='center';ctx.fillText(String(n),x+32,y+50)
+ ctx.font='600 9.5px system-ui';ctx.fillStyle=CO.faint;ctx.letterSpacing='1.5px'
+ ctx.fillText(label,x+32,y+70);ctx.letterSpacing='0px';ctx.textAlign='left'}
+const deckPile=(x,y)=>pile(x,y,'牌库',S.draw.length,CO.cyan)
+const discardPile=(x,y)=>pile(x,y,'弃牌',S.discard.length,CO.dim)
+
+const NODEBOX=[]
+function intelCard(it,x,y,w,h,idx,only){
+ const E=it.E,acc=E.kind==='Boss'?CO.red:E.kind==='精英'?CO.amber:CO.cyan
+ panel(x,y,w,h,null)
+ ctx.strokeStyle=acc;ctx.lineWidth=2;ctx.strokeRect(x+.5,y+.5,w-1,3)
+ ctx.textAlign='center';const cx=x+w/2
+ ctx.font='600 10px system-ui';ctx.letterSpacing='2.5px';ctx.fillStyle=acc
+ ctx.fillText(E.kind.toUpperCase&&E.kind,cx,y+28);ctx.letterSpacing='0px'
+ ctx.font='700 22px system-ui';ctx.fillStyle=CO.ink;ctx.fillText(E.name,cx,y+56)
+ ctx.font='400 11.5px system-ui';ctx.fillStyle=CO.dim
+ ctx.fillStyle=it.load>1.2?'#ffc46b':it.load<-.6?CO.green:CO.dim
+ ctx.fillText(`规模 ${E.n} · 涌入 ${E.inflow??0}${E.mult?' · ×'+E.mult+'/回合':''}`,cx,y+78)
+ ctx.textAlign='left'
+ it.rows.slice(0,5).forEach((r,i)=>{const yy=y+108+i*26
+  ctx.fillStyle=r.dir<0?'#ff8f6b':CO.green;ctx.font='700 11px system-ui'
+  ctx.fillText(r.dir<0?'▼':'▲',x+14,yy)
+  ctx.fillStyle='#cfdcea';ctx.font='400 11.5px system-ui'
+  let t=r.txt;while(ctx.measureText(t).width>w-150)t=t.slice(0,-2)
+  ctx.fillText(t,x+30,yy)
+  ctx.textAlign='right';ctx.font='700 11px system-ui'
+  const L=r.lbl?r.lbl(r.n):[r.n>0?`${r.n} 张`:(r.n<0?`缺 ${-r.n}`:'—'),r.n>0?(r.dir<0?'red':'green'):(r.n<0?'red':'faint')]
+  ctx.fillStyle=CO[L[1]]||CO.faint;ctx.fillText(L[0],x+w-14,yy);ctx.textAlign='left'})
+ ctx.textAlign='center'
+ ctx.font='700 15px system-ui';ctx.fillStyle=it.verdict[1]
+ ctx.fillText(`适配度:${it.verdict[0]}`,cx,y+h-42)
+ ctx.font='600 12px system-ui';ctx.fillStyle=CO.cyan
+ ctx.fillText(only?'点击进入 · 回车':`点击迎战 · ${idx?'→':'←'}`,cx,y+h-18)
+ ctx.textAlign='left';NODEBOX[idx]=[x,y,w,h]}
+function intelScreen(){
+ const cx=W/2,only=intel.length<2,kind=SHAPE[RUN.node]
+ const TITLE={ELITE:['对抗性输入','它是冲着你这套牌来的 — 精英不设岔口,躲不掉'],
+   BOSS:['最后一关','线性削减追不上指数增长'],MOB:['岔口 · 选一条路','两边都能过关,选哪边取决于你手上这副牌']}[kind]
+ ctx.textAlign='center'
+ ctx.font='600 10.5px system-ui';ctx.letterSpacing='3px';ctx.fillStyle=CO.faint
+ ctx.fillText(`第 ${RUN.node+1} / ${SHAPE.length} 关`,cx,H*.15);ctx.letterSpacing='0px'
+ ctx.font='700 26px system-ui';ctx.fillStyle=CO.ink
+ ctx.fillStyle=kind==='BOSS'?CO.red:kind==='ELITE'?CO.amber:CO.ink
+ ctx.fillText(TITLE[0],cx,H*.15+38)
+ ctx.font='400 12.5px system-ui';ctx.fillStyle=CO.dim
+ ctx.fillText(TITLE[1],cx,H*.15+62)
+ NODEBOX.length=0
+ const rmax=Math.max(...intel.map(i=>i.rows.length))
+ const cw=430,ch=190+rmax*26,gap=32,y=H*.15+92
+ if(only)intelCard(intel[0],cx-cw/2,y,cw,ch,0,true)
+ else{intelCard(intel[0],cx-cw-gap/2,y,cw,ch,0);intelCard(intel[1],cx+gap/2,y,cw,ch,1)}
+ ctx.textAlign='center';ctx.font='400 12px system-ui';ctx.fillStyle=CO.faint
+ ctx.fillText(`牌组 ${RUN.deck.length} 张 · 预算 ${RUN.budget} · 深度 +${Math.round(DEPTHMUL*RUN.node*100)}% 规模`,cx,y+ch+34)
+ ctx.textAlign='left'}
+
+function offerScreen(){
+ const cx=W/2
+ ctx.textAlign='center';ctx.font='700 30px system-ui';ctx.fillStyle=CO.ink
+ ctx.fillText('打完了 · 三选一',cx,H*.26)
+ ctx.font='400 13px system-ui';ctx.fillStyle=CO.dim
+ ctx.fillText(`牌组 ${RUN.deck.length} 张 · 预算上限升到 ${RUN.cap} · 跳过也是策略(不稀释牌库)`,cx,H*.26+26)
+ ctx.textAlign='left'
+ const cw=200,ch=170,gap=22,x0=cx-(3*cw+2*gap)/2
+ HITBOX.length=0
+ offer.forEach((id,i)=>cardFace(id,x0+i*(cw+gap),H*.36,cw,ch,true,false,null,i))
+ btn(cx-74,H*.36+ch+28,148,40,'跳 过')}
+
+function overScreen(){
+ const cx=W/2,win=RUN.over==='win'
+ ctx.textAlign='center';ctx.font='800 44px system-ui'
+ ctx.fillStyle=win?CO.green:CO.red
+ ctx.fillText(win?'通关':`倒在第 ${RUN.node+1} / ${SHAPE.length} 关`,cx,H*.26)
+ if(!win&&S){const d=diagnose(S)
+  ctx.font='400 13.5px system-ui';ctx.fillStyle=CO.dim
+  ctx.fillText(`${S.E.name} · 撑了 ${d.turns} 回合 · 烧掉 ${d.spent} 预算 · 还剩 ${d.left} 个元素`,cx,H*.26+32)
+  const pw=760,px=cx-pw/2,py=H*.26+58,ph=40+d.lines.length*32
+  panel(px,py,pw,ph,'你 输 在 这 里')
+  ctx.textAlign='left'
+  d.lines.forEach((l,i)=>{const y=py+52+i*32
+   ctx.fillStyle=i===0?CO.red:'#ff9f6b';ctx.font='700 14px system-ui';ctx.fillText(i===0?'▶':'·',px+20,y)
+   ctx.fillStyle=i===0?'#f4e8de':'#c3d0dd';ctx.font=(i===0?'600 14px':'400 13px')+' system-ui'
+   ctx.fillText(l.t,px+44,y)})
+  ctx.textAlign='center'}
+ ctx.font='400 13px system-ui';ctx.fillStyle=CO.faint
+ ctx.fillText(`牌组 ${RUN.deck.length} 张 · 点任意处重开 · 1–7 换流派 · P 看战报图`,cx,H*.80);ctx.textAlign='left'}
+
+function wrap(t,x,y,w,lh){let l='',yy=y
+ for(const ch of t){if(ctx.measureText(l+ch).width>w){ctx.fillText(l,x,yy);l=ch;yy+=lh}else l+=ch}
+ ctx.fillText(l,x,yy)}
+/* 渲染里抛一次异常就掐断 rAF 链、画面永久冻结 —— 一个卡面小 bug 直接变成「游戏卡死」。
+   兜住它:循环必须继续,并且把错误摆到屏幕上,而不是只躺在控制台里。 */
+let drawErr=null
+const req=()=>requestAnimationFrame(()=>{
+ try{ draw() }
+ catch(err){
+  if(!drawErr){drawErr=err;console.error('渲染异常:',err)}
+  try{
+   ctx.fillStyle='rgba(120,20,16,.92)';ctx.fillRect(0,H-46,W,46)
+   ctx.fillStyle='#ffd9d4';ctx.font='600 13px system-ui';ctx.textAlign='left'
+   ctx.fillText('渲染出错(游戏还在跑,按 1–7 可重开):'+err.message,20,H-18)
+  }catch(_){}
+  requestAnimationFrame(()=>{try{draw()}catch(_){requestAnimationFrame(()=>{try{draw()}catch(_){}})}})
+ }})
+const inBox=(mx,my,b)=>b&&mx>b[0]&&mx<b[0]+b[2]&&my>b[1]&&my<b[1]+b[3]
+cv.addEventListener('click',e=>{const mx=e.clientX,my=e.clientY
+ if(RUN.over){startRun(KIT);return}
+ if(intel){for(let k=0;k<NODEBOX.length;k++)if(inBox(mx,my,NODEBOX[k])){pickNode(k);return}
+  return}
+ if(inBox(mx,my,btn.last)){offer?takeCard(null):window.__end();return}
+ const ids=offer||S.hand
+ for(let i=0;i<ids.length;i++) if(inBox(mx,my,HITBOX[i])){offer?takeCard(ids[i]):uiPlay(i);return}})
+addEventListener('keydown',e=>{
+ if(intel){const k={ArrowLeft:0,ArrowRight:1,Enter:0,' ':0}[e.key]
+  if(k!==undefined&&NODEBOX[k]){e.preventDefault();pickNode(k);return}}
+ const k=['base','sort','dc','memo','greedy','heap','twop'][+e.key-1]; if(k){startRun(k);return}
+ if(e.key==='p'||e.key==='P'){
+  const fs=(RUN&&RUN.films.length?RUN.films:[]).concat(S&&!S.over&&S.film.length
+    ?[{foe:S.foeId,name:S.E.name,shape:S.E.shape||'random',film:S.film,won:false,turns:S.turn,node:RUN?RUN.node:0,diag:[]}]:[])
+  if(!fs.length){poster=null;req();return}
+  poster=poster?null:posterCanvas(fs,KIT);req();return}
+ if((e.key==='s'||e.key==='S')&&poster){
+  const a=document.createElement('a');a.download='算法卡牌-'+Date.now()+'.png'
+  a.href=poster.toDataURL('image/png');a.click();return}
+ if(e.key==='a'||e.key==='A'){ if(autoTimer){clearInterval(autoTimer);autoTimer=null}
+  else autoTimer=setInterval(()=>{ if(RUN.over){clearInterval(autoTimer);autoTimer=null;return}
+   if(intel){pickNode(intel.length>1&&intel[1].score>intel[0].score?1:0);return}
+   if(offer){takeCard(offer.find(c=>KITS[KIT].includes(c))??offer[0]);return}
+   autoTurn()},420)}})
+startRun('sort');draw()
+</script></body></html>
