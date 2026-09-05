@@ -10,7 +10,10 @@ import { fileURLToPath } from 'node:url'
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const PAGE = pathToFileURL(join(ROOT, 'index.html')).href
 
-const N_RUN = Number(process.env.RUNS || 200)   // 完整 RUN 局数
+// 200 局时通关率的抽样噪声能到 ±6 点(实测 sort:n=200 报 14%、n=600/1000 都是 ~20.7%),
+// 足以让一条贴边的流派假红一次 —— 而假红比不测更糟(它教你忽略判据)。
+// 500 局把噪声压下去,代价只是 8.3s → 11.4s。
+const N_RUN = Number(process.env.RUNS || 500)   // 完整 RUN 局数
 const N_FOE = Number(process.env.FIGHTS || 250) // 单场局数
 
 const G = '\x1b[32m', R = '\x1b[31m', Y = '\x1b[33m', D = '\x1b[2m', X = '\x1b[0m', B = '\x1b[1m'
@@ -265,6 +268,23 @@ const rnd = await page.evaluate(() => {
 process.stdout.write('\r\x1b[K')
 check('G11 随机主元解除排序惩罚', `${rnd.before}→${rnd.after}`, v => v === 'true→false', 'true→false')
 check('G11 随机主元克对抗性输入', rnd.gain, v => v > 0, '带随机主元胜率更高')
+
+/* ── G12 精英预告:预告必须**说到做到**(说了第 3 关是谁,到了就得是谁)── */
+const warn = await page.evaluate(() => {
+  let same = 0, tot = 0, hasWarnAt0 = 0
+  for (let s = 1; s <= 40; s++) {
+    __startRun('sort'); const R = __RUN()
+    if (__nextElite() && __nextElite().node === 2) hasWarnAt0++
+    const promised = R.elites
+    // 直接问引擎:第 3 关 / 第 6 关实际会摇出谁
+    const a2 = __rollNode(R, 2)[0].foe, a5 = __rollNode(R, 5)[0].foe
+    tot += 2; if (a2 === promised[0]) same++; if (a5 === promised[1]) same++
+  }
+  return { same, tot, hasWarnAt0, elitesDistinct: __RUN().elites[0] !== __RUN().elites[1] }
+})
+check('G12 精英预告说到做到', `${warn.same}/${warn.tot}`, v => v === '80/80', '预告=实际')
+check('G12 第 1 关就能看到预告', warn.hasWarnAt0, v => v === 40, '40/40 局')
+check('G12 两个精英不重样', warn.elitesDistinct ? 'OK' : 'FAIL', v => v === 'OK', '不同的两个')
 
 /* ── 控制台 ── */
 check('全程无控制台报错', consoleErrors.length ? consoleErrors[0].slice(0, 60) : 0, v => v === 0, '0 条')

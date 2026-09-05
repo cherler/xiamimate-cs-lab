@@ -539,8 +539,20 @@ function newRun(seed,kit,kit2){const R=rng(seed)
  // films:整局八关的胶片,用来拼长图。kit2 给了就是双流派:两条流派的牌拼进同一副(起始牌共用一份)。
  const dual=kit2&&kit2!==kit
  const deck=[...starterOf(kit),...KITS[kit],...(dual?KITS[kit2]:[])]
+ /* 两个精英**开局就摇好**,而且公开预告。
+    实测(300 局 × 8 流派)死亡分布:第 3 关 28% · 第 6 关 31% · Boss 25%,而前两关合计只有 3%
+    —— 死亡高度集中在两个精英关,偏偏前面完全没有「你该准备了」的信号(v2-proposal 角度三 C2/C5)。
+    提前摇好就能提前告诉你「第 3 关会遇到谁、它专克什么」,于是三选一才有得放矢。
+    注意:这只是把这两次 pickFoe 提到开局做,序列仍由同一条 RUN.R 决定,依旧确定性可复现。 */
+ const e1=pickFoe(R,ELITES,[]),e2=pickFoe(R,ELITES,[e1])
  return{R,seed,deck,kit,kit2:dual?kit2:null,budget:T.BUDGET,cap:T.BUDGET,node:0,over:null,offer:null,
-   used:[],opts:null,log:[],films:[],refactors:0,boon:null}}
+   used:[],opts:null,log:[],films:[],refactors:0,boon:null,elites:[e1,e2]}}
+/* 下一个精英关在第几关、是谁 —— 预告与备战提示都读它。 */
+const ELITE_NODES=[2,5]
+function nextElite(RUN){ if(!RUN||!RUN.elites)return null
+ for(let k=0;k<ELITE_NODES.length;k++) if(RUN.node<ELITE_NODES[k])
+  return{node:ELITE_NODES[k],foe:RUN.elites[k],E:FOE[RUN.elites[k]]}
+ return null}
 /* ═══ 5.2 起手抉择:开局定调的一次投资 ═══
    实测第 1 关:精心打平均 98.8% 胜率、乱打也有 74.8%(dc/memo 甚至乱打 100%)——
    开头**没有真实后果**,而通关率约 20% 意味着这段要被重玩五遍(v2-proposal 角度一/角度三)。
@@ -585,7 +597,9 @@ function pickFoe(R,pool,used){const av=pool.filter(x=>!used.includes(x))
 /* 每关 roll 出两个候选 → 玩家看情报后二选一(Boss 关没得选) */
 function rollNode(RUN,i){const t=SHAPE[i]
  if(t==='BOSS')return[{foe:'expo',flaw:nodeFlaw(RUN,i)}]
- if(t==='ELITE')return[{foe:pickFoe(RUN.R,ELITES,RUN.used),flaw:nodeFlaw(RUN,i)}]
+ //  精英用开局预告过的那一个(预告和实际必须是同一个,否则预告就是骗人的)
+ if(t==='ELITE'){const k=ELITE_NODES.indexOf(i)
+  return[{foe:(RUN.elites&&RUN.elites[k])||pickFoe(RUN.R,ELITES,RUN.used),flaw:nodeFlaw(RUN,i)}]}
  const a=pickFoe(RUN.R,MOBS,RUN.used),b=pickFoe(RUN.R,MOBS,[...RUN.used,a])
  return[{foe:a,flaw:nodeFlaw(RUN,i)},{foe:b,flaw:nodeFlaw(RUN,i)}]}
 function nodeFoe(RUN,i){return rollNode(RUN,i)[0].foe}   // 兼容旧调用
@@ -679,6 +693,8 @@ function runOnce(kit,seed){const RUN=newRun(seed,kit)
   if(r.over!=='win')return{over:'lose',node:i,foe:f,flaw:fl,deck:RUN.deck.length}
   RUN.cap+=BUDGET_GROW;RUN.budget=RUN.cap   // 每关重置,且上限随进度抬高
   const o=offer3(RUN);const own=RUN.deck.filter(c=>KITS[kit].includes(c)).length
+  //  注:试过「照预告提前一关攒护栏/剪枝」,实测第 3 关死亡 568→562,几乎没动 ——
+  //  通用防御卡本来就不是精英的解,所以不留这段无效复杂度。预告的价值在于让**人**做知情选择。
   const best=(i>=2&&o.includes('prune'))?'prune':(i>=2&&o.includes('guard')&&!RUN.deck.includes('guard'))?'guard'
     :(own>=8?(o.find(c=>C[c].tag==='tool')??o[0]):(o.find(c=>KITS[kit].includes(c))??o.find(c=>C[c].tag==='tool')))
   if(best)RUN.deck.push(best)}
@@ -962,7 +978,7 @@ Object.assign(window,{__POL2:S=>POL[KIT](S),__SETG:(c,d)=>{GCLUST=c;GDENS=d},__S
  __doRemove:doRemove,__canRefactor:()=>canRefactor(RUN),__refactorCost:()=>refactorCost(RUN),__refactors:()=>RUN.refactors,__RUN:()=>RUN,__remove:v=>{remove=v},__setOffer:()=>{offer=offer3(RUN)},
  __menu:v=>{menu=v;menuSel=[]},__menuSel:()=>menuSel,__comboName:comboName,__COMBO:COMBO,__KIT2:()=>KIT2,__newRun2:(seed,k,k2)=>newRun(seed,k,k2),
  __parOf:()=>parOf(S),__lastPar:()=>lastPar,__setPar:v=>{lastPar=v},__SHAPEDEF:()=>SHAPES,
- __antiOf:antiOf,__BOONS:BOONS,__takeBoon:takeBoon,__boonPick:()=>boonPick,__boon:()=>RUN&&RUN.boon,__applyBoonId:applyBoonId})
+ __antiOf:antiOf,__nextElite:()=>nextElite(RUN),__ELITE_NODES:ELITE_NODES,__BOONS:BOONS,__takeBoon:takeBoon,__boonPick:()=>boonPick,__boon:()=>RUN&&RUN.boon,__applyBoonId:applyBoonId})
 
 /* ── 图上的操作:玩家加边,敌人断边 ── */
 function gAdj(G){const a={};for(const e of G.edges)if(e.alive){
@@ -1975,6 +1991,19 @@ function intelScreen(){
  else{intelCard(intel[0],cx-cw-gap/2,y,cw,ch,0);intelCard(intel[1],cx+gap/2,y,cw,ch,1)}
  ctx.textAlign='center';ctx.font='400 12px system-ui';ctx.fillStyle=CO.faint
  ctx.fillText(`牌组 ${RUN.deck.length} 张 · 预算 ${RUN.budget} · 深度 +${Math.round(DEPTHMUL*RUN.node*100)}% 规模`,cx,y+ch+34)
+ /*  精英预告条:死亡有 28%/31% 砸在两个精英关上,而以前一点预兆都没有。
+     开局就摇好精英 → 这里提前公布「第几关、是谁、它专克什么」,三选一才有得放矢。 */
+ const ne=nextElite(RUN)
+ if(ne&&kind!=='ELITE'){const away=ne.node-RUN.node
+  const w2=Math.min(760,W-80),x2=cx-w2/2,y2=y+ch+52
+  ctx.fillStyle='rgba(240,169,74,.10)';ctx.fillRect(x2,y2,w2,44)
+  ctx.strokeStyle='rgba(240,169,74,.55)';ctx.lineWidth=1;ctx.strokeRect(x2+.5,y2+.5,w2-1,43)
+  ctx.textAlign='left'
+  ctx.fillStyle=CO.amber;ctx.font='700 12.5px system-ui'
+  ctx.fillText(`⚠ ${away===1?'下一关':`还有 ${away} 关`}就是精英 · 第 ${ne.node+1} 关「${ne.E.name}」`,x2+16,y2+19)
+  ctx.fillStyle=CO.dim;ctx.font='400 11.5px system-ui'
+  ctx.fillText(`${ne.E.note} —— 趁现在攒对策`,x2+16,y2+36)
+  ctx.textAlign='center'}
  ctx.textAlign='left'}
 
 /* 开局标题屏:选 1~2 条流派。选 2 条 = 双流派,组合名是个真实算法(见 comboName)。 */
