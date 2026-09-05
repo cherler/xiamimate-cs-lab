@@ -197,6 +197,37 @@ check('G8 复盘 par 每仗都算得出', parsGot, v => v === 3, '3 / 3 仗')
 check('G8 par 是正整数回合', par.out.every(o => o.par == null || (o.par > 0 && Number.isInteger(o.par))) ? 'OK' : 'FAIL', v => v === 'OK', '> 0 的整数')
 check('G8 par 确定性(同局面两次一致)', par.stable === true ? 'OK' : `FAIL(${par.stable})`, v => v === 'OK', '两次一致')
 
+/* ── G9 起手抉择:三种投资各自生效、都要付上限、且真的有区分度(不是三个一样的按钮)── */
+process.stdout.write(`${D}G9 起手抉择…${X}`)
+const boon = await page.evaluate(() => {
+  const eff = {}
+  for (const id of ['index', 'split', 'lean']) {
+    __startRun('sort', 'dc')
+    const cap0 = __RUN().cap, deck0 = __RUN().deck.length
+    __takeBoon(id)
+    const R = __RUN(), S = __S()
+    eff[id] = { capDrop: cap0 - R.cap, deckDrop: deck0 - R.deck.length, memo: S.memo, splits: S.splits }
+  }
+  // 区分度:同一批种子下,dc 用「先切好段」该比用「先建索引」快;memo 反过来。
+  const avg = (k, b2) => {
+    let t = 0, w = 0
+    for (const f of ['shuffled', 'tape', 'dupes', 'stream', 'graph'])
+      for (let s = 1; s <= 30; s++) {
+        const r = __fight(k, s * 7919, f, null, __T.BUDGET - 5, 45, null, 0, b2)
+        if (r.over === 'win') { w++; t += r.turn }
+      }
+    return w ? t / w : null
+  }
+  return { eff, dcSplit: avg('dc', 'split'), dcIndex: avg('dc', 'index'), memoIndex: avg('memo', 'index'), memoSplit: avg('memo', 'split') }
+})
+process.stdout.write('\r')
+check('G9 先建索引 = 预处理值 +14', boon.eff.index.memo, v => v === 14, '= 14')
+check('G9 先切好段 = 段数 +1', boon.eff.split.splits, v => v === 2, '= 2(1+1)')
+check('G9 轻装上阵 = 牌组 −2', boon.eff.lean.deckDrop, v => v === 2, '= 2 张')
+check('G9 三种都付 5 点上限', [boon.eff.index.capDrop, boon.eff.split.capDrop, boon.eff.lean.capDrop].join(','), v => v === '5,5,5', '5,5,5')
+check('G9 分治更吃「先切好段」', +(boon.dcIndex - boon.dcSplit).toFixed(1), v => v > 0, '> 0 回合(切段更快)')
+check('G9 预处理更吃「先建索引」', +(boon.memoSplit - boon.memoIndex).toFixed(1), v => v > 0, '> 0 回合(建索引更快)')
+
 /* ── 控制台 ── */
 check('全程无控制台报错', consoleErrors.length ? consoleErrors[0].slice(0, 60) : 0, v => v === 0, '0 条')
 

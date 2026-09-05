@@ -471,7 +471,26 @@ function newRun(seed,kit,kit2){const R=rng(seed)
  const dual=kit2&&kit2!==kit
  const deck=[...starterOf(kit),...KITS[kit],...(dual?KITS[kit2]:[])]
  return{R,seed,deck,kit,kit2:dual?kit2:null,budget:T.BUDGET,cap:T.BUDGET,node:0,over:null,offer:null,
-   used:[],opts:null,log:[],films:[],refactors:0}}
+   used:[],opts:null,log:[],films:[],refactors:0,boon:null}}
+/* ═══ 5.2 起手抉择:开局定调的一次投资 ═══
+   实测第 1 关:精心打平均 98.8% 胜率、乱打也有 74.8%(dc/memo 甚至乱打 100%)——
+   开头**没有真实后果**,而通关率约 20% 意味着这段要被重玩五遍(v2-proposal 角度一/角度三)。
+   照 StS 的 Neow 祝福:开局先做一次**定调选择**,让第 1 分钟就有后果。
+   三个选项都是真实的算法取舍——**先花代价做预处理,换后面更快**,统一代价=预算上限 −5,
+   于是「选哪个」取决于你这副牌和接下来会遇到的形状,而不是「哪个更强」。 */
+const BOONS=[
+ {id:'index',name:'先建索引',desc:'开局预处理值 +14',why:'空间换时间:重复值多、稀疏的局面,查表一次收割一大片',cost:5},
+ {id:'split',name:'先切好段',desc:'开局段数 +1',why:'分治地基白送:分块有序、可切的局面,逐层合并从第一回合就有量',cost:5},
+ {id:'lean', name:'轻装上阵',desc:'立刻免费删 2 张起始牌',why:'精简牌组:每少一张废牌,就多一次抽到真正想要那张的机会',cost:5},
+]
+const boonOf=id=>BOONS.find(b=>b.id===id)||null
+/* 起手投资落到每一场战斗上。newFight 被批量测试大量复用(没有 RUN),
+   所以不塞进 newFight 里,而是在 RUN 建立战斗之后单独施加。 */
+function applyBoonId(S,id){ if(!S||!id)return S
+ if(id==='index')S.memo+=14
+ if(id==='split')S.splits+=1
+ return S}                                   // 'lean' 是删牌,已在选定时作用于牌组,战斗里无事可做
+function applyBoon(S,RUN){return applyBoonId(S,RUN&&RUN.boon)}
 /* 双流派组合名:4 条核心流派两两相配,每一对都是一个真实算法(见 docs/v2-proposal 2.6)。
    键按字母序拼(和 comboName 里 sort() 一致);没收录的对给个「A + B」的朴素名。 */
 const COMBO={'dc+sort':'归并排序','memo+sort':'索引','dc+memo':'记忆化递归',
@@ -556,8 +575,8 @@ function pick(S,order){
  if(S.budget<14){const i=S.hand.indexOf('backtrack');if(i>=0&&canPlay(S,i))return i}
  for(const id of order){const i=S.hand.indexOf(id);if(i>=0&&canPlay(S,i))return i}
  for(let i=0;i<S.hand.length;i++)if(canPlay(S,i))return i;return -1}
-function fight(kit,seed,foeId,deck,budget,maxTurn=45,flawId,depth=0){
- const S=newFight(seed,deck??[...starterOf(kit),...KITS[kit]],foeId,budget??T.BUDGET,flawId,depth),p=POL[kit]
+function fight(kit,seed,foeId,deck,budget,maxTurn=45,flawId,depth=0,boon=null){
+ const S=applyBoonId(newFight(seed,deck??[...starterOf(kit),...KITS[kit]],foeId,budget??T.BUDGET,flawId,depth),boon),p=POL[kit]
  while(!S.over&&S.turn<=maxTurn){let g=0
   while(!S.over&&g++<14){const i=p(S);if(i<0)break;if(!play(S,i))break}
   if(!S.over)endTurn(S)}
@@ -671,19 +690,35 @@ let RUN=null,S=null,offer=null,intel=null,parts=[],KIT='sort',anim=null,hist=[],
 let remove=false,refBox=null   // remove=正在看「重构删牌」子屏;refBox=奖励屏上那颗重构按钮的命中框
 let menu=false,menuSel=[],KIT2=null   // menu=开局选流派的标题屏;menuSel=已选的 1~2 条流派;KIT2=第二流派(单流派时 null)
 let lastPar=null   // 上一仗的「你 N 回合 · 最优 M 回合」(引擎当场跑出来的,不是硬编码)
+let boonPick=false,boonBox=[]   // boonPick=正在做开局的起手抉择;boonBox=三个选项的命中框
 const CO={bg0:'#050a12',bg1:'#0a141f',line:'rgba(90,150,190,.22)',panel:'rgba(12,24,38,.72)',
  ink:'#e6eef7',dim:'#8ba3bb',faint:'#4d6076',cyan:'#5fd0e8',amber:'#f0a94a',red:'#ff6b5e',green:'#7fd98f',
  tag:{base:'#a8c0d6',sort:'#f0a94a',dc:'#b39ddb',memo:'#7fd98f',greedy:'#ff8f6b',tool:'#5fd0e8',deck:'#9ecbff',heap:'#ffb3d9',twop:'#8ee6c8',def:'#c8b4ff',graph:'#7fd1ff'}}
 const TAGNAME={base:'起始',sort:'排序流',dc:'拆解流',memo:'复利流',greedy:'激进流',tool:'工具',deck:'牌库',heap:'堆流',twop:'区间流',def:'防御',graph:'图算法'}
-function startRun(k,k2){KIT=k;KIT2=(k2&&k2!==k)?k2:null;menu=false;RUN=newRun(Date.now()&0xffff,k,KIT2);enter()}
+function startRun(k,k2){KIT=k;KIT2=(k2&&k2!==k)?k2:null;menu=false
+ RUN=newRun(Date.now()&0xffff,k,KIT2)
+ boonPick=true;lastPar=null
+ //  仍然 enter() 一次:把第 1 关的岔口/预览战斗建好(起手抉择屏画在它上面)。
+ //  这样「没选起手就直接 __pickNode」的批量测试路径照旧能跑,不用特判。
+ enter()}
+/* 选定起手投资:扣上限、轻装当场删牌,然后开打。 */
+function takeBoon(id){const b=boonOf(id); if(!b||!RUN)return
+ RUN.boon=id;RUN.cap-=b.cost;RUN.budget=RUN.cap
+ if(id==='lean'){ // 删 2 张最冗余的起始牌(当前份数最多的那种),不占重构次数
+  for(let t=0;t<2;t++){const cnt={}
+   RUN.deck.forEach(c=>{if(C[c].tag==='base')cnt[c]=(cnt[c]||0)+1})
+   const pick=Object.entries(cnt).sort((x,y)=>y[1]-x[1])[0]
+   if(!pick)break
+   const i=RUN.deck.indexOf(pick[0]); if(i>=0)RUN.deck.splice(i,1)}}
+ boonPick=false;enter()}
 function enter(){RUN.opts=rollNode(RUN,RUN.node)
  intel=RUN.opts.map(o=>Object.assign(intelOf(RUN.deck,o.foe,o.flaw,RUN.node),o))
  offer=null;hist=[100];flo=null
- S=newFight(1,RUN.deck,RUN.opts[0].foe,RUN.budget,RUN.opts[0].flaw,RUN.node)}
+ S=applyBoon(newFight(1,RUN.deck,RUN.opts[0].foe,RUN.budget,RUN.opts[0].flaw,RUN.node),RUN)}
 function pickNode(k){const o=RUN.opts[k];RUN.used.push(o.foe)
  const sd=(Date.now()&0xffff)+RUN.node
- S=newFight(sd,RUN.deck,o.foe,RUN.budget,o.flaw,RUN.node)
- S.seed=sd;S.parCtx={deck:[...RUN.deck],budget:RUN.budget,flaw:o.flaw,depth:RUN.node}   // 复盘算「最优回合」要用
+ S=applyBoon(newFight(sd,RUN.deck,o.foe,RUN.budget,o.flaw,RUN.node),RUN)
+ S.seed=sd;S.parCtx={deck:[...RUN.deck],budget:RUN.budget,flaw:o.flaw,depth:RUN.node,boon:RUN.boon}   // 复盘算「最优回合」要用
  intel=null;hist=[100]}
 /* 「你 N 回合 · 最优 M 回合」—— 这局面本来能多快?
    拿**同一副牌、同一个种子、同一个敌人**,让六条流派的策略各打一遍(headless),取最少回合数当基准。
@@ -693,7 +728,7 @@ const PARKITS=['sort','dc','memo','greedy','heap','twop']
 function parOf(S){ if(!S||!S.parCtx||S.mode==='graph')return null
  const c=S.parCtx;let best=null,bestKit=null
  for(const k of PARKITS){        // fight() 自己按 kit 取 POL[kit],不用动全局 KIT
-  const r=fight(k,S.seed,S.foeId,c.deck,c.budget,45,c.flaw,c.depth)
+  const r=fight(k,S.seed,S.foeId,c.deck,c.budget,45,c.flaw,c.depth,c.boon)   // 带上同样的起手投资才公平
   if(r.over==='win'&&(best===null||r.turn<best)){best=r.turn;bestKit=k}}
  return best===null?null:{turns:best,kit:bestKit}}
 function stashFilm(){ if(!S||!RUN)return
@@ -841,7 +876,8 @@ Object.assign(window,{__POL2:S=>POL[KIT](S),__SETG:(c,d)=>{GCLUST=c;GDENS=d},__S
  __draw:()=>draw(),__FB:v=>{FLAWBONUS=v},__HITBOX:()=>HITBOX,__CARD:id=>C[id],__take:takeCard,__startRun:startRun,__skipIntel:()=>{if(intel)pickNode(0)},__pickNode:k=>pickNode(k),__SHAPE:SHAPE,
  __doRemove:doRemove,__canRefactor:()=>canRefactor(RUN),__refactorCost:()=>refactorCost(RUN),__refactors:()=>RUN.refactors,__RUN:()=>RUN,__remove:v=>{remove=v},__setOffer:()=>{offer=offer3(RUN)},
  __menu:v=>{menu=v;menuSel=[]},__menuSel:()=>menuSel,__comboName:comboName,__COMBO:COMBO,__KIT2:()=>KIT2,__newRun2:(seed,k,k2)=>newRun(seed,k,k2),
- __parOf:()=>parOf(S),__lastPar:()=>lastPar,__setPar:v=>{lastPar=v},__SHAPEDEF:()=>SHAPES})
+ __parOf:()=>parOf(S),__lastPar:()=>lastPar,__setPar:v=>{lastPar=v},__SHAPEDEF:()=>SHAPES,
+ __BOONS:BOONS,__takeBoon:takeBoon,__boonPick:()=>boonPick,__boon:()=>RUN&&RUN.boon,__applyBoonId:applyBoonId})
 
 /* ── 图上的操作:玩家加边,敌人断边 ── */
 function gAdj(G){const a={};for(const e of G.edges)if(e.alive){
@@ -1228,6 +1264,7 @@ function draw(){
   ctx.fillText('P 收起 · S 保存 PNG',W/2,H-8);ctx.textAlign='left'
   return req()}
  if(menu)      {menuScreen();return req()}   // 开局选流派:RUN 可能还没建,必须排在 RUN.over 之前
+ if(boonPick)  {boonScreen();return req()}   // 起手抉择:RUN 已建但还没进第 1 关
  if(RUN.over)  {overScreen();return req()}
  if(intel)     {intelScreen();return req()}
  if(remove)    {removeScreen();return req()}
@@ -1889,6 +1926,28 @@ function menuScreen(){
  if(menuSel.length>=1)btn(cx-90,by+34,180,44,menuSel.length===2?'开 始':'单流派开始')
  else btn.last=null}
 
+/* 起手抉择屏:开局定调的一次投资(三选一,统一代价 −5 上限)。 */
+function boonScreen(){
+ const cx=W/2
+ ctx.textAlign='center';ctx.font='700 30px system-ui';ctx.fillStyle=CO.ink
+ ctx.fillText('起手抉择 · 先做一次投资',cx,H*.17)
+ ctx.font='400 13.5px system-ui';ctx.fillStyle=CO.dim
+ ctx.fillText(`${comboName(KIT,KIT2)} · 牌组 ${RUN.deck.length} 张 —— 都要花 5 点预算上限,选哪个取决于你这副牌`,cx,H*.17+28)
+ ctx.textAlign='left'
+ const cw=260,ch=176,gap=22,x0=cx-(3*cw+2*gap)/2,y0=H*.30
+ boonBox=[]
+ BOONS.forEach((b,i)=>{const x=x0+i*(cw+gap),y=y0
+  ctx.fillStyle='rgba(14,26,40,.96)';ctx.fillRect(x,y,cw,ch)
+  ctx.strokeStyle=CO.cyan;ctx.lineWidth=1.6;ctx.strokeRect(x+.8,y+.8,cw-1.6,ch-1.6)
+  ctx.fillStyle=CO.ink;ctx.font='700 20px system-ui';ctx.fillText(b.name,x+18,y+38)
+  ctx.fillStyle=CO.green;ctx.font='600 14px system-ui';ctx.fillText(b.desc,x+18,y+66)
+  ctx.fillStyle=CO.faint;ctx.font='400 12.5px system-ui';wrap(b.why,x+18,y+92,cw-36,17)
+  ctx.fillStyle=CO.red;ctx.font='600 12.5px system-ui';ctx.fillText(`代价:预算上限 −${b.cost}`,x+18,y+ch-16)
+  boonBox[i]=[x,y,cw,ch]})
+ ctx.textAlign='center';ctx.fillStyle=CO.faint;ctx.font='400 12.5px system-ui'
+ ctx.fillText('先花代价做预处理,换后面更快 —— 这就是算法里最基本的取舍',cx,y0+ch+34);ctx.textAlign='left'
+ btn.last=null}
+
 function offerScreen(){
  const cx=W/2
  ctx.textAlign='center';ctx.font='700 30px system-ui';ctx.fillStyle=CO.ink
@@ -1996,6 +2055,9 @@ cv.addEventListener('click',e=>{const mx=e.clientX,my=e.clientY
    if(idx>=0)menuSel.splice(idx,1); else if(menuSel.length<2)menuSel.push(k); else{menuSel.shift();menuSel.push(k)}
    return}
   if(btn.last&&inBox(mx,my,btn.last)&&menuSel.length>=1){startRun(menuSel[0],menuSel[1]);return}
+  return}
+ //  起手抉择:点三张之一定调开打。
+ if(boonPick){for(let i=0;i<boonBox.length;i++) if(inBox(mx,my,boonBox[i])){takeBoon(BOONS[i].id);return}
   return}
  if(RUN.over){menu=true;menuSel=[];return}   // 通关/失败后回到选流派屏,可换一套搭配
  if(intel){for(let k=0;k<NODEBOX.length;k++)if(inBox(mx,my,NODEBOX[k])){pickNode(k);return}
