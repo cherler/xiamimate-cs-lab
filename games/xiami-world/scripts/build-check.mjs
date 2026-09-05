@@ -168,8 +168,19 @@ await runN(160); s = await st()
 ok(s.done && s.pass && JSON.stringify(s.deliveredBy) === '[2,2,2]', `甲3 汇入三向分拣 △2/□2/○2=通过(by=${JSON.stringify(s.deliveredBy)}, collided=${s.collided}, cyc=${s.cycles})`)
 await p.screenshot({ path: SHOT + '/jia3.png' })
 
-// 真·路由器 按址转发:搭一棵转发树,一位一位看地址,把 0/1/2/3 各归网段
+// 真·路由器 先认一位(入门):一台看个位,0→网段0 1→网段1
 await p.evaluate(() => window.__play(11))
+await p.evaluate(() => {
+  const P = window.__place
+  P(3, 1, 'belt', 0); P(3, 2, 'belt', 0); P(3, 3, 'belt', 0); P(3, 4, 'arouter', 0, 0) // 看个位:0直 1拐
+  window.__belts(3, 5, 10, 0)                                                            // addr0 → 直 → r3 网段0
+  P(2, 4, 'belt', 3); window.__belts(1, 4, 10, 0)                                        // addr1 → 上 → r1 网段1
+})
+await runN(120); s = await st()
+ok(s.done && s.pass && JSON.stringify(s.deliveredBy) === '[3,3]', `真路由器 先认一位 网段0×3/网段1×3=通过(by=${JSON.stringify(s.deliveredBy)}, wrong=${s.wrong})`)
+
+// 真·路由器 按址转发:搭一棵转发树,一位一位看地址,把 0/1/2/3 各归网段
+await p.evaluate(() => window.__play(12))
 await p.evaluate(() => {
   const P = window.__place
   P(3, 1, 'belt', 0); P(3, 2, 'belt', 0); P(3, 3, 'arouter', 0, 1)  // 看高位:{0,1}→右 {2,3}→上
@@ -183,5 +194,52 @@ await p.evaluate(() => {
 await runN(160); s = await st()
 ok(s.done && s.pass && JSON.stringify(s.deliveredBy) === '[2,2,2,2]', `真路由器 按址转发 四网段各2=通过(by=${JSON.stringify(s.deliveredBy)}, wrong=${s.wrong}, cyc=${s.cycles})`)
 await p.screenshot({ path: SHOT + '/router-real.png' })
+
+// 真·路由器 默认路由:看高位,≥4 无具体路由→默认口;<4 再按低位细分到网段
+await p.evaluate(() => window.__play(13))
+await p.evaluate(() => {
+  const P = window.__place
+  P(4, 1, 'belt', 0); P(4, 2, 'arouter', 0, 2)                        // 看 bit2:<4→右, ≥4→上(默认)
+  P(3, 2, 'belt', 3); P(2, 2, 'belt', 3); P(1, 2, 'belt', 3); P(0, 2, 'belt', 0); window.__belts(0, 3, 10, 0) // ≥4 → 上 → r0 默认口
+  P(4, 3, 'belt', 0); P(4, 4, 'arouter', 0, 1)                        // <4 看 bit1:{0,1}→右, {2,3}→上
+  P(4, 5, 'belt', 0); P(4, 6, 'arouter', 0, 0)                        // {0,1} 看 bit0:0→右 1→上
+  window.__belts(4, 7, 10, 0)                                         // addr0 → 右 → r4 网段0
+  P(3, 6, 'belt', 0); window.__belts(3, 7, 10, 0)                    // addr1 → 上 → r3 网段1
+  P(3, 4, 'belt', 3); P(2, 4, 'arouter', 0, 0)                        // {2,3} 看 bit0:2→右 3→上
+  window.__belts(2, 5, 10, 0)                                         // addr2 → 右 → r2 网段2
+  P(1, 4, 'belt', 0); window.__belts(1, 5, 10, 0)                    // addr3 → 上 → r1 网段3
+})
+await runN(180); s = await st()
+ok(s.done && s.pass && JSON.stringify(s.deliveredBy) === '[1,1,1,1,4]', `真路由器 默认路由 四网段各1+默认4=通过(by=${JSON.stringify(s.deliveredBy)}, wrong=${s.wrong}, cyc=${s.cycles})`)
+await p.screenshot({ path: SHOT + '/router-default.png' })
+
+// 菜单渲染无崩(每关都有 STORY、卡片不溢出、渲染循环不因缺数据挂掉)
+await p.evaluate(() => window.__menu()); await p.waitForTimeout(500)
+await p.screenshot({ path: SHOT + '/menu-all.png' })
+ok(errs.length === 0, '全程无控制台报错(含菜单渲染)' + (errs[0] ? ':' + errs[0].slice(0, 120) : ''))
+// 每关 STORY 齐全(缺一条就会让 wrapText 崩、整个渲染循环挂掉)
+// —— 真·路由器 · 最长前缀匹配(具体在前=通过;泛化在前=被提前吞掉)——
+{
+  const lay = async (ord) => p.evaluate((o) => {
+    window.__play(14)
+    const P = (r, c, k, d, m = 0) => window.__place(r, c, k, d, m)
+    const H = (r, c1, c2) => { for (let c = c1; c <= c2; c++) P(r, c, 'belt', 0) }
+    P(3, 1, 'prefix', 0, o[0]); P(3, 2, 'prefix', 0, o[1]); P(3, 3, 'prefix', 0, o[2]); H(3, 4, 10)
+    P(2, 1, 'belt', 3); P(1, 1, 'belt', 3); H(0, 1, 10)   // 台1命中 → 爬到 r0(101 精确)
+    P(2, 2, 'belt', 3); H(1, 2, 10)                        // 台2命中 → 爬到 r1(10* 网段)
+    H(2, 3, 10)                                            // 台3命中 → 上一格 r2(1** 网段)
+    window.__run(); for (let i = 0; i < 90 && window.__state().running; i++) window.__stepN(1)
+    return window.__state()
+  }, ord)
+  const good = await lay([0, 1, 2])
+  ok(good.pass && good.wrong === 0 && good.lost === 0,
+     `最长前缀匹配 具体→泛化=通过(by=[${good.deliveredBy}], parts=${good.parts}, cyc=${good.cycles})`)
+  const bad = await lay([2, 1, 0])
+  ok(!bad.pass && bad.wrong > 0,
+     `最长前缀匹配 泛化(1**)摆最前→吞掉该走具体路由的包→不通过(wrong=${bad.wrong}, by=[${bad.deliveredBy}])`)
+}
+
+const storyOk = await p.evaluate(() => window.__storyOk ? window.__storyOk() : true)
+ok(storyOk, '每关都有 STORY 文案')
 
 await b.close(); console.log(`\n${pass} ✅  ${fail} ❌`); process.exit(fail ? 1 : 0)

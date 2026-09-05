@@ -23,9 +23,22 @@ const DX = [1, 0, -1, 0], DY = [0, 1, 0, -1] // 0右 1下 2左 3上
 const SHAPE_COL = ['#e0954b', '#5b8def', '#3fa78f']
 const TEAL = '#49a791', AMBER = '#e8c98a', CREAM = '#efe6d2', RED = '#c8452e', BLUE = '#5b8def'
 type Dir = 0 | 1 | 2 | 3
-type Kind = 'belt' | 'router' | 'copier' | 'cache' | 'queue' | 'arouter'
+type Kind = 'belt' | 'router' | 'copier' | 'cache' | 'queue' | 'arouter' | 'prefix'
 type Piece = { kind: Kind; dir: Dir; mode: number; seen?: Set<number>; store?: number[]; next?: number }
 const QUEUE_MODES = ['限速', '排序'] // 缓冲队列两种放法:限速=每拍放1个(先到先出,安全默认) / 排序=按号重排(缺号会等)
+/* 前缀匹配器:一条路由条目 = 一个前缀模式(从最高位写起,'*'=不管这一位)。
+   匹配上就拐弯进本条路由的网段,没匹配就直行交给下一条。
+   **最长前缀匹配在传送带上就是「顺序」**:更具体的条目摆在上游先匹配;
+   把 /0 默认路由摆前面,它会把所有包一口吞掉 —— 这正是这一关要让你踩的坑。 */
+function prefixHit(pat: string, num: number, nbits: number) {
+  for (let i = 0; i < pat.length; i++) {
+    const ch = pat[i]!; if (ch === '*') continue
+    const bit = (num >> (nbits - 1 - i)) & 1
+    if (bit !== (ch === '1' ? 1 : 0)) return false
+  }
+  return true
+}
+const levelRoutes = () => LEVELS[lvl]?.routes ?? []
 const grid: (Piece | null)[][] = Array.from({ length: ROWS }, () => Array<Piece | null>(COLS).fill(null))
 const leftOf = (d: Dir) => ((d + 3) % 4) as Dir
 const rightOf = (d: Dir) => ((d + 1) % 4) as Dir
@@ -39,9 +52,9 @@ const ROUTER_MODES: { name: string; map: number[] }[] = [
 ]
 
 // —— 关卡 ——
-type Sink = { r: number; accept: number; need: number; label?: string; ordered?: boolean; rate?: number; addr?: number }
+type Sink = { r: number; accept: number; need: number; label?: string; ordered?: boolean; rate?: number; addr?: number; addrs?: number[] }
 type Src = { r: number; seq: number[] }
-type Level = { name: string; hint: string; srcRow: number; seq: number[]; sinks: Sink[]; parts: Kind[]; par: { parts: number; cycles: number }; burst?: boolean; finale?: boolean; sandbox?: boolean; sources?: Src[]; collide?: boolean; gap?: number; showAddr?: boolean }
+type Level = { name: string; hint: string; srcRow: number; seq: number[]; sinks: Sink[]; parts: Kind[]; par: { parts: number; cycles: number }; burst?: boolean; finale?: boolean; sandbox?: boolean; sources?: Src[]; collide?: boolean; gap?: number; showAddr?: boolean; routes?: { pat: string }[] }
 const LEVELS: Level[] = [
   // —— 教学关:一关认一个原语 ——
   { name: '第1关 · 路由器分拣', hint: '〈路由器〉按形状转发:默认「三向分拣」△走左、○走右 —— 把 △ 送右上口、○ 送右下口(右键换路由器的分法)', srcRow: 3, seq: [0, 2, 0, 2, 2, 0], sinks: [{ r: 1, accept: 0, need: 3 }, { r: 5, accept: 2, need: 3 }], parts: ['belt', 'router'], par: { parts: 16, cycles: 22 } },
@@ -58,7 +71,10 @@ const LEVELS: Level[] = [
   { name: '甲·线速 · 双路汇入', hint: '上下两条链路都要进存档,可一格一拍只容一个包 —— 两股等长汇到同一格会「撞包」!给一条流加个〈缓冲队列〉切「限速」错开一拍(或多绕一格),让它们交替着并进一条道。通关后接着刷更少的拍数', srcRow: 3, seq: [], sources: [{ r: 3, seq: [0, 0, 0, 0] }, { r: 5, seq: [0, 0, 0, 0] }], collide: true, sinks: [{ r: 4, accept: -1, need: 8, label: '存档' }], parts: ['belt', 'queue'], par: { parts: 20, cycles: 22 } },
   { name: '甲·线速 · 双源按序汇入', hint: '两条链路的号交错发(A 偶数、B 奇数),要按 0→1→2… 顺序进存档 —— 先用〈缓冲队列〉切「限速」错峰把两股并成一道别撞,再用一个切「排序」的队列把号排好。限速+排序两种模式一起用', srcRow: 3, seq: [], sources: [{ r: 3, seq: [6, 4, 2, 0] }, { r: 5, seq: [7, 5, 3, 1] }], collide: true, sinks: [{ r: 4, accept: -1, need: 8, ordered: true, label: '按序存档' }], parts: ['belt', 'queue'], par: { parts: 20, cycles: 34 } },
   { name: '甲·线速 · 汇入三向分拣', hint: '两条链路混着 △□○,先错峰(限速)并成一道别撞;并好的这股再用〈路由器〉一次分到 △/□/○ 三个站 —— 合流 + 三向分拣 + 一格一拍只容一个', srcRow: 3, seq: [], sources: [{ r: 3, seq: [0, 1, 2] }, { r: 5, seq: [0, 1, 2] }], collide: true, sinks: [{ r: 2, accept: 0, need: 2, label: '△站' }, { r: 4, accept: 1, need: 2, label: '□站' }, { r: 6, accept: 2, need: 2, label: '○站' }], parts: ['belt', 'router', 'queue'], par: { parts: 28, cycles: 30 } },
+  { name: '真·路由器 · 先认一位', hint: '入门先熟悉一台:每个包带一个地址(0 或 1,信封上有二进制)。〈地址路由〉盯住地址二进制的最右一位(第 0 位)—— 是 0 走直去网段0,是 1 拐弯去网段1。就一台,看清它怎么"按一位分两路"', srcRow: 3, seq: [0, 1, 0, 1, 1, 0], showAddr: true, sinks: [{ r: 3, addr: 0, accept: -1, need: 3, label: '网段0' }, { r: 1, addr: 1, accept: -1, need: 3, label: '网段1' }], parts: ['belt', 'arouter'], par: { parts: 12, cycles: 20 } },
   { name: '真·路由器 · 按址转发', hint: '每个包带一个 2 位目的地址(0~3),要送到对应网段 —— 一台〈地址路由〉只看某一位(右键选看第几位:该位=0 走直、=1 拐弯)。把几台串成一棵转发树:先看高位分两支、再看低位,把四个地址各归各网段', srcRow: 3, seq: [0, 1, 2, 3, 0, 1, 2, 3], showAddr: true, sinks: [{ r: 4, addr: 0, accept: -1, need: 2, label: '网段0' }, { r: 3, addr: 1, accept: -1, need: 2, label: '网段1' }, { r: 1, addr: 2, accept: -1, need: 2, label: '网段2' }, { r: 0, addr: 3, accept: -1, need: 2, label: '网段3' }], parts: ['belt', 'arouter'], par: { parts: 16, cycles: 28 } },
+  { name: '真·路由器 · 默认路由', hint: '地址 0~3 有各自网段;可现在还来了本机不认识的地址(4~7)—— 它们一律走「默认口(外网网关)」。真路由器就这样:先看最高位,置 1 的(≥4)没有具体路由,全甩给默认路由 0.0.0.0/0;置 0 的再按低位细分', srcRow: 4, seq: [0, 5, 1, 6, 2, 7, 3, 4], showAddr: true, sinks: [{ r: 4, addr: 0, accept: -1, need: 1, label: '网段0' }, { r: 3, addr: 1, accept: -1, need: 1, label: '网段1' }, { r: 2, addr: 2, accept: -1, need: 1, label: '网段2' }, { r: 1, addr: 3, accept: -1, need: 1, label: '网段3' }, { r: 0, addr: -1, accept: -1, need: 4, label: '默认口·外网' }], parts: ['belt', 'arouter'], par: { parts: 22, cycles: 32 } },
+  { name: '真·路由器 · 最长前缀匹配', hint: '同一个地址,路由表里好几条都能匹配(101 既符合 101、也符合 10*、也符合 1**)—— 真路由器永远选「最具体」那条。〈前缀匹配〉右键切条目:命中→拐弯进本网段,没命中→直行交给下一条;一路没人认领的,直行到底进「默认口」(这就是 0.0.0.0/0)。诀窍:越具体的条目摆得越靠上游 —— 把 1** 摆前面,101 和 10* 的包会被它提前吞掉', srcRow: 3, seq: [5, 4, 6, 0, 7, 3], showAddr: true, routes: [{ pat: '101' }, { pat: '10*' }, { pat: '1**' }], sinks: [{ r: 0, accept: -1, need: 1, addrs: [5], label: '101 · 精确' }, { r: 1, accept: -1, need: 1, addrs: [4], label: '10* · 网段' }, { r: 2, accept: -1, need: 2, addrs: [6, 7], label: '1** · 网段' }, { r: 3, accept: -1, need: 2, addrs: [0, 3], label: '默认口 · 0.0.0.0/0' }], parts: ['belt', 'prefix'], par: { parts: 36, cycles: 24 } },
 ]
 let lvl = 0
 let SOURCES: Src[] = [{ r: LEVELS[0]!.srcRow, seq: LEVELS[0]!.seq }]
@@ -78,7 +94,11 @@ const STORY = [
   '最后一里:把学到的全拼成一台机器,让"输入网址 → 取回网页"整条路跑通。',
   '两条链路同时涌进来 —— 一格一拍只过一个包,别让它们挤在一起撞了,想办法错开、并到一条道上稳稳跑。',
   '两条链路的号还是错开的 —— 既要并成一道别撞,又要把顺序理顺,两种手法一起来。',
+  '两条混流先并成一道,再一次分到三个站 —— 合流和三向分拣一起来。',
+  '先认一台路由器 —— 它只看地址的一位,是 0 走直、是 1 拐弯,就把两个地址分开了。',
   '包上写着目的地址 —— 像真路由器那样,搭一棵转发树,一位一位地看,把每个地址送到它该去的网段。',
+  '还来了本机不认识的地址 —— 真路由器给它们留了条默认路由,不认识的一律甩给外网网关。',
+  '同一个地址,路由表里好几条都能匹配 —— 真路由器只认最具体的那条。把它们按「越具体越靠前」排好,别让默认路由抢在前面。',
 ]
 type Best = { parts: number; cycles: number }
 let mode: 'intro' | 'menu' | 'play' = 'intro'
@@ -90,7 +110,7 @@ try { musicMuted = localStorage.getItem('buildgame.muted') === '1' } catch { }
 function ensureBgm() { if (musicMuted) { sfx.setMuted(true); return } if (!bgmStarted) { sfx.startBgm(); bgmStarted = true } sfx.setMuted(false) }
 function toggleMusic() { musicMuted = !musicMuted; try { localStorage.setItem('buildgame.muted', musicMuted ? '1' : '0') } catch { } ensureBgm(); sfx.blip() }
 const passed = (i: number) => best[i] !== undefined
-const unlocked = (i: number) => i === 0 || passed(i - 1) || !!LEVELS[i]?.sandbox || !!LEVELS[i]?.collide
+const unlocked = (i: number) => i === 0 || passed(i - 1) || !!LEVELS[i]?.sandbox || !!LEVELS[i]?.collide || !!LEVELS[i]?.showAddr
 
 // —— 仿真 ——
 type Pkt = { r: number; c: number; ar: number; ac: number; shape: number; num: number }
@@ -113,6 +133,7 @@ function exits(r: number, c: number, shape: number, num = 0): Dir[] {
   if (p.kind === 'belt') return [p.dir]
   if (p.kind === 'router') { const m = ROUTER_MODES[p.mode] ?? ROUTER_MODES[0]!; return [[leftOf(p.dir), p.dir, rightOf(p.dir)][m.map[shape]!]!] } // 可编程路由器:按形状查表转发
   if (p.kind === 'arouter') { const bit = (num >> p.mode) & 1; return [bit ? leftOf(p.dir) : p.dir] } // 地址路由器:看地址第 mode 位,0→直行 1→拐弯(串成转发树)
+  if (p.kind === 'prefix') { const pat = levelRoutes()[p.mode]?.pat ?? '*'; return [prefixHit(pat, num, addrBits()) ? leftOf(p.dir) : p.dir] } // 前缀匹配器:命中→拐弯进本网段,未命中→直行给下一条
   if (p.kind === 'copier') return [leftOf(p.dir), rightOf(p.dir)] // T 型分叉:朝右=左进、上下各一份(两个垂直出口)
   // cache:没见过→dir(去查号),见过→leftOf(走快线)
   if (!p.seen) p.seen = new Set()
@@ -133,7 +154,7 @@ function simStep() {
     if (si >= 0) {
       const s = SINKS[si]!
       if (s.rate !== undefined && sinkTick[si]! >= s.rate) { lost++; return } // 拥塞:本拍已收满,多的挤丢
-      const okShape = s.addr !== undefined ? (num === s.addr) : s.ordered ? (num === oexp[si]) : (s.accept === -1 || shape === s.accept)
+      const okShape = s.addrs ? s.addrs.includes(num) : s.addr !== undefined ? (s.addr === -1 || num === s.addr) : s.ordered ? (num === oexp[si]) : (s.accept === -1 || shape === s.accept)
       if (!okShape) { wrong++; return }                                     // 地址不对 / 形状不对 / 顺序不对
       if (deliveredBy[si]! >= s.need) { deliveredBy[si]!++; wrong++; return } // 送多了(含无限增殖)= 错,并把溢出显示出来
       deliveredBy[si]!++; sinkTick[si]!++; if (s.ordered) oexp[si]!++; delivered++; sfx.ping()
@@ -181,7 +202,8 @@ function cellAt(px: number, py: number) { const g = geo(); const c = Math.floor(
 // —— 输入 ——
 let tool: Kind | 'erase' = 'belt'
 let curDir: Dir = 0
-const modeCount = (k: Kind) => k === 'router' ? ROUTER_MODES.length : k === 'queue' ? QUEUE_MODES.length : k === 'arouter' ? 3 : 1
+const addrBits = () => Math.max(1, ...SOURCES.flatMap(s => s.seq)).toString(2).length // 这关地址有几位(地址路由只给这几位可切)
+const modeCount = (k: Kind) => k === 'router' ? ROUTER_MODES.length : k === 'queue' ? QUEUE_MODES.length : k === 'arouter' ? addrBits() : k === 'prefix' ? Math.max(1, levelRoutes().length) : 1
 addEventListener('keydown', e => {
   const k = e.key.toLowerCase()
   if (k === 'r') curDir = ((curDir + 1) % 4) as Dir
@@ -199,7 +221,13 @@ function menuBtnGeo() { return { x: W - 108, y: 16, w: 92, h: 30 } }
 function musicBtnGeo() { return { x: W - 150, y: 16, w: 34, h: 30 } }
 function drawMusicBtn() { const B = musicBtnGeo(); ctx.fillStyle = '#241d16'; ctx.fillRect(B.x, B.y, B.w, B.h); ctx.strokeStyle = '#6a5a3a'; ctx.lineWidth = 1.5; ctx.strokeRect(B.x, B.y, B.w, B.h); ctx.fillStyle = musicMuted ? '#8a7a5a' : CREAM; ctx.font = '15px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(musicMuted ? '🔇' : '🎵', B.x + B.w / 2, B.y + B.h / 2 + 1); ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left' }
 function retryGeo() { const R = runGeo(); return { x: R.x - 130 - 12, y: R.y, bw: 130, bh: R.bh } }
-function menuCards() { const cols = 3, cw = Math.min(340, (W - 80) / cols - 20), ch = 118, gapx = 24, gapy = 24, totalW = cols * cw + (cols - 1) * gapx, x0 = (W - totalW) / 2, y0 = 150; return LEVELS.map((_, i) => ({ i, x: x0 + (i % cols) * (cw + gapx), y: y0 + Math.floor(i / cols) * (ch + gapy), cw, ch })) }
+function menuCards() {
+  const n = LEVELS.length, cols = n > 9 ? 4 : 3, gapx = 20, gapy = 16, y0 = 108
+  const cw = Math.min(320, (W - 60) / cols - gapx), rows = Math.ceil(n / cols)
+  const ch = Math.max(92, Math.min(118, (H - y0 - 26) / rows - gapy))
+  const totalW = cols * cw + (cols - 1) * gapx, x0 = (W - totalW) / 2
+  return LEVELS.map((_, i) => ({ i, x: x0 + (i % cols) * (cw + gapx), y: y0 + Math.floor(i / cols) * (ch + gapy), cw, ch }))
+}
 function menuClick(x: number, y: number) { for (const c of menuCards()) if (unlocked(c.i) && x >= c.x && x <= c.x + c.cw && y >= c.y && y <= c.y + c.ch) { loadLevel(c.i); mode = 'play'; sfx.enter(); return } }
 cv.addEventListener('pointerdown', e => {
   if (e.button !== 0) return // 只认左键放置/旋转;右键留给 contextmenu 切模式
@@ -213,7 +241,7 @@ cv.addEventListener('pointerdown', e => {
   const cell = cellAt(e.clientX, e.clientY); if (!cell) return
   place(cell.r, cell.c)
 })
-cv.addEventListener('contextmenu', e => { e.preventDefault(); if (mode !== 'play') return; const cell = cellAt(e.clientX, e.clientY); if (cell) { const p = grid[cell.r]![cell.c]; if (p && (p.kind === 'router' || p.kind === 'queue' || p.kind === 'arouter')) { p.mode = (p.mode + 1) % modeCount(p.kind); sfx.blip() } } })
+cv.addEventListener('contextmenu', e => { e.preventDefault(); if (mode !== 'play') return; const cell = cellAt(e.clientX, e.clientY); if (cell) { const p = grid[cell.r]![cell.c]; if (p && (p.kind === 'router' || p.kind === 'queue' || p.kind === 'arouter' || p.kind === 'prefix')) { p.mode = (p.mode + 1) % modeCount(p.kind); sfx.blip() } } })
 function uiClick(x: number, y: number) {
   const T = trayGeo(), items = trayItems()
   if (y >= T.y && y <= T.y + T.ts) { for (let i = 0; i < items.length; i++) { const bx = T.x0 + i * (T.ts + T.gap); if (x >= bx && x <= bx + T.ts) { tool = items[i]!; sfx.blip(); return } } }
@@ -250,13 +278,33 @@ function drawBody(kind: Kind, cs: number, mode: number, seen?: Set<number>, nums
     for (let sh = 0; sh < 3; sh++) { const d = m.map[sh]!, e = ends[d]!, off = (sh - 1) * cs * .055; const ox = d === 1 ? 0 : off, oy = d === 1 ? off : 0; channel(cs * .5 + ox, cs * .5 + oy, e[0]! + ox, e[1]! + oy, cs * .05, SHAPE_COL[sh]!) }
     hub(cs); return
   }
+  if (kind === 'prefix') { // 前缀匹配器:中间显示这条路由的前缀模式(如 10*),命中→拐弯(上)、未命中→直行
+    housing(cs, ['#d8b0e0', '#9a6fb8', '#4a2a63'])
+    channel(cs * .14, cs * .5, cs * .5, cs * .5, cs * .07, '#2f2639')
+    channel(cs * .5, cs * .5, cs * .86, cs * .5, cs * .055, '#c4a6ff')          // 未命中 → 直行
+    channel(cs * .5, cs * .5, cs * .5, cs * .14, cs * .055, '#e0b04f')          // 命中 → 拐弯(上)
+    ctx.fillStyle = '#1d1526'; ctx.beginPath(); ctx.arc(cs * .5, cs * .5, cs * .17, 0, 7); ctx.fill(); ctx.strokeStyle = '#c4a6ff'; ctx.lineWidth = 2; ctx.stroke()
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    const pat = levelRoutes()[mode]?.pat ?? '*'
+    ctx.fillStyle = '#efe0ff'; ctx.font = `bold ${Math.round(cs * .17)}px ui-monospace, monospace`; ctx.fillText(pat, cs * .5, cs * .5)
+    ctx.font = `bold ${Math.round(cs * .11)}px ui-monospace, monospace`
+    ctx.fillStyle = '#e0b04f'; ctx.fillText('中', cs * .5, cs * .2)
+    ctx.fillStyle = '#c4a6ff'; ctx.fillText('否', cs * .8, cs * .5)
+    ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left'; return
+  }
   if (kind === 'arouter') { // 地址路由器:看地址第 mode 位,0→直行、1→拐弯(上)
     housing(cs, ['#9ec2e0', '#5f8fb8', '#2a4a63'])
     channel(cs * .14, cs * .5, cs * .5, cs * .5, cs * .07, '#26343f')          // 入口(左)
     channel(cs * .5, cs * .5, cs * .86, cs * .5, cs * .055, '#8fb4ff')         // 位=0 → 直行
     channel(cs * .5, cs * .5, cs * .5, cs * .14, cs * .055, '#e0b04f')         // 位=1 → 拐弯(上)
-    ctx.fillStyle = '#12202c'; ctx.beginPath(); ctx.arc(cs * .5, cs * .5, cs * .13, 0, 7); ctx.fill(); ctx.strokeStyle = '#8fb4ff'; ctx.lineWidth = 2; ctx.stroke()
-    ctx.fillStyle = '#cfe4ff'; ctx.font = `bold ${Math.round(cs * .16)}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('2' + '⁰¹²'[mode], cs * .5, cs * .5); ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left' // 看第几位(权重)
+    ctx.fillStyle = '#12202c'; ctx.beginPath(); ctx.arc(cs * .5, cs * .5, cs * .15, 0, 7); ctx.fill(); ctx.strokeStyle = '#8fb4ff'; ctx.lineWidth = 2; ctx.stroke()
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.fillStyle = '#cfe4ff'; ctx.font = `bold ${Math.round(cs * .19)}px ui-monospace, monospace`; ctx.fillText(String(mode), cs * .5, cs * .47)         // 看二进制第几位(从右数,0=最右)
+    ctx.fillStyle = '#8fb4ff'; ctx.font = `${Math.round(cs * .088)}px system-ui`; ctx.fillText('位', cs * .5, cs * .63)
+    ctx.font = `bold ${Math.round(cs * .11)}px ui-monospace, monospace`
+    ctx.fillStyle = '#8fb4ff'; ctx.fillText('0', cs * .8, cs * .5)                                                                                       // 该位=0 → 直行(右)
+    ctx.fillStyle = '#e0b04f'; ctx.fillText('1', cs * .5, cs * .2)                                                                                       // 该位=1 → 拐弯(上)
+    ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left'
     return
   }
   if (kind === 'copier') { // T 型分叉:进料(左)→ 复制两份从上、下两个垂直口出
@@ -305,7 +353,7 @@ function drawSink(x: number, y: number, cs: number, s: Sink, i: number) {
   const got = deliveredBy[i]!, full = got === s.need, over = got > s.need
   plate(x + cs * .1, y + cs * .14, cs * .8, cs * .72, cs * .1, over ? ['#e0a48f', '#c0432c', '#571a12'] : full ? ['#8fe6c8', '#49a791', '#245c4e'] : STEEL)
   ctx.fillStyle = '#12100c'; ctx.beginPath(); ctx.moveTo(x + cs * .1, y + cs * .38); ctx.lineTo(x + cs * .27, y + cs * .5); ctx.lineTo(x + cs * .1, y + cs * .62); ctx.closePath(); ctx.fill() // 进料口
-  if (s.addr !== undefined) { ctx.fillStyle = full || over ? '#160a08' : '#8fb4ff'; ctx.font = `bold ${Math.round(cs * .3)}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(s.addr), x + cs * .55, y + cs * .38); ctx.font = `${Math.round(cs * .1)}px system-ui`; ctx.fillStyle = full || over ? '#160a08' : '#9a8a6a'; ctx.fillText(s.label ?? '', x + cs * .54, y + cs * .56); ctx.textBaseline = 'alphabetic' } // 网段:目的地址
+  if (s.addr !== undefined) { ctx.fillStyle = full || over ? '#160a08' : '#8fb4ff'; ctx.font = `bold ${Math.round(cs * .3)}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(s.addr < 0 ? '✳' : String(s.addr), x + cs * .55, y + cs * .38); ctx.font = `${Math.round(cs * .1)}px system-ui`; ctx.fillStyle = full || over ? '#160a08' : '#9a8a6a'; ctx.fillText(s.label ?? '', x + cs * .54, y + cs * .56); ctx.textBaseline = 'alphabetic' } // 网段:目的地址
   else if (s.accept >= 0) shape(x + cs * .55, y + cs * .42, cs * .15, s.accept, SHAPE_COL[s.accept]!)
   else { ctx.fillStyle = full || over ? '#160a08' : AMBER; ctx.font = `bold ${Math.round(cs * .13)}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(s.label ?? '任意', x + cs * .54, y + cs * .4); ctx.textBaseline = 'alphabetic' }
   ctx.fillStyle = full || over ? '#160a08' : (got > 0 ? CREAM : '#9a8a6a'); ctx.font = `bold ${Math.round(cs * .15)}px system-ui`; ctx.textAlign = 'center'; ctx.fillText(`${got}/${s.need}`, x + cs * .54, y + cs * .76)
@@ -313,12 +361,12 @@ function drawSink(x: number, y: number, cs: number, s: Sink, i: number) {
   else if (over) { ctx.strokeStyle = '#2a0f0a'; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x + cs * .18, y + cs * .2); ctx.lineTo(x + cs * .28, y + cs * .3); ctx.moveTo(x + cs * .28, y + cs * .2); ctx.lineTo(x + cs * .18, y + cs * .3); ctx.stroke(); ctx.lineCap = 'butt' } // 溢出:✕
   ctx.textAlign = 'left'
 }
-const partName = (k: Kind | 'erase') => k === 'belt' ? '传送带' : k === 'router' ? '路由器' : k === 'arouter' ? '地址路由' : k === 'copier' ? '复制器' : k === 'cache' ? '缓存盒' : k === 'queue' ? '缓冲队列' : '擦除'
+const partName = (k: Kind | 'erase') => k === 'belt' ? '传送带' : k === 'router' ? '路由器' : k === 'arouter' ? '地址路由' : k === 'prefix' ? '前缀匹配' : k === 'copier' ? '复制器' : k === 'cache' ? '缓存盒' : k === 'queue' ? '缓冲队列' : '擦除'
 function trayGeo() { const ts = 66, gap = 12, y = H - ts - 16, x0 = 24; return { ts, gap, y, x0 } }
 function runGeo() { const bw = 168, bh = 54; return { x: W - bw - 24, y: H - bh - 16, bw, bh } }
 function rr(x: number, y: number, w: number, h: number, r: number) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath() }
 function coverImg(img: HTMLImageElement, x: number, y: number, w: number, h: number, dim = 0) { if (!iready(img)) { ctx.fillStyle = '#1a140d'; ctx.fillRect(x, y, w, h); return } const s = Math.max(w / img.naturalWidth, h / img.naturalHeight), dw = img.naturalWidth * s, dh = img.naturalHeight * s; ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip(); ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh); if (dim) { ctx.fillStyle = `rgba(14,10,6,${dim})`; ctx.fillRect(x, y, w, h) } ctx.restore() }
-function wrapText(text: string, x: number, y: number, maxw: number, lh: number, maxLines: number) { const chars = [...text]; let line = '', ln = 0; for (const ch of chars) { if (ctx.measureText(line + ch).width > maxw) { ctx.fillText(line, x, y + ln * lh); ln++; line = ch; if (ln >= maxLines) return } else line += ch } if (ln < maxLines) ctx.fillText(line, x, y + ln * lh) }
+function wrapText(text: string, x: number, y: number, maxw: number, lh: number, maxLines: number) { if (!text) return; const chars = [...text]; let line = '', ln = 0; for (const ch of chars) { if (ctx.measureText(line + ch).width > maxw) { ctx.fillText(line, x, y + ln * lh); ln++; line = ch; if (ln >= maxLines) return } else line += ch } if (ln < maxLines) ctx.fillText(line, x, y + ln * lh) }
 function renderIntro() {
   ctx.fillStyle = '#120d07'; ctx.fillRect(0, 0, W, H)
   const cw = Math.min(W * 0.62, 940), ch = cw * (iready(CUT) ? CUT.naturalHeight / CUT.naturalWidth : 0.62)
@@ -344,7 +392,22 @@ function renderMenu() {
   for (const c of menuCards()) {
     const L = LEVELS[c.i]!, ul = unlocked(c.i), pd = passed(c.i)
     rr(c.x, c.y, c.cw, c.ch, 12); ctx.fillStyle = ul ? 'rgba(30,38,32,.92)' : 'rgba(20,16,11,.9)'; ctx.fill(); ctx.strokeStyle = pd ? TEAL : ul ? '#8a7550' : '#33291a'; ctx.lineWidth = 2; rr(c.x, c.y, c.cw, c.ch, 12); ctx.stroke()
-    ctx.textAlign = 'left'; ctx.fillStyle = ul ? CREAM : '#6a5a3a'; ctx.font = 'bold 17px system-ui'; ctx.fillText(L.name, c.x + 16, c.y + 30)
+    /* 标题与右上角的「目标 ≤N件 ≤N拍」在同一行:长名字(第6关·拥塞削平(路由+队列)、
+       甲·线速·双源按序汇入…)会直接压到那串数字上。先量出目标文字占多宽,
+       标题就只能用剩下的宽度:先缩字号(17→13),仍放不下才截断加省略号。 */
+    const parTxt = L.sandbox ? '' : `目标 ≤${L.par.parts}件 ≤${L.par.cycles}拍`
+    ctx.font = '11px system-ui'
+    const titleMax = c.cw - 32 - (parTxt ? ctx.measureText(parTxt).width + 12 : 0)
+    ctx.textAlign = 'left'; ctx.fillStyle = ul ? CREAM : '#6a5a3a'
+    let tsize = 17
+    ctx.font = `bold ${tsize}px system-ui`
+    while (tsize > 13 && ctx.measureText(L.name).width > titleMax) { tsize--; ctx.font = `bold ${tsize}px system-ui` }
+    let tname = L.name
+    if (ctx.measureText(tname).width > titleMax) {
+      while (tname.length > 1 && ctx.measureText(tname + '…').width > titleMax) tname = tname.slice(0, -1)
+      tname += '…'
+    }
+    ctx.fillText(tname, c.x + 16, c.y + 30)
     ctx.fillStyle = ul ? '#c8bfa8' : '#5a4e3a'; ctx.font = '12px system-ui'; wrapText(STORY[c.i]!, c.x + 16, c.y + 52, c.cw - 32, 16, 2)
     if (L.sandbox) { ctx.fillStyle = '#8fdcc0'; ctx.font = 'bold 15px system-ui'; ctx.fillText('🧪 随便搭 · 随时进来玩', c.x + 16, c.y + c.ch - 14) }
     else {
@@ -367,7 +430,8 @@ function frame(now: number) {
   rr(g.ox - 14, g.oy - 14, pw, ph, 14); ctx.fillStyle = 'rgba(24,19,12,.9)'; ctx.fill(); ctx.strokeStyle = '#4a3f2a'; ctx.lineWidth = 2; rr(g.ox - 14, g.oy - 14, pw, ph, 14); ctx.stroke()
   ctx.fillStyle = CREAM; ctx.font = 'bold 18px system-ui'; ctx.textAlign = 'left'; ctx.fillText(L.name, 24, 28)
   ctx.fillStyle = '#c8bfa8'; ctx.font = '13px system-ui'; wrapText(STORY[lvl]!, 24, 48, W * 0.62, 16, 1)
-  ctx.fillStyle = AMBER; ctx.font = '12px system-ui'; ctx.fillText(L.hint, 24, 68)
+  //  提示可能很长(最长前缀匹配那关要讲清「越具体越靠前」),直接 fillText 会顶出右边界被截掉 —— 按可用宽度折行
+  ctx.fillStyle = AMBER; ctx.font = '12px system-ui'; wrapText(L.hint, 24, 68, W - 48 - 190, 15, 2)
   // 网格
   for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
     const x = g.ox + c * cs, y = g.oy + r * cs
@@ -380,7 +444,8 @@ function frame(now: number) {
   for (let i = 0; i < SINKS.length; i++) drawSink(g.ox + (COLS - 1) * cs, g.oy + SINKS[i]!.r * cs, cs, SINKS[i]!, i)
   // 包
   const tt = Math.min(1, acc / STEP_MS), showNum = SINKS.some(s => s.ordered) || !!L.showAddr
-  for (const p of pkts) { const rr = p.ar + (p.r - p.ar) * tt, cc = p.ac + (p.c - p.ac) * tt, sxp = g.ox + (cc + .5) * cs, syp = g.oy + (rr + .5) * cs; ctx.fillStyle = 'rgba(0,0,0,.28)'; ctx.beginPath(); ctx.ellipse(sxp, syp + cs * .18, cs * .17, cs * .06, 0, 0, 7); ctx.fill(); shape(sxp, syp, cs * .2, p.shape, SHAPE_COL[p.shape]!); ctx.fillStyle = 'rgba(255,255,255,.4)'; ctx.beginPath(); ctx.arc(sxp - cs * .06, syp - cs * .07, cs * .04, 0, 7); ctx.fill(); if (showNum) { ctx.fillStyle = '#161009'; ctx.font = `bold ${Math.round(cs * .22)}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(p.num), sxp, syp + cs * .02); ctx.textBaseline = 'alphabetic' } }
+  const abits = L.showAddr ? Math.max(1, ...SOURCES.flatMap(s => s.seq)).toString(2).length : 0 // 地址位数(用于显二进制)
+  for (const p of pkts) { const rr = p.ar + (p.r - p.ar) * tt, cc = p.ac + (p.c - p.ac) * tt, sxp = g.ox + (cc + .5) * cs, syp = g.oy + (rr + .5) * cs; ctx.fillStyle = 'rgba(0,0,0,.28)'; ctx.beginPath(); ctx.ellipse(sxp, syp + cs * .18, cs * .17, cs * .06, 0, 0, 7); ctx.fill(); shape(sxp, syp, cs * .2, p.shape, SHAPE_COL[p.shape]!); ctx.fillStyle = 'rgba(255,255,255,.4)'; ctx.beginPath(); ctx.arc(sxp - cs * .06, syp - cs * .07, cs * .04, 0, 7); ctx.fill(); if (showNum) { ctx.fillStyle = '#161009'; ctx.font = `bold ${Math.round(cs * (abits ? .2 : .22))}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(p.num), sxp, syp - (abits ? cs * .05 : -cs * .02)); if (abits) { ctx.font = `bold ${Math.round(cs * .13)}px ui-monospace, monospace`; ctx.fillStyle = '#2a1e10'; ctx.fillText(p.num.toString(2).padStart(abits, '0'), sxp, syp + cs * .1) } ctx.textBaseline = 'alphabetic' } }
   // 撞包红闪
   for (const f of collisionFlash) { const x = g.ox + f.c * cs, y = g.oy + f.r * cs; ctx.fillStyle = `rgba(200,60,44,${0.55 * f.t})`; rr(x + 2, y + 2, cs - 4, cs - 4, 6); ctx.fill(); ctx.strokeStyle = `rgba(255,120,90,${f.t})`; ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x + cs * .32, y + cs * .32); ctx.lineTo(x + cs * .68, y + cs * .68); ctx.moveTo(x + cs * .68, y + cs * .32); ctx.lineTo(x + cs * .32, y + cs * .68); ctx.stroke(); ctx.lineCap = 'butt'; f.t -= dt / 500 }
   collisionFlash = collisionFlash.filter(f => f.t > 0)
@@ -439,7 +504,7 @@ function frame(now: number) {
   // 左下:零件盘
   const T = trayGeo(), items = trayItems()
   ctx.textAlign = 'left'; ctx.font = '12px system-ui'; ctx.fillStyle = AMBER
-  const tip = tool === 'router' ? '路由器:左键摆(重复点同格转向)· 右键循环「分法」—— 通道按 △□○ 上色告诉你谁走哪' : tool === 'arouter' ? '地址路由:左键摆 · 右键换「看第几位」(2⁰/2¹/2²)—— 该位=0 直行、=1 拐弯;几台串起来就是一棵转发树,把每个地址送到它的网段' : tool === 'queue' ? '缓冲队列:左键摆 · 右键切模式 —— 默认「限速」每拍放1个(削峰/错峰,直通不卡);「排序」按号重排(要收齐号才放,缺号会等)' : '零件盘 · 选一个,左键摆在格子里(重复点同格转向)'
+  const tip = tool === 'router' ? '路由器:左键摆(重复点同格转向)· 右键循环「分法」—— 通道按 △□○ 上色告诉你谁走哪' : tool === 'arouter' ? '地址路由:左键摆 · 右键换「看二进制第几位」(从右数,0=最右那位)—— 那位是 0 走直、是 1 拐弯;几台串成一棵转发树,把每个地址送到它的网段' : tool === 'prefix' ? '前缀匹配:左键摆 · 右键切「路由条目」(101 / 10* / 1** / 默认)—— 命中拐弯进本网段、没命中直行给下一条。越具体的条目要摆在越上游,否则会被泛化条目提前吞掉' : tool === 'queue' ? '缓冲队列:左键摆 · 右键切模式 —— 默认「限速」每拍放1个(削峰/错峰,直通不卡);「排序」按号重排(要收齐号才放,缺号会等)' : '零件盘 · 选一个,左键摆在格子里(重复点同格转向)'
   ctx.fillText(tip, T.x0, T.y - 8)
   ctx.fillStyle = 'rgba(30,24,16,.6)'; ctx.fillRect(T.x0 - 6, T.y - 4, (T.ts + T.gap) * items.length + 6, T.ts + 8)
   items.forEach((it, i) => { const x = T.x0 + i * (T.ts + T.gap), on = tool === it; ctx.fillStyle = on ? '#3a342a' : '#20190f'; ctx.fillRect(x, T.y, T.ts, T.ts); ctx.strokeStyle = on ? '#ffe6a8' : '#5a4e3a'; ctx.lineWidth = on ? 3 : 1.5; ctx.strokeRect(x, T.y, T.ts, T.ts); partIcon(it, x + T.ts / 2, T.y + T.ts / 2 - 5, T.ts * 0.46); ctx.fillStyle = on ? CREAM : '#9a8a6a'; ctx.font = '11px system-ui'; ctx.textAlign = 'center'; ctx.fillText(partName(it), x + T.ts / 2, T.y + T.ts - 7) })
@@ -475,3 +540,4 @@ requestAnimationFrame(frame)
 ;(window as unknown as { __play: (i: number) => void }).__play = (i) => { loadLevel(i); mode = 'play' }
 ;(window as unknown as { __menu: () => void }).__menu = () => { mode = 'menu' }
 ;(window as unknown as { __intro: () => object }).__intro = () => introRouter
+;(window as unknown as { __storyOk: () => boolean }).__storyOk = () => LEVELS.every((_, i) => typeof STORY[i] === 'string' && STORY[i]!.length > 0)
