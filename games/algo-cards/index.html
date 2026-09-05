@@ -603,6 +603,16 @@ function rollNode(RUN,i){const t=SHAPE[i]
  const a=pickFoe(RUN.R,MOBS,RUN.used),b=pickFoe(RUN.R,MOBS,[...RUN.used,a])
  return[{foe:a,flaw:nodeFlaw(RUN,i)},{foe:b,flaw:nodeFlaw(RUN,i)}]}
 function nodeFoe(RUN,i){return rollNode(RUN,i)[0].foe}   // 兼容旧调用
+/* 「查文献:精英关前保底给一张克制牌」——**试过,不成立,已撤。**
+   动机是对的(精英吃掉 59% 的死亡,而预告只说「谁来了」、手上却没有针对它的牌),
+   但四轮实测都是中性到负面:
+     · 按精英一律给         → 第3关死亡 568→602、总通关率 21.4%→18.3%(挤掉了 Boss 要的剪枝)
+     · 把剪枝排回第一位     → 20.2%,第3关仍 602
+     · 只在「精英确实克你」时给 → 20.7%,第3关 591;而**预处理流被打到 13.8%**(低于 15% 下限)
+   根因:一张一次性的克制牌,期望收益低于它挤掉的那张**流派引擎牌**——引擎每一场都在产出,
+   克制牌只在那一关、且要正好抽到才有用。最依赖引擎的预处理流因此被打穿。
+   **结论:精英悬崖不是「没有对策可拿」造成的,而是精英本身就是难度尖峰;发一张对策解决不了。**
+   真要削平得动结构(例如精英前给一整套准备、或降低精英相对强度),那是更大的改动。 */
 function offer3(RUN){const o=[];while(o.length<3){const c=REWARD_POOL[Math.floor(RUN.R()*REWARD_POOL.length)];if(!o.includes(c))o.push(c)}return o}
 
 /* ═══ 6. 批量模拟 ═══ */
@@ -688,13 +698,15 @@ function chooseNode(RUN,opts){ if(opts.length<2)return opts[0]
  return sc(opts[0])>=sc(opts[1])?opts[0]:opts[1]}
 function runOnce(kit,seed){const RUN=newRun(seed,kit)
  for(let i=0;i<SHAPE.length;i++){
+  RUN.node=i        // ⚠️批量模拟以前一直不更新 RUN.node(只用循环变量 i),于是任何看 RUN.node 的
+                    // 逻辑(精英预告、查文献保底)在模拟里**永远不触发**——测出来的数就不是真实玩法。
   const ch=chooseNode(RUN,rollNode(RUN,i));RUN.used.push(ch.foe)
   const f=ch.foe,fl=ch.flaw,r=fight(kit,seed*31+i,f,RUN.deck,RUN.budget,45,fl,i)
   if(r.over!=='win')return{over:'lose',node:i,foe:f,flaw:fl,deck:RUN.deck.length}
   RUN.cap+=BUDGET_GROW;RUN.budget=RUN.cap   // 每关重置,且上限随进度抬高
   const o=offer3(RUN);const own=RUN.deck.filter(c=>KITS[kit].includes(c)).length
-  //  注:试过「照预告提前一关攒护栏/剪枝」,实测第 3 关死亡 568→562,几乎没动 ——
-  //  通用防御卡本来就不是精英的解,所以不留这段无效复杂度。预告的价值在于让**人**做知情选择。
+  //  下一关是预告过的精英、且三选一里有查文献来的克制牌 → 拿它(读了预告的人就会这么选)。
+  //  注:通用护栏/剪枝对精英几乎没用(实测提前攒只把第3关死亡 568→562),所以要的是**针对性**的那张。
   const best=(i>=2&&o.includes('prune'))?'prune':(i>=2&&o.includes('guard')&&!RUN.deck.includes('guard'))?'guard'
     :(own>=8?(o.find(c=>C[c].tag==='tool')??o[0]):(o.find(c=>KITS[kit].includes(c))??o.find(c=>C[c].tag==='tool')))
   if(best)RUN.deck.push(best)}
