@@ -139,6 +139,32 @@ def('merge2','区间合并',2,'twop','相邻等高的柱子合并 —— 重复�
 def('monoq','单调队列',2,'twop','此后每回合末保留 1 张手牌,不进弃牌堆',
   S=>{S.monoq=true})
 
+/* ── 位运算流:一次操作一整个机器字 ──
+   位运算的真实特点是**极低成本的批量操作**:不看规模大小,一条指令处理一个字。
+   代价是它只在**数据形状对得上**时才有用——位图对付稀疏(大片接近空)一次清一大片,
+   异或对付重复值(成对抵消),右移把整体降一个数量级。形状不对就是空砍。
+   这正好补上 v2-proposal B3 的一个缺口:「稀疏 → 位图/跳表」这一格此前没有对应的卡。 */
+def('bitmap','位图',1,'bit','移除【值 ≤ 最矮+1】的元素,一次最多 3 个 —— 一条指令扫一个字',
+  S=>{const a=alive(S);if(!a.length)return
+   const mn=Math.min(...a.map(b=>b.v)),cut=mn+1
+   let n=0
+   for(const b of a){if(b.v<=cut){b.dead=true;if(++n>=3)break}}})   // 封顶:不封顶时它是半价的计数排序,整局通关率会飙到 70%+
+def('xorx','异或消除',1,'bit','出现最多的那个值成对抵消(a^a=0)—— 值域越窄消得越多',
+  S=>{const a=alive(S),by={}
+   a.forEach(b=>{(by[b.v]=by[b.v]||[]).push(b)})
+   const g=Object.values(by).sort((x,y)=>y.length-x.length)[0]
+   if(!g)return
+   const pairs=Math.floor(g.length/2)*2      // 只消最常见的那一种值:重复扎堆时成片,均匀随机时聊胜于无
+   for(let i=0;i<pairs;i++)g[i].dead=true})
+def('shiftr','右移一位',2,'bit','最高的 8 根各减半(向下取整)—— 一次移一个字',
+  S=>{const a=alive(S).slice().sort((x,y)=>y.v-x.v)          // 不封顶时它随规模无限放大(整块板减半),远超同费卡
+   for(let i=0;i<Math.min(8,a.length);i++){a[i].v=Math.floor(a[i].v/2);if(a[i].v<=0)a[i].dead=true}})
+def('bitmask','位掩码',2,'bit','24 点处理量,平均分给每个元素 —— 一条指令扫一个字',
+  S=>workTotal(S,24))
+def('lowbit','取最低位',1,'bit','移除最矮的 2 根 —— 常数时间,不看规模',
+  S=>{const a=alive(S).slice().sort((x,y)=>x.v-y.v)
+   for(let i=0;i<Math.min(2,a.length);i++)a[i].dead=true})
+
 /* ── 转化:把一条流派攒的计数器换成另一条的 ──
    六条流派以前各攒各的、互不相通。转化卡第一次让「跨流派组合」成为可能:
    打分治攒段数 → 编译优化换成有序层数 → 二分查找收割。 */
@@ -227,6 +253,7 @@ const STARTERS={
  greedy:['scan','scan','scan','scan','batch','batch','batch','cache','prefetch','memoize'],
  heap:  ['scan','scan','scan','batch','batch','batch','cache','prefetch','memoize','sortdeck'],
  twop:  ['scan','scan','scan','batch','batch','batch','cache','prefetch','memoize','sortdeck'],
+ bit:   ['scan','scan','scan','batch','batch','batch','cache','prefetch','memoize','sortdeck'],
  graph: ['batch','batch','batch','batch','cache','cache','prefetch','memoize','sortdeck','bridge'],
 }
 const starterOf=k=>STARTERS[k]||STARTERS.base
@@ -236,6 +263,7 @@ const KITS={base:[],sort:['insertion','merge','quick','bsearch','counting','medi
  greedy:['greedy','local','heur','heur','anneal','approx'],
  heap:['buildheap','heapify','poptop','heapsort','medstream','poptop'],
  twop:['twoptr','window','prefix','diff','merge2','monoq'],
+ bit:['bitmap','xorx','xorx','shiftr','bitmask','lowbit'],
  graph:['bfs','dfs','dsu','bridge','bridge','mst']}
 const DECKCARDS=['sortdeck','fetch','prefetch','memoize','compress']
 const REWARD_POOL=[...new Set([...KITS.sort,...KITS.dc,...KITS.memo,...KITS.greedy,...KITS.heap,...KITS.twop]),
@@ -495,7 +523,7 @@ function applyBoon(S,RUN){return applyBoonId(S,RUN&&RUN.boon)}
    键按字母序拼(和 comboName 里 sort() 一致);没收录的对给个「A + B」的朴素名。 */
 const COMBO={'dc+sort':'归并排序','memo+sort':'索引','dc+memo':'记忆化递归',
  'greedy+memo':'启发式剪枝搜索','greedy+sort':'区间调度','dc+greedy':'随机化快排',
- 'heap+sort':'堆排序','sort+twop':'有序双指针','memo+twop':'前缀和缓存','greedy+heap':'贪心 + 优先队列'}
+ 'heap+sort':'堆排序','sort+twop':'有序双指针','bit+sort':'基数排序','bit+memo':'状压 DP','bit+twop':'位图索引','memo+twop':'前缀和缓存','greedy+heap':'贪心 + 优先队列'}
 function comboName(a,b){ if(!b||a===b)return TAGNAME[a]; return COMBO[[a,b].sort().join('+')]||`${TAGNAME[a]} + ${TAGNAME[b]}` }
 /* ═══ 5.1 重构:删一张牌(照抄 StS 的除牌:次数不封死,但越删越贵)═══
    起始牌 63%、「遍历」一张统治、「观察」0% 出场却没法删 —— 这是重复感最直接的根。
@@ -541,6 +569,16 @@ const POL={
  // 区间流:先铺前缀和(放大所有摊平类),再靠位置操作切
  twop:S=>!S.prefix?pick(S,['prefix','window','twoptr','diff','scan','hash','batch'])
        :pick(S,['window','merge2','twoptr','diff','scan','monoq','hash','batch']),
+ // 位运算流:强弱**完全取决于形状**,所以策略本身就是「先看板面再决定出哪张」——
+ // 一大片贴着最矮(稀疏)就位图;同值成对多(重复扎堆)就异或;整体偏高就右移砍一半。
+ bit:S=>{const a=alive(S)
+   if(a.length){const mn=Math.min(...a.map(b=>b.v))
+    if(a.filter(b=>b.v<=mn+1).length>=Math.max(4,a.length*.35)){const i=S.hand.indexOf('bitmap');if(i>=0&&canPlay(S,i))return i}
+    const by={};a.forEach(b=>{by[b.v]=(by[b.v]||0)+1})
+    const pairable=Object.values(by).reduce((x,c)=>x+Math.floor(c/2)*2,0)
+    if(pairable>=Math.max(4,a.length*.3)){const i=S.hand.indexOf('xorx');if(i>=0&&canPlay(S,i))return i}
+    if(a.reduce((x,b)=>x+b.v,0)/a.length>=8){const i=S.hand.indexOf('shiftr');if(i>=0&&canPlay(S,i))return i}}
+   return pick(S,['bitmask','lowbit','bitmap','xorx','shiftr','scan','hash','batch'])},
  // 图算法:块多先用并查集直接合并(不看距离),块少了再用便宜的就近并入
  graph:S=>{const G=S.G
    if(G&&G.nc>=4){const i=S.hand.indexOf('dsu');if(i>=0&&canPlay(S,i))return i}
@@ -693,8 +731,8 @@ let lastPar=null   // 上一仗的「你 N 回合 · 最优 M 回合」(引擎�
 let boonPick=false,boonBox=[]   // boonPick=正在做开局的起手抉择;boonBox=三个选项的命中框
 const CO={bg0:'#050a12',bg1:'#0a141f',line:'rgba(90,150,190,.22)',panel:'rgba(12,24,38,.72)',
  ink:'#e6eef7',dim:'#8ba3bb',faint:'#4d6076',cyan:'#5fd0e8',amber:'#f0a94a',red:'#ff6b5e',green:'#7fd98f',
- tag:{base:'#a8c0d6',sort:'#f0a94a',dc:'#b39ddb',memo:'#7fd98f',greedy:'#ff8f6b',tool:'#5fd0e8',deck:'#9ecbff',heap:'#ffb3d9',twop:'#8ee6c8',def:'#c8b4ff',graph:'#7fd1ff'}}
-const TAGNAME={base:'起始',sort:'排序流',dc:'拆解流',memo:'复利流',greedy:'激进流',tool:'工具',deck:'牌库',heap:'堆流',twop:'区间流',def:'防御',graph:'图算法'}
+ tag:{base:'#a8c0d6',sort:'#f0a94a',dc:'#b39ddb',memo:'#7fd98f',greedy:'#ff8f6b',tool:'#5fd0e8',deck:'#9ecbff',heap:'#ffb3d9',twop:'#8ee6c8',bit:'#ffd166',def:'#c8b4ff',graph:'#7fd1ff'}}
+const TAGNAME={base:'起始',sort:'排序流',dc:'拆解流',memo:'复利流',greedy:'激进流',tool:'工具',deck:'牌库',heap:'堆流',twop:'区间流',bit:'位运算流',def:'防御',graph:'图算法'}
 function startRun(k,k2){KIT=k;KIT2=(k2&&k2!==k)?k2:null;menu=false
  RUN=newRun(Date.now()&0xffff,k,KIT2)
  boonPick=true;lastPar=null
@@ -724,7 +762,7 @@ function pickNode(k){const o=RUN.opts[k];RUN.used.push(o.foe)
    拿**同一副牌、同一个种子、同一个敌人**,让六条流派的策略各打一遍(headless),取最少回合数当基准。
    不是硬编码的标准答案:par 由引擎当场跑出来,和玩家打的是同一个局面,所以可核。
    别的卡牌游戏没有「正确答案」——我们有,这是这题材独有的一环(v2-proposal B5)。 */
-const PARKITS=['sort','dc','memo','greedy','heap','twop']
+const PARKITS=['sort','dc','memo','greedy','heap','twop','bit']
 function parOf(S){ if(!S||!S.parCtx||S.mode==='graph')return null
  const c=S.parCtx;let best=null,bestKit=null
  for(const k of PARKITS){        // fight() 自己按 kit 取 POL[kit],不用动全局 KIT
@@ -1893,8 +1931,8 @@ function intelScreen(){
  ctx.textAlign='left'}
 
 /* 开局标题屏:选 1~2 条流派。选 2 条 = 双流派,组合名是个真实算法(见 comboName)。 */
-const MENUKITS=['sort','dc','memo','greedy','heap','twop']
-const KITBLURB={sort:'排好序,再二分',dc:'切开 · 各自解 · 合并',memo:'空间换时间,查表',greedy:'当下最优,取近似',heap:'每回合自动弹最小',twop:'一次处理一段区间'}
+const MENUKITS=['sort','dc','memo','greedy','heap','twop','bit']
+const KITBLURB={sort:'排好序,再二分',dc:'切开 · 各自解 · 合并',memo:'空间换时间,查表',greedy:'当下最优,取近似',heap:'每回合自动弹最小',twop:'一次处理一段区间',bit:'一条指令扫一个字'}
 let menuBox=[]
 function menuScreen(){
  const cx=W/2
