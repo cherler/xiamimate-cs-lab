@@ -177,6 +177,26 @@ check('G7 双流派牌组 = 单流派 + 6 张', dual.dualDeck - dual.single, v =
 check('G7 双流派记住第二流派', `${dual.kit2},${dual.kit2single}`, v => v === 'dc,null', 'dc / 单流派 null')
 check('G7 六个核心搭配算法名', dual.combos, v => v === '归并排序/索引/记忆化递归/启发式剪枝搜索/区间调度/随机化快排', '六对各是真算法')
 
+/* ── G8 复盘 par:「你 N 回合 · 最优 M 回合」由引擎当场跑六条流派算出,不是硬编码 ── */
+const par = await page.evaluate(() => {
+  const out = []
+  for (const [a, b2] of [['sort','dc'], ['memo','greedy'], ['heap','twop']]) {
+    __startRun(a, b2); __pickNode(0)
+    const S = __S()
+    for (let i = 0; i < 400 && !S.over; i++) { const j = __POL2(S); if (j < 0) __endTurn2(S); else __play2(S, j) }
+    const p = __parOf()
+    out.push({ over: S.over, mine: S.turn, par: p ? p.turns : null, kit: p ? p.kit : null })
+  }
+  // 同一局面重复算两次必须一样(确定性,不是随机猜)
+  __startRun('sort','dc'); __pickNode(0)
+  const a1 = __parOf(), a2 = __parOf()
+  return { out, stable: a1 && a2 ? (a1.turns === a2.turns && a1.kit === a2.kit) : null }
+})
+const parsGot = par.out.filter(o => o.par != null).length
+check('G8 复盘 par 每仗都算得出', parsGot, v => v === 3, '3 / 3 仗')
+check('G8 par 是正整数回合', par.out.every(o => o.par == null || (o.par > 0 && Number.isInteger(o.par))) ? 'OK' : 'FAIL', v => v === 'OK', '> 0 的整数')
+check('G8 par 确定性(同局面两次一致)', par.stable === true ? 'OK' : `FAIL(${par.stable})`, v => v === 'OK', '两次一致')
+
 /* ── 控制台 ── */
 check('全程无控制台报错', consoleErrors.length ? consoleErrors[0].slice(0, 60) : 0, v => v === 0, '0 条')
 

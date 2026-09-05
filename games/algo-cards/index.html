@@ -670,6 +670,7 @@ addEventListener('resize',fit);fit()
 let RUN=null,S=null,offer=null,intel=null,parts=[],KIT='sort',anim=null,hist=[],poster=null
 let remove=false,refBox=null   // remove=正在看「重构删牌」子屏;refBox=奖励屏上那颗重构按钮的命中框
 let menu=false,menuSel=[],KIT2=null   // menu=开局选流派的标题屏;menuSel=已选的 1~2 条流派;KIT2=第二流派(单流派时 null)
+let lastPar=null   // 上一仗的「你 N 回合 · 最优 M 回合」(引擎当场跑出来的,不是硬编码)
 const CO={bg0:'#050a12',bg1:'#0a141f',line:'rgba(90,150,190,.22)',panel:'rgba(12,24,38,.72)',
  ink:'#e6eef7',dim:'#8ba3bb',faint:'#4d6076',cyan:'#5fd0e8',amber:'#f0a94a',red:'#ff6b5e',green:'#7fd98f',
  tag:{base:'#a8c0d6',sort:'#f0a94a',dc:'#b39ddb',memo:'#7fd98f',greedy:'#ff8f6b',tool:'#5fd0e8',deck:'#9ecbff',heap:'#ffb3d9',twop:'#8ee6c8',def:'#c8b4ff',graph:'#7fd1ff'}}
@@ -680,13 +681,28 @@ function enter(){RUN.opts=rollNode(RUN,RUN.node)
  offer=null;hist=[100];flo=null
  S=newFight(1,RUN.deck,RUN.opts[0].foe,RUN.budget,RUN.opts[0].flaw,RUN.node)}
 function pickNode(k){const o=RUN.opts[k];RUN.used.push(o.foe)
- S=newFight((Date.now()&0xffff)+RUN.node,RUN.deck,o.foe,RUN.budget,o.flaw,RUN.node)
+ const sd=(Date.now()&0xffff)+RUN.node
+ S=newFight(sd,RUN.deck,o.foe,RUN.budget,o.flaw,RUN.node)
+ S.seed=sd;S.parCtx={deck:[...RUN.deck],budget:RUN.budget,flaw:o.flaw,depth:RUN.node}   // 复盘算「最优回合」要用
  intel=null;hist=[100]}
+/* 「你 N 回合 · 最优 M 回合」—— 这局面本来能多快?
+   拿**同一副牌、同一个种子、同一个敌人**,让六条流派的策略各打一遍(headless),取最少回合数当基准。
+   不是硬编码的标准答案:par 由引擎当场跑出来,和玩家打的是同一个局面,所以可核。
+   别的卡牌游戏没有「正确答案」——我们有,这是这题材独有的一环(v2-proposal B5)。 */
+const PARKITS=['sort','dc','memo','greedy','heap','twop']
+function parOf(S){ if(!S||!S.parCtx||S.mode==='graph')return null
+ const c=S.parCtx;let best=null,bestKit=null
+ for(const k of PARKITS){        // fight() 自己按 kit 取 POL[kit],不用动全局 KIT
+  const r=fight(k,S.seed,S.foeId,c.deck,c.budget,45,c.flaw,c.depth)
+  if(r.over==='win'&&(best===null||r.turn<best)){best=r.turn;bestKit=k}}
+ return best===null?null:{turns:best,kit:bestKit}}
 function stashFilm(){ if(!S||!RUN)return
  RUN.films.push({foe:S.foeId,name:S.E.name,shape:S.E.shape||'random',
   film:S.film,won:S.over==='win',turns:S.turn,node:RUN.node,
   diag:S.over==='lose'?diagnose(S).lines.map(l=>l.t):[]})}
 function afterFight(){ stashFilm()
+ //  赢了才算 par:这一仗本来能多快(六条流派各打一遍同一局面,取最少回合)。
+ lastPar=S.over==='win'?(()=>{const p=parOf(S);return p?{...p,mine:S.turn,shape:S.E.shape||'random',foe:S.E.name}:null})():null
  if(S.over==='lose'){RUN.over='lose';return}
  RUN.cap+=BUDGET_GROW;RUN.budget=RUN.cap;RUN.node++
  if(RUN.node>=SHAPE.length){RUN.over='win';return} offer=offer3(RUN)}
@@ -824,7 +840,8 @@ Object.assign(window,{__POL2:S=>POL[KIT](S),__SETG:(c,d)=>{GCLUST=c;GDENS=d},__S
  __play:i=>uiPlay(i),__end:()=>{if(!anim){endTurn(S);hist.push(hpPct(S));if(S.over)afterFight()}},
  __draw:()=>draw(),__FB:v=>{FLAWBONUS=v},__HITBOX:()=>HITBOX,__CARD:id=>C[id],__take:takeCard,__startRun:startRun,__skipIntel:()=>{if(intel)pickNode(0)},__pickNode:k=>pickNode(k),__SHAPE:SHAPE,
  __doRemove:doRemove,__canRefactor:()=>canRefactor(RUN),__refactorCost:()=>refactorCost(RUN),__refactors:()=>RUN.refactors,__RUN:()=>RUN,__remove:v=>{remove=v},__setOffer:()=>{offer=offer3(RUN)},
- __menu:v=>{menu=v;menuSel=[]},__menuSel:()=>menuSel,__comboName:comboName,__COMBO:COMBO,__KIT2:()=>KIT2,__newRun2:(seed,k,k2)=>newRun(seed,k,k2)})
+ __menu:v=>{menu=v;menuSel=[]},__menuSel:()=>menuSel,__comboName:comboName,__COMBO:COMBO,__KIT2:()=>KIT2,__newRun2:(seed,k,k2)=>newRun(seed,k,k2),
+ __parOf:()=>parOf(S),__lastPar:()=>lastPar,__setPar:v=>{lastPar=v},__SHAPEDEF:()=>SHAPES})
 
 /* ── 图上的操作:玩家加边,敌人断边 ── */
 function gAdj(G){const a={};for(const e of G.edges)if(e.alive){
@@ -1878,6 +1895,14 @@ function offerScreen(){
  ctx.fillText('打完了 · 三选一',cx,H*.26)
  ctx.font='400 13px system-ui';ctx.fillStyle=CO.dim
  ctx.fillText(`牌组 ${RUN.deck.length} 张 · 预算上限 ${RUN.cap} · 拿一张 / 重构删一张 / 跳过`,cx,H*.26+26)
+ //  复盘条:你打了几回合 vs 这局面最优几回合(引擎跑六条流派现算)。打平=金,富余=可以更快。
+ if(lastPar){const {mine,turns,kit,shape}=lastPar,tie=mine<=turns
+  ctx.font='600 13.5px system-ui';ctx.fillStyle=tie?CO.green:CO.amber
+  ctx.fillText(tie?`你 ${mine} 回合 —— 已是这局面的最优解`
+   :`你 ${mine} 回合 · 这局面最优 ${turns} 回合(${TAGNAME[kit]})`,cx,H*.26+50)
+  const sh=SHAPES[shape]
+  if(sh&&!tie){ctx.font='400 12px system-ui';ctx.fillStyle=CO.faint
+   ctx.fillText(`数据形状「${sh.name}」:${sh.hint}`,cx,H*.26+70)}}
  ctx.textAlign='left'
  const cw=200,ch=170,gap=22,x0=cx-(3*cw+2*gap)/2
  HITBOX.length=0
