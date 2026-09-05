@@ -23,7 +23,7 @@ const DX = [1, 0, -1, 0], DY = [0, 1, 0, -1] // 0右 1下 2左 3上
 const SHAPE_COL = ['#e0954b', '#5b8def', '#3fa78f']
 const TEAL = '#49a791', AMBER = '#e8c98a', CREAM = '#efe6d2', RED = '#c8452e', BLUE = '#5b8def'
 type Dir = 0 | 1 | 2 | 3
-type Kind = 'belt' | 'router' | 'copier' | 'cache' | 'queue' | 'arouter' | 'prefix' | 'mask'
+type Kind = 'belt' | 'router' | 'copier' | 'cache' | 'queue' | 'arouter' | 'prefix' | 'mask' | 'nat'
 type Piece = { kind: Kind; dir: Dir; mode: number; seen?: Set<number>; store?: number[]; next?: number }
 const QUEUE_MODES = ['限速', '排序'] // 缓冲队列两种放法:限速=每拍放1个(先到先出,安全默认) / 排序=按号重排(缺号会等)
 /* 前缀匹配器:一条路由条目 = 一个前缀模式(从最高位写起,'*'=不管这一位)。
@@ -39,6 +39,16 @@ function prefixHit(pat: string, num: number, nbits: number) {
   return true
 }
 const levelRoutes = () => LEVELS[lvl]?.routes ?? []
+/* NAT:家用路由器的立身之本,而且它做的事**就是改写包头**——
+   出方向:内网各机的私网地址统统换成同一个公网地址(对外看起来只有一台),同时把这条会话记下来;
+   回程:回包带着会话号,按会话表**还原**成当初那台机器的私网地址;
+   **会话表里查不到的回包直接丢** —— 这正是"外网主动连不进来"的原因,NAT 天生就是道墙。 */
+const natOut = () => LEVELS[lvl]?.natPub !== undefined
+function natMap(num: number) {
+  const L = LEVELS[lvl]!
+  if (L.natPub !== undefined) return L.natPub          // 出方向:一律改写成公网地址
+  return L.natTable?.[num] ?? -1                        // 回程:查会话表,-1 = 没建过这条会话
+}
 /* 掩码判断器:子网掩码 /n 的**真正用处**——先算「对方跟我是不是同一个网段」。
    把两边地址都按掩码盖住(只留高 n 位)比一下:一样=同网段,直接送本地;不一样=交给网关。
    掩码取长取短都会错,而且错得不一样:太短→外网地址被误当本地;太长→本地地址被误送网关。 */
@@ -62,7 +72,7 @@ const ROUTER_MODES: { name: string; map: number[] }[] = [
 // —— 关卡 ——
 type Sink = { r: number; accept: number; need: number; label?: string; ordered?: boolean; rate?: number; addr?: number; addrs?: number[] }
 type Src = { r: number; seq: number[] }
-type Level = { name: string; hint: string; srcRow: number; seq: number[]; sinks: Sink[]; parts: Kind[]; par: { parts: number; cycles: number }; burst?: boolean; finale?: boolean; sandbox?: boolean; sources?: Src[]; collide?: boolean; gap?: number; showAddr?: boolean; routes?: { pat: string }[]; localNet?: number }
+type Level = { name: string; hint: string; srcRow: number; seq: number[]; sinks: Sink[]; parts: Kind[]; par: { parts: number; cycles: number }; burst?: boolean; finale?: boolean; sandbox?: boolean; sources?: Src[]; collide?: boolean; gap?: number; showAddr?: boolean; routes?: { pat: string }[]; localNet?: number; natPub?: number; natTable?: number[]; drops?: number }
 const LEVELS: Level[] = [
   // 全部关卡都用**真地址**(包上印着二进制),不再用 △□○ 这类指不到实体的抽象形状。
   // —— 一、按地址转发:一位一位地看 ——
@@ -75,13 +85,12 @@ const LEVELS: Level[] = [
   { name: '真·ARP · 先问到 MAC', hint: '知道 IP 还送不出去 —— 链路上认的是 MAC。〈ARP 缓存〉记的是"这个 IP 我问过没":**没问过的**走「ARP 查询口」(广播喊一嗓子谁是它),**问过的**直接走「直送口」。同一个 IP 只该问一次,后面全走直送', srcRow: 3, seq: [2, 5, 2, 2, 5, 2], showAddr: true, sinks: [{ r: 1, accept: -1, need: 4, label: '直送口 · 已知 MAC' }, { r: 5, accept: -1, need: 2, label: 'ARP 查询口 · 广播问' }], parts: ['belt', 'cache'], par: { parts: 18, cycles: 24 } },
   { name: '真·交换机 · 泛洪', hint: '交换机还没学到这个 MAC 挂在哪个口 —— 只能「泛洪」:除了来的那个口,每个口都发一份,谁是主人谁应答。用〈复制器〉把包复制成两份,两个口各送一份', srcRow: 3, seq: [4, 4, 4, 4], showAddr: true, sinks: [{ r: 1, accept: -1, need: 4, label: '口1 · 泛洪' }, { r: 5, accept: -1, need: 4, label: '口2 · 泛洪' }], parts: ['belt', 'copier'], par: { parts: 18, cycles: 24 } },
   // —— 三、出口顶不住的时候 ——
-  // —— 四、线速与并发:同一主题逐关叠机制(一格一拍只容一个包 = 会撞)——
-  { name: '线速 · 双路汇入', hint: '两条链路同时涌进来,可**一格一拍只容得下一个包** —— 两股等长汇到同一格就「撞包」。给一条流加个〈缓冲队列〉切「限速」错开一拍(或多绕一格),让它们交替着并进一条道', srcRow: 3, seq: [], showAddr: true, sources: [{ r: 3, seq: [0, 0, 0, 0] }, { r: 5, seq: [0, 0, 0, 0] }], collide: true, sinks: [{ r: 4, accept: -1, need: 8, addrs: [0], label: '汇入口' }], parts: ['belt', 'queue'], par: { parts: 20, cycles: 22 } },
-  { name: '线速 · 汇入还要按序', hint: '还是两条链路,但号是交错发的(上路发偶数、下路发奇数),而出口要求按 0→1→2… 的顺序收 —— 先用「限速」错峰把两股并成一道别撞,再用一个切「排序」的队列把号排好。**两种队列模式一起用**', srcRow: 3, seq: [], showAddr: true, sources: [{ r: 3, seq: [6, 4, 2, 0] }, { r: 5, seq: [7, 5, 3, 1] }], collide: true, sinks: [{ r: 4, accept: -1, need: 8, ordered: true, label: '按序口' }], parts: ['belt', 'queue'], par: { parts: 20, cycles: 34 } },
-  { name: '线速 · 汇入后按址分网段', hint: '两条链路混着不同目的地址涌来:先错峰并成一道别撞,并好的这股再用〈地址路由〉按地址分到各自网段 —— **合流 + 分拣一起来**', srcRow: 3, seq: [], showAddr: true, sources: [{ r: 3, seq: [0, 1] }, { r: 5, seq: [0, 1] }], collide: true, sinks: [{ r: 2, addr: 1, accept: -1, need: 2, label: '网段1' }, { r: 4, addr: 0, accept: -1, need: 2, label: '网段0' }], parts: ['belt', 'arouter', 'queue'], par: { parts: 24, cycles: 30 } },
+  // —— 四、NAT:家用路由器的立身之本(它做的事就是改写包头)——
+  { name: '真·NAT · 对外只有一个地址', hint: '家里三台机器(私网地址 1/2/3)要上网,可 ISP 只给了你**一个**公网地址。〈NAT〉出方向把每个包的源地址统统改写成公网地址 0,并把这条会话记下来 —— 于是外面看起来,你家只有一台机器在上网', srcRow: 3, seq: [1, 2, 3, 1, 2, 3], showAddr: true, natPub: 0, sinks: [{ r: 3, accept: -1, need: 6, addrs: [0], label: '公网口 · 全是地址0' }], parts: ['belt', 'nat'], par: { parts: 12, cycles: 22 } },
+  { name: '真·NAT · 回包怎么找回原主', hint: '回包只写着公网那一侧的**会话号**,可它到底该给家里哪台机器?〈NAT〉查会话表还原成私网地址(会话0→机器1、1→机器2、2→机器3),再用〈地址路由〉送到各自机器。**会话表里查不到的(会话3,外面主动找上门的)直接丢掉** —— 这就是外网连不进你家的原因', srcRow: 3, seq: [0, 1, 2, 3, 0, 1], showAddr: true, natTable: [1, 2, 3, -1], drops: 1, sinks: [{ r: 3, addr: 1, accept: -1, need: 2, label: '机器1' }, { r: 2, addr: 2, accept: -1, need: 2, label: '机器2' }, { r: 1, addr: 3, accept: -1, need: 1, label: '机器3' }], parts: ['belt', 'nat', 'arouter'], par: { parts: 24, cycles: 26 } },
+  // —— 五、出口顶不住的时候 ——
   { name: '真·路由器 · 出口拥塞', hint: '一峰包同拍涌到,可每个出口每拍只发得出 1 个 —— 直接怼过去就丢包。先用〈地址路由〉按地址分开,各接一个〈缓冲队列〉切「限速」削成 1/拍,一个都别丢', srcRow: 3, seq: [0, 1, 0, 1], showAddr: true, burst: true, sinks: [{ r: 1, addr: 1, accept: -1, need: 2, rate: 1, label: '网段1 · 每拍1' }, { r: 5, addr: 0, accept: -1, need: 2, rate: 1, label: '网段0 · 每拍1' }], parts: ['belt', 'arouter', 'queue'], par: { parts: 22, cycles: 22 } },
-
-  // —— 五、终关:一次完整的转发,把学过的串成一台真机器 ——
+  // —— 六、终关:一次完整的转发,把学过的串成一台真机器 ——
   { name: '终关 · 一次完整转发', hint: '把学过的全串起来跑一遍真路由:包进来先用〈掩码判断〉问「跟我同网段吗」—— 同网段(010/011)直接进本地口;不同网段的交给〈前缀匹配〉按路由表选路,10* 去网段A、11* 去网段B,**谁都没认领的直行到底进默认口**', srcRow: 3, seq: [2, 4, 6, 3, 5, 0, 7, 1], showAddr: true, localNet: 2, routes: [{ pat: '10*' }, { pat: '11*' }], sinks: [{ r: 0, accept: -1, need: 2, addrs: [2, 3], label: '本地口 · 同网段' }, { r: 1, accept: -1, need: 2, addrs: [4, 5], label: '网段A · 10*' }, { r: 2, accept: -1, need: 2, addrs: [6, 7], label: '网段B · 11*' }, { r: 3, accept: -1, need: 2, addrs: [0, 1], label: '默认口 · 没人认领' }], parts: ['belt', 'mask', 'prefix'], par: { parts: 40, cycles: 34 }, finale: true },
 ]
 let lvl = 0
@@ -99,9 +108,8 @@ const STORY = [
   '要发包之前先得判断:对方跟我是不是同一个网段?掩码盖住高几位一比就知道 —— 同网段直接送,不同的交给网关。',
   '知道 IP 还不够,链路上认的是 MAC —— 没问过的先广播问一次,问到了就记下来,后面直接送。',
   '交换机还不知道这个 MAC 挂在哪个口 —— 先泛洪,每个口都发一份,谁是主人谁应答。',
-  '两条链路同时涌进来 —— 一格一拍只过一个包,别让它们挤在一起撞了,想办法错开、并到一条道上。',
-  '两条链路的号还是错开的 —— 既要并成一道别撞,又要把顺序理顺,两种手法一起来。',
-  '两条混流并成一道之后,还得按地址分到各自网段 —— 合流和分拣一起来。',
+  '家里三台机器,ISP 只给一个公网地址 —— NAT 把源地址统统改写成那一个,外面看起来你家只有一台。',
+  '回包只写着会话号,得查表才知道该给谁 —— 查不到的(外面主动找上门的)直接丢,这就是外网进不来的原因。',
   '出口顶不住了 —— 先按地址分开,再各自排队限速,一个包都别丢。',
   '最后一里:包进来先判断同不同网段,不同的再查路由表选路,没人认领的走默认口 —— 一台完整的路由器。',
 ]
@@ -127,12 +135,16 @@ let emittedPer: number[] = [0], collided = false
 let collisionFlash: { r: number; c: number; t: number }[] = []
 const allEmitted = () => SOURCES.every((s, i) => (emittedPer[i] ?? 0) >= s.seq.length)
 let delivered = 0, wrong = 0, lost = 0
+/*  NAT 按规矩丢掉的包(会话表里查不到 = 外面主动找上门的)。
+    这类"丢"是**正确行为**,不能和"接错线丢了"混为一谈,所以单独记一笔,
+    通关判定要求:丢的总数 == NAT 丢的 == 这一关本就该丢的那么多。 */
+let natDrop = 0
 let deliveredBy: number[] = SINKS.map(() => 0)
 let oexp: number[] = SINKS.map(() => 0) // 按序口:下一个该到的序号
 let pkts: Pkt[] = []
 const STEP_MS = 240, EMIT_GAP = 2
 function partCount() { let n = 0; for (const row of grid) for (const p of row) if (p) n++; return n }
-function resetSim() { running = false; done = false; pass = false; overflowed = false; stuck = false; collided = false; collisionFlash = []; step = 0; emittedPer = SOURCES.map(() => 0); acc = 0; delivered = 0; wrong = 0; lost = 0; deliveredBy = SINKS.map(() => 0); oexp = SINKS.map(() => 0); pkts = []; for (const row of grid) for (const p of row) if (p) { if (p.kind === 'cache') p.seen = new Set(); if (p.kind === 'queue') { p.store = []; p.next = 0 } } }
+function resetSim() { running = false; done = false; pass = false; overflowed = false; stuck = false; collided = false; collisionFlash = []; step = 0; emittedPer = SOURCES.map(() => 0); acc = 0; delivered = 0; wrong = 0; lost = 0; natDrop = 0; deliveredBy = SINKS.map(() => 0); oexp = SINKS.map(() => 0); pkts = []; for (const row of grid) for (const p of row) if (p) { if (p.kind === 'cache') p.seen = new Set(); if (p.kind === 'queue') { p.store = []; p.next = 0 } } }
 function run() { resetSim(); running = true; sfx.run() }
 function exits(r: number, c: number, shape: number, num = 0): Dir[] {
   if (isSource(r, c)) return [0]
@@ -140,6 +152,7 @@ function exits(r: number, c: number, shape: number, num = 0): Dir[] {
   if (p.kind === 'belt') return [p.dir]
   if (p.kind === 'router') { const m = ROUTER_MODES[p.mode] ?? ROUTER_MODES[0]!; return [[leftOf(p.dir), p.dir, rightOf(p.dir)][m.map[shape]!]!] } // 可编程路由器:按形状查表转发
   if (p.kind === 'arouter') { const bit = (num >> p.mode) & 1; return [bit ? leftOf(p.dir) : p.dir] } // 地址路由器:看地址第 mode 位,0→直行 1→拐弯(串成转发树)
+  if (p.kind === 'nat') { return natMap(num) < 0 ? [] : [p.dir] }   // 回程查不到会话 → 无出口 → 丢弃
   if (p.kind === 'mask') { const L = LEVELS[lvl]!; return [sameNet(num, L.localNet ?? 0, maskLen(p.mode), addrBits()) ? leftOf(p.dir) : p.dir] } // 同网段→拐弯进本地口,不同→直行交给网关
   if (p.kind === 'prefix') { const pat = levelRoutes()[p.mode]?.pat ?? '*'; return [prefixHit(pat, num, addrBits()) ? leftOf(p.dir) : p.dir] } // 前缀匹配器:命中→拐弯进本网段,未命中→直行给下一条
   if (p.kind === 'copier') return [leftOf(p.dir), rightOf(p.dir)] // T 型分叉:朝右=左进、上下各一份(两个垂直出口)
@@ -187,7 +200,14 @@ function simStep() {
   // 2) 再吸收这一拍新到队列的包(存起来、下一拍才有资格放),其余正常流动
   const flowing: Pkt[] = []
   for (const p of pkts) { const pc = grid[p.r]![p.c]; if (pc && pc.kind === 'queue') { (pc.store ??= []).push(p.num) } else flowing.push(p) }
-  for (const p of flowing) { const es = exits(p.r, p.c, p.shape, p.num); if (es.length === 0) { lost++; continue } for (const d of es) arrive(p.r + DY[d]!, p.c + DX[d]!, p.num, p.shape, p.r, p.c) }
+  for (const p of flowing) {
+    const es = exits(p.r, p.c, p.shape, p.num)
+    if (es.length === 0) { lost++; const pk0 = grid[p.r]![p.c]; if (pk0 && pk0.kind === 'nat') natDrop++; continue }
+    //  零件可以**改写包**(目前只有 NAT 这么做,真 NAT 改的就是包头里的地址)
+    const pc2 = grid[p.r]![p.c]
+    const outNum = pc2 && pc2.kind === 'nat' ? natMap(p.num) : p.num
+    for (const d of es) arrive(p.r + DY[d]!, p.c + DX[d]!, outNum, outNum % 3, p.r, p.c)
+  }
   // 撞包:一格一拍只容一个包(甲·线速关)。两个包落到同一格 → 都丢 + 红闪
   if (L.collide && next.length > 1) {
     const cnt = new Map<number, number>()
@@ -200,7 +220,7 @@ function simStep() {
   }
   pkts = next
   const moved = hadInput || released // 这一拍有没有任何包在动
-  if (!L.sandbox && allEmitted() && pkts.length === 0 && buffersEmpty()) { running = false; done = true; pass = wrong === 0 && lost === 0 && SINKS.every((s, i) => deliveredBy[i] === s.need); if (pass) { const b = best[lvl] || { parts: Infinity, cycles: Infinity }; best[lvl] = { parts: Math.min(b.parts, partCount()), cycles: Math.min(b.cycles, step) }; saveBest(); if (partCount() <= L.par.parts || step <= L.par.cycles) sfx.win(); else sfx.chime() } else sfx.fail() }
+  if (!L.sandbox && allEmitted() && pkts.length === 0 && buffersEmpty()) { running = false; done = true; pass = wrong === 0 && lost === natDrop && natDrop === (L.drops ?? 0) && SINKS.every((s, i) => deliveredBy[i] === s.need); if (pass) { const b = best[lvl] || { parts: Infinity, cycles: Infinity }; best[lvl] = { parts: Math.min(b.parts, partCount()), cycles: Math.min(b.cycles, step) }; saveBest(); if (partCount() <= L.par.parts || step <= L.par.cycles) sfx.win(); else sfx.chime() } else sfx.fail() }
   else if (!L.sandbox && allEmitted() && pkts.length === 0 && !moved && !buffersEmpty()) { running = false; done = true; pass = false; stuck = true; sfx.fail() } // 卡死:源发完了、没有任何包在流动,但队列里还压着包放不出来(多半是队列该切「限速」)
   else if (running && (step > 300 || delivered + wrong + lost > 120 || pkts.length > 120)) { running = false; done = true; pass = false; overflowed = delivered + wrong + lost > 120 || pkts.length > 120; sfx.fail() } // 失控保护:接成环无限增殖 —— 快速判失败,别永远转
 }
@@ -384,7 +404,7 @@ function drawSink(x: number, y: number, cs: number, s: Sink, i: number) {
   else if (over) { ctx.strokeStyle = '#2a0f0a'; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x + cs * .18, y + cs * .2); ctx.lineTo(x + cs * .28, y + cs * .3); ctx.moveTo(x + cs * .28, y + cs * .2); ctx.lineTo(x + cs * .18, y + cs * .3); ctx.stroke(); ctx.lineCap = 'butt' } // 溢出:✕
   ctx.textAlign = 'left'
 }
-const partName = (k: Kind | 'erase') => k === 'belt' ? '传送带' : k === 'router' ? '路由器' : k === 'arouter' ? '地址路由' : k === 'prefix' ? '前缀匹配' : k === 'mask' ? '掩码判断' : k === 'copier' ? '复制器' : k === 'cache' ? '缓存盒' : k === 'queue' ? '缓冲队列' : '擦除'
+const partName = (k: Kind | 'erase') => k === 'belt' ? '传送带' : k === 'router' ? '路由器' : k === 'arouter' ? '地址路由' : k === 'prefix' ? '前缀匹配' : k === 'mask' ? '掩码判断' : k === 'nat' ? 'NAT'  : k === 'copier' ? '复制器' : k === 'cache' ? '缓存盒' : k === 'queue' ? '缓冲队列' : '擦除'
 function trayGeo() { const ts = 66, gap = 12, y = H - ts - 16, x0 = 24; return { ts, gap, y, x0 } }
 function runGeo() { const bw = 168, bh = 54; return { x: W - bw - 24, y: H - bh - 16, bw, bh } }
 function rr(x: number, y: number, w: number, h: number, r: number) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath() }
@@ -553,7 +573,7 @@ function frame(now: number) {
 requestAnimationFrame(frame)
 
 // dev 钩子
-;(window as unknown as { __state: () => object }).__state = () => ({ lvl, running, done, pass, overflowed, stuck, collided, parts: partCount(), cycles: step, delivered, wrong, lost, deliveredBy: [...deliveredBy] })
+;(window as unknown as { __state: () => object }).__state = () => ({ lvl, running, done, pass, overflowed, stuck, collided, parts: partCount(), cycles: step, delivered, wrong, lost, natDrop, deliveredBy: [...deliveredBy] })
 ;(window as unknown as { __place: (r: number, c: number, kind: Kind, dir: number, mode?: number) => void }).__place = (r, c, kind, dir, mode = 0) => { if (editable(r, c)) grid[r]![c] = { kind, dir: (dir % 4) as Dir, mode } }
 ;(window as unknown as { __erase: (r: number, c: number) => void }).__erase = (r, c) => { if (editable(r, c)) grid[r]![c] = null }
 ;(window as unknown as { __run: () => void }).__run = run

@@ -99,59 +99,48 @@ console.log('\n搭机器 · 八关真地址冒烟\n')
   ok(!bad.pass, `L6 反例:不用复制器直走→两口收不满→不通过(by=[${bad.deliveredBy}])`)
 }
 
-/* ── L7~L9 线速三关:同一主题逐关叠机制(撞包 → +按序 → +分拣)── */
+/* ── L7~L8 NAT:出方向改写地址 → 回程按会话表还原(同主题加一层)── */
 {
-  const s7 = await build(7, `
-    H(3,1,2); P(3,3,'belt',1); H(4,3,10);
-    P(5,1,'queue',0,0); H(5,2,3); P(5,4,'belt',3); P(4,4,'belt',0);`)
-  ok(s7.pass && !s7.collided && s7.lost === 0, `L7 双路汇入 限速错峰→不撞(by=[${s7.deliveredBy}], cyc=${s7.cycles})`)
-  const bad7 = await build(7, `
-    H(3,1,2); P(3,3,'belt',1); H(4,3,10);
-    H(5,1,3); P(5,4,'belt',3); P(4,4,'belt',0);`)   // 两股等长、不错峰
-  ok(bad7.collided || bad7.lost > 0, `L7 反例:不错峰两股等长汇入→撞包(collided=${bad7.collided}, lost=${bad7.lost})`)
+  const out = await build(7, `P(3,1,'nat',0); H(3,2,10);`)
+  ok(out.pass && out.wrong === 0, `L7 NAT出方向 三台机器对外都成地址0=通过(by=[${out.deliveredBy}], parts=${out.parts})`)
+  const raw = await build(7, `H(3,1,10);`)
+  ok(!raw.pass && raw.wrong > 0, `L7 反例:不过 NAT 直送→私网地址原样出门→不通过(wrong=${raw.wrong})`)
 
-  const s8 = await build(8, `
-    H(3,1,2); P(3,3,'belt',1);
-    P(5,1,'queue',0,0); H(5,2,3); P(5,4,'belt',3);
-    H(4,3,4); P(4,5,'queue',0,1); H(4,6,10);`)      // 第二个队列切「排序」
-  ok(s8.pass && s8.wrong === 0, `L8 汇入还要按序 限速+排序两种模式一起=通过(by=[${s8.deliveredBy}], cyc=${s8.cycles})`)
-  const bad8 = await build(8, `
-    H(3,1,2); P(3,3,'belt',1);
-    P(5,1,'queue',0,0); H(5,2,3); P(5,4,'belt',3);
-    H(4,3,4); P(4,5,'queue',0,0); H(4,6,10);`)      // 第二个队列仍是「限速」→ 乱序原样出
-  ok(!bad8.pass && bad8.wrong > 0, `L8 反例:第二个队列不切排序→乱序进按序口→不通过(wrong=${bad8.wrong})`)
-
-  const s9 = await build(9, `
-    H(3,1,2); P(3,3,'belt',1);
-    P(5,1,'queue',0,0); H(5,2,3); P(5,4,'belt',3);
-    H(4,3,4); P(4,5,'arouter',0,0); H(4,6,10);
-    P(3,5,'belt',3); P(2,5,'belt',0); H(2,6,10);`)
-  ok(s9.pass && s9.wrong === 0 && !s9.collided, `L9 汇入后按址分网段 合流+分拣=通过(by=[${s9.deliveredBy}], cyc=${s9.cycles})`)
+  const back = await build(8, `
+    P(3,1,'nat',0);
+    P(3,2,'arouter',0,1); H(3,3,10);
+    P(2,2,'belt',0); P(2,3,'arouter',0,0); H(2,4,10);
+    P(1,3,'belt',0); H(1,4,10);`)
+  ok(back.pass && back.wrong === 0, `L8 NAT回程 三台机器各归各位=通过(by=[${back.deliveredBy}], parts=${back.parts})`)
+  ok(back.natDrop === 1 && back.lost === 1,
+    `L8 未建会话的回包被 NAT 丢掉(natDrop=${back.natDrop}) —— 这就是外网连不进来的原因`)
+  const noNat = await build(8, `P(3,1,'belt',0); H(3,2,10);`)
+  ok(!noNat.pass && noNat.wrong > 0, `L8 反例:不经 NAT→会话号当地址送→不通过(wrong=${noNat.wrong})`)
 }
 
-/* ── L10 出口拥塞:一峰同拍涌到,不限速就丢包 ── */
+/* ── L9 出口拥塞:一峰同拍涌到,不限速就丢包 ── */
 {
-  const good = await build(10, `
+  const good = await build(9, `
     P(3,1,'arouter',0,0);                                  // 地址第0位:1→上(网段1), 0→直行(网段0)
     P(2,1,'belt',3); P(1,1,'belt',0); P(1,2,'queue',0,0); H(1,3,10);   // 网段1 支路接队列限速
     H(3,2,3); P(3,4,'belt',1); P(4,4,'belt',1); P(5,4,'belt',0); P(5,5,'queue',0,0); H(5,6,10);`)
-  ok(good.lost === 0 && good.delivered > 0, `L10 拥塞 接队列限速→零丢包(lost=${good.lost}, by=[${good.deliveredBy}])`)
-  const bad = await build(10, `
+  ok(good.lost === 0 && good.delivered > 0, `L9 拥塞 接队列限速→零丢包(lost=${good.lost}, by=[${good.deliveredBy}])`)
+  const bad = await build(9, `
     P(3,1,'arouter',0,0);
     P(2,1,'belt',3); P(1,1,'belt',0); H(1,2,10);
     H(3,2,3); P(3,4,'belt',1); P(4,4,'belt',1); P(5,4,'belt',0); H(5,5,10);`)   // 同样接通但不限速
-  ok(bad.lost > 0, `L10 反例:不接队列直怼出口→丢包(lost=${bad.lost})`)
+  ok(bad.lost > 0, `L9 反例:不接队列直怼出口→丢包(lost=${bad.lost})`)
 }
 
-/* ── L11 终关:掩码判同网段 → 前缀匹配选路 → 没人认领走默认口 ── */
+/* ── L10 终关:掩码判同网段 → 前缀匹配选路 → 没人认领走默认口 ── */
 {
-  const s = await build(11, `
+  const s = await build(10, `
     P(3,1,'mask',0,1); P(3,2,'prefix',0,0); P(3,3,'prefix',0,1); H(3,4,10);
     P(2,1,'belt',3); P(1,1,'belt',3); H(0,1,10);
     P(2,2,'belt',3); H(1,2,10);
     H(2,3,10);`)
   ok(s.pass && s.wrong === 0 && s.lost === 0,
-    `L11 终关 四个口各2=通过(by=[${s.deliveredBy}], parts=${s.parts}, cyc=${s.cycles})`)
+    `L10 终关 四个口各2=通过(by=[${s.deliveredBy}], parts=${s.parts}, cyc=${s.cycles})`)
 }
 
 /* ── 通用 ── */
