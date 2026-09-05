@@ -75,8 +75,14 @@ const LEVELS: Level[] = [
   { name: '真·ARP · 先问到 MAC', hint: '知道 IP 还送不出去 —— 链路上认的是 MAC。〈ARP 缓存〉记的是"这个 IP 我问过没":**没问过的**走「ARP 查询口」(广播喊一嗓子谁是它),**问过的**直接走「直送口」。同一个 IP 只该问一次,后面全走直送', srcRow: 3, seq: [2, 5, 2, 2, 5, 2], showAddr: true, sinks: [{ r: 1, accept: -1, need: 4, label: '直送口 · 已知 MAC' }, { r: 5, accept: -1, need: 2, label: 'ARP 查询口 · 广播问' }], parts: ['belt', 'cache'], par: { parts: 18, cycles: 24 } },
   { name: '真·交换机 · 泛洪', hint: '交换机还没学到这个 MAC 挂在哪个口 —— 只能「泛洪」:除了来的那个口,每个口都发一份,谁是主人谁应答。用〈复制器〉把包复制成两份,两个口各送一份', srcRow: 3, seq: [4, 4, 4, 4], showAddr: true, sinks: [{ r: 1, accept: -1, need: 4, label: '口1 · 泛洪' }, { r: 5, accept: -1, need: 4, label: '口2 · 泛洪' }], parts: ['belt', 'copier'], par: { parts: 18, cycles: 24 } },
   // —— 三、出口顶不住的时候 ——
+  // —— 四、线速与并发:同一主题逐关叠机制(一格一拍只容一个包 = 会撞)——
+  { name: '线速 · 双路汇入', hint: '两条链路同时涌进来,可**一格一拍只容得下一个包** —— 两股等长汇到同一格就「撞包」。给一条流加个〈缓冲队列〉切「限速」错开一拍(或多绕一格),让它们交替着并进一条道', srcRow: 3, seq: [], showAddr: true, sources: [{ r: 3, seq: [0, 0, 0, 0] }, { r: 5, seq: [0, 0, 0, 0] }], collide: true, sinks: [{ r: 4, accept: -1, need: 8, addrs: [0], label: '汇入口' }], parts: ['belt', 'queue'], par: { parts: 20, cycles: 22 } },
+  { name: '线速 · 汇入还要按序', hint: '还是两条链路,但号是交错发的(上路发偶数、下路发奇数),而出口要求按 0→1→2… 的顺序收 —— 先用「限速」错峰把两股并成一道别撞,再用一个切「排序」的队列把号排好。**两种队列模式一起用**', srcRow: 3, seq: [], showAddr: true, sources: [{ r: 3, seq: [6, 4, 2, 0] }, { r: 5, seq: [7, 5, 3, 1] }], collide: true, sinks: [{ r: 4, accept: -1, need: 8, ordered: true, label: '按序口' }], parts: ['belt', 'queue'], par: { parts: 20, cycles: 34 } },
+  { name: '线速 · 汇入后按址分网段', hint: '两条链路混着不同目的地址涌来:先错峰并成一道别撞,并好的这股再用〈地址路由〉按地址分到各自网段 —— **合流 + 分拣一起来**', srcRow: 3, seq: [], showAddr: true, sources: [{ r: 3, seq: [0, 1] }, { r: 5, seq: [0, 1] }], collide: true, sinks: [{ r: 2, addr: 1, accept: -1, need: 2, label: '网段1' }, { r: 4, addr: 0, accept: -1, need: 2, label: '网段0' }], parts: ['belt', 'arouter', 'queue'], par: { parts: 24, cycles: 30 } },
   { name: '真·路由器 · 出口拥塞', hint: '一峰包同拍涌到,可每个出口每拍只发得出 1 个 —— 直接怼过去就丢包。先用〈地址路由〉按地址分开,各接一个〈缓冲队列〉切「限速」削成 1/拍,一个都别丢', srcRow: 3, seq: [0, 1, 0, 1], showAddr: true, burst: true, sinks: [{ r: 1, addr: 1, accept: -1, need: 2, rate: 1, label: '网段1 · 每拍1' }, { r: 5, addr: 0, accept: -1, need: 2, rate: 1, label: '网段0 · 每拍1' }], parts: ['belt', 'arouter', 'queue'], par: { parts: 22, cycles: 22 } },
 
+  // —— 五、终关:一次完整的转发,把学过的串成一台真机器 ——
+  { name: '终关 · 一次完整转发', hint: '把学过的全串起来跑一遍真路由:包进来先用〈掩码判断〉问「跟我同网段吗」—— 同网段(010/011)直接进本地口;不同网段的交给〈前缀匹配〉按路由表选路,10* 去网段A、11* 去网段B,**谁都没认领的直行到底进默认口**', srcRow: 3, seq: [2, 4, 6, 3, 5, 0, 7, 1], showAddr: true, localNet: 2, routes: [{ pat: '10*' }, { pat: '11*' }], sinks: [{ r: 0, accept: -1, need: 2, addrs: [2, 3], label: '本地口 · 同网段' }, { r: 1, accept: -1, need: 2, addrs: [4, 5], label: '网段A · 10*' }, { r: 2, accept: -1, need: 2, addrs: [6, 7], label: '网段B · 11*' }, { r: 3, accept: -1, need: 2, addrs: [0, 1], label: '默认口 · 没人认领' }], parts: ['belt', 'mask', 'prefix'], par: { parts: 40, cycles: 34 }, finale: true },
 ]
 let lvl = 0
 let SOURCES: Src[] = [{ r: LEVELS[0]!.srcRow, seq: LEVELS[0]!.seq }]
@@ -93,7 +99,11 @@ const STORY = [
   '要发包之前先得判断:对方跟我是不是同一个网段?掩码盖住高几位一比就知道 —— 同网段直接送,不同的交给网关。',
   '知道 IP 还不够,链路上认的是 MAC —— 没问过的先广播问一次,问到了就记下来,后面直接送。',
   '交换机还不知道这个 MAC 挂在哪个口 —— 先泛洪,每个口都发一份,谁是主人谁应答。',
+  '两条链路同时涌进来 —— 一格一拍只过一个包,别让它们挤在一起撞了,想办法错开、并到一条道上。',
+  '两条链路的号还是错开的 —— 既要并成一道别撞,又要把顺序理顺,两种手法一起来。',
+  '两条混流并成一道之后,还得按地址分到各自网段 —— 合流和分拣一起来。',
   '出口顶不住了 —— 先按地址分开,再各自排队限速,一个包都别丢。',
+  '最后一里:包进来先判断同不同网段,不同的再查路由表选路,没人认领的走默认口 —— 一台完整的路由器。',
 ]
 
 type Best = { parts: number; cycles: number }
