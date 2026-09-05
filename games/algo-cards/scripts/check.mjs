@@ -46,7 +46,7 @@ console.log(`${B}算法卡牌 · 回归检查${X}  ${D}${N_RUN} 局/流派 · ${
 process.stdout.write(`${D}G1 完整通关率…${X}`)
 const run = await page.evaluate(n => {
   const o = {}
-  for (const k of ['base', 'sort', 'dc', 'memo', 'greedy', 'heap', 'twop', 'bit']) {
+  for (const k of ['base', 'sort', 'dc', 'memo', 'greedy', 'heap', 'twop', 'bit', 'rand']) {
     const r = __batchRun(k, n)
     const top = Object.entries(r.stuck).sort((a, b) => b[1] - a[1])[0]
     o[k] = { win: r.win, deck: r.avgDeck, top: top ? top[0] : null }
@@ -60,7 +60,7 @@ process.stdout.write('\r\x1b[K')
 check('G1 不构筑几乎必输', run.base.win, v => v <= 2, '≤ 2%')
 // v14 起六条流派共用一条带:15–35%。逐条各设一段窄带只会在每次改动后
 // 逼我去改带子而不是改设计 —— 真正的判据是「都能玩、且没有一条独大」。
-const KITS6 = [['sort','排序流'],['dc','分治流'],['memo','预处理流'],['bit','位运算流'],
+const KITS6 = [['sort','排序流'],['dc','分治流'],['memo','预处理流'],['bit','位运算流'],['rand','随机化流'],
                ['greedy','贪心流'],['heap','堆流'],['twop','区间流']]
 for (const [k, nm] of KITS6) check(`G1 ${nm}通关率`, run[k].win, v => v >= 15 && v <= 35, '15–35%')
 const wins = KITS6.map(([k]) => run[k].win)
@@ -114,7 +114,7 @@ check('G3 带 2 张剪枝', boss.pruned, v => v >= 75, '≥ 75%')
 /* ── G4 战斗时长 ── */
 process.stdout.write(`${D}G4 时长…${X}`)
 const turns = await page.evaluate(n =>
-  Object.fromEntries(['sort','dc','memo','greedy','heap','twop','bit'].map(k => [k, __batchFoe(k, 'shuffled', n).turn])), 200)
+  Object.fromEntries(['sort','dc','memo','greedy','heap','twop','bit','rand'].map(k => [k, __batchFoe(k, 'shuffled', n).turn])), 200)
 process.stdout.write('\r\x1b[K')
 // 堆流单独一条带。它的伤害只有一个来源(每回合弹掉最矮的 N 根),
 // 所以「速度」和「强度」共用一个旋钮 —— 实测 heapsort 多弹 1 根就把通关率
@@ -244,6 +244,28 @@ process.stdout.write('\r\x1b[K')
 check('G10 位运算吃重复值扎堆', +(shape.nearly - shape.heavy).toFixed(1), v => v >= 2, '比几乎有序快 ≥2 回合')
 check('G10 重复扎堆上位运算快过排序', +(shape.heavySort - shape.heavy).toFixed(1), v => v > 0, '> 0 回合')
 
+/* ── G11 随机化流的身份:随机主元把「照着你构造的输入」打回平均用例 ── */
+process.stdout.write(`${D}G11 随机化…${X}`)
+const rnd = await page.evaluate(() => {
+  // ① 机制直测:对抗性输入下,出掉随机主元后排序惩罚必须失效
+  __demo('crafted', null, 'rand')
+  const S = __S(); const before = __antiOf(S)
+  S.hand = ['rpivot']; S.steps = 3; __play2(S, 0)
+  const after = __antiOf(S)
+  // ② 结果直测:同为随机化流、同一批种子,带随机主元 vs 换成蒙特卡洛
+  const base = ['scan','scan','scan','batch','batch','batch','cache','prefetch','memoize','sortdeck']
+  // 用排序流打「最坏用例」精英(排序惩罚在这最疼):带随机主元 vs 换成一张冒泡
+  const rate = deck => { let w = 0
+    for (let s = 1; s <= 200; s++) if (__fight('sort', s * 7919, 'worst', deck, __T.BUDGET, 45, null, 0).over === 'win') w++
+    return +(w / 200 * 100).toFixed(1) }
+  const withP = rate([...__KITS.sort, 'rpivot', ...base])
+  const without = rate([...__KITS.sort, 'bubble', ...base])
+  return { before, after, withP, without, gain: +(withP - without).toFixed(1) }
+})
+process.stdout.write('\r\x1b[K')
+check('G11 随机主元解除排序惩罚', `${rnd.before}→${rnd.after}`, v => v === 'true→false', 'true→false')
+check('G11 随机主元克对抗性输入', rnd.gain, v => v > 0, '带随机主元胜率更高')
+
 /* ── 控制台 ── */
 check('全程无控制台报错', consoleErrors.length ? consoleErrors[0].slice(0, 60) : 0, v => v === 0, '0 条')
 
@@ -255,7 +277,7 @@ const pad = s => s + ' '.repeat(Math.max(0, w - [...s].reduce((a, c) => a + (c.c
 for (const r of rows)
   console.log(`  ${r.pass ? G + '✓' : R + '✗'}${X} ${pad(r.name)}  ${String(r.got).padStart(6)}  ${D}${r.expect}${X}`)
 
-console.log(`\n${D}牌组终局大小 ${['sort','dc','memo','greedy','heap','twop','bit'].map(k=>`${k} ${run[k].deck}`).join(' · ')}${X}`)
+console.log(`\n${D}牌组终局大小 ${['sort','dc','memo','greedy','heap','twop','bit','rand'].map(k=>`${k} ${run[k].deck}`).join(' · ')}${X}`)
 if (failed) {
   console.log(`\n${R}${B}${failed} 项不达标${X} —— 先量清楚再动数值,别脑补原因。`)
   process.exit(1)

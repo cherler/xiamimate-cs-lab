@@ -17,6 +17,7 @@ const FOE={
  tape:    {n:38,shape:'nearly',inflow:1,shuffle:0,seqOnly:.7,name:'只能从头读的磁带',note:'顺序访问:二分查找效果打七折',kind:'小怪'},
  dupes:   {n:40,shape:'heavy',inflow:2,shuffle:0,vmax:8,name:'爬虫抓回来的重复页',note:'值域窄、量大:平铺处理占便宜',kind:'小怪'},
  stream:  {n:38,shape:'tail',inflow:2,shuffle:1,memoDecay:6,name:'实时价格流',note:'数据在变:预处理值每回合 −6',kind:'小怪'},
+ crafted: {n:38,shape:'adversarial',inflow:1,shuffle:0,antiSort:1,name:'对抗性输入',note:'看着像随机,其实照着你的方法构造 —— 排序卡趟数打折,先随机化打乱',kind:'小怪'},
  graph:   {n:38,shape:'sparse',inflow:1,shuffle:0,dense:.5,name:'社交网络的六度关系',note:'稠密:每多切两段,每回合多涌入 1',kind:'小怪'},
  // 对抗性输入(精英):专门克制某一条流派
  worst:   {n:54,shape:'reversed',inflow:1,shuffle:0,antiSort:1,name:'最坏用例',note:'完全倒序 + 排序卡趟数打五五折 —— 有序度要从零建起',kind:'精英'},
@@ -49,16 +50,16 @@ const C={},def=(id,name,cost,tag,note,fn,ex)=>C[id]={id,name,cost,tag,note,fn,ex
 def('scan','遍历',1,'base','16 点处理量,平均分给每个元素',S=>workTotal(S,16))
 def('batch','批处理',1,'base','预算 +5',S=>{S.budget+=5})
 def('watch','观察',1,'base','抽 2',S=>drawN(S,2))
-def('bubble','冒泡排序',1,'sort','有序 +1',S=>addSort(S,S.E.antiSort?ASORT:1))
-def('merge','归并排序',2,'sort','有序 +3',S=>addSort(S,S.E.antiSort?ASORT*3:3))
-def('quick','快速排序',2,'sort','有序 +4(最坏用例下只 +1)',S=>{if(S.E.antiSort)S.diag.lostSort+=3;addSort(S,S.E.antiSort?ASORT*4:4)})
+def('bubble','冒泡排序',1,'sort','有序 +1',S=>addSort(S,antiOf(S)?ASORT:1))
+def('merge','归并排序',2,'sort','有序 +3',S=>addSort(S,antiOf(S)?ASORT*3:3))
+def('quick','快速排序',2,'sort','有序 +4(最坏用例下只 +1)',S=>{if(antiOf(S))S.diag.lostSort+=3;addSort(S,antiOf(S)?ASORT*4:4)})
 def('bsearch','二分查找',1,'sort','移除 2+有序层数×2 个(顺序访问下打七折)',S=>{const full=2+tier(S)*2,act=S.E.seqOnly?Math.max(1,Math.round(full*S.E.seqOnly)):full;S.diag.lostKill+=full-act;kill(S,act)})
 /* 插入排序的趟数正比于逆序对数量:几乎有序 → 一趟排完;倒序 → 退化成 O(n²)。
    这正是「笨办法有时更快」那一课,而且它是「几乎有序」这个形状的唯一解法。 */
 def('insertion','插入排序',2,'sort','有序度 ≥50% 时【一次排完】;否则只 +1 层(逆序对太多,退化)',
   S=>{const a=alive(S)
    if(sortedness(S)>=.5){const vs=a.map(b=>b.v).sort((x,y)=>x-y);a.forEach((b,i)=>b.v=vs[i])}
-   else addSort(S,S.E.antiSort?ASORT:1)})
+   else addSort(S,antiOf(S)?ASORT:1)})
 def('counting','计数排序',2,'sort','按值分桶:移除所有【值 ≤ 最矮+2】的元素 —— 值域越窄清得越多',
   S=>{const a=alive(S);if(!a.length)return
    const mn=Math.min(...a.map(b=>b.v)),cut=mn+2
@@ -97,6 +98,7 @@ let GCLUST=6, GDENS=3   // 图:每簇几个节点 / 簇内每点连几个邻居(
 let HEAPCUT=7   // 堆自动弹出的高度门槛
 let PREFIX=1.25 // 前缀和对摊平类的放大
 let SHUFMUL=1   // 同上:严格口径下每次打乱的破坏力变大,强度要下调
+const antiOf=S=>!!(S.E.antiSort&&!S.derand)   // 随机主元洗过牌后,对抗性构造的排序惩罚失效
 let ASORT=.3,PARCUT=.4,AGREED=2.2   // 精英的专克强度,留成变量方便扫参
 def('memoize','复用上一步',1,'deck','立刻重放你这回合打出的上一张牌',
   S=>{const id=S.lastPlayed;if(id)C[id].fn(S)},1)
@@ -112,7 +114,7 @@ def('poptop','弹出堆顶',1,'heap','立刻移除最矮的 2 根',
   S=>{const a=alive(S).slice().sort((x,y)=>x.v-y.v)
    for(let i=0;i<Math.min(2,a.length);i++)a[i].dead=true})
 def('heapsort','堆排序',2,'heap','有序 +2,并且立刻移除最矮的 2 根',
-  S=>{addSort(S,S.E.antiSort?ASORT*2:2)
+  S=>{addSort(S,antiOf(S)?ASORT*2:2)
    const a=alive(S).slice().sort((x,y)=>x.v-y.v)
    for(let i=0;i<Math.min(2,a.length);i++)a[i].dead=true})
 def('medstream','中位数流',2,'heap','移除所有【严格低于中位数】的元素',
@@ -161,6 +163,35 @@ def('shiftr','右移一位',2,'bit','最高的 8 根各减半(向下取整)—�
    for(let i=0;i<Math.min(8,a.length);i++){a[i].v=Math.floor(a[i].v/2);if(a[i].v<=0)a[i].dead=true}})
 def('bitmask','位掩码',2,'bit','24 点处理量,平均分给每个元素 —— 一条指令扫一个字',
   S=>workTotal(S,24))
+/* ── 随机化流:高方差、但能把「最坏用例」变回「平均用例」──
+   身份卡是随机主元:对抗性构造是照着确定性方法量身定做的,只要**打乱顺序**,
+   那份「量身定做」就失效了。这是随机化快排真正在做的事,也是 v2-proposal B3 表
+   「对抗性构造 → 随机化」那一格的落地。其余几张走高方差路线,和「稳定」流派唱反调。
+   强度按同费卡对齐(cost1 ≈ 移除 2~3 个),且**一律不随板面规模放大**(位运算流的教训)。 */
+def('rpivot','随机主元',1,'rand','打乱所有元素顺序;此后本场排序惩罚失效 —— 最坏用例退回平均用例',
+  S=>{const a=alive(S)
+   for(let i=a.length-1;i>0;i--){const j=Math.floor(S.R()*(i+1));const t=a[i].v;a[i].v=a[j].v;a[j].v=t}
+   S.derand=true})
+def('rquick','随机化快排',2,'rand','有序 +3(随机主元下不吃最坏用例的折扣)',
+  S=>{addSort(S,antiOf(S)?ASORT*3:3)})
+/* 蒙特卡洛是这条流派的**引擎**:采样次数越多,估计越准。
+   每出一次采样数 +1,移除量 = 采样数(封顶 5,别再犯「随规模无限放大」那个错)。
+   前期比谁都弱、后期越滚越强 —— 这正是大数定律该有的形状。 */
+def('monte','蒙特卡洛',1,'rand','采样数 +1,随机移除【采样数】个元素 —— 采样越多越准',
+  S=>{S.samples=Math.min(5,(S.samples||0)+1)
+   const a=alive(S);let got=0,guard=0
+   while(got<S.samples&&guard++<80&&a.some(b=>!b.dead)){const j=Math.floor(S.R()*a.length)
+    if(!a[j].dead){a[j].dead=true;got++}}})
+def('reservoir','水塘抽样',2,'rand','随机移除 3 个元素 —— 不看规模,一遍过',
+  S=>{const a=alive(S);let got=0,guard=0
+   while(got<3&&guard++<60&&a.some(b=>!b.dead)){const j=Math.floor(S.R()*a.length)
+    if(!a[j].dead){a[j].dead=true;got++}}})
+def('skiplist','跳表',2,'rand','随机移除 3 个元素,并抽 1 张牌 —— 期望 O(log n) 的层数',
+  S=>{const a=alive(S);let got=0,guard=0
+   while(got<3&&guard++<60&&a.some(b=>!b.dead)){const j=Math.floor(S.R()*a.length)
+    if(!a[j].dead){a[j].dead=true;got++}}
+   drawN(S,1)})
+
 def('lowbit','取最低位',1,'bit','移除最矮的 2 根 —— 常数时间,不看规模',
   S=>{const a=alive(S).slice().sort((x,y)=>x.v-y.v)
    for(let i=0;i<Math.min(2,a.length);i++)a[i].dead=true})
@@ -173,7 +204,7 @@ def('trade_st','空间换时间',1,'conv','预处理值 −10,预算 +12',
 def('trade_ts','时间换空间',1,'conv','预算 −8,预处理值 +14',
   S=>{if(S.budget<=8)return;S.budget-=8;addMemo(S,14)})
 def('inline','编译优化',2,'conv','段数 −2,有序层数 +2',
-  S=>{if(S.splits<3)return;S.splits-=2;addSort(S,S.E.antiSort?ASORT*2:2)})
+  S=>{if(S.splits<3)return;S.splits-=2;addSort(S,antiOf(S)?ASORT*2:2)})
 def('vector','向量化',2,'conv','有序层数 −2,段数 +2',
   S=>{if(tier(S)<2)return
    const a=alive(S);for(let k=0;k<Math.ceil(a.length/3);k++){
@@ -254,6 +285,7 @@ const STARTERS={
  heap:  ['scan','scan','scan','batch','batch','batch','cache','prefetch','memoize','sortdeck'],
  twop:  ['scan','scan','scan','batch','batch','batch','cache','prefetch','memoize','sortdeck'],
  bit:   ['scan','scan','scan','batch','batch','batch','cache','prefetch','memoize','sortdeck'],
+ rand:  ['scan','scan','scan','batch','batch','batch','cache','prefetch','memoize','sortdeck'],
  graph: ['batch','batch','batch','batch','cache','cache','prefetch','memoize','sortdeck','bridge'],
 }
 const starterOf=k=>STARTERS[k]||STARTERS.base
@@ -264,6 +296,7 @@ const KITS={base:[],sort:['insertion','merge','quick','bsearch','counting','medi
  heap:['buildheap','heapify','poptop','heapsort','medstream','poptop'],
  twop:['twoptr','window','prefix','diff','merge2','monoq'],
  bit:['bitmap','xorx','xorx','shiftr','bitmask','lowbit'],
+ rand:['rpivot','rquick','monte','monte','monte','reservoir'],
  graph:['bfs','dfs','dsu','bridge','bridge','mst']}
 const DECKCARDS=['sortdeck','fetch','prefetch','memoize','compress']
 const REWARD_POOL=[...new Set([...KITS.sort,...KITS.dc,...KITS.memo,...KITS.greedy,...KITS.heap,...KITS.twop]),
@@ -338,6 +371,14 @@ const SHAPES={
  sparse:{name:'稀疏',hint:'大片接近空 —— 一次摊平就能清掉一大批',
   gen(n,vmax,R,VMIN){return Array.from({length:n},()=>
    R()<.7?VMIN:VMIN+Math.floor(R()*(vmax-VMIN+1)))}},
+ /* 对抗性构造:B3 表里最后一格。**看着像噪声,其实是冲着你的方法来的**——
+    全局仍是倒序(逆序对拉满、排序要跨很远),只在小窗口里打乱,所以肉眼看不出规律。
+    正解是**随机化**:先把顺序打乱,最坏用例就退回平均用例。这正是随机化快排的意义。 */
+ adversarial:{name:'对抗性构造',hint:'看着像随机,其实专挑你的弱点 —— 先随机化打乱,再按常规解',
+  gen(n,vmax,R,VMIN){const a=Array.from({length:n},(_,i)=>vmax-Math.round(i*(vmax-VMIN)/(n-1)))
+   for(let i=0;i<n;i++){const j=Math.min(n-1,i+Math.floor(R()*9))
+    const t=a[i];a[i]=a[j];a[j]=t}
+   return a}},
  heavy:{name:'重复值扎堆',hint:'值域窄且大量重复 —— 按值分桶比逐个比较快',
   gen(n,vmax,R,VMIN){const pool=[VMIN,VMIN+2,VMIN+4,Math.min(vmax,VMIN+5)]
    return Array.from({length:n},()=>pool[Math.floor(R()*pool.length)])}},
@@ -490,7 +531,7 @@ function check(S){
 
 /* ═══ 5. RUN:三选一构筑 ═══ */
 const BUDGET_GROW=3   // 每过一关预算上限 +3:玩家侧的成长
-const MOBS=['shuffled','tape','dupes','stream','graph']
+const MOBS=['shuffled','tape','dupes','stream','graph','crafted']
 const ELITES=['worst','collide','regret','explode2','atomic']
 const SHAPE=['MOB','MOB','ELITE','MOB','MOB','ELITE','MOB','BOSS']
 const PATH=SHAPE                                   // 关卡数 = SHAPE.length
@@ -523,7 +564,7 @@ function applyBoon(S,RUN){return applyBoonId(S,RUN&&RUN.boon)}
    键按字母序拼(和 comboName 里 sort() 一致);没收录的对给个「A + B」的朴素名。 */
 const COMBO={'dc+sort':'归并排序','memo+sort':'索引','dc+memo':'记忆化递归',
  'greedy+memo':'启发式剪枝搜索','greedy+sort':'区间调度','dc+greedy':'随机化快排',
- 'heap+sort':'堆排序','sort+twop':'有序双指针','bit+sort':'基数排序','bit+memo':'状压 DP','bit+twop':'位图索引','memo+twop':'前缀和缓存','greedy+heap':'贪心 + 优先队列'}
+ 'heap+sort':'堆排序','sort+twop':'有序双指针','bit+sort':'基数排序','rand+sort':'随机化快排','dc+rand':'随机分治','memo+rand':'蒙特卡洛树搜索','bit+memo':'状压 DP','bit+twop':'位图索引','memo+twop':'前缀和缓存','greedy+heap':'贪心 + 优先队列'}
 function comboName(a,b){ if(!b||a===b)return TAGNAME[a]; return COMBO[[a,b].sort().join('+')]||`${TAGNAME[a]} + ${TAGNAME[b]}` }
 /* ═══ 5.1 重构:删一张牌(照抄 StS 的除牌:次数不封死,但越删越贵)═══
    起始牌 63%、「遍历」一张统治、「观察」0% 出场却没法删 —— 这是重复感最直接的根。
@@ -553,7 +594,9 @@ function offer3(RUN){const o=[];while(o.length<3){const c=REWARD_POOL[Math.floor
 /* ═══ 6. 批量模拟 ═══ */
 const POL={
  base:S=>pick(S,['scan','batch','watch']),
- sort:S=>{ // 有序度过半就该插入排序一次排完,而不是继续冒泡
+ sort:S=>{ // 面对「照着确定性方法构造」的输入,先随机主元打乱再排 —— 这就是随机化快排
+   if(antiOf(S)){const i=S.hand.indexOf('rpivot');if(i>=0&&canPlay(S,i))return i}
+   // 有序度过半就该插入排序一次排完,而不是继续冒泡
    if(sortedness(S)>=.5){const i=S.hand.indexOf('insertion');if(i>=0&&canPlay(S,i))return i}
    return tier(S)>=3?pick(S,['median','bsearch','counting','quick','merge','insertion','scan','hash','batch'])
                     :pick(S,['quick','merge','insertion','bsearch','counting','scan','hash','batch'])},
@@ -569,6 +612,10 @@ const POL={
  // 区间流:先铺前缀和(放大所有摊平类),再靠位置操作切
  twop:S=>!S.prefix?pick(S,['prefix','window','twoptr','diff','scan','hash','batch'])
        :pick(S,['window','merge2','twoptr','diff','scan','monoq','hash','batch']),
+ // 随机化流:面对「照着你量身定做」的输入,第一件事是**打乱它**——随机主元一出,
+ // 最坏用例的排序惩罚失效,后面按常规解就行。没有对抗性惩罚时就正常走高方差路线。
+ rand:S=>antiOf(S)?pick(S,['rpivot','monte','reservoir','skiplist','rquick','scan','hash','batch'])
+       :pick(S,['monte','reservoir','skiplist','rquick','rpivot','scan','hash','batch']),
  // 位运算流:强弱**完全取决于形状**,所以策略本身就是「先看板面再决定出哪张」——
  // 一大片贴着最矮(稀疏)就位图;同值成对多(重复扎堆)就异或;整体偏高就右移砍一半。
  bit:S=>{const a=alive(S)
@@ -731,8 +778,8 @@ let lastPar=null   // 上一仗的「你 N 回合 · 最优 M 回合」(引擎�
 let boonPick=false,boonBox=[]   // boonPick=正在做开局的起手抉择;boonBox=三个选项的命中框
 const CO={bg0:'#050a12',bg1:'#0a141f',line:'rgba(90,150,190,.22)',panel:'rgba(12,24,38,.72)',
  ink:'#e6eef7',dim:'#8ba3bb',faint:'#4d6076',cyan:'#5fd0e8',amber:'#f0a94a',red:'#ff6b5e',green:'#7fd98f',
- tag:{base:'#a8c0d6',sort:'#f0a94a',dc:'#b39ddb',memo:'#7fd98f',greedy:'#ff8f6b',tool:'#5fd0e8',deck:'#9ecbff',heap:'#ffb3d9',twop:'#8ee6c8',bit:'#ffd166',def:'#c8b4ff',graph:'#7fd1ff'}}
-const TAGNAME={base:'起始',sort:'排序流',dc:'拆解流',memo:'复利流',greedy:'激进流',tool:'工具',deck:'牌库',heap:'堆流',twop:'区间流',bit:'位运算流',def:'防御',graph:'图算法'}
+ tag:{base:'#a8c0d6',sort:'#f0a94a',dc:'#b39ddb',memo:'#7fd98f',greedy:'#ff8f6b',tool:'#5fd0e8',deck:'#9ecbff',heap:'#ffb3d9',twop:'#8ee6c8',bit:'#ffd166',rand:'#ff9ec7',def:'#c8b4ff',graph:'#7fd1ff'}}
+const TAGNAME={base:'起始',sort:'排序流',dc:'拆解流',memo:'复利流',greedy:'激进流',tool:'工具',deck:'牌库',heap:'堆流',twop:'区间流',bit:'位运算流',rand:'随机化流',def:'防御',graph:'图算法'}
 function startRun(k,k2){KIT=k;KIT2=(k2&&k2!==k)?k2:null;menu=false
  RUN=newRun(Date.now()&0xffff,k,KIT2)
  boonPick=true;lastPar=null
@@ -762,7 +809,7 @@ function pickNode(k){const o=RUN.opts[k];RUN.used.push(o.foe)
    拿**同一副牌、同一个种子、同一个敌人**,让六条流派的策略各打一遍(headless),取最少回合数当基准。
    不是硬编码的标准答案:par 由引擎当场跑出来,和玩家打的是同一个局面,所以可核。
    别的卡牌游戏没有「正确答案」——我们有,这是这题材独有的一环(v2-proposal B5)。 */
-const PARKITS=['sort','dc','memo','greedy','heap','twop','bit']
+const PARKITS=['sort','dc','memo','greedy','heap','twop','bit','rand']
 function parOf(S){ if(!S||!S.parCtx||S.mode==='graph')return null
  const c=S.parCtx;let best=null,bestKit=null
  for(const k of PARKITS){        // fight() 自己按 kit 取 POL[kit],不用动全局 KIT
@@ -915,7 +962,7 @@ Object.assign(window,{__POL2:S=>POL[KIT](S),__SETG:(c,d)=>{GCLUST=c;GDENS=d},__S
  __doRemove:doRemove,__canRefactor:()=>canRefactor(RUN),__refactorCost:()=>refactorCost(RUN),__refactors:()=>RUN.refactors,__RUN:()=>RUN,__remove:v=>{remove=v},__setOffer:()=>{offer=offer3(RUN)},
  __menu:v=>{menu=v;menuSel=[]},__menuSel:()=>menuSel,__comboName:comboName,__COMBO:COMBO,__KIT2:()=>KIT2,__newRun2:(seed,k,k2)=>newRun(seed,k,k2),
  __parOf:()=>parOf(S),__lastPar:()=>lastPar,__setPar:v=>{lastPar=v},__SHAPEDEF:()=>SHAPES,
- __BOONS:BOONS,__takeBoon:takeBoon,__boonPick:()=>boonPick,__boon:()=>RUN&&RUN.boon,__applyBoonId:applyBoonId})
+ __antiOf:antiOf,__BOONS:BOONS,__takeBoon:takeBoon,__boonPick:()=>boonPick,__boon:()=>RUN&&RUN.boon,__applyBoonId:applyBoonId})
 
 /* ── 图上的操作:玩家加边,敌人断边 ── */
 function gAdj(G){const a={};for(const e of G.edges)if(e.alive){
@@ -1733,7 +1780,7 @@ function live(id){ if(!S)return null
   case 'batch':    return ['预算 '+S.budget+' → '+(S.budget+5),G]
   case 'watch':    return ['抽 2 · 牌库还剩 '+S.draw.length+' 张',Cy]
   case 'bubble': case 'merge': case 'quick':
-    return ['有序层数 '+t+'/4'+(S.E.antiSort?' · 最坏用例下趟数只剩两五折':''),A]
+    return ['有序层数 '+t+'/4'+(antiOf(S)?' · 最坏用例下趟数只剩两五折':''),A]
   case 'bsearch':{const f=2+t*2,act=seq?Math.max(1,Math.round(f*seq)):f
     return ['现在移除 '+act+' 个 ← 有序层数 '+t+'/4'+(seq?' 且顺序访问打七折':''),act>=5?G:act>1?A:R]}
   case 'median':   return t>=3?['现在移除 '+Math.ceil(n/3)+' 个 ← 规模 '+n+' 的 1/3',G]
@@ -1931,8 +1978,8 @@ function intelScreen(){
  ctx.textAlign='left'}
 
 /* 开局标题屏:选 1~2 条流派。选 2 条 = 双流派,组合名是个真实算法(见 comboName)。 */
-const MENUKITS=['sort','dc','memo','greedy','heap','twop','bit']
-const KITBLURB={sort:'排好序,再二分',dc:'切开 · 各自解 · 合并',memo:'空间换时间,查表',greedy:'当下最优,取近似',heap:'每回合自动弹最小',twop:'一次处理一段区间',bit:'一条指令扫一个字'}
+const MENUKITS=['sort','dc','memo','greedy','heap','twop','bit','rand']
+const KITBLURB={sort:'排好序,再二分',dc:'切开 · 各自解 · 合并',memo:'空间换时间,查表',greedy:'当下最优,取近似',heap:'每回合自动弹最小',twop:'一次处理一段区间',bit:'一条指令扫一个字',rand:'打乱它,最坏就变平均'}
 let menuBox=[]
 function menuScreen(){
  const cx=W/2
