@@ -99,6 +99,7 @@ let HEAPCUT=7   // 堆自动弹出的高度门槛
 let PREFIX=1.25 // 前缀和对摊平类的放大
 let SHUFMUL=1   // 同上:严格口径下每次打乱的破坏力变大,强度要下调
 const antiOf=S=>!!(S.E.antiSort&&!S.derand)   // 随机主元洗过牌后,对抗性构造的排序惩罚失效
+let MEMCAP=8        // 内存上限:六种结构合计要 15,所以最多同时建 2~3 个 —— 这才叫取舍
 let ASORT=.3,PARCUT=.4,AGREED=2.2   // 精英的专克强度,留成变量方便扫参
 def('memoize','复用上一步',1,'deck','立刻重放你这回合打出的上一张牌',
   S=>{const id=S.lastPlayed;if(id)C[id].fn(S)},1)
@@ -426,7 +427,7 @@ function newFight(seed,deck,foeId,budget,flawId,depth=0){
  const S={R,E,foeId,bars:(SHAPES[E.shape]||SHAPES.random).gen(E.n,vmax,R,T.VMIN).map((v,i)=>({id:i,v,dead:false})),
   splits:1,budget:budget+(FL?FLAWBONUS:0),steps:T.STEPS,turn:1,memo:0,debt:0,
   inflow:E.inflow??0,mult:E.mult??1,vmax,flawId:flawId||null,FL,locked:null,guarded:false,loopBroken:false,firstPlay:true,lastPlayed:null,heapLv:0,prefix:false,monoq:false,actIn:ACTEVERY,turnPlays:0,trig:{},refGain:0,lastTier:0,
-  film:[],turnCards:[],n0:0,shield:0,skipCost:false,doubleNext:false,fixCost:0,useLastN:false,lastN:0,
+  film:[],turnCards:[],n0:0,shield:0,structs:[],memCap:MEMCAP,skipCost:false,doubleNext:false,fixCost:0,useLastN:false,lastN:0,
   draw:[...deck],hand:[],discard:[],exhaust:[],over:null,
   totalWork:0,diag:{plays:{},lostKill:0,lostWork:0,evicted:0,lostMemo:0,lostSort:0,flawLoss:0,extraDebt:0,extraInflow:0,sortDecay:0,memoDecayed:0,spent:0,turns:0}}
  S.totalWork=S.bars.reduce((a,b)=>a+b.v,0);S.n0=S.bars.length
@@ -436,11 +437,37 @@ function newFight(seed,deck,foeId,budget,flawId,depth=0){
   S.G=makeGraph(Math.round(E.n*(1+DEPTHMUL*depth)),R,A)
   gMain(S.G);S.nc0=S.G.nc;S.totalWork=1;S.n0=S.G.nodes.length}
  shuffle(S);drawN(S,T.HAND);return S}
-const canPlay=(S,i)=>{const c=C[S.hand[i]];return c&&S.steps>=c.cost&&!S.over&&!(S.locked===i&&!S.guarded)}
+/* ═══ 结构区 + 内存:第二条资源轴 ═══
+   这局游戏一直只有一条轴——**预算(时间)**。而「**空间换时间**」是算法里最基本的一条取舍,
+   之前完全没有:建堆、建表、前缀和这些「建好就一直生效」的东西**不要钱、也不占地方**,
+   所以「多建几个」永远是无脑好事,根本没有取舍。
+   现在把这六张「建造类」卡显性化成**结构**:它们占**内存**,内存有上限。
+   于是「再建一个」要先回答「值不值得占这块地方」——这才是空间换时间。
+   注意:这里不新建机制,而是把引擎里**本来就存在**的持久状态(heapLv/prefix/monoq/memo…)
+   收编成看得见、占地方的东西,所以已调好的数值关系基本不动。 */
+const STRUCTS={
+ buildheap:{key:'heap', name:'最小堆',  mem:3,why:'每回合末自动弹掉最矮的'},
+ prefix:   {key:'prefix',name:'前缀和数组',mem:3,why:'摊平类卡的处理量 +25%'},
+ monoq:    {key:'monoq',name:'单调队列',mem:2,why:'每回合末保留 1 张手牌'},
+ hash:     {key:'hash',  name:'哈希表',  mem:2,why:'O(1) 直接点杀,不看规模'},
+ pre:      {key:'pre',   name:'预处理表',mem:2,why:'攒预处理值,查表时一次兑现'},
+ table:    {key:'table', name:'索引表',  mem:3,why:'攒预处理值,查表时一次兑现'},
+}
+const memUsed=S=>(S.structs||[]).reduce((a,x)=>a+x.mem,0)
+const memFree=S=>(S.memCap??0)-memUsed(S)
+/* 内存不够就建不了 —— 这就是那个取舍。已经建过的同名结构不再占新地方(重复出牌只是叠效果)。 */
+function memBlocked(S,id){const d=STRUCTS[id]
+ return !!(d&&!(S.structs||[]).some(x=>x.id===id)&&memFree(S)<d.mem)}
+function addStruct(S,id){const d=STRUCTS[id]; if(!d)return
+ S.structs=S.structs||[]
+ if(S.structs.some(x=>x.id===id))return          // 同名只占一份地方
+ S.structs.push({id,name:d.name,mem:d.mem,why:d.why})}
+const canPlay=(S,i)=>{const c=C[S.hand[i]];return c&&S.steps>=c.cost&&!S.over&&!(S.locked===i&&!S.guarded)&&!memBlocked(S,c.id)}
 function play(S,i){if(!canPlay(S,i))return false
  const c=C[S.hand[i]];S.steps-=c.cost;S.hand.splice(i,1)
  if(S.locked!=null&&i<S.locked)S.locked--   // 手牌左移,锁定的下标要跟着挪,否则锁到别人头上
  ;S.diag.plays[c.id]=(S.diag.plays[c.id]||0)+1
+ ;if(STRUCTS[c.id])addStruct(S,c.id)   // 建造类卡 → 结构区占一块内存
  if(S.flawId==='infinite'&&S.firstPlay&&!S.loopBroken&&c.id!=='guard'&&S.turn%3===0){
   S.firstPlay=false;S.diag.flawLoss+=2;(c.exhaust?S.exhaust:S.discard).push(c.id)
   S.halfNext=true;c.fn(S);S.halfNext=false;check(S);return true}
@@ -990,7 +1017,7 @@ Object.assign(window,{__POL2:S=>POL[KIT](S),__SETG:(c,d)=>{GCLUST=c;GDENS=d},__S
  __doRemove:doRemove,__canRefactor:()=>canRefactor(RUN),__refactorCost:()=>refactorCost(RUN),__refactors:()=>RUN.refactors,__RUN:()=>RUN,__remove:v=>{remove=v},__setOffer:()=>{offer=offer3(RUN)},
  __menu:v=>{menu=v;menuSel=[]},__menuSel:()=>menuSel,__comboName:comboName,__COMBO:COMBO,__KIT2:()=>KIT2,__newRun2:(seed,k,k2)=>newRun(seed,k,k2),
  __parOf:()=>parOf(S),__lastPar:()=>lastPar,__setPar:v=>{lastPar=v},__SHAPEDEF:()=>SHAPES,
- __antiOf:antiOf,__nextElite:()=>nextElite(RUN),__ELITE_NODES:ELITE_NODES,__BOONS:BOONS,__takeBoon:takeBoon,__boonPick:()=>boonPick,__boon:()=>RUN&&RUN.boon,__applyBoonId:applyBoonId})
+ __antiOf:antiOf,__STRUCTS:STRUCTS,__memUsed:()=>memUsed(__S?__S():null),__memFree:S=>memFree(S),__memBlocked:memBlocked,__nextElite:()=>nextElite(RUN),__ELITE_NODES:ELITE_NODES,__BOONS:BOONS,__takeBoon:takeBoon,__boonPick:()=>boonPick,__boon:()=>RUN&&RUN.boon,__applyBoonId:applyBoonId})
 
 /* ── 图上的操作:玩家加边,敌人断边 ── */
 function gAdj(G){const a={};for(const e of G.edges)if(e.alive){
@@ -1409,7 +1436,34 @@ function topBar(){
  ctx.fillText('回合',W-20,28);ctx.letterSpacing='0px'
  ctx.font='700 30px system-ui';ctx.fillStyle=CO.ink;ctx.fillText(String(S.turn),W-20,60);ctx.textAlign='left'
  ctx.font='600 11px system-ui';ctx.fillStyle=CO.faint;ctx.textAlign='center'
- ctx.fillText(`第 ${RUN.node+1} / ${PATH.length} 关`,W/2,28);ctx.textAlign='left'}
+ ctx.fillText(`第 ${RUN.node+1} / ${PATH.length} 关`,W/2,28);ctx.textAlign='left'
+ structBar(W/2-190,56,380)}
+
+/* 结构区:建好就一直生效的东西,占内存。空槽提示还能再建多少 —— 「再建一个值不值」要看得见。 */
+function structBar(x,y,w){
+ const used=memUsed(S),cap=S.memCap??MEMCAP,list=S.structs||[]
+ ctx.textAlign='left';ctx.font='600 9.5px system-ui';ctx.letterSpacing='2px';ctx.fillStyle=CO.faint
+ ctx.fillText('结 构 区',x,y-2);ctx.letterSpacing='0px'
+ //  内存条:用掉多少 / 还剩多少
+ const bx=x+58,bw=w-58-64,bh=9
+ ctx.fillStyle='rgba(120,150,180,.16)';ctx.fillRect(bx,y-10,bw,bh)
+ const full=used>=cap
+ ctx.fillStyle=full?CO.red:CO.cyan;ctx.fillRect(bx,y-10,bw*Math.min(1,used/cap),bh)
+ ctx.font='600 10.5px system-ui';ctx.fillStyle=full?CO.red:CO.dim
+ ctx.fillText(`内存 ${used}/${cap}`,bx+bw+8,y-2)
+ //  已建的结构:一个小格一个
+ let cx2=x
+ const ty=y+8
+ if(!list.length){ctx.font='400 10.5px system-ui';ctx.fillStyle=CO.faint
+  ctx.fillText('空 —— 建堆 / 前缀和 / 建表 之类建好后会一直生效,但占内存',x,ty+12)}
+ else list.forEach(st=>{
+  ctx.font='600 10.5px system-ui'
+  const tw=ctx.measureText(st.name).width+26
+  ctx.fillStyle='rgba(95,208,232,.12)';ctx.fillRect(cx2,ty,tw,17)
+  ctx.strokeStyle='rgba(95,208,232,.5)';ctx.lineWidth=1;ctx.strokeRect(cx2+.5,ty+.5,tw-1,16)
+  ctx.fillStyle=CO.cyan;ctx.fillText(st.name,cx2+6,ty+12)
+  ctx.font='600 9px system-ui';ctx.fillStyle=CO.faint;ctx.fillText(String(st.mem),cx2+tw-12,ty+12)
+  cx2+=tw+6})}
 
 function enemyHeader(A){
  const cx=W/2,kc=S.E.kind==='Boss'?CO.red:S.E.kind==='精英'?CO.amber:CO.dim

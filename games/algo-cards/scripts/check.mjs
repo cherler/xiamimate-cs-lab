@@ -286,6 +286,41 @@ check('G12 精英预告说到做到', `${warn.same}/${warn.tot}`, v => v === '80
 check('G12 第 1 关就能看到预告', warn.hasWarnAt0, v => v === 40, '40/40 局')
 check('G12 两个精英不重样', warn.elitesDistinct ? 'OK' : 'FAIL', v => v === 'OK', '不同的两个')
 
+/* ── G13 结构区 + 内存:空间换时间这条轴必须真的**咬得住**,又不能误伤专注构筑 ── */
+process.stdout.write(`${D}G13 结构区…${X}`)
+const mem = await page.evaluate(() => {
+  // ① 建造类卡 → 登记成结构、占内存;同名只占一份
+  __demo('shuffled', null, 'memo')
+  const S = __S(); S.hand = ['pre', 'table', 'buildheap', 'prefix', 'pre']; S.steps = 99
+  const play = id => { const i = S.hand.indexOf(id); const can = __canPlay(S, i); if (can) __play2(S, i); return can }
+  const p1 = play('pre'), p2 = play('table'), p3 = play('buildheap')     // 2+3+3 = 8 = 满
+  const blocked = !play('prefix')                                        // 第四个该被内存挡住
+  const used = (S.structs || []).reduce((a, x) => a + x.mem, 0)
+  const names = (S.structs || []).map(x => x.id).join(',')
+  // ② 单流派专注构筑不该被卡住;③ 双流派堆结构会顶到上限(取舍成立)
+  const peak = (k1, k2) => {
+    const deck = k2 ? __newRun2(1, k1, k2).deck : null
+    let mx = 0
+    for (let s = 1; s <= 60; s++) {
+      const St = deck ? __newFightD(k1, 'shuffled', s * 7919, deck, __T.BUDGET, null, 3)
+                      : __newFightX(k1, 'shuffled', s * 7919, 3)
+      const P = __POL(k1)
+      while (!St.over && St.turn <= 45) { let g = 0
+        while (!St.over && g++ < 14) { const i = P(St); if (i < 0) break; if (!__play2(St, i)) break }
+        if (!St.over) __endTurn2(St) }
+      mx = Math.max(mx, (St.structs || []).reduce((a, x) => a + x.mem, 0))
+    }
+    return mx
+  }
+  return { p1, p2, p3, blocked, used, names, soloMemo: peak('memo'), soloTwop: peak('twop'), dual: peak('memo', 'twop') }
+})
+process.stdout.write('\r\x1b[K')
+check('G13 建造类卡进结构区', mem.names, v => v === 'pre,table,buildheap', 'pre,table,buildheap')
+check('G13 结构占内存', mem.used, v => v === 8, '2+3+3 = 8')
+check('G13 内存满了建不了', mem.blocked ? 'OK' : 'FAIL', v => v === 'OK', '第四个被挡住')
+check('G13 单流派专注构筑不被卡', Math.max(mem.soloMemo, mem.soloTwop), v => v < 8, '< 上限 8')
+check('G13 双流派会顶到上限(取舍成立)', mem.dual, v => v === 8, '= 8')
+
 /* ── 控制台 ── */
 check('全程无控制台报错', consoleErrors.length ? consoleErrors[0].slice(0, 60) : 0, v => v === 0, '0 条')
 
