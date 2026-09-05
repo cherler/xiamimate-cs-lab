@@ -1,7 +1,7 @@
 import { defineConfig, loadEnv } from 'vite'
 
 // dev 代理:浏览器直连 MiniMax 会撞 CORS,开发时把 /partner 转发到真实 base(从 .env 读,不硬编码)。
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ mode, command }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const proxy: Record<string, unknown> = {}
   try {
@@ -17,10 +17,21 @@ export default defineConfig(({ mode }) => {
     }
   } catch { /* base 没配就不挂代理,assistant 走兜底 */ }
   return {
-    // 收进虾米看计算机 monorepo 后挂在 /lab/world/ 下(Caddy handle_path 剥前缀、文件按根目录摆);
-    // base 让构建出的资源/入口链接(含 index.html 里的 /game/cards/demo.ts)都带上 /lab/world 前缀。
-    base: '/lab/world/',
-    server: { port: 5180, proxy },
+    /**
+     * **只在构建时加 /lab/world 前缀,dev 保持挂根。**
+     *
+     * 上线要前缀:收进 monorepo 后本作挂在 /lab/world/ 下(Caddy handle_path 剥前缀、
+     * 文件按根目录摆),所以构建出的资源/入口链接都得带 /lab/world。
+     *
+     * 但 dev 不能跟着加:本作自己的页面(build.html / index.html)和冒烟脚本
+     * (scripts/*-check.mjs)都按**根路径**访问。之前 base 写死成 /lab/world/,
+     * dev 下 `/build.html` 就变成 404 → Vite 回退 index.html → 页面看着能开、
+     * 实际是另一个文档、`window.__*` 钩子全不存在,冒烟报「__level is not a function」。
+     * (同一个坑的第三次:**200 不代表拿到的是那个东西**。)
+     */
+    base: command === 'build' ? '/lab/world/' : '/',
+    //  显式绑 127.0.0.1:不写的话 Vite 只监听 IPv6 的 [::1],用 127.0.0.1 访问会连不上。
+    server: { host: '127.0.0.1', port: 5180, proxy },
     build: { target: 'es2022' },
   }
 })
