@@ -453,6 +453,25 @@ const STRUCTS={
  pre:      {key:'pre',   name:'预处理表',mem:2,why:'攒预处理值,查表时一次兑现'},
  table:    {key:'table', name:'索引表',  mem:3,why:'攒预处理值,查表时一次兑现'},
 }
+/* ── 耐久:结构会**失效** ──
+   提案 2.4 的另一半:结构「留在场上、有耐久、能被敌人打掉」。
+   但不做成人人都收的税,而是照着算法的真事:**缓存/索引是会失效的,而失效的原因是底下的数据变了**。
+   所以只有**会改数据**的敌人(自我打乱 shuffle / 数据在变 memoDecay)才打结构,
+   而且蹭在它**招牌动作**上——那一下本来就提前一回合预告,你看得见、来得及决定要不要现在兑现。
+   于是它教的是一条真道理:**对着一直在变的数据,别把宝全押在预处理上**;
+   对着稳定的数据,建结构就是稳赚。这正好是「看形状选方法」的另一面。 */
+const DUR=2                                   // 扛得住 2 次招牌动作;一场 9~17 回合 = 顶多失效一次
+const volatileFoe=E=>!!(E&&(E.shuffle||E.memoDecay))
+function decayStructs(S){ if(!volatileFoe(S.E)||!(S.structs||[]).length)return null
+ const st=S.structs[0]                        // 先失效最早建的那个(它离数据最远、最先过时)
+ st.dur=(st.dur??DUR)-1
+ if(st.dur<=0){S.structs.shift()
+  //  结构没了 → 它给的持久效果也跟着没(和建它时是同一套开关)
+  if(st.id==='prefix')S.prefix=false
+  if(st.id==='monoq')S.monoq=false
+  if(st.id==='buildheap')S.heapLv=0
+  return st.name}
+ return null}
 const memUsed=S=>(S.structs||[]).reduce((a,x)=>a+x.mem,0)
 const memFree=S=>(S.memCap??0)-memUsed(S)
 /* 内存不够就建不了 —— 这就是那个取舍。已经建过的同名结构不再占新地方(重复出牌只是叠效果)。 */
@@ -461,7 +480,7 @@ function memBlocked(S,id){const d=STRUCTS[id]
 function addStruct(S,id){const d=STRUCTS[id]; if(!d)return
  S.structs=S.structs||[]
  if(S.structs.some(x=>x.id===id))return          // 同名只占一份地方
- S.structs.push({id,name:d.name,mem:d.mem,why:d.why})}
+ S.structs.push({id,name:d.name,mem:d.mem,why:d.why,dur:DUR})}
 const canPlay=(S,i)=>{const c=C[S.hand[i]];return c&&S.steps>=c.cost&&!S.over&&!(S.locked===i&&!S.guarded)&&!memBlocked(S,c.id)}
 function play(S,i){if(!canPlay(S,i))return false
  const c=C[S.hand[i]];S.steps-=c.cost;S.hand.splice(i,1)
@@ -489,7 +508,7 @@ function endTurn(S){if(S.over)return
   const cut=gCut(G,S.E.cut||1)
   S.film.push({v:[],cards:S.turnCards.slice(),act:S.lastAct||null,nc:G.nc,big:G.big})
   const ACT2=ACTS[S.foeId]
-  if(ACT2){S.actIn--;if(S.actIn<=0){ACT2.fn(S);S.actIn=ACTEVERY;S.lastAct=ACT2.name}else S.lastAct=null}
+  if(ACT2){S.actIn--;if(S.actIn<=0){ACT2.fn(S);decayStructs(S);S.actIn=ACTEVERY;S.lastAct=ACT2.name}else S.lastAct=null}
   S.shield=0;S.skipCost=false;S.turnPlays=0;S.turnCards=[];S.lastCut=cut;S.lastNc=b0
   S.discard.push(...S.hand);S.hand=[];S.steps=T.STEPS;S.turn++;S.guarded=false;S.firstPlay=true
   drawN(S,T.HAND);check(S);return}
@@ -526,7 +545,7 @@ function endTurn(S){if(S.over)return
  // 招牌动作:倒计时到了就发动,并重新起算
  const ACT=ACTS[S.foeId]
  if(ACT){S.actIn--
-  if(S.actIn<=0){ACT.fn(S);S.actIn=ACTEVERY;S.lastAct=ACT.name
+  if(S.actIn<=0){ACT.fn(S);const gone=decayStructs(S);if(gone)S.structGone=gone;S.actIn=ACTEVERY;S.lastAct=ACT.name
    S.diag.actFired=(S.diag.actFired||0)+1}else S.lastAct=null}
  // 存一帧:这一回合结束时的全部柱子 + 你出了什么 + 敌人发没发招
  S.film.push({v:alive(S).map(b=>b.v),cards:S.turnCards.slice(),act:S.lastAct||null,
@@ -1463,7 +1482,14 @@ function structBar(x,y,w){
   ctx.strokeStyle='rgba(95,208,232,.5)';ctx.lineWidth=1;ctx.strokeRect(cx2+.5,ty+.5,tw-1,16)
   ctx.fillStyle=CO.cyan;ctx.fillText(st.name,cx2+6,ty+12)
   ctx.font='600 9px system-ui';ctx.fillStyle=CO.faint;ctx.fillText(String(st.mem),cx2+tw-12,ty+12)
-  cx2+=tw+6})}
+  //  只有对着「会改数据」的敌人,结构才会失效 —— 那时才把耐久点画出来
+  if(volatileFoe(S.E)){const d=st.dur??DUR
+   for(let k=0;k<DUR;k++){ctx.fillStyle=k<d?CO.amber:'rgba(120,150,180,.25)'
+    ctx.beginPath();ctx.arc(cx2+8+k*7,ty+22,2.6,0,7);ctx.fill()}}
+  cx2+=tw+6})
+ //  不再另写一行文字提示:这一带下面就是敌人大名(居中、后画),必然被盖住;
+ //  而「会不会失效」已经由**耐久点出不出现**表达了,右侧敌人面板也列着「自我打乱/数据在变」。
+ }
 
 function enemyHeader(A){
  const cx=W/2,kc=S.E.kind==='Boss'?CO.red:S.E.kind==='精英'?CO.amber:CO.dim
