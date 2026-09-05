@@ -239,6 +239,26 @@ ok(errs.length === 0, '全程无控制台报错(含菜单渲染)' + (errs[0] ? '
      `最长前缀匹配 泛化(1**)摆最前→吞掉该走具体路由的包→不通过(wrong=${bad.wrong}, by=[${bad.deliveredBy}])`)
 }
 
+// —— 真·路由器 · 子网掩码(掩码长度取长取短都错,且错法不同)——
+{
+  const run = (mode) => p.evaluate((m) => {
+    window.__play(15)
+    const P = (r, c, k, d, mm = 0) => window.__place(r, c, k, d, mm)
+    const H = (r, c1, c2) => { for (let c = c1; c <= c2; c++) P(r, c, 'belt', 0) }
+    P(3, 1, 'mask', 0, m); H(3, 2, 10)   // 不同网段 → 直行到底 = 网关口
+    H(2, 1, 10)                          // 同网段 → 拐弯向上 = 本地口
+    window.__run(); for (let i = 0; i < 90 && window.__state().running; i++) window.__stepN(1)
+    return window.__state()
+  }, mode)
+  const short = await run(0), right = await run(1), long = await run(2)
+  ok(right.pass && right.wrong === 0 && right.deliveredBy[0] === 2 && right.deliveredBy[1] === 4,
+     `子网掩码 /2 正确=通过(本地2 网关4, parts=${right.parts})`)
+  ok(!short.pass && short.wrong > 0,
+     `子网掩码 /1 太短→外网地址被误当本地→不通过(wrong=${short.wrong})`)
+  ok(!long.pass && long.wrong > 0,
+     `子网掩码 /3 太长→同网段的同伴被误送网关→不通过(wrong=${long.wrong})`)
+}
+
 const storyOk = await p.evaluate(() => window.__storyOk ? window.__storyOk() : true)
 ok(storyOk, '每关都有 STORY 文案')
 

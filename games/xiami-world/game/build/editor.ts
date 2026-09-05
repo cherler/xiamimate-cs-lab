@@ -23,7 +23,7 @@ const DX = [1, 0, -1, 0], DY = [0, 1, 0, -1] // 0右 1下 2左 3上
 const SHAPE_COL = ['#e0954b', '#5b8def', '#3fa78f']
 const TEAL = '#49a791', AMBER = '#e8c98a', CREAM = '#efe6d2', RED = '#c8452e', BLUE = '#5b8def'
 type Dir = 0 | 1 | 2 | 3
-type Kind = 'belt' | 'router' | 'copier' | 'cache' | 'queue' | 'arouter' | 'prefix'
+type Kind = 'belt' | 'router' | 'copier' | 'cache' | 'queue' | 'arouter' | 'prefix' | 'mask'
 type Piece = { kind: Kind; dir: Dir; mode: number; seen?: Set<number>; store?: number[]; next?: number }
 const QUEUE_MODES = ['限速', '排序'] // 缓冲队列两种放法:限速=每拍放1个(先到先出,安全默认) / 排序=按号重排(缺号会等)
 /* 前缀匹配器:一条路由条目 = 一个前缀模式(从最高位写起,'*'=不管这一位)。
@@ -39,6 +39,14 @@ function prefixHit(pat: string, num: number, nbits: number) {
   return true
 }
 const levelRoutes = () => LEVELS[lvl]?.routes ?? []
+/* 掩码判断器:子网掩码 /n 的**真正用处**——先算「对方跟我是不是同一个网段」。
+   把两边地址都按掩码盖住(只留高 n 位)比一下:一样=同网段,直接送本地;不一样=交给网关。
+   掩码取长取短都会错,而且错得不一样:太短→外网地址被误当本地;太长→本地地址被误送网关。 */
+const maskLen = (mode: number) => mode + 1                     // mode 0 → /1
+function sameNet(num: number, localNet: number, n: number, nbits: number) {
+  const shift = Math.max(0, nbits - n)
+  return (num >> shift) === (localNet >> shift)
+}
 const grid: (Piece | null)[][] = Array.from({ length: ROWS }, () => Array<Piece | null>(COLS).fill(null))
 const leftOf = (d: Dir) => ((d + 3) % 4) as Dir
 const rightOf = (d: Dir) => ((d + 1) % 4) as Dir
@@ -54,7 +62,7 @@ const ROUTER_MODES: { name: string; map: number[] }[] = [
 // —— 关卡 ——
 type Sink = { r: number; accept: number; need: number; label?: string; ordered?: boolean; rate?: number; addr?: number; addrs?: number[] }
 type Src = { r: number; seq: number[] }
-type Level = { name: string; hint: string; srcRow: number; seq: number[]; sinks: Sink[]; parts: Kind[]; par: { parts: number; cycles: number }; burst?: boolean; finale?: boolean; sandbox?: boolean; sources?: Src[]; collide?: boolean; gap?: number; showAddr?: boolean; routes?: { pat: string }[] }
+type Level = { name: string; hint: string; srcRow: number; seq: number[]; sinks: Sink[]; parts: Kind[]; par: { parts: number; cycles: number }; burst?: boolean; finale?: boolean; sandbox?: boolean; sources?: Src[]; collide?: boolean; gap?: number; showAddr?: boolean; routes?: { pat: string }[]; localNet?: number }
 const LEVELS: Level[] = [
   // —— 教学关:一关认一个原语 ——
   { name: '第1关 · 路由器分拣', hint: '〈路由器〉按形状转发:默认「三向分拣」△走左、○走右 —— 把 △ 送右上口、○ 送右下口(右键换路由器的分法)', srcRow: 3, seq: [0, 2, 0, 2, 2, 0], sinks: [{ r: 1, accept: 0, need: 3 }, { r: 5, accept: 2, need: 3 }], parts: ['belt', 'router'], par: { parts: 16, cycles: 22 } },
@@ -74,7 +82,7 @@ const LEVELS: Level[] = [
   { name: '真·路由器 · 先认一位', hint: '入门先熟悉一台:每个包带一个地址(0 或 1,信封上有二进制)。〈地址路由〉盯住地址二进制的最右一位(第 0 位)—— 是 0 走直去网段0,是 1 拐弯去网段1。就一台,看清它怎么"按一位分两路"', srcRow: 3, seq: [0, 1, 0, 1, 1, 0], showAddr: true, sinks: [{ r: 3, addr: 0, accept: -1, need: 3, label: '网段0' }, { r: 1, addr: 1, accept: -1, need: 3, label: '网段1' }], parts: ['belt', 'arouter'], par: { parts: 12, cycles: 20 } },
   { name: '真·路由器 · 按址转发', hint: '每个包带一个 2 位目的地址(0~3),要送到对应网段 —— 一台〈地址路由〉只看某一位(右键选看第几位:该位=0 走直、=1 拐弯)。把几台串成一棵转发树:先看高位分两支、再看低位,把四个地址各归各网段', srcRow: 3, seq: [0, 1, 2, 3, 0, 1, 2, 3], showAddr: true, sinks: [{ r: 4, addr: 0, accept: -1, need: 2, label: '网段0' }, { r: 3, addr: 1, accept: -1, need: 2, label: '网段1' }, { r: 1, addr: 2, accept: -1, need: 2, label: '网段2' }, { r: 0, addr: 3, accept: -1, need: 2, label: '网段3' }], parts: ['belt', 'arouter'], par: { parts: 16, cycles: 28 } },
   { name: '真·路由器 · 默认路由', hint: '地址 0~3 有各自网段;可现在还来了本机不认识的地址(4~7)—— 它们一律走「默认口(外网网关)」。真路由器就这样:先看最高位,置 1 的(≥4)没有具体路由,全甩给默认路由 0.0.0.0/0;置 0 的再按低位细分', srcRow: 4, seq: [0, 5, 1, 6, 2, 7, 3, 4], showAddr: true, sinks: [{ r: 4, addr: 0, accept: -1, need: 1, label: '网段0' }, { r: 3, addr: 1, accept: -1, need: 1, label: '网段1' }, { r: 2, addr: 2, accept: -1, need: 1, label: '网段2' }, { r: 1, addr: 3, accept: -1, need: 1, label: '网段3' }, { r: 0, addr: -1, accept: -1, need: 4, label: '默认口·外网' }], parts: ['belt', 'arouter'], par: { parts: 22, cycles: 32 } },
-  { name: '真·路由器 · 最长前缀匹配', hint: '同一个地址,路由表里好几条都能匹配(101 既符合 101、也符合 10*、也符合 1**)—— 真路由器永远选「最具体」那条。〈前缀匹配〉右键切条目:命中→拐弯进本网段,没命中→直行交给下一条;一路没人认领的,直行到底进「默认口」(这就是 0.0.0.0/0)。诀窍:越具体的条目摆得越靠上游 —— 把 1** 摆前面,101 和 10* 的包会被它提前吞掉', srcRow: 3, seq: [5, 4, 6, 0, 7, 3], showAddr: true, routes: [{ pat: '101' }, { pat: '10*' }, { pat: '1**' }], sinks: [{ r: 0, accept: -1, need: 1, addrs: [5], label: '101 · 精确' }, { r: 1, accept: -1, need: 1, addrs: [4], label: '10* · 网段' }, { r: 2, accept: -1, need: 2, addrs: [6, 7], label: '1** · 网段' }, { r: 3, accept: -1, need: 2, addrs: [0, 3], label: '默认口 · 0.0.0.0/0' }], parts: ['belt', 'prefix'], par: { parts: 36, cycles: 24 } },
+  { name: '真·路由器 · 最长前缀匹配', hint: '同一个地址,路由表里好几条都能匹配(101 既符合 101、也符合 10*、也符合 1**)—— 真路由器永远选「最具体」那条。〈前缀匹配〉右键切条目:命中→拐弯进本网段,没命中→直行交给下一条;一路没人认领的,直行到底进「默认口」(这就是 0.0.0.0/0)。诀窍:越具体的条目摆得越靠上游 —— 把 1** 摆前面,101 和 10* 的包会被它提前吞掉', srcRow: 3, seq: [5, 4, 6, 0, 7, 3], showAddr: true, routes: [{ pat: '101' }, { pat: '10*' }, { pat: '1**' }], sinks: [{ r: 0, accept: -1, need: 1, addrs: [5], label: '101 · 精确' }, { r: 1, accept: -1, need: 1, addrs: [4], label: '10* · 网段' }, { r: 2, accept: -1, need: 2, addrs: [6, 7], label: '1** · 网段' }, { r: 3, accept: -1, need: 2, addrs: [0, 3], label: '默认口 · 0.0.0.0/0' }], parts: ['belt', 'prefix'], par: { parts: 36, cycles: 24 } },  { name: '真·路由器 · 子网掩码', hint: '本机在 010 这个网段。要送出去之前,先问一句「对方跟我同网段吗」—— 用〈掩码判断〉:两边地址都按掩码盖住、只留高 n 位比一比,一样就直接送本地口,不一样交给网关口。右键调掩码长度 /1~/3:调短了外网地址会被误当本地,调长了本机同伴又会被误送网关,只有一个长度是对的', srcRow: 3, seq: [2, 0, 3, 5, 1, 6], showAddr: true, localNet: 2, sinks: [{ r: 2, accept: -1, need: 2, addrs: [2, 3], label: '本地口 · 同网段' }, { r: 3, accept: -1, need: 4, addrs: [0, 1, 5, 6], label: '网关口 · 去外网' }], parts: ['belt', 'mask'], par: { parts: 20, cycles: 26 } },
 ]
 let lvl = 0
 let SOURCES: Src[] = [{ r: LEVELS[0]!.srcRow, seq: LEVELS[0]!.seq }]
@@ -99,6 +107,7 @@ const STORY = [
   '包上写着目的地址 —— 像真路由器那样,搭一棵转发树,一位一位地看,把每个地址送到它该去的网段。',
   '还来了本机不认识的地址 —— 真路由器给它们留了条默认路由,不认识的一律甩给外网网关。',
   '同一个地址,路由表里好几条都能匹配 —— 真路由器只认最具体的那条。把它们按「越具体越靠前」排好,别让默认路由抢在前面。',
+  '要发包之前先得判断:对方跟我是不是同一个网段?掩码盖住高几位一比就知道 —— 同网段直接送,不同的交给网关。',
 ]
 type Best = { parts: number; cycles: number }
 let mode: 'intro' | 'menu' | 'play' = 'intro'
@@ -133,6 +142,7 @@ function exits(r: number, c: number, shape: number, num = 0): Dir[] {
   if (p.kind === 'belt') return [p.dir]
   if (p.kind === 'router') { const m = ROUTER_MODES[p.mode] ?? ROUTER_MODES[0]!; return [[leftOf(p.dir), p.dir, rightOf(p.dir)][m.map[shape]!]!] } // 可编程路由器:按形状查表转发
   if (p.kind === 'arouter') { const bit = (num >> p.mode) & 1; return [bit ? leftOf(p.dir) : p.dir] } // 地址路由器:看地址第 mode 位,0→直行 1→拐弯(串成转发树)
+  if (p.kind === 'mask') { const L = LEVELS[lvl]!; return [sameNet(num, L.localNet ?? 0, maskLen(p.mode), addrBits()) ? leftOf(p.dir) : p.dir] } // 同网段→拐弯进本地口,不同→直行交给网关
   if (p.kind === 'prefix') { const pat = levelRoutes()[p.mode]?.pat ?? '*'; return [prefixHit(pat, num, addrBits()) ? leftOf(p.dir) : p.dir] } // 前缀匹配器:命中→拐弯进本网段,未命中→直行给下一条
   if (p.kind === 'copier') return [leftOf(p.dir), rightOf(p.dir)] // T 型分叉:朝右=左进、上下各一份(两个垂直出口)
   // cache:没见过→dir(去查号),见过→leftOf(走快线)
@@ -203,7 +213,7 @@ function cellAt(px: number, py: number) { const g = geo(); const c = Math.floor(
 let tool: Kind | 'erase' = 'belt'
 let curDir: Dir = 0
 const addrBits = () => Math.max(1, ...SOURCES.flatMap(s => s.seq)).toString(2).length // 这关地址有几位(地址路由只给这几位可切)
-const modeCount = (k: Kind) => k === 'router' ? ROUTER_MODES.length : k === 'queue' ? QUEUE_MODES.length : k === 'arouter' ? addrBits() : k === 'prefix' ? Math.max(1, levelRoutes().length) : 1
+const modeCount = (k: Kind) => k === 'router' ? ROUTER_MODES.length : k === 'queue' ? QUEUE_MODES.length : k === 'arouter' ? addrBits() : k === 'prefix' ? Math.max(1, levelRoutes().length) : k === 'mask' ? addrBits() : 1
 addEventListener('keydown', e => {
   const k = e.key.toLowerCase()
   if (k === 'r') curDir = ((curDir + 1) % 4) as Dir
@@ -241,7 +251,7 @@ cv.addEventListener('pointerdown', e => {
   const cell = cellAt(e.clientX, e.clientY); if (!cell) return
   place(cell.r, cell.c)
 })
-cv.addEventListener('contextmenu', e => { e.preventDefault(); if (mode !== 'play') return; const cell = cellAt(e.clientX, e.clientY); if (cell) { const p = grid[cell.r]![cell.c]; if (p && (p.kind === 'router' || p.kind === 'queue' || p.kind === 'arouter' || p.kind === 'prefix')) { p.mode = (p.mode + 1) % modeCount(p.kind); sfx.blip() } } })
+cv.addEventListener('contextmenu', e => { e.preventDefault(); if (mode !== 'play') return; const cell = cellAt(e.clientX, e.clientY); if (cell) { const p = grid[cell.r]![cell.c]; if (p && (p.kind === 'router' || p.kind === 'queue' || p.kind === 'arouter' || p.kind === 'prefix' || p.kind === 'mask')) { p.mode = (p.mode + 1) % modeCount(p.kind); sfx.blip() } } })
 function uiClick(x: number, y: number) {
   const T = trayGeo(), items = trayItems()
   if (y >= T.y && y <= T.y + T.ts) { for (let i = 0; i < items.length; i++) { const bx = T.x0 + i * (T.ts + T.gap); if (x >= bx && x <= bx + T.ts) { tool = items[i]!; sfx.blip(); return } } }
@@ -277,6 +287,19 @@ function drawBody(kind: Kind, cs: number, mode: number, seen?: Set<number>, nums
     const m = ROUTER_MODES[mode] ?? ROUTER_MODES[0]!
     for (let sh = 0; sh < 3; sh++) { const d = m.map[sh]!, e = ends[d]!, off = (sh - 1) * cs * .055; const ox = d === 1 ? 0 : off, oy = d === 1 ? off : 0; channel(cs * .5 + ox, cs * .5 + oy, e[0]! + ox, e[1]! + oy, cs * .05, SHAPE_COL[sh]!) }
     hub(cs); return
+  }
+  if (kind === 'mask') { // 掩码判断:显示 /n,同网段→拐弯(上)、不同→直行(交给网关)
+    housing(cs, ['#a8e0c0', '#5fb888', '#2a634a'])
+    channel(cs * .14, cs * .5, cs * .5, cs * .5, cs * .07, '#26392f')
+    channel(cs * .5, cs * .5, cs * .86, cs * .5, cs * .055, '#8fd8b4')          // 不同网段 → 直行(网关)
+    channel(cs * .5, cs * .5, cs * .5, cs * .14, cs * .055, '#e0b04f')          // 同网段 → 拐弯(本地)
+    ctx.fillStyle = '#132419'; ctx.beginPath(); ctx.arc(cs * .5, cs * .5, cs * .17, 0, 7); ctx.fill(); ctx.strokeStyle = '#8fd8b4'; ctx.lineWidth = 2; ctx.stroke()
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.fillStyle = '#e6fff2'; ctx.font = `bold ${Math.round(cs * .19)}px ui-monospace, monospace`; ctx.fillText('/' + maskLen(mode), cs * .5, cs * .5)
+    ctx.font = `bold ${Math.round(cs * .1)}px system-ui`
+    ctx.fillStyle = '#e0b04f'; ctx.fillText('同网段', cs * .5, cs * .19)
+    ctx.fillStyle = '#8fd8b4'; ctx.fillText('网关', cs * .79, cs * .5)
+    ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left'; return
   }
   if (kind === 'prefix') { // 前缀匹配器:中间显示这条路由的前缀模式(如 10*),命中→拐弯(上)、未命中→直行
     housing(cs, ['#d8b0e0', '#9a6fb8', '#4a2a63'])
@@ -361,7 +384,7 @@ function drawSink(x: number, y: number, cs: number, s: Sink, i: number) {
   else if (over) { ctx.strokeStyle = '#2a0f0a'; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x + cs * .18, y + cs * .2); ctx.lineTo(x + cs * .28, y + cs * .3); ctx.moveTo(x + cs * .28, y + cs * .2); ctx.lineTo(x + cs * .18, y + cs * .3); ctx.stroke(); ctx.lineCap = 'butt' } // 溢出:✕
   ctx.textAlign = 'left'
 }
-const partName = (k: Kind | 'erase') => k === 'belt' ? '传送带' : k === 'router' ? '路由器' : k === 'arouter' ? '地址路由' : k === 'prefix' ? '前缀匹配' : k === 'copier' ? '复制器' : k === 'cache' ? '缓存盒' : k === 'queue' ? '缓冲队列' : '擦除'
+const partName = (k: Kind | 'erase') => k === 'belt' ? '传送带' : k === 'router' ? '路由器' : k === 'arouter' ? '地址路由' : k === 'prefix' ? '前缀匹配' : k === 'mask' ? '掩码判断' : k === 'copier' ? '复制器' : k === 'cache' ? '缓存盒' : k === 'queue' ? '缓冲队列' : '擦除'
 function trayGeo() { const ts = 66, gap = 12, y = H - ts - 16, x0 = 24; return { ts, gap, y, x0 } }
 function runGeo() { const bw = 168, bh = 54; return { x: W - bw - 24, y: H - bh - 16, bw, bh } }
 function rr(x: number, y: number, w: number, h: number, r: number) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath() }
@@ -504,7 +527,7 @@ function frame(now: number) {
   // 左下:零件盘
   const T = trayGeo(), items = trayItems()
   ctx.textAlign = 'left'; ctx.font = '12px system-ui'; ctx.fillStyle = AMBER
-  const tip = tool === 'router' ? '路由器:左键摆(重复点同格转向)· 右键循环「分法」—— 通道按 △□○ 上色告诉你谁走哪' : tool === 'arouter' ? '地址路由:左键摆 · 右键换「看二进制第几位」(从右数,0=最右那位)—— 那位是 0 走直、是 1 拐弯;几台串成一棵转发树,把每个地址送到它的网段' : tool === 'prefix' ? '前缀匹配:左键摆 · 右键切「路由条目」(101 / 10* / 1** / 默认)—— 命中拐弯进本网段、没命中直行给下一条。越具体的条目要摆在越上游,否则会被泛化条目提前吞掉' : tool === 'queue' ? '缓冲队列:左键摆 · 右键切模式 —— 默认「限速」每拍放1个(削峰/错峰,直通不卡);「排序」按号重排(要收齐号才放,缺号会等)' : '零件盘 · 选一个,左键摆在格子里(重复点同格转向)'
+  const tip = tool === 'router' ? '路由器:左键摆(重复点同格转向)· 右键循环「分法」—— 通道按 △□○ 上色告诉你谁走哪' : tool === 'arouter' ? '地址路由:左键摆 · 右键换「看二进制第几位」(从右数,0=最右那位)—— 那位是 0 走直、是 1 拐弯;几台串成一棵转发树,把每个地址送到它的网段' : tool === 'mask' ? '掩码判断:左键摆 · 右键调掩码长度 /n —— 两边地址按掩码只留高 n 位比一比,一样=同网段拐弯进本地口,不一样=直行交给网关' : tool === 'prefix' ? '前缀匹配:左键摆 · 右键切「路由条目」(101 / 10* / 1** / 默认)—— 命中拐弯进本网段、没命中直行给下一条。越具体的条目要摆在越上游,否则会被泛化条目提前吞掉' : tool === 'queue' ? '缓冲队列:左键摆 · 右键切模式 —— 默认「限速」每拍放1个(削峰/错峰,直通不卡);「排序」按号重排(要收齐号才放,缺号会等)' : '零件盘 · 选一个,左键摆在格子里(重复点同格转向)'
   ctx.fillText(tip, T.x0, T.y - 8)
   ctx.fillStyle = 'rgba(30,24,16,.6)'; ctx.fillRect(T.x0 - 6, T.y - 4, (T.ts + T.gap) * items.length + 6, T.ts + 8)
   items.forEach((it, i) => { const x = T.x0 + i * (T.ts + T.gap), on = tool === it; ctx.fillStyle = on ? '#3a342a' : '#20190f'; ctx.fillRect(x, T.y, T.ts, T.ts); ctx.strokeStyle = on ? '#ffe6a8' : '#5a4e3a'; ctx.lineWidth = on ? 3 : 1.5; ctx.strokeRect(x, T.y, T.ts, T.ts); partIcon(it, x + T.ts / 2, T.y + T.ts / 2 - 5, T.ts * 0.46); ctx.fillStyle = on ? CREAM : '#9a8a6a'; ctx.font = '11px system-ui'; ctx.textAlign = 'center'; ctx.fillText(partName(it), x + T.ts / 2, T.y + T.ts - 7) })
