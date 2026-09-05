@@ -64,25 +64,19 @@ type Sink = { r: number; accept: number; need: number; label?: string; ordered?:
 type Src = { r: number; seq: number[] }
 type Level = { name: string; hint: string; srcRow: number; seq: number[]; sinks: Sink[]; parts: Kind[]; par: { parts: number; cycles: number }; burst?: boolean; finale?: boolean; sandbox?: boolean; sources?: Src[]; collide?: boolean; gap?: number; showAddr?: boolean; routes?: { pat: string }[]; localNet?: number }
 const LEVELS: Level[] = [
-  // —— 教学关:一关认一个原语 ——
-  { name: '第1关 · 路由器分拣', hint: '〈路由器〉按形状转发:默认「三向分拣」△走左、○走右 —— 把 △ 送右上口、○ 送右下口(右键换路由器的分法)', srcRow: 3, seq: [0, 2, 0, 2, 2, 0], sinks: [{ r: 1, accept: 0, need: 3 }, { r: 5, accept: 2, need: 3 }], parts: ['belt', 'router'], par: { parts: 16, cycles: 22 } },
-  { name: '第2关 · 复制广播', hint: '同一个 △ 要同时送到上口和下口 —— 用〈复制器〉复制成两份,分头送', srcRow: 3, seq: [0, 0, 0, 0], sinks: [{ r: 1, accept: 0, need: 4 }, { r: 5, accept: 0, need: 4 }], parts: ['belt', 'copier'], par: { parts: 18, cycles: 24 } },
-  { name: '第3关 · 缓存命中', hint: '〈缓存盒〉记住见过谁:没见过的走琥珀口(去查号)、见过的走青口(走快线) —— 接到两个出口', srcRow: 3, seq: [0, 2, 0, 0, 2], sinks: [{ r: 1, accept: -1, need: 3, label: '快线(见过)' }, { r: 5, accept: -1, need: 2, label: '查号(没见过)' }], parts: ['belt', 'cache'], par: { parts: 16, cycles: 22 } },
-  { name: '第4关 · 缓冲队列(排序)', hint: '包带序号、乱序到达 —— 〈缓冲队列〉切到「排序」挡先收着,再按 0→1→2→3 顺序放出,送进按序口(右键切 排序 / 限速)', srcRow: 3, seq: [2, 0, 3, 1], sinks: [{ r: 3, accept: -1, need: 4, ordered: true, label: '按序' }], parts: ['belt', 'queue'], par: { parts: 10, cycles: 22 } },
-  // —— 组合关:逼你把两三个原语拼成多级机器 ——
-  { name: '第5关 · 缓存+路由(组合)', hint: '拼两级:〈缓存盒〉见过的走快线;没见过的交给〈路由器〉,把 △/○ 分到各自服务器', srcRow: 4, seq: [0, 2, 0, 2, 0], sinks: [{ r: 0, accept: -1, need: 3, label: '快线' }, { r: 2, accept: 0, need: 1, label: '△站' }, { r: 6, accept: 2, need: 1, label: '○站' }], parts: ['belt', 'cache', 'router'], par: { parts: 26, cycles: 28 } },
-  { name: '第6关 · 拥塞削平(路由+队列)', hint: '一峰 △○ 同拍涌到、两个出口各每拍限1 —— 先用〈路由器〉按形状分开,各接一个〈缓冲队列〉切「限速」削成 1/拍', srcRow: 3, seq: [0, 2, 0, 2], burst: true, sinks: [{ r: 1, accept: 0, need: 2, rate: 1, label: '△·每拍1' }, { r: 5, accept: 2, need: 2, rate: 1, label: '○·每拍1' }], parts: ['belt', 'router', 'queue'], par: { parts: 22, cycles: 22 } },
-  { name: '第7关 · 广播+分拣(组合)', hint: '既要留底又要分发 —— 〈复制器〉复制两份(上、下各一份):一份进存档,另一份交〈路由器〉分到 △/○ 站', srcRow: 3, seq: [0, 2, 0, 2], sinks: [{ r: 1, accept: -1, need: 4, label: '存档' }, { r: 3, accept: 0, need: 2, label: '△站' }, { r: 7, accept: 2, need: 2, label: '○站' }], parts: ['belt', 'copier', 'router'], par: { parts: 26, cycles: 26 } },
-  // —— 终关 ——
-  { name: '终关 · 输入网址回车', hint: '把学到的全拼成一台机器:〈缓存盒〉见过走快线、没见过交〈路由器〉查号分到 △/○ 服务器,让"输入网址→取回网页"整条路跑通', srcRow: 4, seq: [0, 2, 0, 2, 0, 2, 0], sinks: [{ r: 1, accept: -1, need: 5, label: '缓存快线' }, { r: 2, accept: 0, need: 1, label: '△站' }, { r: 6, accept: 2, need: 1, label: '○站' }], parts: ['belt', 'cache', 'router'], par: { parts: 27, cycles: 30 }, finale: true },
-  // —— 甲·线速样板(新机制:一格一拍只容一个包=撞包;多源同时进;拼布局/错峰,刷拍数)——
-  { name: '甲·线速 · 双路汇入', hint: '上下两条链路都要进存档,可一格一拍只容一个包 —— 两股等长汇到同一格会「撞包」!给一条流加个〈缓冲队列〉切「限速」错开一拍(或多绕一格),让它们交替着并进一条道。通关后接着刷更少的拍数', srcRow: 3, seq: [], sources: [{ r: 3, seq: [0, 0, 0, 0] }, { r: 5, seq: [0, 0, 0, 0] }], collide: true, sinks: [{ r: 4, accept: -1, need: 8, label: '存档' }], parts: ['belt', 'queue'], par: { parts: 20, cycles: 22 } },
-  { name: '甲·线速 · 双源按序汇入', hint: '两条链路的号交错发(A 偶数、B 奇数),要按 0→1→2… 顺序进存档 —— 先用〈缓冲队列〉切「限速」错峰把两股并成一道别撞,再用一个切「排序」的队列把号排好。限速+排序两种模式一起用', srcRow: 3, seq: [], sources: [{ r: 3, seq: [6, 4, 2, 0] }, { r: 5, seq: [7, 5, 3, 1] }], collide: true, sinks: [{ r: 4, accept: -1, need: 8, ordered: true, label: '按序存档' }], parts: ['belt', 'queue'], par: { parts: 20, cycles: 34 } },
-  { name: '甲·线速 · 汇入三向分拣', hint: '两条链路混着 △□○,先错峰(限速)并成一道别撞;并好的这股再用〈路由器〉一次分到 △/□/○ 三个站 —— 合流 + 三向分拣 + 一格一拍只容一个', srcRow: 3, seq: [], sources: [{ r: 3, seq: [0, 1, 2] }, { r: 5, seq: [0, 1, 2] }], collide: true, sinks: [{ r: 2, accept: 0, need: 2, label: '△站' }, { r: 4, accept: 1, need: 2, label: '□站' }, { r: 6, accept: 2, need: 2, label: '○站' }], parts: ['belt', 'router', 'queue'], par: { parts: 28, cycles: 30 } },
+  // 全部关卡都用**真地址**(包上印着二进制),不再用 △□○ 这类指不到实体的抽象形状。
+  // —— 一、按地址转发:一位一位地看 ——
   { name: '真·路由器 · 先认一位', hint: '入门先熟悉一台:每个包带一个地址(0 或 1,信封上有二进制)。〈地址路由〉盯住地址二进制的最右一位(第 0 位)—— 是 0 走直去网段0,是 1 拐弯去网段1。就一台,看清它怎么"按一位分两路"', srcRow: 3, seq: [0, 1, 0, 1, 1, 0], showAddr: true, sinks: [{ r: 3, addr: 0, accept: -1, need: 3, label: '网段0' }, { r: 1, addr: 1, accept: -1, need: 3, label: '网段1' }], parts: ['belt', 'arouter'], par: { parts: 12, cycles: 20 } },
   { name: '真·路由器 · 按址转发', hint: '每个包带一个 2 位目的地址(0~3),要送到对应网段 —— 一台〈地址路由〉只看某一位(右键选看第几位:该位=0 走直、=1 拐弯)。把几台串成一棵转发树:先看高位分两支、再看低位,把四个地址各归各网段', srcRow: 3, seq: [0, 1, 2, 3, 0, 1, 2, 3], showAddr: true, sinks: [{ r: 4, addr: 0, accept: -1, need: 2, label: '网段0' }, { r: 3, addr: 1, accept: -1, need: 2, label: '网段1' }, { r: 1, addr: 2, accept: -1, need: 2, label: '网段2' }, { r: 0, addr: 3, accept: -1, need: 2, label: '网段3' }], parts: ['belt', 'arouter'], par: { parts: 16, cycles: 28 } },
   { name: '真·路由器 · 默认路由', hint: '地址 0~3 有各自网段;可现在还来了本机不认识的地址(4~7)—— 它们一律走「默认口(外网网关)」。真路由器就这样:先看最高位,置 1 的(≥4)没有具体路由,全甩给默认路由 0.0.0.0/0;置 0 的再按低位细分', srcRow: 4, seq: [0, 5, 1, 6, 2, 7, 3, 4], showAddr: true, sinks: [{ r: 4, addr: 0, accept: -1, need: 1, label: '网段0' }, { r: 3, addr: 1, accept: -1, need: 1, label: '网段1' }, { r: 2, addr: 2, accept: -1, need: 1, label: '网段2' }, { r: 1, addr: 3, accept: -1, need: 1, label: '网段3' }, { r: 0, addr: -1, accept: -1, need: 4, label: '默认口·外网' }], parts: ['belt', 'arouter'], par: { parts: 22, cycles: 32 } },
-  { name: '真·路由器 · 最长前缀匹配', hint: '同一个地址,路由表里好几条都能匹配(101 既符合 101、也符合 10*、也符合 1**)—— 真路由器永远选「最具体」那条。〈前缀匹配〉右键切条目:命中→拐弯进本网段,没命中→直行交给下一条;一路没人认领的,直行到底进「默认口」(这就是 0.0.0.0/0)。诀窍:越具体的条目摆得越靠上游 —— 把 1** 摆前面,101 和 10* 的包会被它提前吞掉', srcRow: 3, seq: [5, 4, 6, 0, 7, 3], showAddr: true, routes: [{ pat: '101' }, { pat: '10*' }, { pat: '1**' }], sinks: [{ r: 0, accept: -1, need: 1, addrs: [5], label: '101 · 精确' }, { r: 1, accept: -1, need: 1, addrs: [4], label: '10* · 网段' }, { r: 2, accept: -1, need: 2, addrs: [6, 7], label: '1** · 网段' }, { r: 3, accept: -1, need: 2, addrs: [0, 3], label: '默认口 · 0.0.0.0/0' }], parts: ['belt', 'prefix'], par: { parts: 36, cycles: 24 } },  { name: '真·路由器 · 子网掩码', hint: '本机在 010 这个网段。要送出去之前,先问一句「对方跟我同网段吗」—— 用〈掩码判断〉:两边地址都按掩码盖住、只留高 n 位比一比,一样就直接送本地口,不一样交给网关口。右键调掩码长度 /1~/3:调短了外网地址会被误当本地,调长了本机同伴又会被误送网关,只有一个长度是对的', srcRow: 3, seq: [2, 0, 3, 5, 1, 6], showAddr: true, localNet: 2, sinks: [{ r: 2, accept: -1, need: 2, addrs: [2, 3], label: '本地口 · 同网段' }, { r: 3, accept: -1, need: 4, addrs: [0, 1, 5, 6], label: '网关口 · 去外网' }], parts: ['belt', 'mask'], par: { parts: 20, cycles: 26 } },
+  { name: '真·路由器 · 最长前缀匹配', hint: '同一个地址,路由表里好几条都能匹配(101 既符合 101、也符合 10*、也符合 1**)—— 真路由器永远选「最具体」那条。〈前缀匹配〉右键切条目:命中→拐弯进本网段,没命中→直行交给下一条;一路没人认领的,直行到底进「默认口」(这就是 0.0.0.0/0)。诀窍:越具体的条目摆得越靠上游 —— 把 1** 摆前面,101 和 10* 的包会被它提前吞掉', srcRow: 3, seq: [5, 4, 6, 0, 7, 3], showAddr: true, routes: [{ pat: '101' }, { pat: '10*' }, { pat: '1**' }], sinks: [{ r: 0, accept: -1, need: 1, addrs: [5], label: '101 · 精确' }, { r: 1, accept: -1, need: 1, addrs: [4], label: '10* · 网段' }, { r: 2, accept: -1, need: 2, addrs: [6, 7], label: '1** · 网段' }, { r: 3, accept: -1, need: 2, addrs: [0, 3], label: '默认口 · 0.0.0.0/0' }], parts: ['belt', 'prefix'], par: { parts: 36, cycles: 24 } },
+  { name: '真·路由器 · 子网掩码', hint: '本机在 010 这个网段。要送出去之前,先问一句「对方跟我同网段吗」—— 用〈掩码判断〉:两边地址都按掩码盖住、只留高 n 位比一比,一样就直接送本地口,不一样交给网关口。右键调掩码长度 /1~/3:调短了外网地址会被误当本地,调长了本机同伴又会被误送网关,只有一个长度是对的', srcRow: 3, seq: [2, 0, 3, 5, 1, 6], showAddr: true, localNet: 2, sinks: [{ r: 2, accept: -1, need: 2, addrs: [2, 3], label: '本地口 · 同网段' }, { r: 3, accept: -1, need: 4, addrs: [0, 1, 5, 6], label: '网关口 · 去外网' }], parts: ['belt', 'mask'], par: { parts: 20, cycles: 26 } },
+  // —— 二、发出去之前:先问到硬件地址(ARP)——
+  { name: '真·ARP · 先问到 MAC', hint: '知道 IP 还送不出去 —— 链路上认的是 MAC。〈ARP 缓存〉记的是"这个 IP 我问过没":**没问过的**走「ARP 查询口」(广播喊一嗓子谁是它),**问过的**直接走「直送口」。同一个 IP 只该问一次,后面全走直送', srcRow: 3, seq: [2, 5, 2, 2, 5, 2], showAddr: true, sinks: [{ r: 1, accept: -1, need: 4, label: '直送口 · 已知 MAC' }, { r: 5, accept: -1, need: 2, label: 'ARP 查询口 · 广播问' }], parts: ['belt', 'cache'], par: { parts: 18, cycles: 24 } },
+  { name: '真·交换机 · 泛洪', hint: '交换机还没学到这个 MAC 挂在哪个口 —— 只能「泛洪」:除了来的那个口,每个口都发一份,谁是主人谁应答。用〈复制器〉把包复制成两份,两个口各送一份', srcRow: 3, seq: [4, 4, 4, 4], showAddr: true, sinks: [{ r: 1, accept: -1, need: 4, label: '口1 · 泛洪' }, { r: 5, accept: -1, need: 4, label: '口2 · 泛洪' }], parts: ['belt', 'copier'], par: { parts: 18, cycles: 24 } },
+  // —— 三、出口顶不住的时候 ——
+  { name: '真·路由器 · 出口拥塞', hint: '一峰包同拍涌到,可每个出口每拍只发得出 1 个 —— 直接怼过去就丢包。先用〈地址路由〉按地址分开,各接一个〈缓冲队列〉切「限速」削成 1/拍,一个都别丢', srcRow: 3, seq: [0, 1, 0, 1], showAddr: true, burst: true, sinks: [{ r: 1, addr: 1, accept: -1, need: 2, rate: 1, label: '网段1 · 每拍1' }, { r: 5, addr: 0, accept: -1, need: 2, rate: 1, label: '网段0 · 每拍1' }], parts: ['belt', 'arouter', 'queue'], par: { parts: 22, cycles: 22 } },
+
 ]
 let lvl = 0
 let SOURCES: Src[] = [{ r: LEVELS[0]!.srcRow, seq: LEVELS[0]!.seq }]
@@ -92,23 +86,16 @@ function editable(r: number, c: number) { return c > 0 && c < COLS - 1 && r >= 0
 function trayItems(): (Kind | 'erase')[] { return [...LEVELS[lvl]!.parts, 'erase'] }
 function loadLevel(i: number) { lvl = Math.max(0, Math.min(LEVELS.length - 1, i)); const L = LEVELS[lvl]!; SOURCES = L.sources ?? [{ r: L.srcRow, seq: L.seq }]; SINKS = L.sinks; for (const row of grid) row.fill(null); resetSim(); tool = L.parts[0]!; enterFade = 1; celebrate = 0; resultT = 0 }
 const STORY = [
-  '网,断了。信号在门口堵成一团 —— 用〈路由器〉按目的地把包分开、各自转发。',
-  '一个请求要同时通知好几处 —— 把它复制成几份,分头送出去。',
-  '老往同一个地方查,太慢了 —— 装个缓存盒,见过的走快线。',
-  '包在路上被打乱了顺序 —— 用缓冲队列按序重排,再交出去。',
-  '把两招拼起来:先缓存挡一道,没见过的再查号分流。',
-  '流量突然涌成一个峰 —— 先按目的地分开,再各自排队限速,别挤到丢包。',
-  '既要留底又要分发 —— 复制一份进存档,另一份按目的地分头送。',
-  '最后一里:把学到的全拼成一台机器,让"输入网址 → 取回网页"整条路跑通。',
-  '两条链路同时涌进来 —— 一格一拍只过一个包,别让它们挤在一起撞了,想办法错开、并到一条道上稳稳跑。',
-  '两条链路的号还是错开的 —— 既要并成一道别撞,又要把顺序理顺,两种手法一起来。',
-  '两条混流先并成一道,再一次分到三个站 —— 合流和三向分拣一起来。',
   '先认一台路由器 —— 它只看地址的一位,是 0 走直、是 1 拐弯,就把两个地址分开了。',
-  '包上写着目的地址 —— 像真路由器那样,搭一棵转发树,一位一位地看,把每个地址送到它该去的网段。',
+  '包上写着目的地址 —— 像真路由器那样搭一棵转发树,一位一位地看,把每个地址送到它该去的网段。',
   '还来了本机不认识的地址 —— 真路由器给它们留了条默认路由,不认识的一律甩给外网网关。',
-  '同一个地址,路由表里好几条都能匹配 —— 真路由器只认最具体的那条。把它们按「越具体越靠前」排好,别让默认路由抢在前面。',
+  '同一个地址,路由表里好几条都能匹配 —— 真路由器只认最具体的那条。越具体的摆得越靠上游,别让默认路由抢在前面。',
   '要发包之前先得判断:对方跟我是不是同一个网段?掩码盖住高几位一比就知道 —— 同网段直接送,不同的交给网关。',
+  '知道 IP 还不够,链路上认的是 MAC —— 没问过的先广播问一次,问到了就记下来,后面直接送。',
+  '交换机还不知道这个 MAC 挂在哪个口 —— 先泛洪,每个口都发一份,谁是主人谁应答。',
+  '出口顶不住了 —— 先按地址分开,再各自排队限速,一个包都别丢。',
 ]
+
 type Best = { parts: number; cycles: number }
 let mode: 'intro' | 'menu' | 'play' = 'intro'
 let best: Record<number, Best> = {}
@@ -119,7 +106,8 @@ try { musicMuted = localStorage.getItem('buildgame.muted') === '1' } catch { }
 function ensureBgm() { if (musicMuted) { sfx.setMuted(true); return } if (!bgmStarted) { sfx.startBgm(); bgmStarted = true } sfx.setMuted(false) }
 function toggleMusic() { musicMuted = !musicMuted; try { localStorage.setItem('buildgame.muted', musicMuted ? '1' : '0') } catch { } ensureBgm(); sfx.blip() }
 const passed = (i: number) => best[i] !== undefined
-const unlocked = (i: number) => i === 0 || passed(i - 1) || !!LEVELS[i]?.sandbox || !!LEVELS[i]?.collide || !!LEVELS[i]?.showAddr
+//  现在每一关都是真地址关(showAddr 人人都有),再拿它当解锁条件就等于全解锁 —— 只留沙盒例外
+const unlocked = (i: number) => i === 0 || passed(i - 1) || !!LEVELS[i]?.sandbox
 
 // —— 仿真 ——
 type Pkt = { r: number; c: number; ar: number; ac: number; shape: number; num: number }
@@ -146,9 +134,11 @@ function exits(r: number, c: number, shape: number, num = 0): Dir[] {
   if (p.kind === 'prefix') { const pat = levelRoutes()[p.mode]?.pat ?? '*'; return [prefixHit(pat, num, addrBits()) ? leftOf(p.dir) : p.dir] } // 前缀匹配器:命中→拐弯进本网段,未命中→直行给下一条
   if (p.kind === 'copier') return [leftOf(p.dir), rightOf(p.dir)] // T 型分叉:朝右=左进、上下各一份(两个垂直出口)
   // cache:没见过→dir(去查号),见过→leftOf(走快线)
+  //  缓存盒:带地址的关卡按**地址**记(ARP 缓存记的是"这个 IP 我查过没"),否则按形状
   if (!p.seen) p.seen = new Set()
-  if (p.seen.has(shape)) return [leftOf(p.dir)]
-  p.seen.add(shape); return [p.dir]
+  const key = LEVELS[lvl]?.showAddr ? num : shape
+  if (p.seen.has(key)) return [leftOf(p.dir)]
+  p.seen.add(key); return [p.dir]
 }
 function buffersEmpty() { for (const row of grid) for (const p of row) if (p && p.kind === 'queue' && p.store && p.store.length > 0) return false; return true }
 function simStep() {
