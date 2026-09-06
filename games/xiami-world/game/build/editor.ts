@@ -7,6 +7,8 @@ import cutUrl from '../../web/assets/gen/home/house-cutaway.webp'
 import routerUrl from '../../web/assets/gen/home/router.webp'
 import corrUrl from '../../web/assets/gen/gates/corridor.webp'
 import { sfx } from '../demo/sfx'
+import { mountHub, type Hub } from '../hub'
+let HUB: Hub | null = null
 const cv = document.getElementById('c') as HTMLCanvasElement
 const ctx = cv.getContext('2d')!
 const IMG = (u: string) => { const i = new Image(); i.src = u; return i }
@@ -15,7 +17,8 @@ const iready = (i: HTMLImageElement) => i.complete && i.naturalWidth > 0
 let introRouter = { x: 0, y: 0, w: 0, h: 0 } // 房子里那台路由器的可点区域(renderIntro 里更新)
 let W = 0, H = 0
 const DPR = Math.min(2, devicePixelRatio || 1)
-function resize() { W = innerWidth; H = innerHeight; cv.width = W * DPR; cv.height = H * DPR; ctx.setTransform(DPR, 0, 0, DPR, 0, 0) }
+//  画布上面还有一条「虾米课堂」外壳条,所以量画布自己的尺寸 —— 读 innerHeight 会多算 36px
+function resize() { W = cv.clientWidth; H = cv.clientHeight; cv.width = W * DPR; cv.height = H * DPR; ctx.setTransform(DPR, 0, 0, DPR, 0, 0) }
 addEventListener('resize', resize); resize()
 
 const COLS = 12, ROWS = 8
@@ -130,7 +133,8 @@ type Best = { parts: number; cycles: number }
 let mode: 'intro' | 'menu' | 'play' = 'intro'
 let best: Record<number, Best> = {}
 try { best = JSON.parse(localStorage.getItem('buildgame.best') || '{}') } catch { }
-function saveBest() { try { localStorage.setItem('buildgame.best', JSON.stringify(best)) } catch { } }
+//  存盘交给课堂外壳:它同时管本机与账号同步。老键 buildgame.best 仍在启动时读一次,老存档不丢。
+function saveBest() { HUB?.save() }
 let bgmStarted = false, musicMuted = false
 try { musicMuted = localStorage.getItem('buildgame.muted') === '1' } catch { }
 function ensureBgm() { if (musicMuted) { sfx.setMuted(true); return } if (!bgmStarted) { sfx.startBgm(); bgmStarted = true } sfx.setMuted(false) }
@@ -248,6 +252,7 @@ let curDir: Dir = 0
 const addrBits = () => Math.max(1, ...SOURCES.flatMap(s => s.seq)).toString(2).length // 这关地址有几位(地址路由只给这几位可切)
 const modeCount = (k: Kind) => k === 'router' ? ROUTER_MODES.length : k === 'queue' ? QUEUE_MODES.length : k === 'arouter' ? addrBits() : k === 'prefix' || k === 'acl' ? Math.max(1, levelRoutes().length) : k === 'mask' ? addrBits() : 1
 addEventListener('keydown', e => {
+  if (HUB?.isPaused()) return // 暂停时只有 Esc 有用,它由课堂外壳自己接
   const k = e.key.toLowerCase()
   if (k === 'r') curDir = ((curDir + 1) % 4) as Dir
   if (k === ' ') { e.preventDefault(); const L = LEVELS[lvl]!; if (done && pass && !L.finale && !L.sandbox && lvl < LEVELS.length - 1) loadLevel(lvl + 1); else if (running || done) resetSim(); else run() }
@@ -272,19 +277,23 @@ function menuCards() {
   return LEVELS.map((_, i) => ({ i, x: x0 + (i % cols) * (cw + gapx), y: y0 + Math.floor(i / cols) * (ch + gapy), cw, ch }))
 }
 function menuClick(x: number, y: number) { for (const c of menuCards()) if (unlocked(c.i) && x >= c.x && x <= c.x + c.cw && y >= c.y && y <= c.y + c.ch) { loadLevel(c.i); mode = 'play'; sfx.enter(); return } }
+/** 画布不再顶到页面最上面(上面是「虾米课堂」外壳条),所有命中判断都要用**画布内坐标**。 */
+const at = (e: { clientX: number; clientY: number }) => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top } }
 cv.addEventListener('pointerdown', e => {
   if (e.button !== 0) return // 只认左键放置/旋转;右键留给 contextmenu 切模式
+  if (HUB?.isPaused()) return // 暂停时不吃点击(不然遮罩底下还在摆零件)
   sfx.resume(); ensureBgm()
-  const MB = musicBtnGeo(); if (mode !== 'intro' && e.clientX >= MB.x && e.clientX <= MB.x + MB.w && e.clientY >= MB.y && e.clientY <= MB.y + MB.h) { toggleMusic(); return }
-  if (mode === 'intro') { const r = introRouter; if (e.clientX >= r.x - 10 && e.clientX <= r.x + r.w + 10 && e.clientY >= r.y - 10 && e.clientY <= r.y + r.h + 10) mode = 'menu'; return }
-  if (mode === 'menu') { menuClick(e.clientX, e.clientY); return }
-  const M = menuBtnGeo(); if (e.clientX >= M.x && e.clientX <= M.x + M.w && e.clientY >= M.y && e.clientY <= M.y + M.h) { mode = 'menu'; return }
-  if (e.clientY > H - 104) { uiClick(e.clientX, e.clientY); return }
+  const { x: ex, y: ey } = at(e)
+  const MB = musicBtnGeo(); if (mode !== 'intro' && ex >= MB.x && ex <= MB.x + MB.w && ey >= MB.y && ey <= MB.y + MB.h) { toggleMusic(); return }
+  if (mode === 'intro') { const r = introRouter; if (ex >= r.x - 10 && ex <= r.x + r.w + 10 && ey >= r.y - 10 && ey <= r.y + r.h + 10) mode = 'menu'; return }
+  if (mode === 'menu') { menuClick(ex, ey); return }
+  const M = menuBtnGeo(); if (ex >= M.x && ex <= M.x + M.w && ey >= M.y && ey <= M.y + M.h) { mode = 'menu'; return }
+  if (ey > H - 104) { uiClick(ex, ey); return }
   if ((running || done) && !LEVELS[lvl]!.sandbox) return // 沙盒里运行时也能继续摆
-  const cell = cellAt(e.clientX, e.clientY); if (!cell) return
+  const cell = cellAt(ex, ey); if (!cell) return
   place(cell.r, cell.c)
 })
-cv.addEventListener('contextmenu', e => { e.preventDefault(); if (mode !== 'play') return; const cell = cellAt(e.clientX, e.clientY); if (cell) { const p = grid[cell.r]![cell.c]; if (p && (p.kind === 'router' || p.kind === 'queue' || p.kind === 'arouter' || p.kind === 'prefix' || p.kind === 'mask' || p.kind === 'acl')) { p.mode = (p.mode + 1) % modeCount(p.kind); sfx.blip() } } })
+cv.addEventListener('contextmenu', e => { e.preventDefault(); if (mode !== 'play' || HUB?.isPaused()) return; const q = at(e); const cell = cellAt(q.x, q.y); if (cell) { const p = grid[cell.r]![cell.c]; if (p && (p.kind === 'router' || p.kind === 'queue' || p.kind === 'arouter' || p.kind === 'prefix' || p.kind === 'mask' || p.kind === 'acl')) { p.mode = (p.mode + 1) % modeCount(p.kind); sfx.blip() } } })
 function uiClick(x: number, y: number) {
   const T = trayGeo(), items = trayItems()
   if (y >= T.y && y <= T.y + T.ts) { for (let i = 0; i < items.length; i++) { const bx = T.x0 + i * (T.ts + T.gap); if (x >= bx && x <= bx + T.ts) { tool = items[i]!; sfx.blip(); return } } }
@@ -504,7 +513,7 @@ function frame(now: number) {
   const dt = tprev ? now - tprev : 16; tprev = now
   if (mode === 'intro') { renderIntro(); requestAnimationFrame(frame); return }
   if (mode === 'menu') { renderMenu(); requestAnimationFrame(frame); return }
-  if (running) { acc += dt; while (acc >= STEP_MS) { acc -= STEP_MS; simStep(); if (!running) break } }
+  if (running && !HUB?.isPaused()) { acc += dt; while (acc >= STEP_MS) { acc -= STEP_MS; simStep(); if (!running) break } }
   const g = geo(), cs = g.cs, L = LEVELS[lvl]!
   const isSandbox = !!L.sandbox, goNext = done && pass && !L.finale && !isSandbox && lvl < LEVELS.length - 1
   coverImg(CORR, 0, 0, W, H, 0.74) // 你在路由器内部
@@ -622,4 +631,23 @@ requestAnimationFrame(frame)
 ;(window as unknown as { __play: (i: number) => void }).__play = (i) => { loadLevel(i); mode = 'play' }
 ;(window as unknown as { __menu: () => void }).__menu = () => { mode = 'menu' }
 ;(window as unknown as { __intro: () => object }).__intro = () => introRouter
+
+// —— 虾米课堂外壳:返回主页 / 暂停 / 关卡进度(本机 + 账号同步)——
+HUB = mountHub({
+  title: '搭机器 · 真路由器',
+  key: 'world',
+  read: () => best,
+  write: d => { if (d && typeof d === 'object') best = d as Record<number, Best> },
+  reset: () => { best = {} },
+  summary: () => {
+    const done = LEVELS.filter((_, i) => passed(i)).length
+    const lines = [`通过 ${done} / ${LEVELS.length} 关`]
+    for (let i = 0; i < LEVELS.length; i++) {
+      const b = best[i], L = LEVELS[i]!
+      lines.push(b ? `${i}. ${L.name} —— 最好 ${b.parts} 件 ${b.cycles} 拍${b.parts <= L.par.parts ? ' 🏅省料' : ''}${b.cycles <= L.par.cycles ? ' 🏅飞快' : ''}`
+        : `${i}. ${L.name} —— ${unlocked(i) ? '还没通' : '未解锁'}`)
+    }
+    return lines
+  },
+})
 ;(window as unknown as { __storyOk: () => boolean }).__storyOk = () => LEVELS.every((_, i) => typeof STORY[i] === 'string' && STORY[i]!.length > 0)

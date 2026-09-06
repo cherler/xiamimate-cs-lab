@@ -10,11 +10,14 @@
  * 焊死引擎的口径:**参考答案 = 同一段程序顺序执行一遍**(runSeq),不是我写在关卡里的常数。
  * 你搭的机器跑出来的寄存器终值必须和它一模一样 —— 判据由两个真解释器对撞产生。
  */
+import { mountHub, type Hub } from '../hub'
+let HUB: Hub | null = null
 const cv = document.getElementById('c') as HTMLCanvasElement
 const ctx = cv.getContext('2d')!
 let W = 0, H = 0
 const DPR = Math.min(2, devicePixelRatio || 1)
-function resize() { W = innerWidth; H = innerHeight; cv.width = W * DPR; cv.height = H * DPR; ctx.setTransform(DPR, 0, 0, DPR, 0, 0) }
+//  画布上面还有一条「虾米课堂」外壳条,所以量画布自己的尺寸 —— 读 innerHeight 会多算 36px
+function resize() { W = cv.clientWidth; H = cv.clientHeight; cv.width = W * DPR; cv.height = H * DPR; ctx.setTransform(DPR, 0, 0, DPR, 0, 0) }
 addEventListener('resize', resize); resize()
 
 const CREAM = '#efe6d2', AMBER = '#e8c98a', TEAL = '#49a791', RED = '#c8452e', DIM = '#9a8a6a'
@@ -208,7 +211,11 @@ function hit(px: number, py: number) {
 function trayGeo() { const ts = 78, gap = 10, y = H - ts - 18, x0 = 24; return { ts, gap, y, x0 } }
 function runBtn() { const bw = 168, bh = 52; return { x: W - bw - 24, y: H - bh - 18, bw, bh } }
 
-cv.addEventListener('pointerdown', e => {
+/** 画布上面是「虾米课堂」外壳条,命中判断一律用画布内坐标。 */
+const at = (e: { clientX: number; clientY: number }) => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top } }
+cv.addEventListener('pointerdown', ev => {
+  if (HUB?.isPaused()) return
+  const q = at(ev), e = { clientX: q.x, clientY: q.y }
   for (const b of levelBtns()) if (unlocked(b.i) && e.clientX >= b.x && e.clientX <= b.x + b.bw && e.clientY >= b.y && e.clientY <= b.y + b.bh) { loadLevel(b.i); return }
   const R = runBtn()
   if (e.clientX >= R.x && e.clientX <= R.x + R.bw && e.clientY >= R.y && e.clientY <= R.y + R.bh) { doRun(); return }
@@ -222,6 +229,7 @@ cv.addEventListener('pointerdown', e => {
   run = null
 })
 addEventListener('keydown', e => {
+  if (HUB?.isPaused()) return
   if (e.key === ' ') { e.preventDefault(); doRun() }
   if (e.key === 'ArrowRight' && unlocked(lvl + 1)) loadLevel(lvl + 1)
   if (e.key === 'ArrowLeft') loadLevel(lvl - 1)
@@ -231,7 +239,7 @@ function doRun() {
   if (run && resultOk()) {
     const b = best[lvl] || { parts: Infinity, cycles: Infinity }
     best[lvl] = { parts: Math.min(b.parts, partCount()), cycles: Math.min(b.cycles, run.cycles) }
-    try { localStorage.setItem('cpugame.best', JSON.stringify(best)) } catch { }
+    HUB?.save()   // 存盘交给课堂外壳:它同时管本机与账号同步
   }
 }
 
@@ -362,6 +370,24 @@ function frame() {
 }
 loadLevel(0)
 requestAnimationFrame(frame)
+
+// —— 虾米课堂外壳:返回主页 / 暂停 / 关卡进度(本机 + 账号同步)——
+HUB = mountHub({
+  title: '搭机器 · CPU 流水线',
+  key: 'cpu',
+  read: () => best,
+  write: d => { if (d && typeof d === 'object') best = d as Record<number, { parts: number; cycles: number }> },
+  reset: () => { best = {}; loadLevel(0) },
+  summary: () => {
+    const done = LEVELS.filter((_, i) => passed(i)).length
+    const lines = [`通过 ${done} / ${LEVELS.length} 关`]
+    LEVELS.forEach((L, i) => {
+      const b = best[i]
+      lines.push(b ? `${i}. ${L.name} —— 最好 ${b.parts} 件 ${b.cycles} 拍` : `${i}. ${L.name} —— ${unlocked(i) ? '还没通' : '未解锁'}`)
+    })
+    return lines
+  },
+})
 
 // dev 钩子(冒烟脚本按这些来)
 type Win = Record<string, unknown>

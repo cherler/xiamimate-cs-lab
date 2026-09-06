@@ -3,13 +3,15 @@
 <title>算法卡牌 · 原型 v12</title>
 <style>html,body{margin:0;height:100%;background:#070d16;overflow:hidden;
 font-family:"PingFang SC","Noto Sans SC",system-ui,sans-serif;color:#dfe8f2}
-#c{display:block;width:100vw;height:100vh}</style></head><body><canvas id="c"></canvas>
+#c{display:block;width:100vw;height:calc(100vh - 36px);margin-top:36px}</style></head><body><canvas id="c"></canvas>
 <script type="module">
+import { mountHub } from './hub.ts'
 /* ═══ 1. 调参 ═══ */
 let PASSMUL=13  // 有序度换成严格口径后(相等的相邻柱不算有序),冒泡换不动相等对,
                 // 排序引擎整体变钝 —— 趟数从 6 补到 11 才回到原来的手感   // 实测:×2→sort 2.5% / ×6→41.5% / ×8→51.5%
 const T={VMIN:3,VMAX:20,BUDGET:60,STEPS:3,HAND:5,COST_DIV:6,DEBT_PEN:2,HANDMAX:9}
-const rng=s=>()=>{s|=0;s=s+0x6D2B79F5|0;let t=Math.imul(s^s>>>15,1|s);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}
+const rng=s=>{const f=()=>{s|=0;s=s+0x6D2B79F5|0;let t=Math.imul(s^s>>>15,1|s);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}
+ f.state=()=>s; f.restore=v=>{s=v|0}; return f}
 
 /* ═══ 2. 敌人:性质决定哪些算法好用 ═══ */
 const FOE={
@@ -843,7 +845,7 @@ Object.assign(window,{__intel:intelOf,__diag:diagnose,__hp:hpPct})
 /* ═══ 7. 渲染(复刻概念图) ═══ */
 const cv=document.getElementById('c'),ctx=cv.getContext('2d')
 let W,H,DPR=Math.min(devicePixelRatio||1,2)
-const fit=()=>{W=innerWidth;H=innerHeight;cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0)}
+const fit=()=>{W=cv.clientWidth;H=cv.clientHeight;cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0)}
 addEventListener('resize',fit);fit()
 let RUN=null,S=null,offer=null,intel=null,parts=[],KIT='sort',anim=null,hist=[],poster=null
 let remove=false,refBox=null   // remove=正在看「重构删牌」子屏;refBox=奖励屏上那颗重构按钮的命中框
@@ -855,6 +857,7 @@ const CO={bg0:'#050a12',bg1:'#0a141f',line:'rgba(90,150,190,.22)',panel:'rgba(12
  tag:{base:'#a8c0d6',sort:'#f0a94a',dc:'#b39ddb',memo:'#7fd98f',greedy:'#ff8f6b',tool:'#5fd0e8',deck:'#9ecbff',heap:'#ffb3d9',twop:'#8ee6c8',bit:'#ffd166',rand:'#ff9ec7',def:'#c8b4ff',graph:'#7fd1ff'}}
 const TAGNAME={base:'起始',sort:'排序流',dc:'拆解流',memo:'复利流',greedy:'激进流',tool:'工具',deck:'牌库',heap:'堆流',twop:'区间流',bit:'位运算流',rand:'随机化流',def:'防御',graph:'图算法'}
 function startRun(k,k2){KIT=k;KIT2=(k2&&k2!==k)?k2:null;menu=false
+ progStart(k)
  RUN=newRun(Date.now()&0xffff,k,KIT2)
  boonPick=true;lastPar=null
  //  仍然 enter() 一次:把第 1 关的岔口/预览战斗建好(起手抉择屏画在它上面)。
@@ -871,6 +874,7 @@ function takeBoon(id){const b=boonOf(id); if(!b||!RUN)return
    const i=RUN.deck.indexOf(pick[0]); if(i>=0)RUN.deck.splice(i,1)}}
  boonPick=false;enter()}
 function enter(){RUN.opts=rollNode(RUN,RUN.node)
+ progMark()   // 断点存在**关的开头**:单场战斗打到一半不存(见 progSnapshot 的说明)
  intel=RUN.opts.map(o=>Object.assign(intelOf(RUN.deck,o.foe,o.flaw,RUN.node),o))
  offer=null;hist=[100];flo=null
  S=applyBoon(newFight(1,RUN.deck,RUN.opts[0].foe,RUN.budget,RUN.opts[0].flaw,RUN.node),RUN)}
@@ -897,9 +901,9 @@ function stashFilm(){ if(!S||!RUN)return
 function afterFight(){ stashFilm()
  //  赢了才算 par:这一仗本来能多快(六条流派各打一遍同一局面,取最少回合)。
  lastPar=S.over==='win'?(()=>{const p=parOf(S);return p?{...p,mine:S.turn,shape:S.E.shape||'random',foe:S.E.name}:null})():null
- if(S.over==='lose'){RUN.over='lose';return}
+ if(S.over==='lose'){RUN.over='lose';progEnd();return}
  RUN.cap+=BUDGET_GROW;RUN.budget=RUN.cap;RUN.node++
- if(RUN.node>=SHAPE.length){RUN.over='win';return} offer=offer3(RUN)}
+ if(RUN.node>=SHAPE.length){RUN.over='win';progEnd();return} offer=offer3(RUN)}
 function takeCard(id){if(id)RUN.deck.push(id);offer=null;enter()}
 function snap(){return alive(S).map(b=>({id:b.id,v:b.v}))}
 /* 组合一直都在(排序→有序层数→二分查找),但它在画面上从来只是「一个数变了」。
@@ -2253,7 +2257,10 @@ const req=()=>requestAnimationFrame(()=>{
   requestAnimationFrame(()=>{try{draw()}catch(_){requestAnimationFrame(()=>{try{draw()}catch(_){}})}})
  }})
 const inBox=(mx,my,b)=>b&&mx>b[0]&&mx<b[0]+b[2]&&my>b[1]&&my<b[1]+b[3]
-cv.addEventListener('click',e=>{const mx=e.clientX,my=e.clientY
+cv.addEventListener('click',e=>{
+ if(HUB&&HUB.isPaused())return                       // 暂停时不吃点击(不然遮罩底下还在打)
+ //  画布不再顶到页面最上面(上面是课堂条),所以命中框要用**画布内坐标**,不能直接用 clientY
+ const r=cv.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top
  //  选流派标题屏:点流派切换选中(最多 2 条,满了替换最早那条);点开始按钮开局。RUN 可能为空,必须最先判。
  if(menu){
   for(let i=0;i<menuBox.length;i++) if(inBox(mx,my,menuBox[i])){
@@ -2279,6 +2286,7 @@ cv.addEventListener('click',e=>{const mx=e.clientX,my=e.clientY
  const ids=offer||S.hand
  for(let i=0;i<ids.length;i++) if(inBox(mx,my,HITBOX[i])){offer?takeCard(ids[i]):uiPlay(i);return}})
 addEventListener('keydown',e=>{
+ if(HUB&&HUB.isPaused())return                        // 暂停时只有 Esc 有用,它由课堂外壳自己接
  if(intel){const k={ArrowLeft:0,ArrowRight:1,Enter:0,' ':0}[e.key]
   if(k!==undefined&&NODEBOX[k]){e.preventDefault();pickNode(k);return}}
  const k=['base','sort','dc','memo','greedy','heap','twop'][+e.key-1]; if(k){startRun(k);return}
@@ -2295,5 +2303,54 @@ addEventListener('keydown',e=>{
    if(intel){pickNode(intel.length>1&&intel[1].score>intel[0].score?1:0);return}
    if(offer){takeCard(offer.find(c=>KITS[KIT].includes(c))??offer[0]);return}
    autoTurn()},420)}})
+/* ═══ 9. 课堂进度:战绩 + 断点续玩 ═══
+   战绩是**跨设备该带走的东西**(你在哪条流派上通过几次),所以它走账号同步;
+   断点只存到「关的开头」—— 一局的随机序列是活的,单场战斗打到一半的状态
+   (手牌/敌人/动画)存不下来也不该存,roguelite 的一仗本来就该一口气打完。 */
+let PROG={runs:0,wins:0,best:0,kits:{},save:null}
+const kitRec=k=>(PROG.kits[k]||(PROG.kits[k]={runs:0,wins:0,best:0}))
+function progStart(k){PROG.runs++;kitRec(k).runs++;HUB&&HUB.save()}
+function progEnd(){ if(!RUN)return
+ const k=RUN.kit,r=kitRec(k),n=RUN.node
+ if(RUN.over==='win'){PROG.wins++;r.wins++}
+ PROG.best=Math.max(PROG.best,n); r.best=Math.max(r.best,n)
+ PROG.save=null   // 这一局完了,断点作废
+ HUB&&HUB.save()}
+function progMark(){PROG.save=progSnapshot();HUB&&HUB.save()}
+function progSnapshot(){ if(!RUN||RUN.over)return null
+ //  rstate = 这一局的随机序列走到哪了。不存它,续玩会走出另一条命运(敌人/岔口全变)。
+ return{seed:RUN.seed,rstate:RUN.R.state(),deck:[...RUN.deck],kit:RUN.kit,kit2:RUN.kit2,
+  budget:RUN.budget,cap:RUN.cap,node:RUN.node,used:[...RUN.used],boon:RUN.boon,
+  elites:[...RUN.elites],refactors:RUN.refactors}}
+function progResume(){const sv=PROG.save; if(!sv)return
+ KIT=sv.kit;KIT2=sv.kit2||null;menu=false;poster=null;remove=false;boonPick=false;lastPar=null
+ RUN=newRun(sv.seed,sv.kit,sv.kit2||undefined)
+ Object.assign(RUN,{deck:[...sv.deck],budget:sv.budget,cap:sv.cap,node:sv.node,used:[...sv.used],
+  boon:sv.boon,elites:[...sv.elites],refactors:sv.refactors,over:null,films:[]})
+ RUN.R.restore(sv.rstate)   // 必须在 newRun 之后:newRun 自己摇了两个精英,把序列往前推过
+ enter();req()}
+const KITLABEL=k=>TAGNAME[k]||k
+function progSummary(){
+ const lines=[`总共 ${PROG.runs} 局 · 通关 ${PROG.wins} 次 · 最远打到第 ${PROG.best+1} 关`]
+ const ks=Object.keys(PROG.kits).filter(k=>PROG.kits[k].runs>0)
+ if(ks.length) for(const k of ks){const r=PROG.kits[k]
+  lines.push(`${KITLABEL(k)}:${r.runs} 局 / 通关 ${r.wins} 次 / 最远第 ${r.best+1} 关`)}
+ else lines.push('还没打过 —— 选一条流派开局')
+ lines.push(PROG.save?`有一局没打完:${KITLABEL(PROG.save.kit)}${PROG.save.kit2?'+'+KITLABEL(PROG.save.kit2):''},停在第 ${PROG.save.node+1} 关`:'没有未完成的局')
+ return lines}
+
+let HUB=null
+HUB=mountHub({
+ title:'算法卡牌',key:'cards',
+ read:()=>PROG,
+ write:d=>{ if(d&&typeof d==='object'){PROG={runs:0,wins:0,best:0,kits:{},save:null,...d}
+  if(!PROG.kits||typeof PROG.kits!=='object')PROG.kits={}} },
+ summary:progSummary,
+ reset:()=>{PROG={runs:0,wins:0,best:0,kits:{},save:null};req()},
+ actions:()=>PROG.save?[{label:`继续上次那一局(第 ${PROG.save.node+1} 关)`,on:progResume}]:[],
+ onPause:p=>{ if(p&&autoTimer){clearInterval(autoTimer);autoTimer=null} req() },
+})
+Object.assign(window,{__prog:()=>PROG,__resume:progResume,__hub:HUB})
+
 menu=true;draw()   // 开局先进选流派标题屏(不再默认直接开 sort)
 </script></body></html>

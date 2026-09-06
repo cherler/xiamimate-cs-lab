@@ -19,6 +19,28 @@ import { onPlatform } from './platform.ts'
 const SESSION_URL = '/v1/session'
 const PROGRESS_URL = '/v1/lab/progress'
 
+/**
+ * 云端那份 payload 是**整个虾米课堂共用的一份文档**:本模块的题目记录之外,
+ * 两个游戏的进度也住在里面(`@games`,见两个游戏各自的 hub.ts)。
+ *
+ * 本模块推送时写的是整份 payload —— 所以**读到什么不属于自己的键,就得原样写回去**。
+ * 少带一个,就等于把两个游戏的通关记录删了,而且删得悄无声息(下一次同步才发现)。
+ * 约定:`@` 开头的键不归本模块管。题目键形如 `id#3` / `fact:x`,不会撞上。
+ */
+let carried: Record<string, unknown> = {}
+const isForeign = (k: string) => k.startsWith('@')
+/** 从云端 payload 里挑出不归本模块管的键。导出是为了让判据能直接钉住它。 */
+export function pickForeign(payload: unknown): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  if (payload && typeof payload === 'object') {
+    for (const [k, v] of Object.entries(payload as Record<string, unknown>)) if (isForeign(k)) out[k] = v
+  }
+  return out
+}
+/** 要推上去的整份 payload:自己的题目记录 + 原样带回的别人的键。判据钉这个。 */
+export const withForeign = (q: Record<string, unknown>, foreign: Record<string, unknown>) => ({ ...foreign, ...q })
+function keepForeign(payload: unknown) { carried = pickForeign(payload) }
+
 export type CloudState =
   | { kind: 'unknown' }                                   // 还没问过
   | { kind: 'standalone' }                                // 没有主站（本机 dev / 单文件产物）
@@ -158,6 +180,7 @@ async function pullRaw(): Promise<Store | null> {
   if (!r.ok) throw new Error(`HTTP ${r.status}`)
   const d = await r.json() as { payload?: unknown; rev?: number }
   rev = d.rev ?? 0
+  keepForeign(d.payload)
   return sanitize(d.payload)
 }
 
@@ -174,10 +197,12 @@ async function pushRaw(store: Store, retry = true): Promise<Store> {
     method: 'PUT',
     credentials: 'include',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ payload: store.q, base_rev: rev }),
+    //  自己的题目记录 + 别人的键(游戏进度)一起写回去,见上面 carried 的说明
+    body: JSON.stringify({ payload: withForeign(store.q, carried), base_rev: rev }),
   })
   if (r.status === 409 && retry) {
     const d = await r.json().catch(() => ({})) as { detail?: PutErr }
+    keepForeign(d.detail?.payload)   // 撞版本号说明别人写过,别人的键要重新取一份最新的
     const server = sanitize(d.detail?.payload)
     rev = d.detail?.rev ?? rev
     const merged = mergeStores(store, server)

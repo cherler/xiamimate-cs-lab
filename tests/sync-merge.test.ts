@@ -201,5 +201,35 @@ console.log('\n【自检】')
     : bad('自检失败：样本里一次平局都没撞上，交换律那条判据说明不了问题')
 }
 
+/* ═══ 别人的键要原样带回去 ═══
+   云端那份 payload 是整个虾米课堂共用的:本模块的题目记录之外,两个游戏的进度
+   也住在里面(`@games`)。本模块推的是**整份** payload —— 带漏了就等于把游戏
+   进度删了,而且删得悄无声息。所以这三条都得钉住,最后一条是自检:
+   旧写法(只推 store.q)必须在这批数据上真的判红。 */
+{
+  console.log('\n【别人的键要原样带回去】')
+  const cloud = { 'p1#0': { attempts: 1, wrong: 0, streak: 1, lastCorrect: true, lastAt: 1 },
+    '@games': { cards: { at: 9, data: { wins: 3 } }, world: { at: 8, data: { 0: { parts: 12 } } } } }
+  const foreign = S.pickForeign(cloud)
+  Object.keys(foreign).length === 1 && '@games' in foreign
+    ? ok('只挑出 @ 开头的键(题目记录不算别人的)')
+    : bad(`挑错了:${JSON.stringify(Object.keys(foreign))}`)
+
+  const mine = { 'p1#0': { attempts: 2, wrong: 1, streak: 0, lastCorrect: false, lastAt: 5 } }
+  const body = S.withForeign(mine as never, foreign)
+  JSON.stringify((body as Record<string, unknown>)['@games']) === JSON.stringify(cloud['@games'])
+    ? ok('推上去的整份里,游戏进度一个字节没动')
+    : bad('游戏进度被改了或丢了')
+  ;(body as Record<string, unknown>)['p1#0'] === mine['p1#0']
+    ? ok('自己的记录以本地那份为准(不会被云端旧值盖回去)')
+    : bad('自己的记录被云端盖了')
+
+  //  自检:旧写法只推 store.q,这条判据必须能红
+  const legacy = { ...mine } as Record<string, unknown>
+  legacy['@games'] === undefined
+    ? ok('自检:旧写法(只推自己的记录)在这批数据上确实丢了 @games —— 上面那条判据有鉴别力')
+    : bad('自检失败:旧写法也没丢,说明这批数据证明不了什么')
+}
+
 console.log(failures === 0 ? '\n本套全部通过' : `\n本套失败 ${failures} 项`)
 if (failures > 0) process.exit(1)
