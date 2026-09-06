@@ -656,6 +656,7 @@ HUB = mountHub({
     { label: '电脑 · CPU 流水线 →', href: pageUrl('cpu.html') },
     { label: '电脑 · Cache 内存层级 →', href: pageUrl('cache.html') },
     { label: '大模型 · 推理引擎 →', href: pageUrl('infer.html') },
+    { label: '电脑 · 固态硬盘 →', href: pageUrl('ssd.html') },
   ],
   read: () => best,
   write: d => { if (d && typeof d === 'object') best = d as Record<number, Best> },

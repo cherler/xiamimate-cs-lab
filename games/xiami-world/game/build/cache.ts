@@ -360,6 +360,8 @@ HUB = mountHub({
     { label: '← CPU 流水线', href: new URL('cpu.html', location.href).href },
     //  KV Cache 就是这台 cache 在推理引擎里的下一步 —— 换个造物,同一个动作
     { label: '大模型推理引擎 →', href: new URL('infer.html', location.href).href },
+    //  再往下一层存储:cache 之下是内存,内存之下就是这块盘
+    { label: '固态硬盘 →', href: new URL('ssd.html', location.href).href },
   ],
   read: () => best,
   write: d => { if (d && typeof d === 'object') best = d as Record<number, { cycles: number }> },
