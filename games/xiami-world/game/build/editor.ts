@@ -673,3 +673,4 @@ HUB = mountHub({
   },
 })
 ;(window as unknown as { __storyOk: () => boolean }).__storyOk = () => LEVELS.every((_, i) => typeof STORY[i] === 'string' && STORY[i]!.length > 0)
+;(window as unknown as { __texts: () => string[] }).__texts = () => LEVELS.flatMap((l, i) => [l.name, l.hint, STORY[i] ?? ''])

@@ -1,5 +1,5 @@
 /**
- * 第二台机器 · CPU 五级流水线 —— 六关冒烟判据。
+ * 第二台机器 · CPU 五级流水线 —— 七关冒烟判据。
  *
  * 这台机器要证明的是「仿真是真的」,所以判据全部围绕一件事:
  * **参考答案不是写死的,是同一段程序顺序执行一遍算出来的**;你搭的流水线跑出来必须和它一致。
@@ -25,7 +25,7 @@ const N = null
 const play = (i) => p.evaluate(i => window.__cpuPlay(i), i)
 const go = (st, tp) => p.evaluate(({ st, tp }) => { window.__cpuSet(st, tp); return window.__cpuRun() }, { st, tp })
 
-console.log('\n第二台机器 · CPU 五级流水线 · 六关\n')
+console.log('\n第二台机器 · CPU 五级流水线 · 七关\n')
 
 /* ── L0 分成五级:顺序是仿真自己认的,不是我规定的 ── */
 {
@@ -101,20 +101,45 @@ console.log('\n第二台机器 · CPU 五级流水线 · 六关\n')
   ok(good.cycles <= l.par.cycles, `L4 拍数达标:${good.cycles} ≤ 目标 ${l.par.cycles}`)
 }
 
-/* ── L5 终关:数据冒险 + load-use + 控制冒险,三种全在一段里 ── */
+/* ── L5 结构冒险:一个存储器两个人抢 —— 只会变慢,不会算错,所以考点是拍数 ── */
 {
   const l = await play(5)
-  ok(JSON.stringify(l.ref) === JSON.stringify([0, 23, 37, 14]), `L5 参考:${l.prog.join(' / ')} → [${l.ref}]`)
-  const good = await go(FIVE, [N, 'hazard', 'flush', 'wire', 'wire'])
-  ok(good.ok, `L5 终关 旁路×2 + 冒险检测 + 分支作废 → 跑对(regs=[${good.regs}])`)
-  ok(good.cycles <= l.par.cycles, `L5 拍数达标:${good.cycles} 拍 ≤ 目标 ${l.par.cycles} 拍(停顿 ${good.stalls} 拍)`)
-  ok(good.parts <= l.par.parts, `L5 件数达标:${good.parts} 件 ≤ 目标 ${l.par.parts} 件`)
-  const noFlush = await go(FIVE, [N, 'hazard', N, 'wire', 'wire'])
-  ok(!noFlush.ok && noFlush.regs[1] === 999, `L5 反例:缺分支作废→走错路那条把 r1 写成了 999(regs=[${noFlush.regs}])`)
-  const noHazard = await go(FIVE, [N, N, 'flush', 'wire', 'wire'])
-  ok(!noHazard.ok, `L5 反例:缺冒险检测→load-use 那处读到旧值(regs=[${noHazard.regs}])`)
-  const noWire = await go(FIVE, [N, 'hazard', 'flush', N, N])
-  ok(noWire.ok && noWire.cycles > good.cycles, `L5 反例(慢解):只停顿不接线→还是对的,但从 ${good.cycles} 拍涨到 ${noWire.cycles} 拍`)
+  const fast = await go(FIVE, ['icache', 'hazard', N, 'wire', 'wire'])
+  const slow = await go(FIVE, [N, 'hazard', N, 'wire', 'wire'])
+  ok(fast.ok && slow.ok,
+    `L5 装不装〈指令缓存〉**结果都对** —— 结构冒险不会算错(fast=[${fast.regs}] slow=[${slow.regs}])`)
+  ok(slow.cycles > fast.cycles,
+    `L5 不装就得跟访存抢门:${slow.cycles} 拍 vs 装了的 ${fast.cycles} 拍(差 ${slow.cycles - fast.cycles} 拍,正是三条 lw 各挤掉一拍取指)`)
+  ok(fast.cycles <= l.par.cycles && slow.cycles > l.par.cycles,
+    `L5 目标 ≤${l.par.cycles} 拍正好卡在中间:装了够得着(${fast.cycles}),不装够不着(${slow.cycles}) —— 这一关的判据是拍数`)
+}
+
+/* ── L6 终关:数据冒险 + load-use + 控制冒险 + 结构冒险,四样全在一段里 ── */
+{
+  const l = await play(6)
+  ok(JSON.stringify(l.ref) === JSON.stringify([0, 23, 37, 14]), `L6 参考:${l.prog.join(' / ')} → [${l.ref}]`)
+  const good = await go(FIVE, ['icache', 'hazard', 'flush', 'wire', 'wire'])
+  ok(good.ok, `L6 终关 旁路×2 + 冒险检测 + 分支作废 → 跑对(regs=[${good.regs}])`)
+  ok(good.cycles <= l.par.cycles, `L6 拍数达标:${good.cycles} 拍 ≤ 目标 ${l.par.cycles} 拍(停顿 ${good.stalls} 拍)`)
+  ok(good.parts <= l.par.parts, `L6 件数达标:${good.parts} 件 ≤ 目标 ${l.par.parts} 件`)
+  const noFlush = await go(FIVE, ['icache', 'hazard', N, 'wire', 'wire'])
+  ok(!noFlush.ok && noFlush.regs[1] === 999, `L6 反例:缺分支作废→走错路那条把 r1 写成了 999(regs=[${noFlush.regs}])`)
+  const noHazard = await go(FIVE, ['icache', N, 'flush', 'wire', 'wire'])
+  ok(!noHazard.ok, `L6 反例:缺冒险检测→load-use 那处读到旧值(regs=[${noHazard.regs}])`)
+  const noWire = await go(FIVE, ['icache', 'hazard', 'flush', N, N])
+  const noCache = await go(FIVE, [N, 'hazard', 'flush', 'wire', 'wire'])
+  ok(noCache.ok && noCache.cycles > good.cycles, `L6 缺〈指令缓存〉也是对的,但慢:${noCache.cycles} 拍 vs ${good.cycles} 拍 → 拿不到「飞快」`)
+  ok(noWire.ok && noWire.cycles > good.cycles, `L6 反例(慢解):只停顿不接线→还是对的,但从 ${good.cycles} 拍涨到 ${noWire.cycles} 拍`)
+}
+
+/* ── 文案里不许有 markdown 强调 ──
+   canvas 是 fillText 画的,不认 markdown,`**加粗**` 会被原样画成星号。这个坑踩过三次,
+   所以钉一条判据:凡是「** 后面紧跟中文」的,一律判红。
+   (路由器那边 `1**` / `10*` 是**真前缀模式**,后面跟的是空格或括号,不会误伤。) */
+{
+  const texts = await p.evaluate(() => window.__cpuTexts())
+  const bad = texts.filter(t => /\*\*[\u4e00-\u9fa5]/.test(t || ''))
+  ok(bad.length === 0, `CPU 文案里没有漏网的 markdown 强调(canvas 会把 ** 原样画出来)${bad.length ? ':' + bad[0].slice(0, 40) : ''}`)
 }
 
 ok(errs.length === 0, `全程无控制台报错${errs.length ? ':' + errs[0] : ''}`)

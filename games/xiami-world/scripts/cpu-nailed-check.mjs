@@ -5,7 +5,7 @@
  * 这一套问的是更狠的一句:**有没有哪台错的机器,碰巧也能过?**
  *
  * 做法是穷举:
- *   ① 上排 4^5 = 1024 种装法(只算这一关**真的给了**的零件),看每一种能不能过。
+ *   ① 上排 5^5 = 3125 种装法(只算这一关**真的给了**的零件),看每一种能不能过。
  *      对每一关声明「非有不可的零件」,凡是缺了它还能过的,一律判红。
  *   ② 五级顺序 5! = 120 种摆法,看还有哪些顺序也算对 —— 数目只许比声明的少或相等。
  *
@@ -29,17 +29,23 @@ const REQUIRED = {
   2: { 3: 'wire', 4: 'wire' },         // 真前递单元本来就有两条
   3: { 1: 'hazard' },                  // load-use 躲不掉的停顿
   4: { 2: 'flush' },                   // 分支作废
-  5: { 1: 'hazard', 2: 'flush' },      // 终关:两样都要
+  6: { 1: 'hazard', 2: 'flush' },      // 终关:两样都要
+}
+/** 「达到目标拍数」非有不可的零件。**结构冒险那一关只会变慢、不会算错**,
+ *  所以它的考点在这儿而不在 REQUIRED —— 优化关也得钉死,不然等于没考点。 */
+const FAST_REQUIRED = {
+  5: { 0: 'icache' },                  // 结构冒险:不装指令缓存就够不着目标拍数
+  6: { 0: 'icache' },                  // 终关同理
 }
 /** 五级顺序里「也算对」的摆法上限。多出来就说明仿真对顺序的约束又松了。 */
-const ORDER_CAP = { 0: 5, 1: 8, 2: 10, 3: 5, 4: 2, 5: 1 }
+const ORDER_CAP = { 0: 5, 1: 8, 2: 10, 3: 5, 4: 2, 5: 4, 6: 1 }
 
 const b = await chromium.launch(); const p = await b.newPage()
 await p.goto(`http://localhost:${PORT}/cpu.html`, { waitUntil: 'networkidle' }); await p.waitForTimeout(400)
 if (await p.evaluate(() => typeof window.__cpuRun !== 'function')) { console.error('页面没暴露钩子'); await b.close(); process.exit(1) }
 
 const FIVE = ['if', 'id', 'ex', 'mem', 'wb']
-const TOPS = [null, 'wire', 'hazard', 'flush']
+const TOPS = [null, 'wire', 'hazard', 'flush', 'icache']
 const NLV = (await p.evaluate(() => window.__cpuLevels())).length
 
 console.log('\nCPU 关卡对抗性审查 · 穷举所有装法与摆法\n')
@@ -51,21 +57,30 @@ const sweep = await p.evaluate(({ FIVE, TOPS, NLV }) => {
     const L = window.__cpuPlay(lvl)
     const allowed = new Set(L.parts)   // 只穷举这一关真的给了的零件
     const passing = []
-    for (let m = 0; m < 1024; m++) {
-      const tp = [0, 1, 2, 3, 4].map(i => TOPS[(m >> (i * 2)) & 3])
+    for (let m = 0; m < 5 ** 5; m++) {   // 5 种零件(含「不装」)× 5 个槽
+      const tp = [0, 1, 2, 3, 4].map(i => TOPS[Math.floor(m / 5 ** i) % 5])
       if (tp.some(t => t && !allowed.has(t))) continue
       window.__cpuSet(FIVE, tp)
       const r = window.__cpuRun()
       if (r && r.ok) passing.push({ tp, parts: r.parts, cyc: r.cycles })
     }
-    out.push({ lvl, passing })
+    out.push({ lvl, passing, par: L.par })
   }
   return out
 }, { FIVE, TOPS, NLV })
 
 for (const r of sweep) {
-  const need = REQUIRED[r.lvl]
   ok(r.passing.length > 0, `L${r.lvl}:至少有一台机器能过(${r.passing.length} 种装法)`)
+  const fastNeed = FAST_REQUIRED[r.lvl]
+  if (fastNeed) {
+    const fast = r.passing.filter(x => x.cyc <= r.par.cycles)
+    ok(fast.length > 0, `L${r.lvl}:目标拍数 ≤${r.par.cycles} 够得着(${fast.length} 种装法达标)`)
+    const cheat = fast.filter(x => Object.entries(fastNeed).some(([i, k]) => x.tp[+i] !== k))
+    ok(cheat.length === 0,
+      `L${r.lvl}:达标的装法里没有一种能绕开〈${Object.values(fastNeed).join('/')}〉(例外 ${cheat.length} 种)`
+      + (cheat.length ? ` ⚠️ 例:${cheat.slice(0, 2).map(v => v.tp.map(t => t || '-').join(',')).join(' | ')}` : ''))
+  }
+  const need = REQUIRED[r.lvl]
   if (!need) continue
   const violate = r.passing.filter(x => Object.entries(need).some(([i, k]) => x.tp[+i] !== k))
   ok(violate.length === 0,
@@ -77,7 +92,7 @@ for (const r of sweep) {
 
 /* ── ② 五级顺序穷举 ── */
 const perm = a => a.length <= 1 ? [a] : a.flatMap((x, i) => perm([...a.slice(0, i), ...a.slice(i + 1)]).map(r => [x, ...r]))
-const SOLUTION = { 0: [null, null, null, null, null], 1: [null, null, null, 'wire', null], 2: [null, null, null, 'wire', 'wire'], 3: [null, 'hazard', null, 'wire', 'wire'], 4: [null, 'hazard', 'flush', 'wire', 'wire'], 5: [null, 'hazard', 'flush', 'wire', 'wire'] }
+const SOLUTION = { 0: [null, null, null, null, null], 1: [null, null, null, 'wire', null], 2: [null, null, null, 'wire', 'wire'], 3: [null, 'hazard', null, 'wire', 'wire'], 4: [null, 'hazard', 'flush', 'wire', 'wire'], 5: ['icache', 'hazard', null, 'wire', 'wire'], 6: ['icache', 'hazard', 'flush', 'wire', 'wire'] }
 const orders = await p.evaluate(({ orders, SOLUTION, NLV }) => {
   const out = []
   for (let lvl = 0; lvl < NLV; lvl++) {

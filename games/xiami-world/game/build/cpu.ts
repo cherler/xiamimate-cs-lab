@@ -52,11 +52,11 @@ function runSeq(prog: Instr[], mem: number[]) {
 
 // —— 机器:5 个槽,每槽放一个阶段零件;槽的正上方可以放旁路线 / 冒险检测 ——
 type Stage = 'if' | 'id' | 'ex' | 'mem' | 'wb'
-type Top = 'wire' | 'hazard' | 'flush'
+type Top = 'wire' | 'hazard' | 'flush' | 'icache'
 type Tool = Stage | Top | 'erase'
 const NSLOT = 5
 const STAGE_NAME: Record<Stage, string> = { if: '取指', id: '译码', ex: '执行', mem: '访存', wb: '写回' }
-const toolName = (t: Tool) => t === 'wire' ? '旁路线' : t === 'hazard' ? '冒险检测' : t === 'flush' ? '分支作废' : t === 'erase' ? '擦除' : STAGE_NAME[t]
+const toolName = (t: Tool) => t === 'wire' ? '旁路线' : t === 'hazard' ? '冒险检测' : t === 'flush' ? '分支作废' : t === 'icache' ? '指令缓存' : t === 'erase' ? '擦除' : STAGE_NAME[t]
 let slots: (Stage | null)[] = new Array(NSLOT).fill(null)
 let tops: (Top | null)[] = new Array(NSLOT).fill(null)
 
@@ -113,9 +113,21 @@ const LEVELS: Level[] = [
     mem: [], parts: [...FIVE, 'wire', 'hazard', 'flush'], par: { parts: 9, cycles: 15 },
   },
   {
+    name: '真·CPU · 结构冒险(一个存储器两个人抢)',
+    story: 'lw 在访存级取数据的那一拍,取指级也想去同一个存储器取指令 —— 一个门,两个人。',
+    hint: '这一关结果一定是对的 —— 结构冒险不会算错,只会变慢。考的是拍数:每有一条 lw 在〈访存〉级取数据,同一拍的〈取指〉就得让一让,流水线前面多一个气泡(时空图上蓝色那几拍)。真机器的办法不是排队,是「把指令和数据分成两个存储器」(哈佛结构)—— 装一个〈指令缓存〉在〈取指〉级上方,取指就有自己的门了。装与不装,拍数差几拍,自己看。',
+    prog: [
+      { op: 'lw', d: 1, addr: 0 }, { op: 'lw', d: 2, addr: 1 }, { op: 'lw', d: 3, addr: 2 },
+      { op: 'add', d: 1, a: 3, b: 2 },   // r3 来自紧邻的 lw → 顺带还是个 load-use
+      { op: 'add', d: 2, a: 1, b: 3 },
+      { op: 'add', d: 3, a: 1, b: 2 },
+    ],
+    mem: [5, 9, 2, 4], parts: [...FIVE, 'wire', 'hazard', 'icache'], par: { parts: 9, cycles: 11 },
+  },
+  {
     name: '终关 · 一段真程序跑到底',
-    story: '取数、加法、分支 —— 数据冒险、load-use、控制冒险,三种全在这一段里。',
-    hint: '把学过的全用上:两条〈旁路线〉抽两条前递通路,一个〈冒险检测〉兜住 lw 后面那一拍,一个〈分支作废〉划掉跳走后还在流水线里的那几条。停顿越少越好,但结果错了再快也没用 —— 寄存器终值必须和「顺序执行一遍」的参考答案一模一样。',
+    story: '取数、加法、分支 —— 数据冒险、load-use、控制冒险、结构冒险,四样全在这一段里。',
+    hint: '把学过的全用上:两条〈旁路线〉抽两条前递通路,一个〈冒险检测〉兜住 lw 后面那一拍,一个〈分支作废〉划掉跳走后还在流水线里的那几条,一个〈指令缓存〉让取指不用跟访存抢门。停顿越少越好,但结果错了再快也没用 —— 寄存器终值必须和「顺序执行一遍」的参考答案一模一样。',
     prog: [
       { op: 'lw', d: 1, addr: 0 }, { op: 'lw', d: 2, addr: 1 },
       { op: 'add', d: 3, a: 1, b: 2 },
@@ -125,15 +137,15 @@ const LEVELS: Level[] = [
       { op: 'li', d: 1, imm: 999 },       // 走错路才会跑到的一条
       { op: 'add', d: 2, a: 1, b: 3 },
     ],
-    mem: [5, 9, 2, 4], parts: [...FIVE, 'wire', 'hazard', 'flush'], par: { parts: 9, cycles: 15 }, finale: true,
+    mem: [5, 9, 2, 4], parts: [...FIVE, 'wire', 'hazard', 'flush', 'icache'], par: { parts: 10, cycles: 14 }, finale: true,
   },
 ]
 let lvl = 0
 const L = () => LEVELS[lvl]!
 const REF = () => runSeq(L().prog, L().mem)
 
-type Cyc = { slots: (number | null)[]; stalled: boolean; killed?: number[] }
-type Run = { regs: number[]; cycles: number; trace: Cyc[]; overrun: boolean }
+type Cyc = { slots: (number | null)[]; stalled: boolean; killed?: number[]; jam?: boolean }
+type Run = { regs: number[]; cycles: number; trace: Cyc[]; overrun: boolean; jams: number }
 
 /**
  * 流水线仿真。规矩全部写在这里,画面只是把它画出来:
@@ -158,7 +170,7 @@ function runPipe(prog: Instr[], mem: number[]): Run {
   const readVal: number[][] = prog.map(() => [0, 0])   // 译码那一拍读到的两个操作数
   const val: number[] = prog.map(() => 0)              // 这条指令的结果(加法在执行级填、lw 在访存级填)
   const trace: Cyc[] = []
-  let pc = 0, cycles = 0, overrun = false
+  let pc = 0, cycles = 0, overrun = false, jams = 0
   const fetch = () => (pc >= 0 && pc < prog.length ? pc++ : null)
   pipe[0] = fetch()   // 第 1 拍取指级里就该站着第 0 条,不然白空转一拍
 
@@ -230,11 +242,18 @@ function runPipe(prog: Instr[], mem: number[]): Run {
       if (stall && s <= idSlot) continue
       pipe[s] = (stall && s === idSlot + 1) ? null : pipe[s - 1]!
     }
-    if (!stall) { pipe[0] = fetch() }
+    //  结构冒险:整台机器只有**一个存储器**。lw 正在〈访存〉级取数据的那一拍,
+    //  〈取指〉级也想去同一个存储器取指令 —— 两个人抢一个门,取指只能让一拍(前面多一个气泡)。
+    //  真机器的办法不是等,而是**把指令和数据分成两个缓存**(哈佛结构):装上〈指令缓存〉就不用抢了。
+    //  注意:抢门只会让机器变慢,**不会算错** —— 所以这一关的考点是拍数,不是对错。
+    const memBusy = memSlot >= 0 && fetched(memSlot) && pipe[memSlot] !== null && prog[pipe[memSlot]!]!.op === 'lw'
+    const jam = !stall && memBusy && ifSlot >= 0 && tops[ifSlot] !== 'icache' && pc < prog.length
+    if (jam) { jams++; trace[trace.length - 1]!.jam = true }
+    if (!stall) { pipe[0] = jam ? null : fetch() }
     if (pc >= prog.length && pipe.every(x => x === null)) break
     if (cycles >= 60) overrun = true
   }
-  return { regs, cycles, trace, overrun }
+  return { regs, cycles, trace, overrun, jams }
 }
 
 let run: Run | null = null
@@ -287,7 +306,7 @@ cv.addEventListener('pointerdown', ev => {
   }
   const c = hit(e.clientX, e.clientY); if (!c) return
   //  上排只收「旁路线/冒险检测/分支作废」,下排只收五个阶段 —— 放错排就什么也不做
-  const isTop = (t: Tool): t is Top => t === 'wire' || t === 'hazard' || t === 'flush'
+  const isTop = (t: Tool): t is Top => t === 'wire' || t === 'hazard' || t === 'flush' || t === 'icache'
   if (c.row === 'stage') slots[c.slot] = tool === 'erase' ? null : (isTop(tool) ? slots[c.slot]! : tool)
   else tops[c.slot] = tool === 'erase' ? null : (isTop(tool) ? tool : tops[c.slot]!)
   run = null
@@ -361,13 +380,13 @@ function frame() {
   for (let s = 0; s < NSLOT; s++) {
     const x = g.x0 + s * (g.cw + 10), t = tops[s]
     box(x, g.topY, g.cw, g.ch,
-      t === 'wire' ? '#1d3a34' : t === 'flush' ? '#2a1030' : t === 'hazard' ? '#3a2f1a' : '#1b1622',
-      t === 'wire' ? TEAL : t === 'flush' ? '#c07adf' : t === 'hazard' ? AMBER : '#332c40')
+      t === 'wire' ? '#1d3a34' : t === 'flush' ? '#2a1030' : t === 'icache' ? '#16283f' : t === 'hazard' ? '#3a2f1a' : '#1b1622',
+      t === 'wire' ? TEAL : t === 'flush' ? '#c07adf' : t === 'icache' ? '#6f9fe0' : t === 'hazard' ? AMBER : '#332c40')
     if (t) {
       //  三种零件各有各的「有用位置」,画错了画面就在撒谎 —— 加零件时这三处要一起加
-      const col = t === 'wire' ? '#8fe0c8' : t === 'flush' ? '#e0a8ff' : AMBER
-      const useful = t === 'wire' ? (exSlot >= 0 && s > exSlot) : t === 'flush' ? slots[s] === 'ex' : slots[s] === 'id'
-      const what = t === 'wire' ? '↩ 送回执行级' : t === 'flush' ? '跳了就划掉前面几条' : '值没到就停一拍'
+      const col = t === 'wire' ? '#8fe0c8' : t === 'flush' ? '#e0a8ff' : t === 'icache' ? '#9ec2ff' : AMBER
+      const useful = t === 'wire' ? (exSlot >= 0 && s > exSlot) : t === 'flush' ? slots[s] === 'ex' : t === 'icache' ? slots[s] === 'if' : slots[s] === 'id'
+      const what = t === 'wire' ? '↩ 送回执行级' : t === 'flush' ? '跳了就划掉前面几条' : t === 'icache' ? '取指不用再跟访存抢' : '值没到就停一拍'
       text(toolName(t), x + g.cw / 2, g.topY + 34, 15, col, 'center', true)
       text(useful ? what : '接在这里没用', x + g.cw / 2, g.topY + 58, 11, useful ? DIM : RED, 'center')
     }
@@ -389,7 +408,7 @@ function frame() {
   // 时空图 —— 课本上那张斜梯形,是这台机器自己跑出来的。
   // 起点要**同时**让开机器和左栏:左栏会随指令条数/有没有存储器面板变高,写死就会被压上。
   const ty = Math.max(g.y0 + g.ch + 46, ly + 56)
-  text('时空图(每一拍,哪条指令在哪一级;红=被停顿卡住,紫色划掉=被分支作废)', 24, ty - 12, 13, DIM)
+  text('时空图(每一拍,哪条指令在哪一级;红=被停顿卡住,紫色划掉=被分支作废,蓝色拍号=取指抢不到存储器)', 24, ty - 12, 13, DIM)
   if (run) {
     const cwid = Math.min(52, (W - 80) / Math.max(1, run.trace.length)), rh = 28
     lv.prog.forEach((_, i) => {
@@ -408,7 +427,13 @@ function frame() {
         }
       })
     })
-    run.trace.forEach((_, t) => text(String(t + 1), 56 + t * cwid + (cwid - 4) / 2, ty + 4 + lv.prog.length * rh + 14, 11, DIM, 'center'))
+    //  抢门那几拍:取指级空着,所以时空图里没有格子画得出来 —— 在拍号那一行标出来
+    run.trace.forEach((c, t) => {
+      const cx = 56 + t * cwid + (cwid - 4) / 2, cy = ty + 4 + lv.prog.length * rh + 14
+      if (c.jam) { ctx.fillStyle = '#1d3350'; ctx.fillRect(56 + t * cwid, cy - 12, cwid - 4, 16) }
+      text(String(t + 1), cx, cy, 11, c.jam ? '#9ec2ff' : DIM, 'center', !!c.jam)
+    })
+    if (run.jams) text(`蓝色 ${run.jams} 拍 = 取指跟访存抢同一个存储器,取指让了一拍`, 56, ty + 4 + lv.prog.length * rh + 34, 11, '#9ec2ff')
   } else text(machineOk() ? '按「运行机器」看它跑' : '五级还没摆齐(取指/译码/执行/访存/写回,一个都不能少)', 56, ty + 24, 14, machineOk() ? DIM : RED)
 
   // 右栏:寄存器 实际 vs 参考
@@ -428,12 +453,12 @@ function frame() {
     text(okk ? '✓ 结果对了' : run.overrun ? '✕ 机器空转(五级摆得不成样子)' : '✕ 有寄存器读到了旧值', rx, 342, 16, okk ? TEAL : RED, 'left', true)
     text(`用了 ${run.cycles} 拍 · ${partCount()} 件${okk ? `  ${mp ? '🏅省料 ' : ''}${mc ? '🏅飞快' : ''}` : ''}`, rx, 364, 13, CREAM)
     const stalls = run.trace.filter(c => c.stalled).length
-    text(stalls ? `其中停顿 ${stalls} 拍` : '一拍都没停', rx, 384, 12, stalls ? AMBER : TEAL)
+    text(stalls || run.jams ? `停顿 ${stalls} 拍 · 抢门 ${run.jams} 拍` : '一拍都没停', rx, 384, 12, stalls || run.jams ? AMBER : TEAL)
   }
 
   // 零件盘
   const T = trayGeo(), items = levelTools()
-  text(`零件盘 · 点一个,再点槽位放下${tool === 'wire' ? '(旁路线放在结果已经出炉的那一级上方)' : tool === 'hazard' ? '(冒险检测放在译码级上方)' : tool === 'flush' ? '(分支作废放在执行级上方 —— 分支在哪一级判出跳不跳,就装在哪一级)' : ''}`, T.x0, T.y - 10, 12, AMBER)
+  text(`零件盘 · 点一个,再点槽位放下${tool === 'wire' ? '(旁路线放在结果已经出炉的那一级上方)' : tool === 'hazard' ? '(冒险检测放在译码级上方)' : tool === 'flush' ? '(分支作废放在执行级上方 —— 分支在哪一级判出跳不跳,就装在哪一级)' : tool === 'icache' ? '(指令缓存放在取指级上方 —— 让取指有自己的存储器,不用再跟访存抢)' : ''}`, T.x0, T.y - 10, 12, AMBER)
   items.forEach((t, i) => {
     const x = T.x0 + i * (T.ts + T.gap), on = tool === t
     box(x, T.y, T.ts, T.ts, on ? '#3a342a' : '#20190f', on ? '#ffe6a8' : '#5a4e3a', on ? 3 : 1.5)
@@ -470,6 +495,7 @@ HUB = mountHub({
 // dev 钩子(冒烟脚本按这些来)
 type Win = Record<string, unknown>
 ;(window as unknown as Win).__cpuLevels = () => LEVELS.map(l => l.name)
+;(window as unknown as Win).__cpuTexts = () => LEVELS.flatMap(l => [l.name, l.story, l.hint])
 ;(window as unknown as Win).__cpuPlay = (i: number) => { loadLevel(i); return { prog: L().prog.map(instrText), mem: L().mem, ref: REF(), parts: L().parts, par: L().par } }
 ;(window as unknown as Win).__cpuSet = (st: (Stage | null)[], tp: (Top | null)[]) => { slots = [...st]; tops = [...tp]; run = null }
-;(window as unknown as Win).__cpuRun = () => { doRun(); return run ? { regs: run.regs, ref: REF(), cycles: run.cycles, stalls: run.trace.filter(c => c.stalled).length, overrun: run.overrun, ok: resultOk(), parts: partCount() } : null }
+;(window as unknown as Win).__cpuRun = () => { doRun(); return run ? { regs: run.regs, ref: REF(), cycles: run.cycles, stalls: run.trace.filter(c => c.stalled).length, jams: run.jams, overrun: run.overrun, ok: resultOk(), parts: partCount() } : null }

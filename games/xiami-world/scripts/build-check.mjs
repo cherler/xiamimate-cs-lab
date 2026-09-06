@@ -235,6 +235,16 @@ console.log('\n搭机器 · 十三关真地址冒烟\n')
 
 /* ── 通用 ── */
 await p.evaluate(() => window.__menu()); await p.waitForTimeout(250)
+/* ── 文案里不许有 markdown 强调 ──
+   canvas 是 fillText 画的,不认 markdown,`**加粗**` 会被原样画成星号。这个坑踩过三次,
+   所以钉一条判据:凡是「** 后面紧跟中文」的,一律判红。
+   (路由器那边 `1**` / `10*` 是**真前缀模式**,后面跟的是空格或括号,不会误伤。) */
+{
+  const texts = await p.evaluate(() => window.__texts())
+  const bad = texts.filter(t => /\*\*[\u4e00-\u9fa5]/.test(t || ''))
+  ok(bad.length === 0, `搭机器 文案里没有漏网的 markdown 强调(canvas 会把 ** 原样画出来)${bad.length ? ':' + bad[0].slice(0, 40) : ''}`)
+}
+
 ok(errs.length === 0, `全程无控制台报错(含菜单渲染)${errs.length ? ':' + errs[0] : ''}`)
 const storyOk = await p.evaluate(() => window.__storyOk())
 ok(storyOk, '每关都有 STORY 文案')
