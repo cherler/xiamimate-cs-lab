@@ -8,6 +8,7 @@ import routerUrl from '../../web/assets/gen/home/router.webp'
 import corrUrl from '../../web/assets/gen/gates/corridor.webp'
 import { sfx } from '../demo/sfx'
 import { mountHub, type Hub } from '../hub'
+import { makeKit, BRASS, STEEL, VIOLET, GOLD, GREEN } from './kit'
 let HUB: Hub | null = null
 const cv = document.getElementById('c') as HTMLCanvasElement
 const ctx = cv.getContext('2d')!
@@ -315,14 +316,10 @@ function uiClick(x: number, y: number) {
 // —— 画 ——
 function shape(x: number, y: number, r: number, sh: number, col: string) { ctx.fillStyle = col; ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = 2; ctx.beginPath(); if (sh === 0) { ctx.moveTo(x, y - r); ctx.lineTo(x + r, y + r * .8); ctx.lineTo(x - r, y + r * .8); ctx.closePath() } else if (sh === 1) ctx.rect(x - r * .85, y - r * .85, r * 1.7, r * 1.7); else ctx.arc(x, y, r, 0, 7); ctx.fill(); ctx.stroke() }
 // —— 零件美术:物件即美术(手工机械件,暖黄铜/钢/木/青玻璃;Opus Magnum 味)——
-const BRASS = ['#eccd8e', '#c39a55', '#6f5028'], STEEL = ['#565049', '#38342e', '#1f1c17']
-const VIOLET = ['#bda0dd', '#7d5fa8', '#3c2c58'], GOLD = ['#f0d485', '#cba54e', '#71531f'], GREEN = ['#aad79b', '#6fa85f', '#2c4c28']
+//  画法词汇搬到了 game/build/kit.ts,两台机器同源(CPU 那台也用它)——
+//  加新画法请加在 kit 里,别在某一台里就地写一份。
+const { plate, rivet, housing, channel, chevron, rr, coverImg, wrapText } = makeKit(ctx)
 function withDir(x: number, y: number, cs: number, dir: Dir, fn: () => void) { ctx.save(); ctx.translate(x + cs / 2, y + cs / 2); ctx.rotate(dir * Math.PI / 2); ctx.translate(-cs / 2, -cs / 2); fn(); ctx.restore() }
-function plate(x: number, y: number, w: number, h: number, r: number, c: string[]) { const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, c[0]!); g.addColorStop(.5, c[1]!); g.addColorStop(1, c[2]!); rr(x, y, w, h, r); ctx.fillStyle = g; ctx.fill(); ctx.strokeStyle = 'rgba(0,0,0,.42)'; ctx.lineWidth = 1.5; rr(x, y, w, h, r); ctx.stroke(); ctx.strokeStyle = 'rgba(255,244,214,.3)'; ctx.lineWidth = 1; rr(x + 1.5, y + 1.5, w - 3, h - 3, Math.max(1, r - 1)); ctx.stroke() }
-function rivet(x: number, y: number, rad: number) { ctx.fillStyle = 'rgba(28,20,10,.85)'; ctx.beginPath(); ctx.arc(x, y, rad, 0, 7); ctx.fill(); ctx.fillStyle = 'rgba(255,240,210,.32)'; ctx.beginPath(); ctx.arc(x - rad * .3, y - rad * .3, rad * .5, 0, 7); ctx.fill() }
-function housing(cs: number, c: string[]) { const m = cs * .12; plate(m, m, cs - 2 * m, cs - 2 * m, cs * .1, c); const o = cs * .06; for (const [rx, ry] of [[m + o, m + o], [cs - m - o, m + o], [m + o, cs - m - o], [cs - m - o, cs - m - o]]) rivet(rx!, ry!, cs * .026) }
-function chevron(x: number, y: number, s: number, col: string, lw: number) { ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.beginPath(); ctx.moveTo(x - s * .5, y - s * .6); ctx.lineTo(x + s * .5, y); ctx.lineTo(x - s * .5, y + s * .6); ctx.stroke(); ctx.lineCap = 'butt' }
-function channel(x1: number, y1: number, x2: number, y2: number, w: number, col: string) { ctx.strokeStyle = col; ctx.lineWidth = w; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); ctx.lineCap = 'butt' }
 function hub(cs: number) { ctx.fillStyle = '#241d14'; ctx.beginPath(); ctx.arc(cs * .5, cs * .5, cs * .12, 0, 7); ctx.fill(); ctx.strokeStyle = '#e8c98a'; ctx.lineWidth = 2; ctx.stroke() }
 function drawBody(kind: Kind, cs: number, mode: number, seen?: Set<number>, nums?: number[]) {
   const flow = running ? (tprev / 220) % 1 : 0
@@ -465,9 +462,6 @@ function drawSink(x: number, y: number, cs: number, s: Sink, i: number) {
 const partName = (k: Kind | 'erase') => k === 'belt' ? '传送带' : k === 'router' ? '路由器' : k === 'arouter' ? '地址路由' : k === 'prefix' ? '前缀匹配' : k === 'mask' ? '掩码判断' : k === 'nat' ? 'NAT' : k === 'acl' ? '访问控制' : k === 'copier' ? '复制器' : k === 'cache' ? '缓存盒' : k === 'queue' ? '缓冲队列' : '擦除'
 function trayGeo() { const ts = 66, gap = 12, y = H - ts - 16, x0 = 24; return { ts, gap, y, x0 } }
 function runGeo() { const bw = 168, bh = 54; return { x: W - bw - 24, y: H - bh - 16, bw, bh } }
-function rr(x: number, y: number, w: number, h: number, r: number) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath() }
-function coverImg(img: HTMLImageElement, x: number, y: number, w: number, h: number, dim = 0) { if (!iready(img)) { ctx.fillStyle = '#1a140d'; ctx.fillRect(x, y, w, h); return } const s = Math.max(w / img.naturalWidth, h / img.naturalHeight), dw = img.naturalWidth * s, dh = img.naturalHeight * s; ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip(); ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh); if (dim) { ctx.fillStyle = `rgba(14,10,6,${dim})`; ctx.fillRect(x, y, w, h) } ctx.restore() }
-function wrapText(text: string, x: number, y: number, maxw: number, lh: number, maxLines: number) { if (!text) return; const chars = [...text]; let line = '', ln = 0; for (const ch of chars) { if (ctx.measureText(line + ch).width > maxw) { ctx.fillText(line, x, y + ln * lh); ln++; line = ch; if (ln >= maxLines) return } else line += ch } if (ln < maxLines) ctx.fillText(line, x, y + ln * lh) }
 function renderIntro() {
   ctx.fillStyle = '#120d07'; ctx.fillRect(0, 0, W, H)
   const cw = Math.min(W * 0.62, 940), ch = cw * (iready(CUT) ? CUT.naturalHeight / CUT.naturalWidth : 0.62)

@@ -11,7 +11,10 @@
  * 你搭的机器跑出来的寄存器终值必须和它一模一样 —— 判据由两个真解释器对撞产生。
  */
 import { mountHub, type Hub } from '../hub'
+import { makeKit, BRASS, STEEL, VIOLET, GOLD, GREEN, AQUA, ROSE, INK } from './kit'
+import corrUrl from '../../web/assets/gen/gates/corridor.webp'
 let HUB: Hub | null = null
+const CORR = (() => { const i = new Image(); i.src = corrUrl; return i })()
 const cv = document.getElementById('c') as HTMLCanvasElement
 const ctx = cv.getContext('2d')!
 let W = 0, H = 0
@@ -432,52 +435,83 @@ function doRun() {
   }
 }
 
-// —— 画(灰盒:方块 + 字,先不上美术)——
-function box(x: number, y: number, w: number, h: number, fill: string, stroke: string, lw = 2) {
-  ctx.fillStyle = fill; ctx.fillRect(x, y, w, h); ctx.strokeStyle = stroke; ctx.lineWidth = lw; ctx.strokeRect(x, y, w, h)
-}
+// —— 画 —— 物件即美术,和路由器那台同源(共用 game/build/kit.ts)
+const K = makeKit(ctx)
+/** 各阶段的金属配色:一眼能认出是哪一级,而不是靠读字。 */
+const STAGE_SKIN: Record<Stage, string[]> = { if: INK, id: VIOLET, ex: BRASS, mem: AQUA, wb: GREEN }
+const TOP_SKIN: Record<Top, string[]> = { wire: GREEN, hazard: GOLD, flush: ROSE, icache: AQUA }
+const TOP_LINE: Record<Top, string> = { wire: '#8fe0c8', hazard: '#f0d485', flush: '#ff9e8a', icache: '#9ec2ff' }
+
 function text(s: string, x: number, y: number, size: number, col: string, align: CanvasTextAlign = 'left', bold = false) {
   ctx.fillStyle = col; ctx.font = `${bold ? 'bold ' : ''}${size}px system-ui`; ctx.textAlign = align; ctx.fillText(s, x, y); ctx.textAlign = 'left'
 }
-/** 长提示按可用宽度折行 —— 直接 fillText 会顶出右边界被切掉。 */
 function wrap(s: string, x: number, y: number, maxw: number, lh: number, maxLines: number, size: number, col: string) {
-  ctx.fillStyle = col; ctx.font = `${size}px system-ui`; ctx.textAlign = 'left'
-  let line = '', ln = 0
-  for (const ch of [...s]) {
-    if (ctx.measureText(line + ch).width > maxw) { ctx.fillText(line, x, y + ln * lh); ln++; line = ch; if (ln >= maxLines) return }
-    else line += ch
-  }
-  if (ln < maxLines) ctx.fillText(line, x, y + ln * lh)
+  ctx.fillStyle = col; ctx.font = `${size}px system-ui`; ctx.textAlign = 'left'; K.wrapText(s, x, y, maxw, lh, maxLines)
 }
+/** 画在**金属面板上**的字。面板有渐变、深浅不一,单一颜色的字总有一块背景吃掉它 ——
+ *  所以一律「亮字 + 深描边」:先描一圈暗边再填亮色,黄铜、冷钢、玫红上都读得清。
+ *  (第一版用深色字画在中等亮度的面板上,取指那块冷灰上几乎看不见。) */
+function label(s: string, x: number, y: number, size: number, col: string, align: CanvasTextAlign = 'center', bold = true) {
+  ctx.font = `${bold ? 'bold ' : ''}${size}px system-ui`; ctx.textAlign = align
+  ctx.lineJoin = 'round'; ctx.strokeStyle = 'rgba(18,12,6,.62)'; ctx.lineWidth = Math.max(2.5, size * .22)
+  ctx.strokeText(s, x, y); ctx.fillStyle = col; ctx.fillText(s, x, y); ctx.textAlign = 'left'
+}
+/** 时空图/关卡条那类小方块:圆角 + 内亮描边,比纯填色有厚度。 */
+function chip(x: number, y: number, w: number, h: number, fill: string, stroke: string, lw = 1.6, r = 5) {
+  K.rr(x, y, w, h, r); ctx.fillStyle = fill; ctx.fill()
+  ctx.strokeStyle = stroke; ctx.lineWidth = lw; K.rr(x, y, w, h, r); ctx.stroke()
+}
+
+/** 上排零件画成真机械件:外壳 + 一条送回执行级的通道 + 名字。 */
+function drawTopPart(t: Top, x: number, y: number, w: number, h: number, useful: boolean) {
+  K.panel(x, y, w, h, TOP_SKIN[t])
+  const cx = x + w / 2, line = TOP_LINE[t]
+  if (t === 'wire') { K.channel(x + 14, y + h - 20, cx, y + h - 20, 6, line); K.channel(cx, y + h - 20, cx, y + 16, 6, line); K.chevron(cx, y + 26, 7, line, 2.6) }
+  if (t === 'hazard') { K.channel(x + 14, y + h - 20, x + w - 14, y + h - 20, 6, line); K.hub(cx, y + h - 20, 7, line) }
+  if (t === 'flush') {   // 作废 = 把路封死:一个红叉
+    ctx.strokeStyle = line; ctx.lineWidth = 4; ctx.lineCap = 'round'
+    ctx.beginPath(); ctx.moveTo(cx - 11, y + h - 28); ctx.lineTo(cx + 11, y + h - 14); ctx.moveTo(cx + 11, y + h - 28); ctx.lineTo(cx - 11, y + h - 14); ctx.stroke(); ctx.lineCap = 'butt'
+  }
+  if (t === 'icache') { K.channel(x + 14, y + h - 20, x + w - 14, y + h - 20, 6, line); K.channel(x + 14, y + h - 32, x + w - 14, y + h - 32, 4, '#2a3a52') }
+  label(toolName(t), cx, y + 26, 15, '#fff6e4')
+  text(useful ? '' : '接在这里没用', cx, y + h - 6, 10, RED, 'center')
+}
+
 function frame() {
-  ctx.fillStyle = '#141019'; ctx.fillRect(0, 0, W, H)
+  //  你在机器内部 —— 和路由器那台同一张走廊底图,一眼是同一个世界
+  K.coverImg(CORR, 0, 0, W, H, 0.78)
   const lv = L(), ref = REF()
+
   // 关卡条
   for (const b of levelBtns()) {
     const on = b.i === lvl, ul = unlocked(b.i)
-    box(b.x, b.y, b.bw, b.bh, on ? '#2a2340' : ul ? '#1b1622' : '#151119', on ? '#d8c4ff' : ul ? '#4a4158' : '#262030', on ? 2.5 : 1.5)
-    text(`${passed(b.i) ? '✓ ' : ul ? '' : '🔒 '}${b.i}. ${lv && LEVELS[b.i]!.name.replace('真·CPU · ', '').replace('终关 · ', '终关:')}`,
-      b.x + b.bw / 2, b.y + 21, 12, on ? CREAM : ul ? DIM : '#3f3850', 'center', on)
+    if (on) K.panel(b.x, b.y, b.bw, b.bh, BRASS, 7)
+    else chip(b.x, b.y, b.bw, b.bh, ul ? 'rgba(30,24,16,.82)' : 'rgba(18,14,9,.8)', ul ? '#6a5a3a' : '#332c1e', 1.5, 7)
+    const cap = `${passed(b.i) ? '✓ ' : ul ? '' : '🔒 '}${b.i}. ${LEVELS[b.i]!.name.replace('真·CPU · ', '').replace('终关 · ', '终关:')}`
+    if (on) label(cap, b.x + b.bw / 2, b.y + 21, 12, '#fff6e4')
+    else text(cap, b.x + b.bw / 2, b.y + 21, 12, ul ? '#c8bfa8' : '#6a5a3a', 'center')
   }
   text(lv.name, 24, 78, 19, CREAM, 'left', true)
   text(lv.story, 24, 100, 13, '#c8bfa8')
   wrap(lv.hint, 24, 124, W - 48, 19, 2, 13, AMBER)
 
-  // 左栏:程序 / 存储器 / 参考
-  text('程序', 24, 172, 13, DIM)
+  // 左栏:程序 / 存储器 / 参考 —— 压在一块底板上,别浮在背景图上
+  const leftH = 44 + lv.prog.length * 24 + (lv.mem.length ? 44 : 0) + 46
+  K.slab(14, 158, 254, leftH)
+  text('程序', 26, 180, 13, DIM)
   lv.prog.forEach((ins, i) => {
-    const y = 194 + i * 24
+    const y = 202 + i * 24
     const active = run?.trace.some(c => c.slots.some(s => s === i))
-    text(`${i}`, 26, y, 12, DIM)
-    ctx.font = '14px ui-monospace, monospace'; ctx.fillStyle = active ? CREAM : '#7a6f5a'; ctx.fillText(instrText(ins), 48, y)
+    text(`${i}`, 28, y, 12, DIM)
+    ctx.font = '14px ui-monospace, monospace'; ctx.fillStyle = active ? CREAM : '#7a6f5a'; ctx.fillText(instrText(ins), 50, y)
   })
-  let ly = 194 + lv.prog.length * 24 + 14
+  let ly = 202 + lv.prog.length * 24 + 14
   if (lv.mem.length) {
-    text('数据存储器', 24, ly, 12, DIM)
-    text(lv.mem.map((v, i) => `[${i}]=${v}`).join('  '), 24, ly + 20, 13, '#8fb4ff'); ly += 44
+    text('数据存储器', 26, ly, 12, DIM)
+    text(lv.mem.map((v, i) => `[${i}]=${v}`).join('  '), 26, ly + 20, 13, '#8fb4ff'); ly += 44
   }
-  text('参考答案 = 同一段程序顺序执行一遍', 24, ly, 12, DIM)
-  text(ref.map((v, i) => `r${i}=${v}`).join('  '), 24, ly + 22, 14, TEAL)
+  text('参考答案 = 同一段程序顺序执行一遍', 26, ly, 12, DIM)
+  text(ref.map((v, i) => `r${i}=${v}`).join('  '), 26, ly + 22, 14, TEAL)
 
   const g = geo()   // 时空图也要用它的坐标,所以提到分支外面
   // —— 切级关:换一块板 ——
@@ -487,64 +521,66 @@ function frame() {
     text('一条指令的组合逻辑 · 在两件事之间下刀(点缝隙)插一个流水寄存器', sg.x0, sg.y0 - 34, 12, DIM)
     sg.ops.forEach((o, i) => {
       const x = sg.x0 + i * (sg.cw + sg.gap), heavy = segs[seg[i]!] === tick
-      box(x, sg.y0, sg.cw, sg.ch, heavy ? '#3a2418' : '#241d33', heavy ? AMBER : '#7d5fa8')
-      text(o.short, x + sg.cw / 2, sg.y0 + 34, 17, '#d8c4ff', 'center', true)
-      text(o.name, x + sg.cw / 2, sg.y0 + 56, 10, DIM, 'center')
-      text(`工作量 ${o.work}`, x + sg.cw / 2, sg.y0 + 78, 12, heavy ? AMBER : CREAM, 'center', true)
-      //  这一段的合计:画在段的第一张卡上方
+      K.panel(x, sg.y0, sg.cw, sg.ch, STAGE_SKIN[o.role])
+      //  工作量画成一根「多长的活」——比只写数字直观:条越长这一段越重
+      const bw = (sg.cw - 32) * (o.work / 5)
+      K.channel(x + 16, sg.y0 + sg.ch - 13, x + 16 + bw, sg.y0 + sg.ch - 13, 7, heavy ? '#ffcf7a' : 'rgba(20,14,8,.55)')
+      label(o.short, x + sg.cw / 2, sg.y0 + 34, 17, '#fff6e4')
+      label(o.name, x + sg.cw / 2, sg.y0 + 54, 10, 'rgba(255,246,228,.86)', 'center', false)
+      label(`工作量 ${o.work}`, x + sg.cw / 2, sg.y0 + 72, 12, heavy ? '#ffdf9a' : '#fff6e4')
       if (i === 0 || seg[i] !== seg[i - 1]) {
         const w = segs[seg[i]!]!
-        //  「最重」那句要短:段一多,它会压到下一段的标签上
         text(`第 ${seg[i]! + 1} 段 · 合计 ${w}${w === tick ? ' ←定拍长' : ''}`, x, sg.y0 - 12, 11, w === tick ? AMBER : DIM)
       }
     })
-    //  刀口:切了画一根实线(流水寄存器),没切画一条虚的「可以下刀」提示
+    //  刀口:切了就竖一道黄铜闸(流水寄存器),没切画一条虚线提示可以下刀
     for (let i = 0; i < sg.ops.length - 1; i++) {
       const x = sg.x0 + (i + 1) * sg.cw + i * sg.gap + sg.gap / 2
-      ctx.strokeStyle = cuts[i] ? TEAL : '#4a4158'
-      ctx.lineWidth = cuts[i] ? 4 : 1.5
-      ctx.setLineDash(cuts[i] ? [] : [4, 4])
-      ctx.beginPath(); ctx.moveTo(x, sg.y0 - 6); ctx.lineTo(x, sg.y0 + sg.ch + 6); ctx.stroke()
-      ctx.setLineDash([])
-      text(cuts[i] ? '寄存器' : '+', x, sg.y0 + sg.ch + 22, cuts[i] ? 10 : 15, cuts[i] ? TEAL : '#5a5170', 'center', true)
+      if (cuts[i]) {
+        K.plate(x - 6, sg.y0 - 4, 12, sg.ch + 8, 3, BRASS)
+        K.rivet(x, sg.y0 + 6, 2.2); K.rivet(x, sg.y0 + sg.ch - 6, 2.2)
+        text('寄存器', x, sg.y0 + sg.ch + 22, 10, AMBER, 'center', true)
+      } else {
+        ctx.strokeStyle = '#5a5170'; ctx.lineWidth = 1.5; ctx.setLineDash([4, 4])
+        ctx.beginPath(); ctx.moveTo(x, sg.y0 - 6); ctx.lineTo(x, sg.y0 + sg.ch + 6); ctx.stroke(); ctx.setLineDash([])
+        text('+', x, sg.y0 + sg.ch + 24, 15, '#7a6f8a', 'center', true)
+      }
     }
     const cutN = cuts.filter(Boolean).length
-    text(`拍长 = 最重那一段 = ${tick}`, sg.x0, sg.y0 + sg.ch + 52, 14, AMBER, 'left', true)
+    K.slab(sg.x0 - 10, sg.y0 + sg.ch + 34, Math.min(700, W - sg.x0 - 270), 78)
+    text(`拍长 = 最重那一段 = ${tick}`, sg.x0, sg.y0 + sg.ch + 60, 14, AMBER, 'left', true)
     if (run) {
-      text(`拍数 ${run.cycles}(其中停顿 ${run.trace.filter(c => c.stalled).length})`, sg.x0 + 220, sg.y0 + sg.ch + 52, 14, CREAM)
+      text(`拍数 ${run.cycles}(其中停顿 ${run.trace.filter(c => c.stalled).length})`, sg.x0 + 200, sg.y0 + sg.ch + 60, 14, CREAM)
       const t = totalTime(), okk = resultOk()
-      text(`总时间 = ${run.cycles} × ${tick} = ${t}`, sg.x0 + 430, sg.y0 + sg.ch + 52, 15, t <= lv.par.cycles ? TEAL : CREAM, 'left', true)
-      text(okk ? (t <= lv.par.cycles ? '✓ 结果对 · 已达目标' : '✓ 结果对 —— 但还能更快') : '✕ 结果错了', sg.x0, sg.y0 + sg.ch + 76, 13, okk ? (t <= lv.par.cycles ? TEAL : AMBER) : RED)
-    } else text('按「运行机器」看它跑', sg.x0 + 220, sg.y0 + sg.ch + 52, 13, DIM)
-    text(`目标:总时间 ≤ ${lv.par.cycles}   ·   现在切了 ${cutN} 刀 = ${cutN + 1} 段`, sg.x0, sg.y0 + sg.ch + 100, 12, DIM)
+      text(`总时间 = ${run.cycles} × ${tick} = ${t}`, sg.x0 + 400, sg.y0 + sg.ch + 60, 15, t <= lv.par.cycles ? TEAL : CREAM, 'left', true)
+      text(okk ? (t <= lv.par.cycles ? '✓ 结果对 · 已达目标' : '✓ 结果对 —— 但还能更快') : '✕ 结果错了', sg.x0, sg.y0 + sg.ch + 84, 13, okk ? (t <= lv.par.cycles ? TEAL : AMBER) : RED)
+    } else text('按「运行机器」看它跑', sg.x0 + 200, sg.y0 + sg.ch + 60, 13, DIM)
+    text(`目标:总时间 ≤ ${lv.par.cycles}   ·   现在切了 ${cutN} 刀 = ${cutN + 1} 段`, sg.x0 + 320, sg.y0 + sg.ch + 84, 12, DIM)
   } else {
   // 机器:上排旁路/冒险检测,下排五级
-  text('旁路线 / 冒险检测', g.x0, g.topY - 10, 12, DIM)
+  text('旁路线 / 冒险检测 / 分支作废 / 指令缓存', g.x0, g.topY - 10, 12, DIM)
   const exSlot = slots.indexOf('ex')
   for (let s = 0; s < NSLOT; s++) {
     const x = g.x0 + s * (g.cw + 10), t = tops[s]
-    box(x, g.topY, g.cw, g.ch,
-      t === 'wire' ? '#1d3a34' : t === 'flush' ? '#2a1030' : t === 'icache' ? '#16283f' : t === 'hazard' ? '#3a2f1a' : '#1b1622',
-      t === 'wire' ? TEAL : t === 'flush' ? '#c07adf' : t === 'icache' ? '#6f9fe0' : t === 'hazard' ? AMBER : '#332c40')
-    if (t) {
-      //  三种零件各有各的「有用位置」,画错了画面就在撒谎 —— 加零件时这三处要一起加
-      const col = t === 'wire' ? '#8fe0c8' : t === 'flush' ? '#e0a8ff' : t === 'icache' ? '#9ec2ff' : AMBER
-      const useful = t === 'wire' ? (exSlot >= 0 && s > exSlot) : t === 'flush' ? slots[s] === 'ex' : t === 'icache' ? slots[s] === 'if' : slots[s] === 'id'
-      const what = t === 'wire' ? '↩ 送回执行级' : t === 'flush' ? '跳了就划掉前面几条' : t === 'icache' ? '取指不用再跟访存抢' : '值没到就停一拍'
-      text(toolName(t), x + g.cw / 2, g.topY + 34, 15, col, 'center', true)
-      text(useful ? what : '接在这里没用', x + g.cw / 2, g.topY + 58, 11, useful ? DIM : RED, 'center')
-    }
+    if (!t) { chip(x, g.topY, g.cw, g.ch, 'rgba(22,17,10,.6)', '#3a3226', 1.5, 9); text('空', x + g.cw / 2, g.topY + g.ch / 2 + 5, 13, '#4a4158', 'center'); continue }
+    const useful = t === 'wire' ? (exSlot >= 0 && s > exSlot) : t === 'flush' ? slots[s] === 'ex' : t === 'icache' ? slots[s] === 'if' : slots[s] === 'id'
+    drawTopPart(t, x, g.topY, g.cw, g.ch, useful)
   }
   for (let s = 0; s < NSLOT; s++) {
     const x = g.x0 + s * (g.cw + 10), st = slots[s]
-    box(x, g.y0, g.cw, g.ch, st ? '#241d33' : '#1b1622', st ? '#7d5fa8' : '#332c40')
-    text(`第 ${s + 1} 槽`, x + 8, g.y0 + 18, 11, DIM)
-    if (st) { text(STAGE_NAME[st], x + g.cw / 2, g.y0 + 46, 18, '#d8c4ff', 'center', true); text(st.toUpperCase(), x + g.cw / 2, g.y0 + 68, 11, DIM, 'center') }
-    else text('空', x + g.cw / 2, g.y0 + 50, 14, '#4a4158', 'center')
+    if (!st) { chip(x, g.y0, g.cw, g.ch, 'rgba(22,17,10,.6)', '#3a3226', 1.5, 9); text(`第 ${s + 1} 槽`, x + 10, g.y0 + 18, 11, DIM); text('空', x + g.cw / 2, g.y0 + g.ch / 2 + 6, 14, '#4a4158', 'center'); continue }
+    K.panel(x, g.y0, g.cw, g.ch, STAGE_SKIN[st])
+    //  一条贯穿的通道:指令就是从这儿流过去的
+    //  贯穿通道压在副标下面一点 —— 同一个 y 会把 IF/ID/EX 那行字盖掉
+    K.channel(x + 10, g.y0 + g.ch - 11, x + g.cw - 10, g.y0 + g.ch - 11, 6, 'rgba(20,14,8,.5)')
+    K.chevron(x + g.cw - 18, g.y0 + g.ch - 11, 7, 'rgba(255,240,210,.55)', 2.4)
+    label(`第 ${s + 1} 槽`, x + 10, g.y0 + 18, 11, 'rgba(255,246,228,.8)', 'left', false)
+    label(STAGE_NAME[st], x + g.cw / 2, g.y0 + 48, 18, '#fff6e4')
+    label(st.toUpperCase(), x + g.cw / 2, g.y0 + 66, 11, 'rgba(255,246,228,.7)', 'center', false)
   }
   if (exSlot >= 0) for (let s = exSlot + 1; s < NSLOT; s++) if (tops[s] === 'wire') { // 旁路线画成一条真的绕回去的线
     const xa = g.x0 + s * (g.cw + 10) + g.cw / 2, xb = g.x0 + exSlot * (g.cw + 10) + g.cw / 2
-    ctx.strokeStyle = TEAL; ctx.lineWidth = 2.5; ctx.beginPath()
+    ctx.strokeStyle = TEAL; ctx.lineWidth = 3; ctx.beginPath()
     ctx.moveTo(xa, g.topY + g.ch); ctx.lineTo(xa, g.topY + g.ch + 10); ctx.lineTo(xb, g.topY + g.ch + 10); ctx.lineTo(xb, g.y0); ctx.stroke()
     ctx.beginPath(); ctx.moveTo(xb - 5, g.y0 - 8); ctx.lineTo(xb, g.y0); ctx.lineTo(xb + 5, g.y0 - 8); ctx.stroke()
   }
@@ -552,20 +588,21 @@ function frame() {
 
   // 时空图 —— 课本上那张斜梯形,是这台机器自己跑出来的。
   // 起点要**同时**让开机器和左栏:左栏会随指令条数/有没有存储器面板变高,写死就会被压上。
-  const ty = Math.max(g.y0 + g.ch + 46, ly + 56)
-  text('时空图(每一拍,哪条指令在哪一级;红=被停顿卡住,紫色划掉=被分支作废,蓝色拍号=取指抢不到存储器)', 24, ty - 12, 13, DIM)
+  const ty = Math.max(g.y0 + g.ch + (lv.split ? 128 : 46), ly + 56)
+  text(`时空图(每一拍,哪条指令在哪一${lv.split ? '段' : '级'};红=被停顿卡住,紫色划掉=被分支作废${lv.split ? '' : ',蓝色拍号=取指抢不到存储器'})`, 24, ty - 12, 13, DIM)
   if (run) {
     const cwid = Math.min(52, (W - 80) / Math.max(1, run.trace.length)), rh = 28
+    K.slab(14, ty - 2, Math.min(W - 28, 56 + run.trace.length * cwid + 12), lv.prog.length * rh + 34)
     lv.prog.forEach((_, i) => {
-      text(`#${i}`, 24, ty + 20 + i * rh, 12, DIM)
+      text(`#${i}`, 26, ty + 20 + i * rh, 12, DIM)
       run!.trace.forEach((c, t) => {
         const s = c.slots.indexOf(i); if (s < 0) return
-        const st = slots[s], x = 56 + t * cwid, held = c.stalled && s <= (lv.split ? layoutFromCuts(lv.split.ops, cuts).idS : slots.indexOf('id'))
+        const st = slots[s], x = 56 + t * cwid
+        const held = c.stalled && s <= (lv.split ? layoutFromCuts(lv.split.ops, cuts).idS : slots.indexOf('id'))
         const killed = !!c.killed?.includes(i)   // 这一拍被分支作废划掉:它到此为止,后面不再出现
-        box(x, ty + 4 + i * rh, cwid - 4, rh - 6,
-          killed ? '#2a1030' : held ? '#3a2118' : '#22304a',
-          killed ? '#c07adf' : held ? RED : '#4a6fb0', 1.5)
-        //  切级关里一段可能装着好几件事,标不出单个阶段名 —— 标「第几段」,和上面那块板对得上
+        chip(x, ty + 4 + i * rh, cwid - 4, rh - 6,
+          killed ? '#2a1030' : held ? '#3a2118' : '#1c2a42',
+          killed ? '#c07adf' : held ? RED : '#4a6fb0')
         text(lv.split ? `${s + 1}段` : st ? STAGE_NAME[st] : '·', x + (cwid - 4) / 2, ty + 22 + i * rh, 12, killed ? '#e0bfff' : CREAM, 'center')
         if (killed) { // 真的划一道:走错路取进来的,当场废掉
           ctx.strokeStyle = '#e07adf'; ctx.lineWidth = 2; ctx.beginPath()
@@ -584,9 +621,10 @@ function frame() {
 
   // 右栏:寄存器 实际 vs 参考
   const rx = W - 250
-  text('寄存器终值', rx, 172, 13, DIM)
+  K.slab(rx - 16, 158, 236, 250)
+  text('寄存器终值', rx, 180, 13, DIM)
   for (let i = 0; i < NREG; i++) {
-    const y = 196 + i * 26, got = run ? run.regs[i]! : null, want = ref[i]!
+    const y = 206 + i * 26, got = run ? run.regs[i]! : null, want = ref[i]!
     text(`r${i}`, rx, y, 14, DIM)
     ctx.font = '15px ui-monospace, monospace'
     ctx.fillStyle = got === null ? '#4a4158' : got === want ? TEAL : RED
@@ -595,32 +633,43 @@ function frame() {
   }
   //  切级关的单位不一样:件→刀、拍→总时间。共用一套字段但**显示要跟着换**,不然读数在骗人。
   const sp2 = lv.split
-  text(sp2 ? `目标 ≤${lv.par.parts} 刀 · 总时间 ≤${lv.par.cycles}` : `目标 ≤${lv.par.parts} 件 · ≤${lv.par.cycles} 拍`, rx, 316, 12, DIM)
+  text(sp2 ? `目标 ≤${lv.par.parts} 刀 · 总时间 ≤${lv.par.cycles}` : `目标 ≤${lv.par.parts} 件 · ≤${lv.par.cycles} 拍`, rx, 326, 12, DIM)
   if (run) {
     const okk = resultOk()
     const used = sp2 ? cuts.filter(Boolean).length : partCount()
     const score = sp2 ? totalTime() : run.cycles
     const mp = used <= lv.par.parts, mc = score <= lv.par.cycles
-    text(okk ? '✓ 结果对了' : run.overrun ? '✕ 机器空转(五级摆得不成样子)' : '✕ 有寄存器读到了旧值', rx, 342, 16, okk ? TEAL : RED, 'left', true)
+    text(okk ? '✓ 结果对了' : run.overrun ? '✕ 机器空转(五级摆得不成样子)' : '✕ 有寄存器读到了旧值', rx, 352, 16, okk ? TEAL : RED, 'left', true)
     text(sp2 ? `总时间 ${score} · 切了 ${used} 刀${okk ? `  ${mp ? '🏅省刀 ' : ''}${mc ? '🏅最快' : ''}` : ''}`
-      : `用了 ${score} 拍 · ${used} 件${okk ? `  ${mp ? '🏅省料 ' : ''}${mc ? '🏅飞快' : ''}` : ''}`, rx, 364, 13, CREAM)
+      : `用了 ${score} 拍 · ${used} 件${okk ? `  ${mp ? '🏅省料 ' : ''}${mc ? '🏅飞快' : ''}` : ''}`, rx, 374, 13, CREAM)
     const stalls = run.trace.filter(c => c.stalled).length
-    text(stalls || run.jams ? `停顿 ${stalls} 拍${sp2 ? '' : ` · 抢门 ${run.jams} 拍`}` : '一拍都没停', rx, 384, 12, stalls || run.jams ? AMBER : TEAL)
+    text(stalls || run.jams ? `停顿 ${stalls} 拍${sp2 ? '' : ` · 抢门 ${run.jams} 拍`}` : '一拍都没停', rx, 394, 12, stalls || run.jams ? AMBER : TEAL)
   }
 
   // 零件盘
   const T = trayGeo(), items = isSplit() ? [] : levelTools()   // 切级关不摆零件,盘子就别画了
   text(isSplit() ? '这一关不摆零件 —— 点微操作之间的缝隙下刀(再点一下撤销)' : `零件盘 · 点一个,再点槽位放下${tool === 'wire' ? '(旁路线放在结果已经出炉的那一级上方)' : tool === 'hazard' ? '(冒险检测放在译码级上方)' : tool === 'flush' ? '(分支作废放在执行级上方 —— 分支在哪一级判出跳不跳,就装在哪一级)' : tool === 'icache' ? '(指令缓存放在取指级上方 —— 让取指有自己的存储器,不用再跟访存抢)' : ''}`, T.x0, T.y - 10, 12, AMBER)
-  items.forEach((t, i) => {
-    const x = T.x0 + i * (T.ts + T.gap), on = tool === t
-    box(x, T.y, T.ts, T.ts, on ? '#3a342a' : '#20190f', on ? '#ffe6a8' : '#5a4e3a', on ? 3 : 1.5)
-    text(toolName(t), x + T.ts / 2, T.y + T.ts / 2 + 5, 13, on ? CREAM : DIM, 'center', on)
-  })
+  if (items.length) {
+    ctx.fillStyle = 'rgba(30,24,16,.6)'; ctx.fillRect(T.x0 - 6, T.y - 4, (T.ts + T.gap) * items.length + 6, T.ts + 8)
+    items.forEach((t, i) => {
+      const x = T.x0 + i * (T.ts + T.gap), on = tool === t
+      const skin = t === 'erase' ? STEEL : (['wire', 'hazard', 'flush', 'icache'] as Tool[]).includes(t) ? TOP_SKIN[t as Top] : STAGE_SKIN[t as Stage]
+      K.panel(x, T.y, T.ts, T.ts, skin, 8)
+      if (t === 'erase') {
+        ctx.strokeStyle = RED; ctx.lineWidth = 3.5; ctx.lineCap = 'round'
+        ctx.beginPath(); ctx.moveTo(x + 26, T.y + 22); ctx.lineTo(x + T.ts - 26, T.y + T.ts - 34)
+        ctx.moveTo(x + T.ts - 26, T.y + 22); ctx.lineTo(x + 26, T.y + T.ts - 34); ctx.stroke(); ctx.lineCap = 'butt'
+      }
+      label(toolName(t), x + T.ts / 2, T.y + T.ts - 10, 12, '#fff6e4')
+      if (on) { ctx.strokeStyle = '#ffe6a8'; ctx.lineWidth = 3; K.rr(x - 2, T.y - 2, T.ts + 4, T.ts + 4, 9); ctx.stroke() }
+    })
+  }
   const R = runBtn()
-  box(R.x, R.y, R.bw, R.bh, '#2f5a3f', '#7fe8c0', 2.5)
-  text('▶ 运行机器', R.x + R.bw / 2, R.y + R.bh / 2 + 6, 17, CREAM, 'center', true)
+  K.panel(R.x, R.y, R.bw, R.bh, GREEN, 9)
+  label('▶ 运行机器', R.x + R.bw / 2, R.y + R.bh / 2 + 6, 17, '#f2fff0')
   requestAnimationFrame(frame)
 }
+
 loadLevel(0)
 requestAnimationFrame(frame)
 
