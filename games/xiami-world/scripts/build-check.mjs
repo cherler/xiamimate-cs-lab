@@ -30,7 +30,7 @@ const build = (lvl, fn, arg) => p.evaluate(({ L, src, a }) => {
   return window.__state()
 }, { L: lvl, src: fn, a: arg ?? null })
 
-console.log('\n搭机器 · 八关真地址冒烟\n')
+console.log('\n搭机器 · 十三关真地址冒烟\n')
 
 /* ── L0 先认一位:第 0 位=0 走直、=1 拐弯 ── */
 {
@@ -99,48 +99,97 @@ console.log('\n搭机器 · 八关真地址冒烟\n')
   ok(!bad.pass, `L6 反例:不用复制器直走→两口收不满→不通过(by=[${bad.deliveredBy}])`)
 }
 
-/* ── L7~L8 NAT:出方向改写地址 → 回程按会话表还原(同主题加一层)── */
+/* ── L7 MAC 表自学习:头一个包泛到三个口,学会之后只进主机那一个口 ──
+   判据的力气全在**计数**上:主机口 4 = 1 份泛洪 + 3 份直送,两个旁口各只有 1 份。
+   纯泛洪会撑爆旁口、纯直送旁口收不到 —— 只有「先泛后学」这一种走法能同时对上三个数。 */
 {
-  const out = await build(7, `P(3,1,'nat',0); H(3,2,10);`)
-  ok(out.pass && out.wrong === 0, `L7 NAT出方向 三台机器对外都成地址0=通过(by=[${out.deliveredBy}], parts=${out.parts})`)
-  const raw = await build(7, `H(3,1,10);`)
-  ok(!raw.pass && raw.wrong > 0, `L7 反例:不过 NAT 直送→私网地址原样出门→不通过(wrong=${raw.wrong})`)
+  const learn = await build(7, `
+    P(2,1,'belt',0); H(2,2,10);                            // 主机口直送道(泛洪的那一份也并进这条道)
+    P(3,1,'cache',0); P(3,2,'belt',0); P(3,3,'copier',0);   // 没学过→直行去泛洪;学过→拐弯上直送道
+    P(4,3,'belt',1); P(5,3,'belt',0); P(5,4,'copier',0);    // 泛洪第二级:再复制一份,凑够三个口
+    P(4,4,'belt',0); H(4,5,10);
+    P(6,4,'belt',0); H(6,5,10);`)
+  ok(learn.pass && learn.wrong === 0 && learn.lost === 0,
+    `L7 MAC自学习 泛一次就学会,之后只走主机口=通过(by=[${learn.deliveredBy}], parts=${learn.parts})`)
+  const allFlood = await build(7, `
+    P(2,1,'belt',0); H(2,2,10);
+    P(3,1,'belt',0); P(3,2,'belt',0); P(3,3,'copier',0);    // 把 MAC 表换成传送带 = 永远学不会
+    P(4,3,'belt',1); P(5,3,'belt',0); P(5,4,'copier',0);
+    P(4,4,'belt',0); H(4,5,10);
+    P(6,4,'belt',0); H(6,5,10);`)
+  ok(!allFlood.pass && allFlood.wrong > 0,
+    `L7 反例:不学习、包包都泛洪→两个旁口各收 4 份(该只收 1 份)→不通过(by=[${allFlood.deliveredBy}])`)
+  const noFlood = await build(7, `
+    P(2,1,'belt',0); H(2,2,10);
+    P(3,1,'cache',0); P(3,2,'belt',3);`)                    // 没学过的也直接上直送道 = 从不泛洪
+  ok(!noFlood.pass && noFlood.deliveredBy[1] === 0 && noFlood.deliveredBy[2] === 0,
+    `L7 反例:从不泛洪→头一个包也直送→两个旁口一份都收不到→不通过(by=[${noFlood.deliveredBy}])`)
+}
 
-  const back = await build(8, `
+/* ── L8~L9 NAT:出方向改写地址 → 回程按会话表还原(同主题加一层)── */
+{
+  const out = await build(8, `P(3,1,'nat',0); H(3,2,10);`)
+  ok(out.pass && out.wrong === 0, `L8 NAT出方向 三台机器对外都成地址0=通过(by=[${out.deliveredBy}], parts=${out.parts})`)
+  const raw = await build(8, `H(3,1,10);`)
+  ok(!raw.pass && raw.wrong > 0, `L8 反例:不过 NAT 直送→私网地址原样出门→不通过(wrong=${raw.wrong})`)
+
+  const back = await build(9, `
     P(3,1,'nat',0);
     P(3,2,'arouter',0,1); H(3,3,10);
     P(2,2,'belt',0); P(2,3,'arouter',0,0); H(2,4,10);
     P(1,3,'belt',0); H(1,4,10);`)
-  ok(back.pass && back.wrong === 0, `L8 NAT回程 三台机器各归各位=通过(by=[${back.deliveredBy}], parts=${back.parts})`)
-  ok(back.natDrop === 1 && back.lost === 1,
-    `L8 未建会话的回包被 NAT 丢掉(natDrop=${back.natDrop}) —— 这就是外网连不进来的原因`)
-  const noNat = await build(8, `P(3,1,'belt',0); H(3,2,10);`)
-  ok(!noNat.pass && noNat.wrong > 0, `L8 反例:不经 NAT→会话号当地址送→不通过(wrong=${noNat.wrong})`)
+  ok(back.pass && back.wrong === 0, `L9 NAT回程 三台机器各归各位=通过(by=[${back.deliveredBy}], parts=${back.parts})`)
+  ok(back.okDrop === 1 && back.lost === 1,
+    `L9 未建会话的回包被 NAT 丢掉(okDrop=${back.okDrop}) —— 这就是外网连不进来的原因`)
+  const noNat = await build(9, `P(3,1,'belt',0); H(3,2,10);`)
+  ok(!noNat.pass && noNat.wrong > 0, `L9 反例:不经 NAT→会话号当地址送→不通过(wrong=${noNat.wrong})`)
 }
 
-/* ── L9 出口拥塞:一峰同拍涌到,不限速就丢包 ── */
+/* ── L10 访问控制:例外放行(101)必须摆在通配拦截(10*)的上游 ──
+   注意两条反例判的是**两种不同的错**:摆反顺序 → 例外轮不上、该放的被拦;
+   干脆不装规则 → 该拦的也出网了。 */
 {
-  const good = await build(9, `
+  const lay = `
+    P(3,1,'prefix',0,a[0]); P(3,2,'acl',0,a[1]); H(3,3,10);   // ① 放行 101(命中就绕开后面的规则) ② 拦截 10*
+    P(2,1,'belt',0); P(2,2,'belt',0); P(2,3,'belt',1);`       // 放行道:从规则①上方绕过规则②,再并回主道
+  const good = await build(10, lay, [0, 1])
+  ok(good.pass && good.wrong === 0 && good.deliveredBy[0] === 4,
+    `L10 访问控制 例外在前=通过(放行 ${good.deliveredBy[0]}/4, parts=${good.parts})`)
+  ok(good.okDrop === 2 && good.lost === 2,
+    `L10 命中拦截规则的 100 是**真的被丢掉**(okDrop=${good.okDrop}),不是送去了某个口`)
+  const swapped = await build(10, `
+    P(3,1,'acl',0,1); P(3,2,'prefix',0,0); H(3,3,10);
+    P(2,2,'belt',0); P(2,3,'belt',1);`)
+  ok(!swapped.pass && swapped.lost > (good.lost ?? 0),
+    `L10 反例:拦截(10*)摆在例外(101)前面→例外永远轮不上、该放的也被拦(丢 ${swapped.lost} 个)`)
+  const noRule = await build(10, `H(3,1,10);`)
+  ok(!noRule.pass && noRule.lost === 0,
+    `L10 反例:一条规则都不装直通→该拦的 100 也出了网(丢 ${noRule.lost} 个,放行 ${noRule.deliveredBy[0]})`)
+}
+
+/* ── L11 出口拥塞:一峰同拍涌到,不限速就丢包 ── */
+{
+  const good = await build(11, `
     P(3,1,'arouter',0,0);                                  // 地址第0位:1→上(网段1), 0→直行(网段0)
     P(2,1,'belt',3); P(1,1,'belt',0); P(1,2,'queue',0,0); H(1,3,10);   // 网段1 支路接队列限速
     H(3,2,3); P(3,4,'belt',1); P(4,4,'belt',1); P(5,4,'belt',0); P(5,5,'queue',0,0); H(5,6,10);`)
-  ok(good.lost === 0 && good.delivered > 0, `L9 拥塞 接队列限速→零丢包(lost=${good.lost}, by=[${good.deliveredBy}])`)
-  const bad = await build(9, `
+  ok(good.lost === 0 && good.delivered > 0, `L11 拥塞 接队列限速→零丢包(lost=${good.lost}, by=[${good.deliveredBy}])`)
+  const bad = await build(11, `
     P(3,1,'arouter',0,0);
     P(2,1,'belt',3); P(1,1,'belt',0); H(1,2,10);
     H(3,2,3); P(3,4,'belt',1); P(4,4,'belt',1); P(5,4,'belt',0); H(5,5,10);`)   // 同样接通但不限速
-  ok(bad.lost > 0, `L9 反例:不接队列直怼出口→丢包(lost=${bad.lost})`)
+  ok(bad.lost > 0, `L11 反例:不接队列直怼出口→丢包(lost=${bad.lost})`)
 }
 
-/* ── L10 终关:掩码判同网段 → 前缀匹配选路 → 没人认领走默认口 ── */
+/* ── L12 终关:掩码判同网段 → 前缀匹配选路 → 没人认领走默认口 ── */
 {
-  const s = await build(10, `
+  const s = await build(12, `
     P(3,1,'mask',0,1); P(3,2,'prefix',0,0); P(3,3,'prefix',0,1); H(3,4,10);
     P(2,1,'belt',3); P(1,1,'belt',3); H(0,1,10);
     P(2,2,'belt',3); H(1,2,10);
     H(2,3,10);`)
   ok(s.pass && s.wrong === 0 && s.lost === 0,
-    `L10 终关 四个口各2=通过(by=[${s.deliveredBy}], parts=${s.parts}, cyc=${s.cycles})`)
+    `L12 终关 四个口各2=通过(by=[${s.deliveredBy}], parts=${s.parts}, cyc=${s.cycles})`)
 }
 
 /* ── 通用 ── */

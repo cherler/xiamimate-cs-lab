@@ -23,7 +23,7 @@ const DX = [1, 0, -1, 0], DY = [0, 1, 0, -1] // 0右 1下 2左 3上
 const SHAPE_COL = ['#e0954b', '#5b8def', '#3fa78f']
 const TEAL = '#49a791', AMBER = '#e8c98a', CREAM = '#efe6d2', RED = '#c8452e', BLUE = '#5b8def'
 type Dir = 0 | 1 | 2 | 3
-type Kind = 'belt' | 'router' | 'copier' | 'cache' | 'queue' | 'arouter' | 'prefix' | 'mask' | 'nat'
+type Kind = 'belt' | 'router' | 'copier' | 'cache' | 'queue' | 'arouter' | 'prefix' | 'mask' | 'nat' | 'acl'
 type Piece = { kind: Kind; dir: Dir; mode: number; seen?: Set<number>; store?: number[]; next?: number }
 const QUEUE_MODES = ['限速', '排序'] // 缓冲队列两种放法:限速=每拍放1个(先到先出,安全默认) / 排序=按号重排(缺号会等)
 /* 前缀匹配器:一条路由条目 = 一个前缀模式(从最高位写起,'*'=不管这一位)。
@@ -39,6 +39,10 @@ function prefixHit(pat: string, num: number, nbits: number) {
   return true
 }
 const levelRoutes = () => LEVELS[lvl]?.routes ?? []
+/* 访问控制(家用路由器上叫「家长控制 / 上网限制」):规则表从上往下,**第一条匹配的就生效**。
+   〈前缀匹配〉命中 = 放行(拐弯走放行道,后面的规则不再看它);
+   〈访问控制〉命中 = 「当场拦下」(没有出口 —— 包是真的被丢掉,不是送去某个口)。
+   于是「例外必须写在通配之前」:把 10* 的拦截摆在 101 的放行前面,那条例外永远轮不上。 */
 /* NAT:家用路由器的立身之本,而且它做的事**就是改写包头**——
    出方向:内网各机的私网地址统统换成同一个公网地址(对外看起来只有一台),同时把这条会话记下来;
    回程:回包带着会话号,按会话表**还原**成当初那台机器的私网地址;
@@ -82,16 +86,19 @@ const LEVELS: Level[] = [
   { name: '真·路由器 · 最长前缀匹配', hint: '同一个地址,路由表里好几条都能匹配(101 既符合 101、也符合 10*、也符合 1**)—— 真路由器永远选「最具体」那条。〈前缀匹配〉右键切条目:命中→拐弯进本网段,没命中→直行交给下一条;一路没人认领的,直行到底进「默认口」(这就是 0.0.0.0/0)。诀窍:越具体的条目摆得越靠上游 —— 把 1** 摆前面,101 和 10* 的包会被它提前吞掉', srcRow: 3, seq: [5, 4, 6, 0, 7, 3], showAddr: true, routes: [{ pat: '101' }, { pat: '10*' }, { pat: '1**' }], sinks: [{ r: 0, accept: -1, need: 1, addrs: [5], label: '101 · 精确' }, { r: 1, accept: -1, need: 1, addrs: [4], label: '10* · 网段' }, { r: 2, accept: -1, need: 2, addrs: [6, 7], label: '1** · 网段' }, { r: 3, accept: -1, need: 2, addrs: [0, 3], label: '默认口 · 0.0.0.0/0' }], parts: ['belt', 'prefix'], par: { parts: 36, cycles: 24 } },
   { name: '真·路由器 · 子网掩码', hint: '本机在 010 这个网段。要送出去之前,先问一句「对方跟我同网段吗」—— 用〈掩码判断〉:两边地址都按掩码盖住、只留高 n 位比一比,一样就直接送本地口,不一样交给网关口。右键调掩码长度 /1~/3:调短了外网地址会被误当本地,调长了本机同伴又会被误送网关,只有一个长度是对的', srcRow: 3, seq: [2, 0, 3, 5, 1, 6], showAddr: true, localNet: 2, sinks: [{ r: 2, accept: -1, need: 2, addrs: [2, 3], label: '本地口 · 同网段' }, { r: 3, accept: -1, need: 4, addrs: [0, 1, 5, 6], label: '网关口 · 去外网' }], parts: ['belt', 'mask'], par: { parts: 20, cycles: 26 } },
   // —— 二、发出去之前:先问到硬件地址(ARP)——
-  { name: '真·ARP · 先问到 MAC', hint: '知道 IP 还送不出去 —— 链路上认的是 MAC。〈ARP 缓存〉记的是"这个 IP 我问过没":**没问过的**走「ARP 查询口」(广播喊一嗓子谁是它),**问过的**直接走「直送口」。同一个 IP 只该问一次,后面全走直送', srcRow: 3, seq: [2, 5, 2, 2, 5, 2], showAddr: true, sinks: [{ r: 1, accept: -1, need: 4, label: '直送口 · 已知 MAC' }, { r: 5, accept: -1, need: 2, label: 'ARP 查询口 · 广播问' }], parts: ['belt', 'cache'], par: { parts: 18, cycles: 24 } },
+  { name: '真·ARP · 先问到 MAC', hint: '知道 IP 还送不出去 —— 链路上认的是 MAC。〈ARP 缓存〉记的是"这个 IP 我问过没":「没问过的」走「ARP 查询口」(广播喊一嗓子谁是它),「问过的」直接走「直送口」。同一个 IP 只该问一次,后面全走直送', srcRow: 3, seq: [2, 5, 2, 2, 5, 2], showAddr: true, sinks: [{ r: 1, accept: -1, need: 4, label: '直送口 · 已知 MAC' }, { r: 5, accept: -1, need: 2, label: 'ARP 查询口 · 广播问' }], parts: ['belt', 'cache'], par: { parts: 18, cycles: 24 } },
   { name: '真·交换机 · 泛洪', hint: '交换机还没学到这个 MAC 挂在哪个口 —— 只能「泛洪」:除了来的那个口,每个口都发一份,谁是主人谁应答。用〈复制器〉把包复制成两份,两个口各送一份', srcRow: 3, seq: [4, 4, 4, 4], showAddr: true, sinks: [{ r: 1, accept: -1, need: 4, label: '口1 · 泛洪' }, { r: 5, accept: -1, need: 4, label: '口2 · 泛洪' }], parts: ['belt', 'copier'], par: { parts: 18, cycles: 24 } },
+  { name: '真·交换机 · MAC 表自学习', hint: '交换机不会一直泛洪 —— 头一个包泛出去之后,它就从应答里学到这个 MAC 挂在哪个口,记进 MAC 表;之后再发给它,只往那一个口送。用〈MAC 表〉(没学过→直行去泛洪、学过→拐弯走直送道),把「第一个包泛到三个口、后面三个只进主机那个口」搭出来 —— 看两个旁口的计数:学会之后,它们再也收不到了', srcRow: 3, seq: [4, 4, 4, 4], showAddr: true, sinks: [{ r: 2, accept: -1, need: 4, label: '主机口 · MAC 4' }, { r: 4, accept: -1, need: 1, label: '旁口A · 只在泛洪时' }, { r: 6, accept: -1, need: 1, label: '旁口B · 只在泛洪时' }], parts: ['belt', 'cache', 'copier'], par: { parts: 30, cycles: 20 } },
   // —— 三、出口顶不住的时候 ——
   // —— 四、NAT:家用路由器的立身之本(它做的事就是改写包头)——
-  { name: '真·NAT · 对外只有一个地址', hint: '家里三台机器(私网地址 1/2/3)要上网,可 ISP 只给了你**一个**公网地址。〈NAT〉出方向把每个包的源地址统统改写成公网地址 0,并把这条会话记下来 —— 于是外面看起来,你家只有一台机器在上网', srcRow: 3, seq: [1, 2, 3, 1, 2, 3], showAddr: true, natPub: 0, sinks: [{ r: 3, accept: -1, need: 6, addrs: [0], label: '公网口 · 全是地址0' }], parts: ['belt', 'nat'], par: { parts: 12, cycles: 22 } },
-  { name: '真·NAT · 回包怎么找回原主', hint: '回包只写着公网那一侧的**会话号**,可它到底该给家里哪台机器?〈NAT〉查会话表还原成私网地址(会话0→机器1、1→机器2、2→机器3),再用〈地址路由〉送到各自机器。**会话表里查不到的(会话3,外面主动找上门的)直接丢掉** —— 这就是外网连不进你家的原因', srcRow: 3, seq: [0, 1, 2, 3, 0, 1], showAddr: true, natTable: [1, 2, 3, -1], drops: 1, sinks: [{ r: 3, addr: 1, accept: -1, need: 2, label: '机器1' }, { r: 2, addr: 2, accept: -1, need: 2, label: '机器2' }, { r: 1, addr: 3, accept: -1, need: 1, label: '机器3' }], parts: ['belt', 'nat', 'arouter'], par: { parts: 24, cycles: 26 } },
-  // —— 五、出口顶不住的时候 ——
+  { name: '真·NAT · 对外只有一个地址', hint: '家里三台机器(私网地址 1/2/3)要上网,可 ISP 只给了你「一个」公网地址。〈NAT〉出方向把每个包的源地址统统改写成公网地址 0,并把这条会话记下来 —— 于是外面看起来,你家只有一台机器在上网', srcRow: 3, seq: [1, 2, 3, 1, 2, 3], showAddr: true, natPub: 0, sinks: [{ r: 3, accept: -1, need: 6, addrs: [0], label: '公网口 · 全是地址0' }], parts: ['belt', 'nat'], par: { parts: 12, cycles: 22 } },
+  { name: '真·NAT · 回包怎么找回原主', hint: '回包只写着公网那一侧的「会话号」,可它到底该给家里哪台机器?〈NAT〉查会话表还原成私网地址(会话0→机器1、1→机器2、2→机器3),再用〈地址路由〉送到各自机器。会话表里查不到的(会话3,外面主动找上门的)直接丢掉 —— 这就是外网连不进你家的原因', srcRow: 3, seq: [0, 1, 2, 3, 0, 1], showAddr: true, natTable: [1, 2, 3, -1], drops: 1, sinks: [{ r: 3, addr: 1, accept: -1, need: 2, label: '机器1' }, { r: 2, addr: 2, accept: -1, need: 2, label: '机器2' }, { r: 1, addr: 3, accept: -1, need: 1, label: '机器3' }], parts: ['belt', 'nat', 'arouter'], par: { parts: 24, cycles: 26 } },
+  // —— 五、放不放行:访问控制(家用路由器上的「家长控制」)——
+  { name: '真·路由器 · 访问控制', hint: '不是所有包都该放出去。规则表两条:①放行 101(这台设备是例外) ②拦截 10*(这个网段禁止上网)。〈前缀匹配〉命中=放行(拐弯走放行道、后面的规则不再看它),〈访问控制〉命中=「当场拦下」(它没有出口,包是真的被丢掉)。谁都没匹配上的,直行到底照常出网。规则表从上往下第一条匹配即生效 —— 例外要是摆在通配后面,它永远轮不上', srcRow: 3, seq: [5, 4, 5, 6, 4, 5], showAddr: true, routes: [{ pat: '101' }, { pat: '10*' }], drops: 2, sinks: [{ r: 3, accept: -1, need: 4, label: '放行口 · 出网' }], parts: ['belt', 'prefix', 'acl'], par: { parts: 13, cycles: 24 } },
+  // —— 六、出口顶不住的时候 ——
   { name: '真·路由器 · 出口拥塞', hint: '一峰包同拍涌到,可每个出口每拍只发得出 1 个 —— 直接怼过去就丢包。先用〈地址路由〉按地址分开,各接一个〈缓冲队列〉切「限速」削成 1/拍,一个都别丢', srcRow: 3, seq: [0, 1, 0, 1], showAddr: true, burst: true, sinks: [{ r: 1, addr: 1, accept: -1, need: 2, rate: 1, label: '网段1 · 每拍1' }, { r: 5, addr: 0, accept: -1, need: 2, rate: 1, label: '网段0 · 每拍1' }], parts: ['belt', 'arouter', 'queue'], par: { parts: 22, cycles: 22 } },
-  // —— 六、终关:一次完整的转发,把学过的串成一台真机器 ——
-  { name: '终关 · 一次完整转发', hint: '把学过的全串起来跑一遍真路由:包进来先用〈掩码判断〉问「跟我同网段吗」—— 同网段(010/011)直接进本地口;不同网段的交给〈前缀匹配〉按路由表选路,10* 去网段A、11* 去网段B,**谁都没认领的直行到底进默认口**', srcRow: 3, seq: [2, 4, 6, 3, 5, 0, 7, 1], showAddr: true, localNet: 2, routes: [{ pat: '10*' }, { pat: '11*' }], sinks: [{ r: 0, accept: -1, need: 2, addrs: [2, 3], label: '本地口 · 同网段' }, { r: 1, accept: -1, need: 2, addrs: [4, 5], label: '网段A · 10*' }, { r: 2, accept: -1, need: 2, addrs: [6, 7], label: '网段B · 11*' }, { r: 3, accept: -1, need: 2, addrs: [0, 1], label: '默认口 · 没人认领' }], parts: ['belt', 'mask', 'prefix'], par: { parts: 40, cycles: 34 }, finale: true },
+  // —— 七、终关:一次完整的转发,把学过的串成一台真机器 ——
+  { name: '终关 · 一次完整转发', hint: '把学过的全串起来跑一遍真路由:包进来先用〈掩码判断〉问「跟我同网段吗」—— 同网段(010/011)直接进本地口;不同网段的交给〈前缀匹配〉按路由表选路,10* 去网段A、11* 去网段B,谁都没认领的直行到底进默认口', srcRow: 3, seq: [2, 4, 6, 3, 5, 0, 7, 1], showAddr: true, localNet: 2, routes: [{ pat: '10*' }, { pat: '11*' }], sinks: [{ r: 0, accept: -1, need: 2, addrs: [2, 3], label: '本地口 · 同网段' }, { r: 1, accept: -1, need: 2, addrs: [4, 5], label: '网段A · 10*' }, { r: 2, accept: -1, need: 2, addrs: [6, 7], label: '网段B · 11*' }, { r: 3, accept: -1, need: 2, addrs: [0, 1], label: '默认口 · 没人认领' }], parts: ['belt', 'mask', 'prefix'], par: { parts: 40, cycles: 34 }, finale: true },
 ]
 let lvl = 0
 let SOURCES: Src[] = [{ r: LEVELS[0]!.srcRow, seq: LEVELS[0]!.seq }]
@@ -108,8 +115,10 @@ const STORY = [
   '要发包之前先得判断:对方跟我是不是同一个网段?掩码盖住高几位一比就知道 —— 同网段直接送,不同的交给网关。',
   '知道 IP 还不够,链路上认的是 MAC —— 没问过的先广播问一次,问到了就记下来,后面直接送。',
   '交换机还不知道这个 MAC 挂在哪个口 —— 先泛洪,每个口都发一份,谁是主人谁应答。',
+  '泛过一次它就学会了 —— MAC 表记下这个地址挂在哪个口,之后只发那一个口,旁边的口再也收不到。',
   '家里三台机器,ISP 只给一个公网地址 —— NAT 把源地址统统改写成那一个,外面看起来你家只有一台。',
   '回包只写着会话号,得查表才知道该给谁 —— 查不到的(外面主动找上门的)直接丢,这就是外网进不来的原因。',
+  '不是所有包都该放出去 —— 规则表从上往下,第一条匹配的就生效;例外要是排在通配后面,它永远轮不上。',
   '出口顶不住了 —— 先按地址分开,再各自排队限速,一个包都别丢。',
   '最后一里:包进来先判断同不同网段,不同的再查路由表选路,没人认领的走默认口 —— 一台完整的路由器。',
 ]
@@ -135,16 +144,16 @@ let emittedPer: number[] = [0], collided = false
 let collisionFlash: { r: number; c: number; t: number }[] = []
 const allEmitted = () => SOURCES.every((s, i) => (emittedPer[i] ?? 0) >= s.seq.length)
 let delivered = 0, wrong = 0, lost = 0
-/*  NAT 按规矩丢掉的包(会话表里查不到 = 外面主动找上门的)。
+/*  **按规矩丢掉**的包:NAT 查不到会话(外面主动找上门的)、访问控制命中拦截规则。
     这类"丢"是**正确行为**,不能和"接错线丢了"混为一谈,所以单独记一笔,
-    通关判定要求:丢的总数 == NAT 丢的 == 这一关本就该丢的那么多。 */
-let natDrop = 0
+    通关判定要求:丢的总数 == 按规矩丢的 == 这一关本就该丢的那么多。 */
+let okDrop = 0
 let deliveredBy: number[] = SINKS.map(() => 0)
 let oexp: number[] = SINKS.map(() => 0) // 按序口:下一个该到的序号
 let pkts: Pkt[] = []
 const STEP_MS = 240, EMIT_GAP = 2
 function partCount() { let n = 0; for (const row of grid) for (const p of row) if (p) n++; return n }
-function resetSim() { running = false; done = false; pass = false; overflowed = false; stuck = false; collided = false; collisionFlash = []; step = 0; emittedPer = SOURCES.map(() => 0); acc = 0; delivered = 0; wrong = 0; lost = 0; natDrop = 0; deliveredBy = SINKS.map(() => 0); oexp = SINKS.map(() => 0); pkts = []; for (const row of grid) for (const p of row) if (p) { if (p.kind === 'cache') p.seen = new Set(); if (p.kind === 'queue') { p.store = []; p.next = 0 } } }
+function resetSim() { running = false; done = false; pass = false; overflowed = false; stuck = false; collided = false; collisionFlash = []; step = 0; emittedPer = SOURCES.map(() => 0); acc = 0; delivered = 0; wrong = 0; lost = 0; okDrop = 0; deliveredBy = SINKS.map(() => 0); oexp = SINKS.map(() => 0); pkts = []; for (const row of grid) for (const p of row) if (p) { if (p.kind === 'cache') p.seen = new Set(); if (p.kind === 'queue') { p.store = []; p.next = 0 } } }
 function run() { resetSim(); running = true; sfx.run() }
 function exits(r: number, c: number, shape: number, num = 0): Dir[] {
   if (isSource(r, c)) return [0]
@@ -153,6 +162,7 @@ function exits(r: number, c: number, shape: number, num = 0): Dir[] {
   if (p.kind === 'router') { const m = ROUTER_MODES[p.mode] ?? ROUTER_MODES[0]!; return [[leftOf(p.dir), p.dir, rightOf(p.dir)][m.map[shape]!]!] } // 可编程路由器:按形状查表转发
   if (p.kind === 'arouter') { const bit = (num >> p.mode) & 1; return [bit ? leftOf(p.dir) : p.dir] } // 地址路由器:看地址第 mode 位,0→直行 1→拐弯(串成转发树)
   if (p.kind === 'nat') { return natMap(num) < 0 ? [] : [p.dir] }   // 回程查不到会话 → 无出口 → 丢弃
+  if (p.kind === 'acl') { const pat = levelRoutes()[p.mode]?.pat ?? '*'; return prefixHit(pat, num, addrBits()) ? [] : [p.dir] } // 命中拦截规则 → 无出口 → 真的丢掉;没命中 → 直行交给下一条
   if (p.kind === 'mask') { const L = LEVELS[lvl]!; return [sameNet(num, L.localNet ?? 0, maskLen(p.mode), addrBits()) ? leftOf(p.dir) : p.dir] } // 同网段→拐弯进本地口,不同→直行交给网关
   if (p.kind === 'prefix') { const pat = levelRoutes()[p.mode]?.pat ?? '*'; return [prefixHit(pat, num, addrBits()) ? leftOf(p.dir) : p.dir] } // 前缀匹配器:命中→拐弯进本网段,未命中→直行给下一条
   if (p.kind === 'copier') return [leftOf(p.dir), rightOf(p.dir)] // T 型分叉:朝右=左进、上下各一份(两个垂直出口)
@@ -202,8 +212,8 @@ function simStep() {
   for (const p of pkts) { const pc = grid[p.r]![p.c]; if (pc && pc.kind === 'queue') { (pc.store ??= []).push(p.num) } else flowing.push(p) }
   for (const p of flowing) {
     const es = exits(p.r, p.c, p.shape, p.num)
-    if (es.length === 0) { lost++; const pk0 = grid[p.r]![p.c]; if (pk0 && pk0.kind === 'nat') natDrop++; continue }
-    //  零件可以**改写包**(目前只有 NAT 这么做,真 NAT 改的就是包头里的地址)
+    if (es.length === 0) { lost++; const pk0 = grid[p.r]![p.c]; if (pk0 && (pk0.kind === 'nat' || pk0.kind === 'acl')) okDrop++; continue }
+    //  零件可以「改写包」(目前只有 NAT 这么做,真 NAT 改的就是包头里的地址)
     const pc2 = grid[p.r]![p.c]
     const outNum = pc2 && pc2.kind === 'nat' ? natMap(p.num) : p.num
     for (const d of es) arrive(p.r + DY[d]!, p.c + DX[d]!, outNum, outNum % 3, p.r, p.c)
@@ -220,7 +230,7 @@ function simStep() {
   }
   pkts = next
   const moved = hadInput || released // 这一拍有没有任何包在动
-  if (!L.sandbox && allEmitted() && pkts.length === 0 && buffersEmpty()) { running = false; done = true; pass = wrong === 0 && lost === natDrop && natDrop === (L.drops ?? 0) && SINKS.every((s, i) => deliveredBy[i] === s.need); if (pass) { const b = best[lvl] || { parts: Infinity, cycles: Infinity }; best[lvl] = { parts: Math.min(b.parts, partCount()), cycles: Math.min(b.cycles, step) }; saveBest(); if (partCount() <= L.par.parts || step <= L.par.cycles) sfx.win(); else sfx.chime() } else sfx.fail() }
+  if (!L.sandbox && allEmitted() && pkts.length === 0 && buffersEmpty()) { running = false; done = true; pass = wrong === 0 && lost === okDrop && okDrop === (L.drops ?? 0) && SINKS.every((s, i) => deliveredBy[i] === s.need); if (pass) { const b = best[lvl] || { parts: Infinity, cycles: Infinity }; best[lvl] = { parts: Math.min(b.parts, partCount()), cycles: Math.min(b.cycles, step) }; saveBest(); if (partCount() <= L.par.parts || step <= L.par.cycles) sfx.win(); else sfx.chime() } else sfx.fail() }
   else if (!L.sandbox && allEmitted() && pkts.length === 0 && !moved && !buffersEmpty()) { running = false; done = true; pass = false; stuck = true; sfx.fail() } // 卡死:源发完了、没有任何包在流动,但队列里还压着包放不出来(多半是队列该切「限速」)
   else if (running && (step > 300 || delivered + wrong + lost > 120 || pkts.length > 120)) { running = false; done = true; pass = false; overflowed = delivered + wrong + lost > 120 || pkts.length > 120; sfx.fail() } // 失控保护:接成环无限增殖 —— 快速判失败,别永远转
 }
@@ -233,7 +243,7 @@ function cellAt(px: number, py: number) { const g = geo(); const c = Math.floor(
 let tool: Kind | 'erase' = 'belt'
 let curDir: Dir = 0
 const addrBits = () => Math.max(1, ...SOURCES.flatMap(s => s.seq)).toString(2).length // 这关地址有几位(地址路由只给这几位可切)
-const modeCount = (k: Kind) => k === 'router' ? ROUTER_MODES.length : k === 'queue' ? QUEUE_MODES.length : k === 'arouter' ? addrBits() : k === 'prefix' ? Math.max(1, levelRoutes().length) : k === 'mask' ? addrBits() : 1
+const modeCount = (k: Kind) => k === 'router' ? ROUTER_MODES.length : k === 'queue' ? QUEUE_MODES.length : k === 'arouter' ? addrBits() : k === 'prefix' || k === 'acl' ? Math.max(1, levelRoutes().length) : k === 'mask' ? addrBits() : 1
 addEventListener('keydown', e => {
   const k = e.key.toLowerCase()
   if (k === 'r') curDir = ((curDir + 1) % 4) as Dir
@@ -271,7 +281,7 @@ cv.addEventListener('pointerdown', e => {
   const cell = cellAt(e.clientX, e.clientY); if (!cell) return
   place(cell.r, cell.c)
 })
-cv.addEventListener('contextmenu', e => { e.preventDefault(); if (mode !== 'play') return; const cell = cellAt(e.clientX, e.clientY); if (cell) { const p = grid[cell.r]![cell.c]; if (p && (p.kind === 'router' || p.kind === 'queue' || p.kind === 'arouter' || p.kind === 'prefix' || p.kind === 'mask')) { p.mode = (p.mode + 1) % modeCount(p.kind); sfx.blip() } } })
+cv.addEventListener('contextmenu', e => { e.preventDefault(); if (mode !== 'play') return; const cell = cellAt(e.clientX, e.clientY); if (cell) { const p = grid[cell.r]![cell.c]; if (p && (p.kind === 'router' || p.kind === 'queue' || p.kind === 'arouter' || p.kind === 'prefix' || p.kind === 'mask' || p.kind === 'acl')) { p.mode = (p.mode + 1) % modeCount(p.kind); sfx.blip() } } })
 function uiClick(x: number, y: number) {
   const T = trayGeo(), items = trayItems()
   if (y >= T.y && y <= T.y + T.ts) { for (let i = 0; i < items.length; i++) { const bx = T.x0 + i * (T.ts + T.gap); if (x >= bx && x <= bx + T.ts) { tool = items[i]!; sfx.blip(); return } } }
@@ -350,6 +360,31 @@ function drawBody(kind: Kind, cs: number, mode: number, seen?: Set<number>, nums
     ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left'
     return
   }
+  if (kind === 'nat') { // NAT:唯一会「改写包」的零件。出方向把私网地址统统换成公网那一个;回程查会话表还原,查不到的当场丢
+    housing(cs, ['#9fd8e8', '#4f93ad', '#1e4457'])
+    channel(cs * .14, cs * .5, cs * .5, cs * .5, cs * .07, '#1c2f38')
+    channel(cs * .5, cs * .5, cs * .86, cs * .5, cs * .06, '#8fe0ff')
+    ctx.fillStyle = '#0e2029'; ctx.beginPath(); ctx.arc(cs * .5, cs * .5, cs * .18, 0, 7); ctx.fill(); ctx.strokeStyle = '#8fe0ff'; ctx.lineWidth = 2; ctx.stroke()
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.fillStyle = '#e6f8ff'; ctx.font = `bold ${Math.round(cs * .16)}px system-ui`; ctx.fillText('NAT', cs * .5, cs * .5)
+    ctx.font = `bold ${Math.round(cs * .11)}px system-ui`; ctx.fillStyle = '#e0b04f'
+    ctx.fillText(natOut() ? '出 · 换成公网' : '回 · 查表还原', cs * .5, cs * .2)   // 两个方向做的事不一样,画出来
+    ctx.fillStyle = '#8fe0ff'; ctx.font = `bold ${Math.round(cs * .12)}px ui-monospace, monospace`; ctx.fillText('⇄', cs * .5, cs * .8)
+    ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left'; return
+  }
+  if (kind === 'acl') { // 访问控制:命中规则→当场拦下(它压根没有出口,包是真的被丢掉);没命中→直行交给下一条
+    housing(cs, ['#e6a898', '#b8564a', '#5a1f18'])
+    channel(cs * .14, cs * .5, cs * .5, cs * .5, cs * .07, '#3a221e')
+    channel(cs * .5, cs * .5, cs * .86, cs * .5, cs * .055, '#ffb9a8')          // 未命中 → 直行(照常出网)
+    ctx.strokeStyle = '#ff6a52'; ctx.lineWidth = Math.max(2, cs * .05); ctx.lineCap = 'round' // 命中 → 拦下:上方封一个红叉,提示这条路根本不通
+    ctx.beginPath(); ctx.moveTo(cs * .41, cs * .19); ctx.lineTo(cs * .59, cs * .31); ctx.moveTo(cs * .59, cs * .19); ctx.lineTo(cs * .41, cs * .31); ctx.stroke(); ctx.lineCap = 'butt'
+    ctx.fillStyle = '#2a100c'; ctx.beginPath(); ctx.arc(cs * .5, cs * .5, cs * .17, 0, 7); ctx.fill(); ctx.strokeStyle = '#ff9e8a'; ctx.lineWidth = 2; ctx.stroke()
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.fillStyle = '#ffe3da'; ctx.font = `bold ${Math.round(cs * .17)}px ui-monospace, monospace`; ctx.fillText(levelRoutes()[mode]?.pat ?? '*', cs * .5, cs * .5)
+    ctx.font = `bold ${Math.round(cs * .11)}px ui-monospace, monospace`
+    ctx.fillStyle = '#ffb9a8'; ctx.fillText('否', cs * .8, cs * .5)
+    ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left'; return
+  }
   if (kind === 'copier') { // T 型分叉:进料(左)→ 复制两份从上、下两个垂直口出
     housing(cs, BRASS)
     channel(cs * .14, cs * .5, cs * .5, cs * .5, cs * .07, '#22303a')   // 进料(左)
@@ -360,7 +395,8 @@ function drawBody(kind: Kind, cs: number, mode: number, seen?: Set<number>, nums
   }
   if (kind === 'cache') {
     housing(cs, VIOLET)
-    for (let i = 0; i < 3; i++) { const sx = cs * (.3 + i * .2); ctx.fillStyle = '#2a2038'; rr(sx - cs * .06, cs * .23, cs * .12, cs * .15, 2); ctx.fill(); ctx.strokeStyle = '#6a4f92'; ctx.lineWidth = 1; rr(sx - cs * .06, cs * .23, cs * .12, cs * .15, 2); ctx.stroke(); if (seen && seen.has(i)) { ctx.fillStyle = '#7fe8c0'; ctx.beginPath(); ctx.arc(sx, cs * .305, cs * .03, 0, 7); ctx.fill() } }
+    // 亮几格 = 表里已经记下了几条(键是**地址**,不是槽位号 —— 所以按 size 点亮,不能按 has(i))
+    for (let i = 0; i < 3; i++) { const sx = cs * (.3 + i * .2); ctx.fillStyle = '#2a2038'; rr(sx - cs * .06, cs * .23, cs * .12, cs * .15, 2); ctx.fill(); ctx.strokeStyle = '#6a4f92'; ctx.lineWidth = 1; rr(sx - cs * .06, cs * .23, cs * .12, cs * .15, 2); ctx.stroke(); if (seen && i < seen.size) { ctx.fillStyle = '#7fe8c0'; ctx.beginPath(); ctx.arc(sx, cs * .305, cs * .03, 0, 7); ctx.fill() } }
     channel(cs * .14, cs * .62, cs * .5, cs * .62, cs * .08, '#3a2c18'); channel(cs * .5, cs * .62, cs * .86, cs * .62, cs * .08, AMBER); channel(cs * .5, cs * .62, cs * .5, cs * .44, cs * .08, TEAL)
     ctx.fillStyle = '#241d14'; ctx.beginPath(); ctx.arc(cs * .5, cs * .62, cs * .06, 0, 7); ctx.fill(); return
   }
@@ -404,7 +440,7 @@ function drawSink(x: number, y: number, cs: number, s: Sink, i: number) {
   else if (over) { ctx.strokeStyle = '#2a0f0a'; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x + cs * .18, y + cs * .2); ctx.lineTo(x + cs * .28, y + cs * .3); ctx.moveTo(x + cs * .28, y + cs * .2); ctx.lineTo(x + cs * .18, y + cs * .3); ctx.stroke(); ctx.lineCap = 'butt' } // 溢出:✕
   ctx.textAlign = 'left'
 }
-const partName = (k: Kind | 'erase') => k === 'belt' ? '传送带' : k === 'router' ? '路由器' : k === 'arouter' ? '地址路由' : k === 'prefix' ? '前缀匹配' : k === 'mask' ? '掩码判断' : k === 'nat' ? 'NAT'  : k === 'copier' ? '复制器' : k === 'cache' ? '缓存盒' : k === 'queue' ? '缓冲队列' : '擦除'
+const partName = (k: Kind | 'erase') => k === 'belt' ? '传送带' : k === 'router' ? '路由器' : k === 'arouter' ? '地址路由' : k === 'prefix' ? '前缀匹配' : k === 'mask' ? '掩码判断' : k === 'nat' ? 'NAT' : k === 'acl' ? '访问控制' : k === 'copier' ? '复制器' : k === 'cache' ? '缓存盒' : k === 'queue' ? '缓冲队列' : '擦除'
 function trayGeo() { const ts = 66, gap = 12, y = H - ts - 16, x0 = 24; return { ts, gap, y, x0 } }
 function runGeo() { const bw = 168, bh = 54; return { x: W - bw - 24, y: H - bh - 16, bw, bh } }
 function rr(x: number, y: number, w: number, h: number, r: number) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath() }
@@ -532,13 +568,13 @@ function frame(now: number) {
       ctx.textAlign = 'left'; ctx.fillStyle = CREAM; ctx.font = 'bold 23px system-ui'; ctx.fillText(pass ? '修好了!' : '还没通', tx, cardY + 44)
       if (pass) {
         const mp = partCount() <= L.par.parts, mc = step <= L.par.cycles
-        ctx.fillStyle = '#c8bfa8'; ctx.font = '14px system-ui'; ctx.fillText(`这个子系统信号通了 · 用了 ${partCount()} 件 ${step} 拍`, tx, cardY + 72)
+        ctx.fillStyle = '#c8bfa8'; ctx.font = '14px system-ui'; ctx.fillText(`这个子系统信号通了 · 用了 ${partCount()} 件 ${step} 拍${okDrop ? ` · 按规矩拦下 ${okDrop} 个` : ''}`, tx, cardY + 72)
         ctx.font = '17px system-ui'; ctx.fillStyle = AMBER; ctx.fillText(mp || mc ? `${mp ? '🏅省料 ' : ''}${mc ? '🏅飞快' : ''}` : `再省一点就能拿🏅(目标 ≤${L.par.parts}件 ≤${L.par.cycles}拍)`, tx, cardY + 100)
         ctx.fillStyle = '#8fdcc0'; ctx.font = '13px system-ui'; ctx.fillText(goNext ? '↓ 点「下一关」继续,或「再搭一次」刷更省的解' : '↓ 点「再搭一次」刷更省的解', tx, cardY + 128)
         for (let i = 0; i < 12; i++) { const a = i * 2.399, rad = 36 + (i % 3) * 9, px = seal + Math.cos(a + tprev / 600) * rad, py = sy + Math.sin(a + tprev / 600) * rad; ctx.globalAlpha = e * (0.35 + 0.4 * Math.sin(tprev / 200 + i)); ctx.fillStyle = i % 2 ? '#ffd27a' : '#7fe8c0'; ctx.beginPath(); ctx.arc(px, py, 2, 0, 7); ctx.fill() }
       } else {
         ctx.globalAlpha = e; ctx.fillStyle = '#e8b8a8'; ctx.font = '14px system-ui'; ctx.fillText(collided ? '撞包了:两个包挤进了同一格' : overflowed ? '机器失控:包在无限增殖' : stuck ? '卡住了:有包堵在缓冲队列里出不来' : `送错 ${wrong} 个 · 丢了 ${lost} 个`, tx, cardY + 72)
-        ctx.fillStyle = '#d8c0a8'; ctx.font = '13px system-ui'; ctx.fillText(collided ? '一格一拍只容一个包 —— 把两股流分开走、或用队列错开半拍' : overflowed ? '多半是接成了环 —— 复制器的某个出口把包又送回了进料带' : stuck ? (lost > 0 ? '上游有包丢了(撞包?)—— 排序队列在等那个丢掉的号,先别让上游丢包' : '有个「排序」队列在等一个不会来的号 —— 该直通/错峰的队列右键切回「限速」') : '顺着箭头看看包走岔到哪了,调一处再来', tx, cardY + 100)
+        ctx.fillStyle = '#d8c0a8'; ctx.font = '13px system-ui'; ctx.fillText(collided ? '一格一拍只容一个包 —— 把两股流分开走、或用队列错开半拍' : overflowed ? '多半是接成了环 —— 复制器的某个出口把包又送回了进料带' : stuck ? (lost > 0 ? '上游有包丢了(撞包?)—— 排序队列在等那个丢掉的号,先别让上游丢包' : '有个「排序」队列在等一个不会来的号 —— 该直通/错峰的队列右键切回「限速」') : (L.drops ?? 0) > 0 && lost !== L.drops ? `这一关本该按规矩拦下 ${L.drops} 个,你丢了 ${lost} 个 —— 该丢的丢、不该丢的一个都别丢` : '顺着箭头看看包走岔到哪了,调一处再来', tx, cardY + 100)
         ctx.fillStyle = '#d8a890'; ctx.font = '13px system-ui'; ctx.fillText('↓ 点「再搭一次」', tx, cardY + 128)
       }
       ctx.globalAlpha = 1; ctx.restore(); ctx.textAlign = 'left'
@@ -547,7 +583,7 @@ function frame(now: number) {
   // 左下:零件盘
   const T = trayGeo(), items = trayItems()
   ctx.textAlign = 'left'; ctx.font = '12px system-ui'; ctx.fillStyle = AMBER
-  const tip = tool === 'router' ? '路由器:左键摆(重复点同格转向)· 右键循环「分法」—— 通道按 △□○ 上色告诉你谁走哪' : tool === 'arouter' ? '地址路由:左键摆 · 右键换「看二进制第几位」(从右数,0=最右那位)—— 那位是 0 走直、是 1 拐弯;几台串成一棵转发树,把每个地址送到它的网段' : tool === 'mask' ? '掩码判断:左键摆 · 右键调掩码长度 /n —— 两边地址按掩码只留高 n 位比一比,一样=同网段拐弯进本地口,不一样=直行交给网关' : tool === 'prefix' ? '前缀匹配:左键摆 · 右键切「路由条目」(101 / 10* / 1** / 默认)—— 命中拐弯进本网段、没命中直行给下一条。越具体的条目要摆在越上游,否则会被泛化条目提前吞掉' : tool === 'queue' ? '缓冲队列:左键摆 · 右键切模式 —— 默认「限速」每拍放1个(削峰/错峰,直通不卡);「排序」按号重排(要收齐号才放,缺号会等)' : '零件盘 · 选一个,左键摆在格子里(重复点同格转向)'
+  const tip = tool === 'router' ? '路由器:左键摆(重复点同格转向)· 右键循环「分法」—— 通道按 △□○ 上色告诉你谁走哪' : tool === 'arouter' ? '地址路由:左键摆 · 右键换「看二进制第几位」(从右数,0=最右那位)—— 那位是 0 走直、是 1 拐弯;几台串成一棵转发树,把每个地址送到它的网段' : tool === 'mask' ? '掩码判断:左键摆 · 右键调掩码长度 /n —— 两边地址按掩码只留高 n 位比一比,一样=同网段拐弯进本地口,不一样=直行交给网关' : tool === 'prefix' ? '前缀匹配:左键摆 · 右键切「路由条目」(101 / 10* / 1** / 默认)—— 命中拐弯进本网段、没命中直行给下一条。越具体的条目要摆在越上游,否则会被泛化条目提前吞掉' : tool === 'acl' ? '访问控制:左键摆 · 右键切「规则条目」—— 命中这条规则的包「当场拦下」(它没有出口,包是真的被丢掉);没命中的直行交给下一条。规则表从上往下第一条匹配即生效,所以「例外放行」必须摆在「通配拦截」的上游' : tool === 'cache' ? '缓存盒(ARP 缓存 / MAC 表):左键摆 —— 没记过这个地址的走直行(去广播问一次),记过的拐弯走直送道;它自己会边跑边记,盒上亮几格就是记下了几条' : tool === 'nat' ? 'NAT:左键摆 —— 唯一会「改写包」的零件。出方向把私网地址统统换成那一个公网地址;回程按会话表还原成原来那台机器,会话表里查不到的当场丢掉' : tool === 'queue' ? '缓冲队列:左键摆 · 右键切模式 —— 默认「限速」每拍放1个(削峰/错峰,直通不卡);「排序」按号重排(要收齐号才放,缺号会等)' : '零件盘 · 选一个,左键摆在格子里(重复点同格转向)'
   ctx.fillText(tip, T.x0, T.y - 8)
   ctx.fillStyle = 'rgba(30,24,16,.6)'; ctx.fillRect(T.x0 - 6, T.y - 4, (T.ts + T.gap) * items.length + 6, T.ts + 8)
   items.forEach((it, i) => { const x = T.x0 + i * (T.ts + T.gap), on = tool === it; ctx.fillStyle = on ? '#3a342a' : '#20190f'; ctx.fillRect(x, T.y, T.ts, T.ts); ctx.strokeStyle = on ? '#ffe6a8' : '#5a4e3a'; ctx.lineWidth = on ? 3 : 1.5; ctx.strokeRect(x, T.y, T.ts, T.ts); partIcon(it, x + T.ts / 2, T.y + T.ts / 2 - 5, T.ts * 0.46); ctx.fillStyle = on ? CREAM : '#9a8a6a'; ctx.font = '11px system-ui'; ctx.textAlign = 'center'; ctx.fillText(partName(it), x + T.ts / 2, T.y + T.ts - 7) })
@@ -573,7 +609,7 @@ function frame(now: number) {
 requestAnimationFrame(frame)
 
 // dev 钩子
-;(window as unknown as { __state: () => object }).__state = () => ({ lvl, running, done, pass, overflowed, stuck, collided, parts: partCount(), cycles: step, delivered, wrong, lost, natDrop, deliveredBy: [...deliveredBy] })
+;(window as unknown as { __state: () => object }).__state = () => ({ lvl, running, done, pass, overflowed, stuck, collided, parts: partCount(), cycles: step, delivered, wrong, lost, okDrop, deliveredBy: [...deliveredBy] })
 ;(window as unknown as { __place: (r: number, c: number, kind: Kind, dir: number, mode?: number) => void }).__place = (r, c, kind, dir, mode = 0) => { if (editable(r, c)) grid[r]![c] = { kind, dir: (dir % 4) as Dir, mode } }
 ;(window as unknown as { __erase: (r: number, c: number) => void }).__erase = (r, c) => { if (editable(r, c)) grid[r]![c] = null }
 ;(window as unknown as { __run: () => void }).__run = run
