@@ -358,6 +358,8 @@ HUB = mountHub({
   links: [
     { label: '← 回房子 · 路由器', href: new URL('./', location.href).href },
     { label: '← CPU 流水线', href: new URL('cpu.html', location.href).href },
+    //  KV Cache 就是这台 cache 在推理引擎里的下一步 —— 换个造物,同一个动作
+    { label: '大模型推理引擎 →', href: new URL('infer.html', location.href).href },
   ],
   read: () => best,
   write: d => { if (d && typeof d === 'object') best = d as Record<number, { cycles: number }> },
