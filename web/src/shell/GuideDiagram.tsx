@@ -8016,6 +8016,272 @@ function TrapezoidDiagram() {
   )
 }
 
+// ═══════════════ 具身智能 · 针孔相机模型 ═══════════════
+function PinholeDiagram() {
+  return (
+    <Shell icon={Icn.ruler} title="针孔相机模型原理"
+      sub="看懂：3D 变 2D 只做了一件事 —— 除以深度。剩下的都是修正">
+      <Sec n={1} title="第一步:透视归一化 —— 「近大远小」就是这一下除法">
+        <div className="gd-formula">
+          x_n = <span className="ft">X / Z</span>{'　'}y_n = <span className="ft">Y / Z</span>
+          {'　　'}<span className="fi">除以深度 ⇒ 远处的东西显小</span>
+        </div>
+        <div className="gd-note">{Icn.info}<span>注意这一除<b>把 Z 丢掉了</b>:所有 X/Z 相同的点(一条射线上的所有点)投到<b>同一个像素</b>。<b>单目相机丢深度</b>这件事,就发生在这一行 —— 后面的双目、结构光、TOF,全是为了把它找回来。</span></div>
+      </Sec>
+      <Sec n={2} title="第二步:内参 K —— 把归一化坐标搬到像素坐标">
+        <div className="gd-formula">
+          u = <span className="fo">f_x</span>·x_n + <span className="fo">c_x</span>{'　'}v = <span className="fo">f_y</span>·y_n + <span className="fo">c_y</span>
+        </div>
+        <div className="gd-note">{Icn.info}<span>本例 X=(3,2,5)、f=500、主点 (320,240):x_n = 3/5 = 0.6 → u = 500×0.6 + 320 = <b>620</b>;y_n = 0.4 → v = <b>440</b>。两步都能心算。</span></div>
+      </Sec>
+      <Sec n={3} title="第三步:径向畸变 —— 镜头不是理想针孔">
+        <div className="gd-formula">
+          r² = x_n² + y_n²{'　'}x_d = x_n·( 1 + <span className="ft">k₁r²</span> + <span className="ft">k₂r⁴</span> )
+          {'　　'}<span className="fi">离中心越远,r 越大,弯得越厉害</span>
+        </div>
+        <div className="gd-note">{Icn.info}<span>同一个点,k₁=0.2/k₂=0.05 时落到 <b>(655, 464)</b> —— 比无畸变的 (620,440) 偏了三十多个像素。<b>直线被拍弯</b>(桶形/枕形),而且<b>边缘最明显</b>。<b>标定</b>就是拿棋盘格从一堆已知的 3D↔2D 对应里反求 K 和这些 k。</span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '相机系 3D 点' }, { cls: 'pd', text: '除以深度 Z' },
+          { cls: 'pt', text: '归一化坐标' }, { cls: 'pi', text: '内参 K → 像素' },
+          { cls: 'ph', text: '径向畸变修正' }, { cls: 'pm', text: '图像上的 (u,v)' },
+        ]}
+        why={<><b>后面几乎每一课都要用它:</b>ICP 要用它把深度图变成点云,PnP 要用它做重投影,VO 要用它把像素变成归一化坐标,手眼标定要用它算相机运动。<b>相机模型不准,后面全错,而且错得很像「算法不行」</b> —— 所以标定是视觉系统里最不能省的一步。</>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 具身智能 · 双目立体视觉 ═══════════════
+function StereoDiagram() {
+  return (
+    <Shell icon={Icn.ruler} title="双目立体视觉原理"
+      sub="看懂：把针孔丢掉的深度找回来 —— 代价是远处越来越不准">
+      <Sec n={1} title="视差:同一个点在左右图上差了多少">
+        <div className="gd-formula">
+          d = x_L − x_R = <span className="ft">f·b / Z</span>
+          {'　　'}⇒{'　'}<b>Z = f·b / d</b>{'　'}<span className="fi">(b = 基线,两相机间距)</span>
+        </div>
+        <div className="gd-note">{Icn.info}<span>越近视差越大 —— 伸出手指,交替闭左右眼,近处的手指跳得厉害、远处的墙几乎不动。<b>你的两只眼睛做的就是这件事。</b></span></div>
+      </Sec>
+      <Sec n={2} title="致命的一条:深度误差随距离平方增长">
+        <div className="gd-formula">
+          ΔZ ≈ <span className="fo">Z² / (f·b)</span> · Δd{'　'}∝{'　'}<b>Z²</b>
+        </div>
+        <div className="gd-note">{Icn.info}<span>视差只要有 1 个像素的误差,近处影响很小,<b>远处就被平方放大</b>。这是双目相机的<b>物理天花板</b>,不是算法能补的:想看得更远更准,只有<b>加大基线 b 或加长焦距 f</b> —— 而这两条都会缩小视野和近处的可测范围。</span></div>
+      </Sec>
+      <Sec n={3} title="所以选型是在几个约束之间权衡">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>基线大</h4><p>远处准 —— 但<em>近处测不了</em>(两图重叠区变小),设备也变大。</p></div>
+          <div className="gd-card o"><h4>基线小</h4><p>紧凑、近处好 —— <em>远处深度噪声大</em>。</p></div>
+        </div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '两个平行相机' }, { cls: 'pd', text: '同一点在左右图上' },
+          { cls: 'pt', text: '视差 d = x_L − x_R' }, { cls: 'pi', text: 'Z = f·b/d' },
+          { cls: 'ph', text: '得到深度图' }, { cls: 'pm', text: '误差 ∝ Z²' },
+        ]}
+        why={<><b>为什么室外自动驾驶不敢只靠双目:</b>百米外的车,视差已经小到一两个像素,ΔZ ∝ Z² 意味着深度误差好几米 —— 够不上刹车决策。所以远距离靠激光雷达/毫米波,双目负责中近距离。<b>知道一个传感器的误差怎么随距离长,比知道它「能测多远」有用得多。</b></>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 具身智能 · 点云预处理 ═══════════════
+function PointCloudDiagram() {
+  return (
+    <Shell icon={Icn.chip} title="点云预处理原理"
+      sub="看懂：配准/建图前必做的两步 —— 降密度，和给每个点求法线">
+      <Sec n={1} title="① 体素下采样:把空间切格子,每格只留质心">
+        <div className="gd-note">{Icn.info}<span>原始点云<b>又密、又不均、还带噪</b>(近处密远处稀)。切成边长 L 的网格、每个占用体素只保留<b>落在里面那些点的质心</b> —— 点数降下来、<b>密度变均匀</b>,而且质心比任一原始点更抗噪。本例 8 个点、L=1 → 降到 <b>5 个体素</b>。</span></div>
+      </Sec>
+      <Sec n={2} title="② 法线估计:邻域协方差做 PCA,最小特征向量就是法线">
+        <div className="gd-formula">
+          取 k 近邻 → 算协方差 C → 特征分解
+          {'　　'}<span className="ft">最小特征值</span>对应的特征向量 = <b>表面法线</b>
+        </div>
+        <div className="gd-note">{Icn.info}<span>直觉:在一小片近似平面的点里,<b>沿平面方向的散布大、垂直平面方向的散布最小</b> —— 所以「方差最小的方向」就是法线。本例点 (1.6,1.3) 取 4 近邻,PCA 得法线 ≈ <b>(0.77, −0.64)</b>,确实垂直于那条斜面。</span></div>
+      </Sec>
+      <Sec n={3} title="特征值的比例还能顺手判「平面 / 边 / 角」">
+        <div className="gd-note">{Icn.info}<span>三个特征值差不多 → <b>角</b>(各向散布均匀);一大两小 → <b>边</b>(沿一条线);两大一小 → <b>平面</b>。同一次 PCA <b>白送</b>一个局部形状分类器,特征提取常直接用它。</span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '原始点云(密/不均/噪)' }, { cls: 'pd', text: '体素下采样取质心' },
+          { cls: 'pt', text: '每点找 k 近邻' }, { cls: 'pi', text: '邻域协方差' },
+          { cls: 'ph', text: 'PCA 最小特征向量' }, { cls: 'pm', text: '法线(+形状判别)' },
+        ]}
+        why={<><b>为什么这两步不能省:</b>ICP 的代价直接正比于点数,不下采样就慢得没法用;而<b>点到面</b>的 ICP 误差项要用法线 —— 它比点到点收敛快得多。所以「预处理」不是走过场,<b>它决定了后面配准跑不跑得动、收不收敛</b>。</>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 具身智能 · ICP 点云配准 ═══════════════
+function ICPDiagram() {
+  return (
+    <Shell icon={Icn.chip} title="ICP 点云配准原理"
+      sub="看懂：不知道点的对应关系，就先猜一个 —— 然后靠迭代把它猜对">
+      <Sec n={1} title="困难在于:两片点云的点根本不是一一对应的">
+        <div className="gd-note">{Icn.info}<span>激光扫两帧,同一块墙上采到的点<b>位置完全不同</b>。要算刚体变换需要点对,可点对本身又依赖变换 —— <b>鸡生蛋</b>。ICP 的办法是:<b>先用「最近点」当对应猜一版,算出变换,搬过去,再猜一版</b>。</span></div>
+      </Sec>
+      <Sec n={2} title="两步一轮,反复迭代">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>① 找对应</h4><p>源点云每个点,在目标里找<em>欧氏最近</em>的点当对应。<em>一开始会猜错几个</em> —— 没关系。</p></div>
+          <div className="gd-card o"><h4>② 求变换</h4><p>用这批点对算<em>最佳刚体变换</em>。2D 用 <em>Kabsch</em>:去质心 → 交叉协方差 → 旋转角 → 平移对齐质心。</p></div>
+        </div>
+        <div className="gd-note">{Icn.info}<span>妙处在于:<b>就算对应猜错了一部分,算出来的变换也会让两片更接近一点</b>;更接近之后,下一轮的最近点就猜得更准。<b>误差单调下降</b>,于是收敛。</span></div>
+      </Sec>
+      <Sec n={3} title="代价:它只保证收敛到「局部」最优">
+        <div className="gd-note">{Icn.info}<span>初始位姿偏太多,「最近点」会大面积猜错,ICP 会<b>稳稳地收敛到一个错误的对齐上</b> —— 而且误差还在下降,看起来一切正常。所以真实系统总是<b>先用别的手段给一个粗初值</b>(里程计、IMU、特征匹配),再交给 ICP 精修。</span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '两片点云 + 粗初值' }, { cls: 'pd', text: '找最近点当对应' },
+          { cls: 'pt', text: 'Kabsch 求刚体变换' }, { cls: 'pi', text: '把源点云搬过去' },
+          { cls: 'ph', text: '误差下降' }, { cls: 'pm', text: '迭代到收敛' },
+        ]}
+        why={<><b>它是激光 SLAM 前端的主力:</b>相邻两帧点云配准出来的刚体变换,<b>就是机器人这一帧动了多少</b> —— 这就是激光里程计。而它「需要好初值、只保证局部最优」这一条,正是 SLAM 要有回环检测的原因:<b>前端会漂,得有别的东西把它拉回来。</b></>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 具身智能 · PnP 位姿估计 ═══════════════
+function PnPDiagram() {
+  return (
+    <Shell icon={Icn.pin} title="PnP · 6D 位姿估计原理"
+      sub="看懂：知道物体长什么样、看到它在图上哪 —— 就能反推相机在哪">
+      <Sec n={1} title="给什么、求什么">
+        <div className="gd-formula">
+          已知:n 个 <span className="ft">3D 点</span>(物体系) + 它们的 <span className="fo">2D 像素</span> + 内参 <span className="fi">K</span>
+          {'　→　'}求:<b>6 自由度位姿 (R, t)</b>
+        </div>
+      </Sec>
+      <Sec n={2} title="本质是最小化重投影误差">
+        <div className="gd-formula">
+          min<sub>(R,t)</sub> Σ ‖ <span className="ft">K[R|t]·X</span> − <span className="fo">观测像素</span> ‖²
+          {'　　'}<span className="fi">真位姿处误差 = 0,位姿越偏残差越大</span>
+        </div>
+        <div className="gd-note">{Icn.info}<span>本例 4 个 3D 点、K 的 f=500 主点 (320,320),真位姿 R=I、t=[0,0,5] 投出观测像素 <b>(270,270) (370,270) (370,370) (320,320)</b>。<b>把位姿换错一个,重投影就立刻对不上</b> —— 这也是检验 PnP 结果的唯一办法:<b>投回去看看落在不在原处</b>。</span></div>
+      </Sec>
+      <Sec n={3} title="解法是一整条谱系:先给个解,再精修">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>P3P</h4><p>3 点最小情形,给出 <em>4 组候选</em>,拿第 4 个点<em>消歧</em>。</p></div>
+          <div className="gd-card i"><h4>DLT / EPnP</h4><p>≥6 点线性解 / EPnP 是 <em>O(n)</em>(把点表成 4 个控制点)。</p></div>
+          <div className="gd-card o"><h4>高斯-牛顿</h4><p>拿上面的解当初值,<em>迭代最小化重投影误差</em>精修。</p></div>
+        </div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '3D 模型点' }, { cls: 'pd', text: '图上检测到 2D 像素' },
+          { cls: 'pt', text: '内参 K' }, { cls: 'pi', text: 'P3P/EPnP 给初解' },
+          { cls: 'ph', text: '高斯-牛顿精修' }, { cls: 'pm', text: '(R, t)' },
+        ]}
+        why={<><b>视觉抓取的最后一环就是它:</b>识别出物体是什么、在图上哪里,还不够 —— 机械臂要的是<b>物体在它自己坐标系里的 6D 位姿</b>。PnP 把「图上的样子」翻译成「空间里的姿态」,再经手眼标定换到机器人基座系,IK 才有目标可解。<b>整条视觉抓取链上,PnP 是从二维回到三维的那一跳。</b></>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 具身智能 · 视觉里程计 ═══════════════
+function VODiagram() {
+  return (
+    <Shell icon={Icn.pin} title="视觉里程计 · 对极几何原理"
+      sub="看懂：单目连续两帧，怎么从匹配点反推相机自己动了多少">
+      <Sec n={1} title="本质矩阵 E:把相对运动打包成一个 3×3">
+        <div className="gd-formula">
+          E = <span className="ft">[t]<sub>×</sub></span> · <span className="fo">R</span>
+          {'　　'}<span className="fi">([t]<sub>×</sub> 是平移向量的反对称叉乘矩阵)</span>
+        </div>
+      </Sec>
+      <Sec n={2} title="对极约束:同一个 3D 点在两帧的像点必须满足一条方程">
+        <div className="gd-formula">
+          <b>x₂ᵀ · E · x₁ = 0</b>
+          {'　　'}<span className="fi">这就是 8 点法能从 ≥8 组匹配线性解出 E 的依据</span>
+        </div>
+        <div className="gd-note">{Icn.info}<span>换个角度看它更直观:l₂ = E·x₁ 是 x₁ 在第二帧里的<b>对极线</b>,x₂ <b>一定落在这条线上</b>。于是找匹配<b>只需沿一条线搜,不用搜全图</b> —— 这是立体匹配能做实时的根本原因。所有对极线交于<b>极点</b>,而极点就是<b>平移方向</b>在图上的像。</span></div>
+      </Sec>
+      <Sec n={3} title="从 E 分解出 (R, t):四个解,还有一个尺度问题">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>4 组候选</h4><p>数学上 E 分解出<em>四组 (R,t)</em>。</p></div>
+          <div className="gd-card i"><h4>手性检验</h4><p>只有一组能让<em>三角化出的点在两个相机前方</em> —— 用它挑出唯一解。</p></div>
+          <div className="gd-card o"><h4>尺度不确定</h4><p>t 只能定<em>方向</em>、定不了<em>长度</em> —— <em>单目的宿命</em>。</p></div>
+        </div>
+        <div className="gd-note">{Icn.info}<span>「尺度不确定」的意思是:<b>把整个场景和运动同时放大一倍,拍出来的图一模一样</b>。所以单目 VO 只能给出「相似变换」意义下的轨迹;要真实尺度,得靠<b>双目、IMU、或已知大小的物体</b>。</span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '连续两帧 + 特征匹配' }, { cls: 'pd', text: '8 点法解 E' },
+          { cls: 'pt', text: '对极线约束搜匹配' }, { cls: 'pi', text: '从 E 分解出 4 组 (R,t)' },
+          { cls: 'ph', text: '手性检验挑唯一' }, { cls: 'pm', text: '相对运动(尺度未知)' },
+        ]}
+        why={<><b>它是单目 SLAM 的前端:</b>一帧帧把相对运动串起来就是轨迹。但相对运动会<b>逐帧累积误差</b>,而且尺度还会慢慢漂 —— 所以后端要有回环和优化。<b>VO 负责「快而近似」,SLAM 后端负责「慢而正确」</b>,这个分工在所有 SLAM 系统里都一样。</>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 具身智能 · 手眼标定 ═══════════════
+function HandEyeDiagram() {
+  return (
+    <Shell icon={Icn.ruler} title="手眼标定 AX = XB 原理"
+      sub="看懂：相机装在夹爪上，它俩之间那个固定变换怎么量出来">
+      <Sec n={1} title="问题:相机看到的东西,怎么翻译成手该去哪">
+        <div className="gd-note">{Icn.info}<span>相机固连在夹爪上(eye-in-hand)。相机说「目标在我前方 20cm」,可机械臂只认自己的坐标系 —— 中间差的正是<b>相机相对夹爪的固定变换 X</b>。它装上去就不变了,但<b>没人量得准</b>,只能标定出来。</span></div>
+      </Sec>
+      <Sec n={2} title="让机器人动几下,就能列出方程">
+        <div className="gd-formula">
+          <span className="ft">A</span> = 夹爪的相对运动(由关节角 + <b>FK</b> 算)
+          {'　'}<span className="fo">B</span> = 相机的相对运动(由观测固定标定板算)
+        </div>
+        <div className="gd-formula">
+          相机固连在夹爪上 ⇒ <b>A · X = X · B</b>
+        </div>
+      </Sec>
+      <Sec n={3} title="解法分两半,而且第一半自带一个自检">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>先解旋转</h4><p>R_A R_X = R_X R_B ⟹ <em>θ_A 必须等于 θ_B</em>(自检!),且 R_X 把 <em>B 的转轴转到 A 的转轴</em>。≥2 组不共线运动就定出 R_X。</p></div>
+          <div className="gd-card o"><h4>再解平移</h4><p>(R_A − I)·t_X = R_X t_B − t_A —— 一个<em>线性方程</em>,≥2 组凑满秩解出 t_X。</p></div>
+        </div>
+        <div className="gd-note">{Icn.info}<span>「<b>两个旋转角必须相等</b>」这一条特别值钱:它是<b>数据质量的现场体检</b>。θ_A 和 θ_B 对不上,说明要么 FK 不准、要么标定板识别错了 —— <b>不用等标定结果出来才发现有问题</b>。</span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '让机器人动几下' }, { cls: 'pd', text: 'A:FK 算夹爪运动' },
+          { cls: 'pt', text: 'B:看标定板算相机运动' }, { cls: 'pi', text: '查 θ_A = θ_B' },
+          { cls: 'ph', text: '解 R_X(轴对应)' }, { cls: 'pm', text: '解 t_X(线性方程)' },
+        ]}
+        why={<><b>为什么它必须是「相对运动」而不是绝对位姿:</b>因为标定板在世界里的位置、机器人基座在世界里的位置,<b>这两个未知量在做差时正好消掉了</b>。AX=XB 之所以成立、之所以只剩一个未知数 X,全靠这一次相减。<b>标定问题的漂亮之处,常常就在于「什么东西被消掉了」。</b></>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 具身智能 · SLAM 回环校正 ═══════════════
+function SLAMDiagram() {
+  return (
+    <Shell icon={Icn.star} title="SLAM 回环校正原理"
+      sub="看懂：漂移躲不掉 —— 但走一圈回到原地时，能把它算出来并摊掉">
+      <Sec n={1} title="病根:里程计是「一步接一步」的,误差只会累积">
+        <div className="gd-note">{Icn.info}<span>轮子打滑、标定微偏,每一步都带一点<b>系统误差</b>。它不会自己抵消,只会<b>一步步加起来</b> —— 走得越久偏得越多。这不是传感器不够好,<b>是「相对测量」这件事的本性</b>。</span></div>
+      </Sec>
+      <Sec n={2} title="回环:走一圈回到起点,那个缺口就是累计漂移">
+        <div className="gd-formula">
+          机器人认出「我回到走过的地方了」(看到相同地标)
+          {'　→　'}加一条约束:<b>终点应当 = 起点</b>
+        </div>
+        <div className="gd-note">{Icn.info}<span>妙就妙在:<b>漂移平时是看不见的</b>(你没有真值可比),而回环给了一次<b>免费的真值</b> —— 我知道这两处是同一个地方,那么估计出来的那个缺口,<b>就是累计误差本身</b>。</span></div>
+      </Sec>
+      <Sec n={3} title="位姿图优化:把缺口分摊回整条轨迹">
+        <div className="gd-note">{Icn.info}<span>不是把终点硬拉到起点了事 —— 那样中间还是歪的。而是把误差<b>按位置比例分摊回每一个位姿</b>(越靠后分摊得越多),于是<b>整条轨迹一起被拉正</b>、环闭合,之前的漂移被大幅抹平。这是 SLAM 精度的关键一跃。</span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '边走边估计轨迹' }, { cls: 'pd', text: '里程计逐步漂移' },
+          { cls: 'pt', text: '轨迹回不到起点' }, { cls: 'pi', text: '回环检测:认出旧地方' },
+          { cls: 'ph', text: '测出缺口 = 累计漂移' }, { cls: 'pm', text: '分摊回整条轨迹' },
+        ]}
+        why={<><b>「同时定位与建图」为什么必须同时:</b>要定位得有地图,要建图得知道自己在哪 —— 又是一个鸡生蛋。SLAM 的答案和 ICP 一样:<b>两边都先猜,再靠约束互相校正</b>。而回环是这些约束里最强的一条,因为它<b>跨越了很长的时间</b>,一下子把长期漂移钉住了。</>} />
+    </Shell>
+  )
+}
+
 export const GUIDE_DIAGRAMS: Record<string, () => ReactNode> = {
   //  具身智能职业线(2026-09-06 起补):这条线原来 51 个实验一张引导图都没有。
   fk: FKDiagram,
@@ -8068,6 +8334,15 @@ export const GUIDE_DIAGRAMS: Record<string, () => ReactNode> = {
   chomp: CHOMPDiagram,
   dubins: DubinsDiagram,
   trapezoid: TrapezoidDiagram,
+  //  具身智能 · 视觉感知
+  pinhole: PinholeDiagram,
+  stereo: StereoDiagram,
+  pointcloud: PointCloudDiagram,
+  icp: ICPDiagram,
+  pnp: PnPDiagram,
+  vo: VODiagram,
+  handeye: HandEyeDiagram,
+  slam: SLAMDiagram,
   binsearch: BinSearchDiagram,
   nqueens: NQueensDiagram,
   unionfind: UnionFindDiagram,
