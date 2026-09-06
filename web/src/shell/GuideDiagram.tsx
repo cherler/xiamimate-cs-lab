@@ -8282,6 +8282,280 @@ function SLAMDiagram() {
   )
 }
 
+// ═══════════════ 具身智能 · GJK 碰撞检测 ═══════════════
+function GJKDiagram() {
+  return (
+    <Shell icon={Icn.cross} title="GJK 碰撞检测原理"
+      sub="看懂：两招把「两个形碰不碰」变成「一个形含不含原点」">
+      <Sec n={1} title="第一招:Minkowski 差 —— 把两个形合成一个">
+        <div className="gd-formula">
+          A ⊖ B = { '{' } a − b { '}' }
+          {'　　'}<b>两凸形相交 ⟺ 原点落在 A⊖B 里</b>
+        </div>
+        <div className="gd-note">{Icn.info}<span>为什么?a−b=0 意味着<b>存在一个点同时属于 A 和 B</b> —— 那正是「相交」的定义。一次代换,把两个形之间的关系变成<b>一个形和原点</b>的关系。</span></div>
+      </Sec>
+      <Sec n={2} title="第二招:支撑函数 —— 不建出 A⊖B,只按需要一个点">
+        <div className="gd-formula">
+          support(d) = 沿方向 d <b>最远</b>的顶点
+          {'　　'}s(d) = support_A(d) − support_B(−d)
+        </div>
+        <div className="gd-note">{Icn.info}<span>A⊖B 显式建出来可能有 n×m 个点,太贵。GJK <b>懒惰</b>:每轮只朝一个方向要一个最远点,围着原点搭一个<b>单纯形</b>(2D 最多三角形)。<b>要多少建多少。</b></span></div>
+      </Sec>
+      <Sec n={3} title="每一轮做的判断只有两条">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>a·d {'<'} 0 → 不碰</h4><p>朝原点方向<em>最远的点都没越过原点</em> —— 整个 A⊖B 都在原点一侧,立刻停。</p></div>
+          <div className="gd-card o"><h4>三角形含原点 → 碰</h4><p>否则把 a 加进单纯形,<em>丢掉离原点远的点</em>、把方向重新指向原点,继续。</p></div>
+        </div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '两个凸形' }, { cls: 'pd', text: 'Minkowski 差:含不含原点' },
+          { cls: 'pt', text: '朝原点取支撑点 a' }, { cls: 'pi', text: 'a·d<0 → 不碰' },
+          { cls: 'ph', text: '单纯形朝原点收' }, { cls: 'pm', text: '含原点 → 碰' },
+        ]}
+        why={<><b>它为什么快到能进实时循环:</b>规划器每走一步都要问一次「碰没碰」,而 GJK <b>只用到顶点和几次点积</b>,而且<b>大多数情况几轮就能判「不碰」</b>(a·d{'<'}0 提前退出)—— 不碰才是常态。凸的限制也不算限制:凹形拆成若干凸块就行,这就是物理引擎里到处是「凸分解」的原因。</>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 具身智能 · MDP 与值迭代 ═══════════════
+function MDPDiagram() {
+  return (
+    <Shell icon={Icn.doc} title="MDP + 贝尔曼方程原理"
+      sub="看懂：值是怎么「从目标一步步往回传」的">
+      <Sec n={1} title="五要素与一个目标">
+        <div className="gd-formula">
+          MDP = ⟨ S 状态, A 动作, P 转移, R 奖励, <span className="ft">γ 折扣</span> ⟩
+          {'　　'}目标:最大化 <b>Σ γ<sup>t</sup>·r<sub>t</sub></b>
+        </div>
+      </Sec>
+      <Sec n={2} title="贝尔曼最优方程:一个状态的值 = 选最好的动作">
+        <div className="gd-formula">
+          V*(s) = max<sub>a</sub> Σ<sub>s′</sub> P(s′|s,a)·[ <span className="ft">R</span> + <span className="fo">γ·V*(s′)</span> ]
+          {'　　'}<span className="fi">= 即时奖励 + 折扣后的未来</span>
+        </div>
+      </Sec>
+      <Sec n={3} title="值迭代:反复做备份,值从目标往回长">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>iter 1</h4><p>只有紧挨目标的 <em>C = 1</em>。</p></div>
+          <div className="gd-card i"><h4>iter 2</h4><p><em>B = 0.9 × 1 = 0.9</em>。</p></div>
+          <div className="gd-card o"><h4>iter 3</h4><p><em>A = 0.9² = 0.81</em>。</p></div>
+        </div>
+        <div className="gd-note">{Icn.info}<span>链是 A→B→C→G(到 G 得 +1)。<b>每迭代一轮,「知道怎么去目标」这件事就往回传一格</b> —— 这就是值迭代的全部动作。收敛后每个状态取 argmax 就得到最优策略(全朝 G)。γ=0.9 是远视、γ=0.5 是短视:<b>γ 决定「多看重未来」</b>。</span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '⟨S,A,P,R,γ⟩' }, { cls: 'pd', text: '贝尔曼备份一个状态' },
+          { cls: 'pt', text: '扫一遍所有状态' }, { cls: 'pi', text: '值从目标往回传一格' },
+          { cls: 'ph', text: '反复直到收敛' }, { cls: 'pm', text: 'argmax = 最优策略' },
+        ]}
+        why={<><b>为什么它是强化学习的地基:</b>后面所有算法都在解同一个贝尔曼方程,区别只在<b>「知不知道 P 和 R」和「表存不存得下」</b> —— 知道就用值迭代,不知道就用 Q-learning(下一课),状态太多存不下就用神经网络近似。<b>换的是手段,方程没变过。</b></>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 具身智能 · Q-learning ═══════════════
+function QLearningDiagram() {
+  return (
+    <Shell icon={Icn.doc} title="Q-learning 原理"
+      sub="看懂：不知道环境模型，怎么只靠经验学出同一个答案">
+      <Sec n={1} title="和值迭代的分界:知不知道 P 和 R">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>值迭代(有模型)</h4><p>要知道<em>转移 P 和奖励 R</em>,才能求那个期望。</p></div>
+          <div className="gd-card o"><h4>Q-learning(免模型)</h4><p>只要一串<em>经验元组 (s, a, r, s′)</em> —— 环境什么样,自己去撞出来。</p></div>
+        </div>
+      </Sec>
+      <Sec n={2} title="TD 更新:用当前的估计去改当前的估计">
+        <div className="gd-formula">
+          Q(s,a) ← Q(s,a) + α·[ <span className="ft">r + γ·max<sub>a′</sub>Q(s′,a′) − Q(s,a)</span> ]
+          {'　　'}<span className="fi">方括号 = TD 误差 δ</span>
+        </div>
+        <div className="gd-note">{Icn.info}<span>方括号里用 Q 自己去估计未来,这叫<b>自举(bootstrapping)</b> —— 听着像空手套白狼,但它确实收敛。首次更新 C→G:δ = 1 + γ·0 − 0 = <b>1</b>。</span></div>
+      </Sec>
+      <Sec n={3} title="奖励每回合往回传一步,最后和值迭代同解">
+        <div className="gd-formula">
+          多回合后 Q 收敛到 <b>[0.81, 0.9, 1]</b>
+          {'　　'}<span className="fi">和值迭代的 V* 一模一样 —— 但它<b>没用到模型</b></span>
+        </div>
+        <div className="gd-note">{Icn.info}<span><b>off-policy</b> 是它的另一个关键词:更新时用 <b>max</b>(贪心)学最优 Q,而<b>行为可以带探索</b>(ε-greedy)。学的和做的可以不是一回事 —— 这让它能从<b>别人的、甚至很旧的经验</b>里学。</span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '与环境交互' }, { cls: 'pd', text: '拿到 (s,a,r,s′)' },
+          { cls: 'pt', text: '算 TD 误差 δ' }, { cls: 'pi', text: 'Q ← Q + αδ' },
+          { cls: 'ph', text: '奖励往回传一步' }, { cls: 'pm', text: '收敛到最优 Q' },
+        ]}
+        why={<><b>α 是一把明码标价的旋钮:</b>大 → 学得快但抖,小 → 稳但慢。而<b>Q 表本身是这条路的天花板</b> —— 状态一多就存不下、也没法泛化(相邻的状态学不到一块去)。用神经网络代替这张表,就是 DQN;直接学策略而不是值,就是下一课的策略梯度。</>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 具身智能 · 策略梯度 REINFORCE ═══════════════
+function PolicyGradDiagram() {
+  return (
+    <Shell icon={Icn.bulb} title="策略梯度 REINFORCE 原理"
+      sub="看懂：基线不是「降方差的小技巧」，它决定了更新的方向对不对">
+      <Sec n={1} title="换个打法:不学值,直接学策略">
+        <div className="gd-formula">
+          ∇<sub>θ</sub>J = E[ <span className="ft">∇<sub>θ</sub>log π<sub>θ</sub>(a|s)</span> · <span className="fo">G</span> ]
+          {'　　'}<span className="fi">「把导致高回报的动作,概率往上推」</span>
+        </div>
+        <div className="gd-note">{Icn.info}<span>比起值方法,它<b>天然处理连续动作</b>(关节力矩没法 argmax 遍历);代价是<b>高方差</b> —— 同一个策略跑两次,梯度可能差很远。</span></div>
+      </Sec>
+      <Sec n={2} title="基线:一个例子就能看出它有多要紧">
+        <div className="gd-formula">
+          单状态两动作:L 回报 <span className="ft">1</span>、R 回报 <span className="fo">3</span>,基线 b = <b>2</b>
+        </div>
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>不带基线</h4><p>采到较差的 L,权重 = 回报 = <em>1 {'>'} 0</em> → <em>π(L) 反而被推高</em> —— <b>方向就是错的</b>。</p></div>
+          <div className="gd-card o"><h4>带基线 A = G − b</h4><p>A = 1 − 2 = <em>−1</em> → <em>π(L) 被压下去</em> —— 对了。</p></div>
+        </div>
+        <div className="gd-note">{Icn.info}<span>所以基线不只是「降方差」:只要回报<b>恒为正</b>,不带基线时<b>每一个被采到的动作都会被强化</b>,只是强化的多少不同。<b>是基线让「低于平均」这件事有了负号。</b></span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: 'softmax 策略 π_θ' }, { cls: 'pd', text: '采样动作、拿回报 G' },
+          { cls: 'pt', text: '减基线得优势 A' }, { cls: 'pi', text: '∇logπ · A' },
+          { cls: 'ph', text: '梯度上升更新 θ' }, { cls: 'pm', text: '好动作概率↑ 差的↓' },
+        ]}
+        why={<><b>基线通常取什么:</b>取 V(s) —— 于是「优势」A = G − V(s) 的含义变得很干净:<b>「这个动作比这个状态的平均水平好多少」</b>。学策略的同时学一个 V 来当基线,就是 <b>actor-critic</b>;再给更新加个信任域,就是下一课的 PPO。</>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 具身智能 · PPO ═══════════════
+function PPODiagram() {
+  return (
+    <Shell icon={Icn.bulb} title="PPO 近端策略优化原理"
+      sub="看懂：一个 min 和一个 clip，就换来了「别一步迈太大」">
+      <Sec n={1} title="痛点:策略梯度的步子难调,一步迈大就崩">
+        <div className="gd-formula">
+          重要性比 r = <span className="ft">π<sub>θ</sub>(a|s) / π<sub>θ_old</sub>(a|s)</span>
+          {'　　'}<span className="fi">r = 1 说明策略没变</span>
+        </div>
+        <div className="gd-note">{Icn.info}<span>直接最大化替代目标 L = r·A,优化器会<b>把 r 推到无穷</b> —— 策略瞬间崩坏。得有东西拦住它。</span></div>
+      </Sec>
+      <Sec n={2} title="裁剪目标:超出信任域就「封顶」,梯度归零">
+        <div className="gd-formula">
+          L<sup>clip</sup> = <b>min</b>( r·A, <span className="fo">clip(r, 1−ε, 1+ε)</span>·A )
+          {'　　'}ε = 0.2 ⇒ r 限在 <b>[0.8, 1.2]</b>
+        </div>
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>小步 r = 1.1</h4><p>在 [0.8,1.2] 内 → <em>不裁剪,正常更新</em>。</p></div>
+          <div className="gd-card o"><h4>大步 r = 1.5</h4><p>超过 1+ε → <em>裁剪到 1.2</em>、目标封顶 → <em>梯度为 0,拦住</em>。</p></div>
+        </div>
+      </Sec>
+      <Sec n={3} title="为什么是 min 而不是直接 clip">
+        <div className="gd-note">{Icn.info}<span>那个 min 保证了<b>裁剪只在「对自己有利的方向」上生效</b>:A{'>'}0 时 r 涨到 1+ε 就封顶(不许过度增概率);A{'<'}0 时 r 跌到 1−ε 就封底。<b>「新旧策略差太多就没有梯度」</b> —— 这就是一条天然的信任域,而且没有二阶项、便宜到能大规模用。</span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '采一批轨迹' }, { cls: 'pd', text: '算优势 A' },
+          { cls: 'pt', text: '重要性比 r' }, { cls: 'pi', text: 'clip 到 [1−ε, 1+ε]' },
+          { cls: 'ph', text: 'min 取保守的那个' }, { cls: 'pm', text: '多 epoch 复用这批数据' },
+        ]}
+        why={<><b>为什么 PPO 成了当今主力:</b>它 on-policy,却因为有裁剪兜底,<b>敢把同一批数据反复训好几个 epoch</b> —— 样本效率一下就上来了。实现只比 REINFORCE 多十几行,却稳得多。机器人学走路(Brax/Isaac)、大模型 RLHF,用的都是它。</>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 具身智能 · 行为克隆 BC ═══════════════
+function BCDiagram() {
+  return (
+    <Shell icon={Icn.doc} title="行为克隆 BC 原理"
+      sub="看懂：最简单的模仿学习，和它那个躲不掉的致命伤">
+      <Sec n={1} title="做法简单到不像强化学习">
+        <div className="gd-formula">
+          收集专家示范 (状态 → 动作){'　→　'}当成<span className="ft">监督学习</span>去拟合
+        </div>
+        <div className="gd-note">{Icn.info}<span>没有奖励、没有探索、没有环境交互 —— 就是一个分类/回归问题。<b>所有 VLA 大模型的训练基石就是它。</b></span></div>
+      </Sec>
+      <Sec n={2} title="致命伤:分布漂移 / 复合误差">
+        <div className="gd-formula">
+          小误差 → 漂到<span className="fo">专家没示范过的状态</span> → 没学过、动作更错
+          {'　→　'}漂得更远 → <b>雪球滚大</b>
+        </div>
+        <div className="gd-note">{Icn.info}<span>车道保持这个例子最清楚:专家<b>只在中间示范</b>,所以 BC 在中间和专家一样好。可一旦被扰动推到车道边上 —— 那是训练数据里<b>从来没出现过的状态</b> —— 它就<b>欠修正</b>,于是更偏,于是更陌生。<b>误差不是加起来的,是乘起来的。</b></span></div>
+      </Sec>
+      <Sec n={3} title="根因:BC 是一步监督,而控制是一条轨迹">
+        <div className="gd-note">{Icn.info}<span>监督学习假设<b>训练和测试同分布</b>。可 BC 的策略<b>自己会改变它遇到的状态分布</b> —— 它一动,分布就不是专家那个了。这条假设一破,监督学习的所有保证都失效。<b>解法(DAgger、加噪声示范、Diffusion Policy、RL 微调)全都在对付这一条。</b></span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '专家示范' }, { cls: 'pd', text: '监督学 状态→动作' },
+          { cls: 'pt', text: '示范区内:和专家一样' }, { cls: 'pi', text: '被扰动推出示范区' },
+          { cls: 'ph', text: '欠修正、误差复合' }, { cls: 'pm', text: '冲出车道' },
+        ]}
+        why={<><b>为什么它还是所有人的起点:</b>因为它<b>不需要奖励函数、不需要仿真器、不需要试错</b> —— 只要示范数据。在真机上试错既慢又危险,而示范可以人来遥操作采。<b>「先 BC 学个能用的,再想办法治分布漂移」</b>,这是具身学习的默认路线。</>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 具身智能 · Diffusion Policy ═══════════════
+function DiffPolicyDiagram() {
+  return (
+    <Shell icon={Icn.star} title="Diffusion Policy 原理"
+      sub="看懂：BC 的第二个病 —— 把两个都对的答案，平均成一个错答案">
+      <Sec n={1} title="病:多峰动作被回归平均掉">
+        <div className="gd-formula">
+          绕障碍:向左(<span className="ft">−1</span>)对,向右(<span className="fo">+1</span>)也对
+          {'　→　'}回归输出<b>一个</b>动作 ⇒ 平均成 <b>0(直行)</b> ⇒ <b>正好撞上</b>
+        </div>
+        <div className="gd-note">{Icn.info}<span>这<b>不是数据不够</b>,是「回归求均值」的<b>结构问题</b>:两个正确答案的平均,可能是最差的那个答案。数据越多,它平均得越坚定。</span></div>
+      </Sec>
+      <Sec n={2} title="药:不预测动作,而是建整个动作分布">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>从噪声出发</h4><p>随机采一个动作 —— 什么都不是。</p></div>
+          <div className="gd-card i"><h4>沿学到的分数去噪</h4><p>一步步<em>把噪声往高概率区拉</em>。</p></div>
+          <div className="gd-card o"><h4>落到某一个模态</h4><p>要么<em>向左</em>、要么<em>向右</em> —— <em>而不是它们的平均</em>。</p></div>
+        </div>
+      </Sec>
+      <Sec n={3} title="代价:它是采样,不是一次前向">
+        <div className="gd-note">{Icn.info}<span>每出一个动作要<b>去噪好几步</b>,比回归贵得多。所以工程上会减少去噪步数、或用 DDIM 之类的加速采样;而它换来的是<b>能表达「有好几种对法」</b>这件事 —— 在接触丰富、路径多解的操作任务上,这一条常常是成败之别。</span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '专家示范(多峰)' }, { cls: 'pd', text: '学动作分布的分数' },
+          { cls: 'pt', text: '推理:从噪声起' }, { cls: 'pi', text: '逐步去噪' },
+          { cls: 'ph', text: '收敛到一个模态' }, { cls: 'pm', text: '左或右,不是 0' },
+        ]}
+        why={<><b>它和 BC 治的是两个不同的病:</b>BC 的<b>分布漂移</b>是「没见过的状态怎么办」,Diffusion Policy 治的是「见过、但有<b>多个正确答案</b>怎么办」。前者靠 DAgger/RL 微调,后者靠换生成模型。<b>把两个病分清楚,才知道该上哪种药。</b></>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 具身智能 · VLA ═══════════════
+function VLADiagram() {
+  return (
+    <Shell icon={Icn.chip} title="VLA 视觉-语言-动作原理"
+      sub="看懂：动作被 token 化之后，机器人控制就变成了「预测下一个词」">
+      <Sec n={1} title="换的是起点:从零学 vs 站在一个懂世界的模型上">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>BC / Diffusion Policy</h4><p>从示范里学「<em>这个具体状态</em> → 动作」。换个物体、换句话就<em>抓瞎</em>。</p></div>
+          <div className="gd-card o"><h4>VLA</h4><p>拿在<em>海量网络图文</em>上预训练的 VLM 当骨干 —— 它<em>已经懂</em>「红色」「碗」「叠放」。</p></div>
+        </div>
+      </Sec>
+      <Sec n={2} title="关键一招:动作 token 化(RT-2 的做法)">
+        <div className="gd-formula">
+          每个动作维度(Δx / Δy / Δz / 夹爪…)按范围<span className="ft">离散成 256 个格子</span>
+          {'　→　'}一个 <b>token id</b>
+        </div>
+        <div className="gd-note">{Icn.info}<span>这一步之后,<b>「输出动作」和「输出下一个词」就是同一件事</b> —— 大模型原封不动的自回归生成能力,直接拿来控制机器人。再把 token 反解回连续的位姿增量,交给控制器执行。</span></div>
+      </Sec>
+      <Sec n={3} title="换来了什么:泛化到没训过的物体">
+        <div className="gd-note">{Icn.info}<span>因为骨干在网络图文上见过「灭火器」长什么样,即使<b>机器人示范数据里从来没有灭火器</b>,它也能听懂「把灭火器递给我」并做出合理动作。<b>这是从示范数据里学不出来的东西</b> —— 泛化来自预训练,不来自机器人数据。</span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '一张图 + 一句指令' }, { cls: 'pd', text: '预训练 VLM 骨干理解' },
+          { cls: 'pt', text: '动作 token 化(256 格)' }, { cls: 'pi', text: '自回归吐动作 token' },
+          { cls: 'ph', text: '反 token 化成位姿增量' }, { cls: 'pm', text: '机器人执行' },
+        ]}
+        why={<><b>代价和争议也一起来了:</b>token 化把连续动作<b>量化</b>了(精度受限于 256 格),自回归生成<b>慢</b>(高频控制吃不消),而且它仍然建立在 BC 之上 —— <b>分布漂移那个病一点没治</b>。所以现在的路线大多是<b>分层</b>:VLA 当「大脑」出粗粒度意图,底下再接一个高频的控制器把它执行好。</>} />
+    </Shell>
+  )
+}
+
 export const GUIDE_DIAGRAMS: Record<string, () => ReactNode> = {
   //  具身智能职业线(2026-09-06 起补):这条线原来 51 个实验一张引导图都没有。
   fk: FKDiagram,
@@ -8343,6 +8617,15 @@ export const GUIDE_DIAGRAMS: Record<string, () => ReactNode> = {
   vo: VODiagram,
   handeye: HandEyeDiagram,
   slam: SLAMDiagram,
+  //  具身智能 · 碰撞 / 强化学习 / 具身学习
+  gjk: GJKDiagram,
+  mdp: MDPDiagram,
+  qlearning: QLearningDiagram,
+  policygrad: PolicyGradDiagram,
+  ppo: PPODiagram,
+  bc: BCDiagram,
+  diffpolicy: DiffPolicyDiagram,
+  vla: VLADiagram,
   binsearch: BinSearchDiagram,
   nqueens: NQueensDiagram,
   unionfind: UnionFindDiagram,
