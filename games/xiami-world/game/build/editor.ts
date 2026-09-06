@@ -98,7 +98,10 @@ const LEVELS: Level[] = [
   // —— 六、出口顶不住的时候 ——
   { name: '真·路由器 · 出口拥塞', hint: '一峰包同拍涌到,可每个出口每拍只发得出 1 个 —— 直接怼过去就丢包。先用〈地址路由〉按地址分开,各接一个〈缓冲队列〉切「限速」削成 1/拍,一个都别丢', srcRow: 3, seq: [0, 1, 0, 1], showAddr: true, burst: true, sinks: [{ r: 1, addr: 1, accept: -1, need: 2, rate: 1, label: '网段1 · 每拍1' }, { r: 5, addr: 0, accept: -1, need: 2, rate: 1, label: '网段0 · 每拍1' }], parts: ['belt', 'arouter', 'queue'], par: { parts: 22, cycles: 22 } },
   // —— 七、终关:一次完整的转发,把学过的串成一台真机器 ——
-  { name: '终关 · 一次完整转发', hint: '把学过的全串起来跑一遍真路由:包进来先用〈掩码判断〉问「跟我同网段吗」—— 同网段(010/011)直接进本地口;不同网段的交给〈前缀匹配〉按路由表选路,10* 去网段A、11* 去网段B,谁都没认领的直行到底进默认口', srcRow: 3, seq: [2, 4, 6, 3, 5, 0, 7, 1], showAddr: true, localNet: 2, routes: [{ pat: '10*' }, { pat: '11*' }], sinks: [{ r: 0, accept: -1, need: 2, addrs: [2, 3], label: '本地口 · 同网段' }, { r: 1, accept: -1, need: 2, addrs: [4, 5], label: '网段A · 10*' }, { r: 2, accept: -1, need: 2, addrs: [6, 7], label: '网段B · 11*' }, { r: 3, accept: -1, need: 2, addrs: [0, 1], label: '默认口 · 没人认领' }], parts: ['belt', 'mask', 'prefix'], par: { parts: 40, cycles: 34 }, finale: true },
+  /* 终关 = 真路由器**出方向的整条转发路**,顺序就是真机器里的顺序:
+     判同网段 → 查路由表 → 出向访问控制 → NAT 改写 → 出口排队 → 上公网。
+     一峰同拍涌到(burst),而公网口是家里最慢的那条链路(rate 1)—— 所以队列不是装饰,不接就丢包。 */
+  { name: '终关 · 一次完整转发', hint: '把学过的全串成一台真路由器,顺序就是真机器里的顺序:①〈掩码判断〉问「跟我同网段吗」—— 同网段(010/011)直接进本地口,不出门 ②〈前缀匹配〉查路由表,10* 的去网段A ③〈访问控制〉把禁止上网的 00* 当场拦下 ④〈NAT〉把剩下的源地址统统改写成公网地址 0 ⑤公网口是家里最慢的那条链路(每拍只发得出 1 个),先接〈缓冲队列〉切「限速」削峰,一个都别丢', srcRow: 3, seq: [2, 4, 6, 0, 3, 5, 7, 1], showAddr: true, burst: true, localNet: 2, natPub: 0, drops: 2, routes: [{ pat: '10*' }, { pat: '00*' }, { pat: '11*' }], sinks: [{ r: 0, accept: -1, need: 2, addrs: [2, 3], label: '本地口 · 同网段' }, { r: 1, accept: -1, need: 2, addrs: [4, 5], label: '网段A · 10*' }, { r: 3, accept: -1, need: 2, rate: 1, addrs: [0], label: '公网口 · NAT已改写' }], parts: ['belt', 'mask', 'prefix', 'acl', 'nat', 'queue'], par: { parts: 32, cycles: 18 }, finale: true },
 ]
 let lvl = 0
 let SOURCES: Src[] = [{ r: LEVELS[0]!.srcRow, seq: LEVELS[0]!.seq }]
@@ -120,7 +123,7 @@ const STORY = [
   '回包只写着会话号,得查表才知道该给谁 —— 查不到的(外面主动找上门的)直接丢,这就是外网进不来的原因。',
   '不是所有包都该放出去 —— 规则表从上往下,第一条匹配的就生效;例外要是排在通配后面,它永远轮不上。',
   '出口顶不住了 —— 先按地址分开,再各自排队限速,一个包都别丢。',
-  '最后一里:包进来先判断同不同网段,不同的再查路由表选路,没人认领的走默认口 —— 一台完整的路由器。',
+  '最后一里:判同网段 → 查路由表 → 访问控制放不放行 → NAT 改写 → 出口排队上公网。整条路都在这一屏里。',
 ]
 
 type Best = { parts: number; cycles: number }
@@ -545,8 +548,8 @@ function frame(now: number) {
       }
       ctx.globalAlpha = 1; ctx.textAlign = 'center'
       ctx.fillStyle = `rgba(245,240,224,${e})`; ctx.font = `bold ${Math.round(40 * (0.7 + 0.3 * e))}px system-ui`; ctx.fillText('网,回来了。', cx, H * 0.30)
-      ctx.fillStyle = `rgba(224,180,80,${e})`; ctx.font = '17px system-ui'; ctx.fillText('从「输入网址」到「取回网页」——整条路都是你亲手搭的。', cx, H * 0.30 + 38)
-      ctx.fillStyle = `rgba(200,191,168,${0.9 * e})`; ctx.font = '13px system-ui'; ctx.fillText('六个子系统全部修通,信号重新开始流动。', cx, H * 0.30 + 64)
+      ctx.fillStyle = `rgba(224,180,80,${e})`; ctx.font = '17px system-ui'; ctx.fillText('从家里那台机器,到公网的第一跳 —— 整条路都是你亲手搭的。', cx, H * 0.30 + 38)
+      ctx.fillStyle = `rgba(200,191,168,${0.9 * e})`; ctx.font = '13px system-ui'; ctx.fillText('判同网段、查路由表、放行与拦截、NAT 改写、出口排队 —— 一台真路由器要做的判断,你全接上了。', cx, H * 0.30 + 64)
       ctx.textAlign = 'left'
     }
   }

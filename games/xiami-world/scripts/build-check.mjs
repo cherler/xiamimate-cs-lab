@@ -181,15 +181,33 @@ console.log('\n搭机器 · 十三关真地址冒烟\n')
   ok(bad.lost > 0, `L11 反例:不接队列直怼出口→丢包(lost=${bad.lost})`)
 }
 
-/* ── L12 终关:掩码判同网段 → 前缀匹配选路 → 没人认领走默认口 ── */
+/* ── L12 终关:真路由器出方向的整条路 ──
+   判同网段 → 查路由表 → 出向访问控制 → NAT 改写 → 出口排队。
+   四条反例各拆掉链上的一环,每一环缺了都得判红 —— 否则「完整」二字就是空话。 */
 {
-  const s = await build(12, `
-    P(3,1,'mask',0,1); P(3,2,'prefix',0,0); P(3,3,'prefix',0,1); H(3,4,10);
+  const CHAIN = (k4, k5) => `
+    P(3,1,'mask',0,1); P(3,2,'prefix',0,0); P(3,3,'acl',0,1); ${k4} ${k5} H(3,6,10);
+    P(2,1,'belt',3); P(1,1,'belt',3); H(0,1,10);
+    P(2,2,'belt',3); H(1,2,10);`
+  const s = await build(12, CHAIN(`P(3,4,'nat',0);`, `P(3,5,'queue',0,0);`))
+  ok(s.pass && s.wrong === 0,
+    `L12 终关 整条路串通=通过(by=[${s.deliveredBy}], 按规矩拦下 ${s.okDrop}, parts=${s.parts}, cyc=${s.cycles})`)
+  const noQueue = await build(12, CHAIN(`P(3,4,'nat',0);`, `P(3,5,'belt',0);`))
+  ok(!noQueue.pass && noQueue.lost > noQueue.okDrop,
+    `L12 反例:公网口不接队列→一峰同拍怼上最慢的链路→挤丢(lost=${noQueue.lost} > 该丢的 ${noQueue.okDrop})`)
+  const noNat = await build(12, CHAIN(`P(3,4,'belt',0);`, `P(3,5,'queue',0,0);`))
+  ok(!noNat.pass && noNat.wrong > 0,
+    `L12 反例:不过 NAT→私网地址原样上公网→公网口不认(wrong=${noNat.wrong})`)
+  const noAcl = await build(12, `
+    P(3,1,'mask',0,1); P(3,2,'prefix',0,0); P(3,3,'prefix',0,1); P(3,4,'nat',0); P(3,5,'queue',0,0); H(3,6,10);
     P(2,1,'belt',3); P(1,1,'belt',3); H(0,1,10);
     P(2,2,'belt',3); H(1,2,10);
     H(2,3,10);`)
-  ok(s.pass && s.wrong === 0 && s.lost === 0,
-    `L12 终关 四个口各2=通过(by=[${s.deliveredBy}], parts=${s.parts}, cyc=${s.cycles})`)
+  ok(!noAcl.pass && noAcl.okDrop === 0,
+    `L12 反例:把「拦截」换成「放行」→ 该禁的 00* 也出了网(按规矩拦下 ${noAcl.okDrop},该拦 2)`)
+  const badMask = await build(12, CHAIN(`P(3,4,'nat',0);`, `P(3,5,'queue',0,0);`).replace(`'mask',0,1`, `'mask',0,2`))
+  ok(!badMask.pass && badMask.wrong > 0,
+    `L12 反例:掩码调成 /3 太长→同网段的 011 被误当外网、一路走到公网口(wrong=${badMask.wrong})`)
 }
 
 /* ── 通用 ── */

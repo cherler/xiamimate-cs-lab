@@ -2,14 +2,12 @@
 <html lang="zh">
 <head>
 <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>虾米家 · 修理卡牌</title>
-<style>
-  html,body{margin:0;height:100%;background:#0e1524;overflow:hidden;font-family:sans-serif;color:#e8e2d6}
-  #c{display:block;width:100vw;height:100vh}
-</style>
+<!-- 主线入口 = 搭机器(用户 2026-09 拍板:xiami-world 主线只有它)。
+     原来这里挂的是 game/cards/demo.ts(已放弃的修理卡牌方向),于是构建出的 dist 里
+     只有那个 demo,挂到 /lab/world/ 上的一直不是主线 —— 那个 demo 仍在 /card-demo.html。
+     build.html 挂的是同一个模块,冒烟脚本都按它的地址走,别删。 -->
+<title>搭机器 · 虾米做实验</title>
+<style>html,body{margin:0;height:100%;background:#161009;overflow:hidden}#c{display:block;width:100vw;height:100vh}</style>
 </head>
-<body>
-<canvas id="c"></canvas>
-<script type="module" src="/game/cards/demo.ts"></script>
-</body>
+<body><canvas id="c"></canvas><script type="module" src="/game/build/editor.ts"></script></body>
 </html>

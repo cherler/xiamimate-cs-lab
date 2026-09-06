@@ -32,6 +32,9 @@ export default defineConfig(({ mode, command }) => {
     base: command === 'build' ? '/lab/world/' : '/',
     //  显式绑 127.0.0.1:不写的话 Vite 只监听 IPv6 的 [::1],用 127.0.0.1 访问会连不上。
     server: { host: '127.0.0.1', port: 5180, proxy },
-    build: { target: 'es2022' },
+    /* 仓里十几个 .html 都是历史方向的试片,**vite 默认只打包 index.html**。
+       主线现在挂在 index.html 上;build.html 挂的是同一个模块,所有冒烟脚本都按它的
+       地址走,一并打进来,免得「本地 /build.html 好好的、上了线只有首页」。 */
+    build: { target: 'es2022', rollupOptions: { input: { index: 'index.html', build: 'build.html' } } },
   }
 })
