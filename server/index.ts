@@ -1,5 +1,5 @@
 /**
- * 虾米看计算机 · AI 学伴后端（Node/TS）。
+ * 虾米课堂 · AI 学伴后端（Node/TS）。
  *
  * 为什么后端用 TS 而不是照抄 stock-lab 的 Python：我们有 121 个 TS 内核，
  * 后端直接 import 它们跑 trace 出题/验答，零重写。计费闸口协议(见 llm.ts)语言无关，照搬。
@@ -123,7 +123,7 @@ const server = createServer(async (req, res) => {
 })
 
 server.listen(PORT, () => {
-  console.log(`虾米看计算机 AI 学伴后端 → http://127.0.0.1:${PORT}/lab/ai/health`)
+  console.log(`虾米课堂 AI 学伴后端 → http://127.0.0.1:${PORT}/lab/ai/health`)
   console.log(`可出题实验：${listExperiments().map(e => e.id).join(', ')}`)
   const billed = process.env.XM_API_BASE ? '已接入主站计费' : '未配 XM_API_BASE（本地透明模式，不计费）'
   console.log(`计费：${billed}`)

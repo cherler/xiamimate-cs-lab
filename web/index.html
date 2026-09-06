@@ -3,12 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>虾米看计算机</title>
-  <!-- 名字跟着兄弟模块的家族形状走:虾米看股 / 虾米看AI / 虾米看计算机(虾米+动词+领域)。
-       这里的「看」在这个家族里是**看懂、核验**,不是被动观看(虾米看AI 就是"AI 能力核验")。
-       名字负责让人一眼懂"是什么、关于什么";凭什么不一样交给宣传语的动词「跑」。 -->
+  <title>虾米课堂</title>
+  <!-- 用户 2026-09 定名「虾米课堂」(此前叫过虾米看计算机)。
+       注意它**不再跟兄弟模块的家族形状**(虾米看股 / 虾米看AI = 虾米+动词+领域)——
+       家族感换成了"课堂"这个更直白的身份。凭什么不一样,交给宣传语的动词「跑」:
+       别的课堂讲原理,这里把原理跑给你看。 -->
   <meta name="description" content="从计算机基础到人工智能,在交互实验中看懂原理。" />
-  <meta property="og:title" content="虾米看计算机 · 把原理跑给你看" />
+  <meta property="og:title" content="虾米课堂 · 把原理跑给你看" />
   <meta property="og:description" content="从计算机基础到人工智能,在交互实验中看懂原理。" />
   <!-- 内联 favicon（虾米君品牌头像，与主站 tools-frontend/public/favicon.svg 同源）：省掉一次必然 404 的 /favicon.ico 请求。改形象两处同步。 -->
   <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2064%2064%22%3E%3Cpath%20d%3D%22M24%2015%20C20.5%208%2021%202.5%2026.5%203.4%22%20stroke%3D%22%23d1772e%22%20stroke-width%3D%223.4%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%2F%3E%3Ccircle%20cx%3D%2226.8%22%20cy%3D%223.8%22%20r%3D%222.3%22%20fill%3D%22%23d1772e%22%2F%3E%3Cpath%20d%3D%22M40%2015%20C43.5%208%2043%202.5%2037.5%203.4%22%20stroke%3D%22%23d1772e%22%20stroke-width%3D%223.4%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%2F%3E%3Ccircle%20cx%3D%2237.2%22%20cy%3D%223.8%22%20r%3D%222.3%22%20fill%3D%22%23d1772e%22%2F%3E%3CclipPath%20id%3D%22head%22%3E%3Crect%20x%3D%2211%22%20y%3D%2214%22%20width%3D%2242%22%20height%3D%2248%22%20rx%3D%2221%22%2F%3E%3C%2FclipPath%3E%3Crect%20x%3D%2211%22%20y%3D%2214%22%20width%3D%2242%22%20height%3D%2248%22%20rx%3D%2221%22%20fill%3D%22%23f59d52%22%2F%3E%3Cellipse%20cx%3D%2232%22%20cy%3D%2262%22%20rx%3D%2216%22%20ry%3D%2214%22%20fill%3D%22%23fbc98e%22%20clip-path%3D%22url(%23head)%22%2F%3E%3Crect%20x%3D%2214%22%20y%3D%2225%22%20width%3D%2216.5%22%20height%3D%2214%22%20rx%3D%227%22%20fill%3D%22%23fff%22%20stroke%3D%22%232b2530%22%20stroke-width%3D%223.6%22%2F%3E%3Crect%20x%3D%2233.5%22%20y%3D%2225%22%20width%3D%2216.5%22%20height%3D%2214%22%20rx%3D%227%22%20fill%3D%22%23fff%22%20stroke%3D%22%232b2530%22%20stroke-width%3D%223.6%22%2F%3E%3Cpath%20d%3D%22M30.5%2031.5%20h3%22%20stroke%3D%22%232b2530%22%20stroke-width%3D%223.6%22%20stroke-linecap%3D%22round%22%2F%3E%3Cpath%20d%3D%22M14%2030.5%20H10.2%22%20stroke%3D%22%232b2530%22%20stroke-width%3D%223.4%22%20stroke-linecap%3D%22round%22%2F%3E%3Cpath%20d%3D%22M50%2030.5%20H53.8%22%20stroke%3D%22%232b2530%22%20stroke-width%3D%223.4%22%20stroke-linecap%3D%22round%22%2F%3E%3Ccircle%20cx%3D%2223%22%20cy%3D%2232.3%22%20r%3D%223.4%22%20fill%3D%22%236f4a26%22%2F%3E%3Ccircle%20cx%3D%2224.2%22%20cy%3D%2231.2%22%20r%3D%221.2%22%20fill%3D%22%23fff%22%2F%3E%3Ccircle%20cx%3D%2241%22%20cy%3D%2232.3%22%20r%3D%223.4%22%20fill%3D%22%236f4a26%22%2F%3E%3Ccircle%20cx%3D%2242.2%22%20cy%3D%2231.2%22%20r%3D%221.2%22%20fill%3D%22%23fff%22%2F%3E%3Cpath%20d%3D%22M27.5%2047.5%20q4.5%204%209%200%22%20stroke%3D%22%23c2632a%22%20stroke-width%3D%222.8%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%2F%3E%3C%2Fsvg%3E" />
