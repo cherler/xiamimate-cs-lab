@@ -7709,6 +7709,313 @@ function ImpedanceDiagram() {
   )
 }
 
+// ═══════════════ 具身智能 · RRT 采样式规划 ═══════════════
+function RRTDiagram() {
+  return (
+    <Shell icon={Icn.pin} title="RRT 运动规划原理"
+      sub="看懂：不建地图、不算格子 —— 靠随机采样把一棵树长到终点">
+      <Sec n={1} title="四步一个循环,循环到够着终点为止">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>① 随机采一个点</h4><p>偶尔<em>直接采终点</em>(goal bias)—— 一点点偏心就能显著加速收敛。</p></div>
+          <div className="gd-card i"><h4>② 找树上最近的节点</h4><p>「最近」是这棵树往采样点方向<em>唯一合理的出发点</em>。</p></div>
+          <div className="gd-card o"><h4>③ 朝它迈一步</h4><p>只迈固定的 step,不是直接连过去。</p></div>
+          <div className="gd-card t"><h4>④ 撞了就丢</h4><p>撞障碍/出界 → 丢弃;否则<em>加进树</em>,连一条边。</p></div>
+        </div>
+      </Sec>
+      <Sec n={2} title="为什么随机采样反而「快速探索」">
+        <div className="gd-note">{Icn.info}<span>关键在第②步:采样点落在空旷处的概率大,而空旷处附近的树节点少 —— 于是<b>树总是被拽向还没探索过的方向</b>。这个偏好不是设计出来的,是「最近节点」这条规则的<b>副产品</b>,也正是 RRT 名字里「快速探索」的来历。</span></div>
+      </Sec>
+      <Sec n={3} title="它给的是「一条能走的路」,不是「最好的路」">
+        <div className="gd-note">{Icn.info}<span>RRT <b>概率完备</b>:只要有解,采样够多总能找到;但它<b>不最优</b> —— 找到的路往往绕、抖。要最优得上 RRT*(下一课),要快得上 RRT-Connect,要多次查询同一环境得上 PRM。</span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '起点建一棵树' }, { cls: 'pd', text: '随机采样(带 goal bias)' },
+          { cls: 'pt', text: '找最近节点' }, { cls: 'pi', text: '迈一步' },
+          { cls: 'ph', text: '撞了丢 / 没撞加进树' }, { cls: 'pm', text: '够到终点 → 回溯出路径' },
+        ]}
+        why={<><b>为什么机械臂规划几乎都用采样法:</b>7 自由度机械臂的构型空间是 7 维,要像 A* 那样<b>把空间切成格子根本存不下</b>(维度灾难)。采样法不需要显式表示空间,<b>只需要一个「这个构型撞不撞」的判定函数</b> —— 这一条让它在高维里活了下来。</>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 具身智能 · RRT* ═══════════════
+function RRTStarDiagram() {
+  return (
+    <Shell icon={Icn.star} title="RRT* 渐近最优原理"
+      sub="看懂：只加了「选父」和「重连」两步，树就会越采越优">
+      <Sec n={1} title="RRT 的毛病:接最近 ≠ 代价最小">
+        <div className="gd-note">{Icn.info}<span>RRT 把新点接到<b>几何上最近</b>的树节点。可那个节点自己可能是绕远路来的 —— <b>接得近,不代表从起点算总代价小</b>。这一条不改,路就永远是歪的。</span></div>
+      </Sec>
+      <Sec n={2} title="改动一:选父 —— 在邻域里挑代价最小的">
+        <div className="gd-formula">
+          在半径 r 邻域内,选让 <span className="ft">cost[邻居] + dist</span> <b>最小</b>的那个当父
+          {'　　'}<span className="fi">(不是几何最近的)</span>
+        </div>
+        <div className="gd-note">{Icn.info}<span>本例:同一个新点,RRT 接出来代价 <b>9</b>,RRT* 选父之后是 <b>6</b> —— 一步就差三成。</span></div>
+      </Sec>
+      <Sec n={3} title="改动二:重连 —— 回头看看邻居们能不能沾光">
+        <div className="gd-formula">
+          若 cost[x_new] + dist {'<'} cost[邻居]{'　'}⇒{'　'}把邻居<b>改接到 x_new</b>
+        </div>
+        <div className="gd-note">{Icn.info}<span>本例邻居 B 被重连,代价从 <b>8 降到 7</b>。这一步是 RRT* 的灵魂:<b>树不只往外长,还会回头把自己修得更优</b>。邻域半径按 (log n / n)^(1/d) 收缩,于是采样数 → ∞ 时<b>渐近收敛到最优路</b>。</span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '采样得 x_new' }, { cls: 'pd', text: '取半径 r 邻域' },
+          { cls: 'pt', text: '选父:代价最小' }, { cls: 'pi', text: '加进树' },
+          { cls: 'ph', text: '重连:邻居改接更省' }, { cls: 'pm', text: '采样越多越接近最优' },
+        ]}
+        why={<><b>代价是时间:</b>每个新点都要查邻域、还要重连一圈,单步比 RRT 贵不少。所以工程上常这么用 —— <b>先用 RRT-Connect 秒出一条能走的路(保底),再让 RRT\* 在剩余时间里慢慢优化</b>。这也是「随时可用算法(anytime)」的典型形态:任何时候掐断都有一个答案,给的时间越多答案越好。</>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 具身智能 · RRT-Connect ═══════════════
+function RRTConnectDiagram() {
+  return (
+    <Shell icon={Icn.pin} title="RRT-Connect 双向扩展原理"
+      sub="看懂：为什么 MoveIt / OMPL 把它当机械臂规划的默认算法">
+      <Sec n={1} title="两棵树,一棵从起点长、一棵从终点长">
+        <div className="gd-note">{Icn.info}<span>单树 RRT 要从起点一路摸到终点。<b>两棵树相向而长,期望搜索量大致减半</b> —— 而且终点那棵树天然把「终点附近能不能进得去」这件事先探明白了。</span></div>
+      </Sec>
+      <Sec n={2} title="关键在 CONNECT:不是迈一步,是一路走到底">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>EXTEND</h4><p>当前树朝采样点<em>迈一步</em>得 q_new(撞了就丢)。</p></div>
+          <div className="gd-card o"><h4>CONNECT(贪心)</h4><p>让<em>另一棵树</em>朝 q_new <em>连续迈步</em> —— 直到<em>够到</em>(两树相遇)或<em>撞障碍停下</em>。</p></div>
+        </div>
+        <div className="gd-note">{Icn.info}<span>「一路走」这一下是提速的关键:空旷区域里一次 CONNECT 能跨过一大段,而 RRT 得一步一步挪。<b>贪心在空旷处占尽便宜,在窄通道处自然停下</b> —— 代价可控。</span></div>
+      </Sec>
+      <Sec n={3} title="相遇即拼路,没相遇就交换两棵树">
+        <div className="gd-formula">
+          两树相遇 → 从相遇点<span className="ft">分别沿父指针回溯</span> → 拼成完整路径
+          {'　　'}没相遇 → <span className="fo">交换两树</span>,下一轮换另一棵先扩展
+        </div>
+        <div className="gd-note">{Icn.info}<span>「交换」让两棵树<b>轮流当主动方</b>,避免一棵长疯、另一棵原地不动。实现上就是一次 swap,便宜得不像话,却是平衡两侧探索的全部机制。</span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '起点树 + 终点树' }, { cls: 'pd', text: '采样' },
+          { cls: 'pt', text: 'EXTEND 一棵迈一步' }, { cls: 'pi', text: 'CONNECT 另一棵贪心逼近' },
+          { cls: 'ph', text: '相遇 → 拼路径' }, { cls: 'pm', text: '否则交换再来' },
+        ]}
+        why={<><b>它牺牲了什么:</b>贪心 + 双向让它<b>快</b>,但路径质量比 RRT 还糙(经常是折线加大绕)。所以实际流水线是「<b>RRT-Connect 出路 → 路径平滑/短切 → 再配速度曲线</b>」三段式 —— <b>规划器负责「找得到」,后处理负责「走得好」</b>,分工明确。</>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 具身智能 · PRM 概率路图 ═══════════════
+function PRMDiagram() {
+  return (
+    <Shell icon={Icn.chip} title="PRM 概率路图原理"
+      sub="看懂：建一次图，答多次查询 —— 和 RRT 分工不同的那一半">
+      <Sec n={1} title="两个阶段,分得很清楚">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>① 建图 learning</h4><p>自由空间随机采 N 个构型当节点,每个连 <em>k 近邻</em>;<em>边要碰撞检测,穿障的丢掉</em>。</p></div>
+          <div className="gd-card o"><h4>② 查询 query</h4><p>把起点/终点<em>接入路图</em>,再用 <em>Dijkstra / A*</em> 在图上搜最短路。</p></div>
+        </div>
+        <div className="gd-note">{Icn.info}<span>碰撞检测是这里<b>最贵的一步</b>,而它全发生在建图阶段 —— 这就是 PRM 的商业模式:<b>把贵的活一次性做完,之后每次查询都便宜</b>。</span></div>
+      </Sec>
+      <Sec n={2} title="和 RRT 的分工">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>RRT:单查询</h4><p>朝<em>一个</em>目标长树。环境一变就得重来。</p></div>
+          <div className="gd-card o"><h4>PRM:多查询</h4><p>路图建好后,<em>反复回答不同起终点</em> —— 适合<em>固定环境、多次规划</em>(产线上的机械臂)。</p></div>
+        </div>
+      </Sec>
+      <Sec n={3} title="死穴:窄通道 —— 采样太稀,路图会断开">
+        <div className="gd-note">{Icn.info}<span>窄通道在自由空间里<b>体积极小</b>,随机采样很难采到里面 → 通道两侧的节点连不上 → <b>路图断开、明明有路却找不到</b>。这不是 bug,是采样法共同的软肋。对策是各种有偏采样(桥采样、障碍附近采样),本质都是<b>把采样力气花在窄的地方</b>。</span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '随机撒 N 个自由构型' }, { cls: 'pd', text: '连 k 近邻' },
+          { cls: 'pt', text: '边做碰撞检测,穿障丢弃' }, { cls: 'pi', text: '得到路图' },
+          { cls: 'ph', text: '起终点接入' }, { cls: 'pm', text: '图上搜最短路' },
+        ]}
+        why={<><b>PRM 把运动规划变回了图搜索</b> —— 一旦路图建好,后面用的就是 408 里学的 Dijkstra/A*。这是个很值钱的观察:<b>采样法真正解决的,是「怎么把连续空间变成一张图」</b>;至于在图上怎么走,几十年前就有答案了。</>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 具身智能 · D* Lite 增量重规划 ═══════════════
+function DStarLiteDiagram() {
+  return (
+    <Shell icon={Icn.ruler} title="D* Lite 增量重规划原理"
+      sub="看懂：发现新障碍后，只修那一小块，而不是从头重搜">
+      <Sec n={1} title="两个量:g 是「已知的」,rhs 是「一步前瞻的」">
+        <div className="gd-formula">
+          <span className="ft">g(s)</span> = 已知的从起点到 s 的最优代价
+          {'　　'}<span className="fo">rhs(s)</span> = min<sub>邻居</sub>( g(邻居) + 边权 )
+        </div>
+        <div className="gd-formula">
+          <b>局部一致</b> ⇔ g(s) = rhs(s){'　　'}<span className="fi">不一致的格子,才需要重算</span>
+        </div>
+      </Sec>
+      <Sec n={2} title="障碍出现:只有受影响的格子变得不一致">
+        <div className="gd-note">{Icn.info}<span>边权一变,<b>只有那几个格子的 g 和 rhs 对不上</b> → 进优先队列 → 只重算<b>这些格子及其下游</b>,其余的 g 值<b>原样复用</b>。这就是「增量」二字的全部内容。</span></div>
+      </Sec>
+      <Sec n={3} title="数字最有说服力:7×5 栅格,同一次改动">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>初次规划</h4><p>直穿第 2 行,代价 <em>6</em>,展开 <em>35 格</em>。</p></div>
+          <div className="gd-card o"><h4>(3,2) 变障碍 → 增量修复</h4><p>只有 4 格受影响,<em>只展开 6 格</em>,新路绕第 3 行、代价 <em>8</em>。</p></div>
+          <div className="gd-card i"><h4>从头重搜</h4><p>要展开 <em>34 格</em> —— 差 <em>5 倍以上</em>。</p></div>
+        </div>
+        <div className="gd-note">{Icn.info}<span><b>地图越大、改动越局部,这个优势越夸张。</b>反过来说,如果整张地图都变了,增量修复并不比重搜便宜 —— 它赌的是「变化是局部的」这件事。</span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '初次规划:算全表 g' }, { cls: 'pd', text: '边走边发现新障碍' },
+          { cls: 'pt', text: '受影响格 g≠rhs' }, { cls: 'pi', text: '进优先队列' },
+          { cls: 'ph', text: '只重算不一致格及下游' }, { cls: 'pm', text: '其余 g 值复用' },
+        ]}
+        why={<><b>为什么机器人非要增量不可:</b>它是<b>边走边看</b>的 —— 传感器每一帧都可能带来新障碍。如果每帧都从头 A*,大地图上根本跑不到实时。D* Lite 让「重规划」的代价<b>正比于改动的大小,而不是地图的大小</b>,这才配得上「在线」两个字。</>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 具身智能 · 人工势场法 ═══════════════
+function PotentialFieldDiagram() {
+  return (
+    <Shell icon={Icn.bulb} title="人工势场法原理"
+      sub="看懂：快到几乎不要钱，但有一个躲不掉的死穴">
+      <Sec n={1} title="两股力,顺着合力「下山」">
+        <div className="gd-formula">
+          引力 F_att = <span className="ft">k_att·(q_goal − q)</span>{'　'}<span className="fi">指向目标、正比距离</span>
+        </div>
+        <div className="gd-formula">
+          斥力 F_rep = <span className="fo">k_rep·(1/ρ − 1/ρ₀)·(1/ρ²)·n̂</span>{'　'}<span className="fi">仅 ρ ≤ ρ₀ 时存在,越近越大</span>
+        </div>
+        <div className="gd-note">{Icn.info}<span>本例 k_att=1、k_rep=30、影响半径 ρ₀=3。机器人沿合力方向走一步 —— 相当于在一张<b>势能面上做梯度下降</b>。没有搜索、没有树、没有图,<b>每步只是几次算术</b>,所以快得离谱。</span></div>
+      </Sec>
+      <Sec n={2} title="死穴:局部极小">
+        <div className="gd-lane">
+          <div className="gd-card o"><h4>障碍偏侧</h4><p>斥力有<em>横向分量</em> → 合力把机器人<em>推向侧面绕过</em> → 到达。</p></div>
+          <div className="gd-card t"><h4>障碍正中</h4><p>引力和斥力<em>共线相反</em> → 某处<em>抵消,合力 ≈ 0</em> → <em>卡住,永远到不了</em>。</p></div>
+        </div>
+        <div className="gd-note">{Icn.info}<span>这不是参数没调好:<b>只要障碍恰好在机器人和目标的连线上,就一定存在一个合力为零的点</b>。调大 k_att 只是把那个点挪个位置。<b>结构性的问题,调参救不了。</b></span></div>
+      </Sec>
+      <Sec n={3} title="所以它的位置在哪">
+        <div className="gd-note">{Icn.info}<span>势场法适合<b>局部避障</b>(反应式、跟在全局规划器后面兜底),不适合当全局规划器。典型配法:<b>RRT/A* 出全局路径(无局部极小),势场法负责实时躲开突然出现的东西</b>。</span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '目标产生引力' }, { cls: 'pd', text: '障碍产生斥力(限半径内)' },
+          { cls: 'pt', text: '合力 = 引力 + 斥力' }, { cls: 'pi', text: '顺合力走一步' },
+          { cls: 'ph', text: '偏侧 → 绕过' }, { cls: 'pm', text: '正中 → 卡局部极小' },
+        ]}
+        why={<><b>斥力那个式子和阻抗控制是亲戚:</b>「越靠近越推得狠」,本质就是一个<b>虚拟弹簧</b>。区别在于阻抗控制的弹簧作用在<b>真实的接触力</b>上,势场法的弹簧作用在<b>规划出来的速度</b>上 —— 同一个直觉,一个在力层、一个在运动层。</>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 具身智能 · CHOMP 轨迹优化 ═══════════════
+function CHOMPDiagram() {
+  return (
+    <Shell icon={Icn.doc} title="CHOMP 轨迹优化原理"
+      sub="看懂：把「整条轨迹」当成一个变量去优化，而不是一点点搜出来">
+      <Sec n={1} title="换了个问法:不是「怎么搜」,是「怎么改」">
+        <div className="gd-formula">
+          轨迹 ξ = [q₁ … q_n] <b>整条当变量</b>
+          {'　　'}代价 U(ξ) = <span className="ft">平滑项</span> + <span className="fo">避障项</span>
+          {'　　'}梯度下降 ξ ← ξ − α∇U
+        </div>
+        <div className="gd-note">{Icn.info}<span>RRT/A* 是<b>搜索</b>:从无到有找一条。CHOMP 是<b>优化</b>:先给一条(通常就是直线),再<b>整条一起改</b>直到不撞且够平滑。起点不同,擅长的场合也不同。</span></div>
+      </Sec>
+      <Sec n={2} title="两个梯度,各拉一边">
+        <div className="gd-lane">
+          <div className="gd-card o"><h4>避障梯度</h4><p>影响半径 d₀ 内的路点被<em>往外推</em>,∝ (d₀ − dist) × 远离方向。</p></div>
+          <div className="gd-card t"><h4>平滑梯度</h4><p>每个点被<em>拉向邻居中点</em>(Laplacian:2q_i − q_{'{'}i−1{'}'} − q_{'{'}i+1{'}'})—— <em>直线上为 0,弯了才有</em>。</p></div>
+        </div>
+        <div className="gd-note">{Icn.info}<span>本例 5 个路点、直线 S(0,0)→G(4,0) 从障碍 (2,0.6) 旁擦过:中点 q₂ 离障碍 0.6 {'<'} d₀=1,被往下推。<b>避障权重大</b> → 推到 (2, −0.8)(绕得开);<b>平滑权重大</b> → 只推到 (2, −0.2)(更直,但擦着障碍走)。<b>这两个权重就是这套方法的全部调参空间。</b></span></div>
+      </Sec>
+      <Sec n={3} title="死穴和势场法是同一个">
+        <div className="gd-note">{Icn.info}<span>梯度下降会掉进<b>局部极小</b> —— 初始那条直线要是从障碍「错误的一侧」穿过去,它只会被推得贴着障碍,而不会翻到另一侧。所以 CHOMP 很吃<b>初始轨迹</b>,工程上常用采样法先给一条粗路,再交给它打磨。</span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '给一条初始轨迹(直线)' }, { cls: 'pd', text: '算避障梯度' },
+          { cls: 'pt', text: '算平滑梯度' }, { cls: 'pi', text: '按权重合成' },
+          { cls: 'ph', text: '整条下降一步' }, { cls: 'pm', text: '迭代到平滑且不撞' },
+        ]}
+        why={<><b>「搜索 → 优化」这一步跨越很值钱:</b>搜索法给的路能走但难看,优化法能把它变得平滑、省力、贴合动力学约束。现代规划流水线基本都是两段:<b>采样法保证找得到(全局性),优化法保证走得好(局部质量)</b> —— 各自补对方的短板。</>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 具身智能 · Dubins 曲线 ═══════════════
+function DubinsDiagram() {
+  return (
+    <Shell icon={Icn.ruler} title="Dubins 曲线原理"
+      sub="看懂：车不能横着走 —— 于是两点之间最短路不再是直线">
+      <Sec n={1} title="两条约束,机械臂没有、车有">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>非完整约束</h4><p>车/差速底盘<em>不能横着走</em>(nonholonomic)—— 想往旁边挪,只能拐过去。</p></div>
+          <div className="gd-card o"><h4>最小转弯半径 R</h4><p>方向盘打死也只能拐这么急。</p></div>
+        </div>
+      </Sec>
+      <Sec n={2} title="Dubins 1957 年证明的结论,漂亮得不像话">
+        <div className="gd-formula">
+          只前进的车,任意两个<b>位姿</b>之间的最短路
+          {'　'}一定是<span className="ft">三段圆弧/直线</span>,且只可能是 <b>6 种词</b>之一
+        </div>
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>CSC(转-直-转)</h4><p><em>LSL / RSR / LSR / RSL</em></p></div>
+          <div className="gd-card i"><h4>CCC(转-转-转)</h4><p><em>RLR / LRL</em> —— 近距离才用得上</p></div>
+        </div>
+        <div className="gd-note">{Icn.info}<span>于是「求最短路」被降维成一道<b>选择题</b>:六种词各用闭式几何算一遍长度,<b>取最短的那个</b>。没有搜索、没有迭代。</span></div>
+      </Sec>
+      <Sec n={3} title="同一个终点位置,朝向一变,最优词就换了">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>终点朝上(90°)</h4><p>最优 <em>LSL</em>:左转 0.464 + 直 2.236 + 左转 1.107 = <em>3.807</em></p></div>
+          <div className="gd-card o"><h4>终点朝下(−90°)</h4><p>最优 <em>LSR</em>:1.571 + 1 + 3.142 = <em>5.712</em></p></div>
+        </div>
+        <div className="gd-note">{Icn.info}<span>位置一模一样,<b>只因为要停成不同的朝向,路程差了一半</b>。这就是「位姿」两个字的分量 —— 对车来说,<b>朝向和位置一样是硬目标</b>。</span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '起点位姿 / 终点位姿 / R' }, { cls: 'pd', text: '画两端的转向圆' },
+          { cls: 'pt', text: '四种 CSC 各算长度' }, { cls: 'pi', text: '(近距离再算两种 CCC)' },
+          { cls: 'ph', text: '取最短的词' }, { cls: 'pm', text: '三段:转-直-转' },
+        ]}
+        why={<><b>为什么 RRT 用在车上要换成 Dubins 距离:</b>RRT 里的「最近节点」和「迈一步」,默认用的是欧氏距离和直线。<b>对车来说这两条都是错的</b> —— 正后方 1 米的点,直线距离最近,实际却要倒好几把才到。把度量换成 Dubins 长度,RRT 才长得出车真能走的树。<b>规划器的骨架不变,变的是「距离」的定义。</b></>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 具身智能 · 梯形速度曲线 ═══════════════
+function TrapezoidDiagram() {
+  return (
+    <Shell icon={Icn.ruler} title="梯形速度曲线原理"
+      sub="看懂：路径说「走哪」，轨迹说「什么速度走」——这是两件事">
+      <Sec n={1} title="先把这两个词分开">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>路径 path</h4><p>只有<em>几何</em>:经过哪些点。RRT/A* 给的是它。</p></div>
+          <div className="gd-card o"><h4>轨迹 trajectory</h4><p>路径 + <em>时间</em>:每一刻在哪、速度多少。电机要的是它。</p></div>
+        </div>
+      </Sec>
+      <Sec n={2} title="时间最优的答案就是 bang-bang:全力加、匀速、全力减">
+        <div className="gd-formula">
+          加速段 t_a = <span className="ft">v_max / a_max</span>{'　'}d_a = <span className="ft">v_max² / (2a_max)</span>{'　'}<span className="fi">(减速段对称)</span>
+        </div>
+        <div className="gd-note">{Icn.info}<span>为什么「全力」就是最优?因为任何时刻少用一点加速度,都只会让到达时间变长 —— <b>约束是上限,最优解一定顶在上限上</b>。这就是 bang-bang 的来历。</span></div>
+      </Sec>
+      <Sec n={3} title="判形:够不够长,决定是梯形还是三角">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>D ≥ 2d_a → 梯形</h4><p>够长,<em>能达到 v_max</em>。匀速段 d_c = D − 2d_a,总时 <em>T = 2t_a + d_c/v_max</em>。</p></div>
+          <div className="gd-card o"><h4>D {'<'} 2d_a → 三角</h4><p>太短,<em>还没加到 v_max 就得减速</em>。峰值 <em>v_peak = √(a_max·D)</em>,总时 <em>T = 2√(D/a_max)</em>。</p></div>
+        </div>
+        <div className="gd-note">{Icn.info}<span>「三角」这个情形最容易被忘掉:代码里如果只写梯形公式,短距离时算出来的匀速段会是<b>负数</b> —— 不报错,但轨迹是错的。<b>判形那一行 if 是必须的。</b></span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '距离 D、v_max、a_max' }, { cls: 'pd', text: '算 t_a、d_a' },
+          { cls: 'pt', text: '判形:D vs 2d_a' }, { cls: 'pi', text: '梯形:加速/匀速/减速' },
+          { cls: 'ph', text: '三角:加速/减速' }, { cls: 'pm', text: '总时间 T' },
+        ]}
+        why={<><b>它和三次多项式那一课是一对:</b>三次多项式保证<b>平滑</b>(两端速度为 0、加速度有限),梯形曲线保证<b>最快</b>(顶着约束跑)。两者不可兼得 —— 梯形的加速度是<b>方波</b>,切换瞬间 jerk 无穷大。所以高速高精场合用 <b>S 曲线</b>:把梯形的棱角磨圆,牺牲一点时间换有限的 jerk。<b>平滑和快,永远在换。</b></>} />
+    </Shell>
+  )
+}
+
 export const GUIDE_DIAGRAMS: Record<string, () => ReactNode> = {
   //  具身智能职业线(2026-09-06 起补):这条线原来 51 个实验一张引导图都没有。
   fk: FKDiagram,
@@ -7751,6 +8058,16 @@ export const GUIDE_DIAGRAMS: Record<string, () => ReactNode> = {
   complementary: ComplementaryDiagram,
   mpc: MPCDiagram,
   impedance: ImpedanceDiagram,
+  //  具身智能 · 运动规划
+  rrt: RRTDiagram,
+  rrtstar: RRTStarDiagram,
+  rrtconnect: RRTConnectDiagram,
+  prm: PRMDiagram,
+  dstarlite: DStarLiteDiagram,
+  potentialfield: PotentialFieldDiagram,
+  chomp: CHOMPDiagram,
+  dubins: DubinsDiagram,
+  trapezoid: TrapezoidDiagram,
   binsearch: BinSearchDiagram,
   nqueens: NQueensDiagram,
   unionfind: UnionFindDiagram,
