@@ -6354,7 +6354,165 @@ function GanDiagram() {
   )
 }
 
+// ═══════════════ 具身智能 · 正向运动学 FK ═══════════════
+//  数字取自内核默认配置 L=[2,2,1]、θ=[30°,60°,-30°],逐步手算核对过:
+//  cum=30° → (1.732,1.000);cum=90° → (1.732,3.000);cum=60° → (2.232,3.866)。
+function FKDiagram() {
+  const jx = [40, 161, 161, 196], jy = [150, 117, 51, 22]
+  return (
+    <Shell icon={Icn.pin} title="正向运动学 FK 原理"
+      sub="看懂：为什么「一个关节一个关节累加」就能算出手爪在哪">
+      <Sec n={1} title="一条连杆链：转过的角累加，再沿这个朝向走一根连杆">
+        <div className="gd-formula">
+          cumθ<sub>i</sub> = θ<sub>1</sub>+…+θ<sub>i</sub>
+          {'　'}<span className="fi">(累计朝向)</span>
+          {'　　'}(x<sub>i</sub>, y<sub>i</sub>) = (x<sub>i−1</sub>, y<sub>i−1</sub>) + L<sub>i</sub>·(cos cumθ<sub>i</sub>, sin cumθ<sub>i</sub>)
+        </div>
+        <div className="gd-graph">
+          <svg viewBox="0 0 380 168" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+            {[0, 1, 2].map(k => (
+              <line key={k} x1={jx[k]} y1={jy[k]} x2={jx[k + 1]} y2={jy[k + 1]} stroke="var(--f-idx)" strokeWidth="4" strokeLinecap="round" />
+            ))}
+            <line x1="40" y1="150" x2="120" y2="150" stroke="var(--line)" strokeWidth="1.4" strokeDasharray="4 3" />
+            {jx.map((x, k) => (
+              <g key={k}>
+                <circle cx={x} cy={jy[k]} r={k === 3 ? 7 : 6} fill={k === 3 ? 'var(--now)' : 'var(--panel)'} stroke={k === 3 ? 'var(--now)' : 'var(--f-idx)'} strokeWidth="2" />
+                <text x={x + 11} y={jy[k] + 4} fontSize="10" fill="var(--faint)">
+                  {k === 0 ? '基座' : k === 3 ? '末端' : `关节${k + 1}`}
+                </text>
+              </g>
+            ))}
+            <text x="86" y="140" fontSize="10" fill="var(--f-tag)">θ₁=30°</text>
+            <text x="168" y="90" fontSize="10" fill="var(--f-tag)">θ₂=60°</text>
+            <text x="200" y="46" fontSize="10" fill="var(--f-tag)">θ₃=−30°</text>
+          </svg>
+        </div>
+        <div className="gd-note">{Icn.info}<span>关节角是<b>相对上一根连杆</b>量的,不是相对地面 —— 所以要先把它们<b>累加</b>成「相对地面的朝向」,才能沿着它走。这一条是整个 FK 的全部机关。</span></div>
+      </Sec>
+
+      <Sec n={2} title="三步就走完:每一步只做「累加朝向 + 走一根连杆」">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>① 关节1 · L=2</h4><p>cumθ = 30°<br />(0,0) + 2·(cos30°, sin30°)<br />→ <em>(1.732, 1.000)</em></p></div>
+          <div className="gd-card i"><h4>② 关节2 · L=2</h4><p>cumθ = 30+60 = <em>90°</em><br />(1.732,1.000) + 2·(0, 1)<br />→ <em>(1.732, 3.000)</em></p></div>
+          <div className="gd-card o"><h4>③ 关节3 · L=1</h4><p>cumθ = 90−30 = <em>60°</em><br />(1.732,3.000) + 1·(0.5, 0.866)<br />→ <em>(2.232, 3.866)</em></p></div>
+        </div>
+        <div className="gd-note">{Icn.info}<span>第②步 cumθ 正好是 90°,所以 cos=0、sin=1 —— 那一根连杆<b>笔直向上</b>,x 一点没动。这一步最好核:看图上第二根确实是竖着的。末端朝向 = 最后的 cumθ = <b>60°</b>。</span></div>
+      </Sec>
+
+      <Sec n={3} title="为什么叫「正」向:反过来那条路难得多">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>正向 FK:角 → 位置</h4><p>一路累加,<em>一次算完、唯一解</em>。机械臂、机器狗的腿、底盘转向,都是同一条链。</p></div>
+          <div className="gd-card i"><h4>逆向 IK:位置 → 角</h4><p>要<em>反解</em>:可能<em>无解</em>(够不着)、<em>两解</em>(肘朝上/朝下)、甚至<em>无穷解</em>(冗余臂)。所以 IK 单独一关。</p></div>
+        </div>
+      </Sec>
+
+      <Flow
+        pills={[
+          { cls: 'p0', text: '各关节角 θ' }, { cls: 'pd', text: '累加成朝向' },
+          { cls: 'pt', text: '沿朝向走 L' }, { cls: 'pi', text: '下一节' }, { cls: 'ph', text: '末端位姿' },
+        ]}
+        why={<><b>为什么机器人学第一课是它:</b>后面所有东西都建在 FK 上 —— 雅可比是<b>把 FK 对关节角求偏导</b>、IK 是<b>把 FK 反过来解</b>、力控要用 FK 算力臂、规划算出的路径最后也要靠 FK 验证末端真到了那儿。先把「角 → 位置」这条链算清楚,后面才有得谈。</>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 具身智能 · 雅可比矩阵 ═══════════════
+//  L1=L2=2、θ=[30°,90°]:J 的四个元与 det 都按 2 连杆平面臂的公式手算核对过,
+//  det = L1·L2·sinθ2 = 4·sin90° = 4;θ2→0(伸直)时 det=0,正是奇异。
+function JacobianDiagram() {
+  return (
+    <Shell icon={Icn.ruler} title="雅可比矩阵原理"
+      sub="看懂：J 把「关节怎么转」映成「末端怎么动」，det=0 时为什么丢一个自由度">
+      <Sec n={1} title="它就是 FK 对每个关节角求偏导，排成一张表">
+        <div className="gd-formula">
+          [ẋ, ẏ]<sup>T</sup> = <span className="ft">J</span> · [θ̇<sub>1</sub>, θ̇<sub>2</sub>]<sup>T</sup>
+          {'　　'}<span className="fi">J = ∂(末端 x, y) / ∂(θ<sub>1</sub>, θ<sub>2</sub>)</span>
+        </div>
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>正着用:算末端速度</h4><p>给一组关节角速度,乘上 J 就得到末端的线速度 —— <em>关节怎么转 → 手爪怎么飘</em>。</p></div>
+          <div className="gd-card i"><h4>反着用:速度层 IK</h4><p>想让手爪<em>沿直线走</em>,就拿期望的末端速度乘 <em>J⁻¹</em> 反解关节速度。力控、遥操作都靠这一步。</p></div>
+        </div>
+      </Sec>
+
+      <Sec n={2} title="这一台的 J:L₁=L₂=2、θ=[30°, 90°]">
+        <div className="gd-formula">
+          J = [ <span className="ft">−2.732</span>{'　'}<span className="ft">−1.732</span> ; <span className="fo">0.732</span>{'　'}<span className="fo">−1.000</span> ]
+          {'　　'}det = (−2.732)(−1.000) − (−1.732)(0.732) = <b>4.000</b>
+        </div>
+        <div className="gd-note">{Icn.info}<span>det 有个漂亮的闭式:<b>det(J) = L₁·L₂·sin θ₂</b>。代进去 2·2·sin90° = 4,和上面按四个元硬算的一模一样 —— <b>两条路对上了,这张表就是对的</b>。</span></div>
+      </Sec>
+
+      <Sec n={3} title="θ₂ → 0:手臂伸直,det 归零,瞬间丢一个自由度">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>θ₂ = 90°</h4><p>det = 4·sin90° = <em>4</em><br />J 可逆,末端<em>想往哪动都行</em>。</p></div>
+          <div className="gd-card i"><h4>θ₂ = 30°</h4><p>det = 4·sin30° = <em>2</em><br />还能动,但<em>越来越吃力</em>。</p></div>
+          <div className="gd-card o"><h4>θ₂ = 0°(伸直)</h4><p>det = 4·sin0° = <em>0</em><br />两列平行 → 末端<em>只能沿一个方向动</em>,J⁻¹ 爆炸。</p></div>
+        </div>
+        <div className="gd-note">{Icn.info}<span>直觉版:胳膊<b>伸直了就没法再往外伸</b> —— 那个方向的速度,无论关节怎么转都做不出来。这就是<b>奇异构型</b>;真机器人上表现为关节速度飙到无穷大,所以规划时要绕开它。</span></div>
+      </Sec>
+
+      <Flow
+        pills={[
+          { cls: 'p0', text: '一个构型 θ' }, { cls: 'pd', text: 'FK 求偏导' },
+          { cls: 'pt', text: '得到 J' }, { cls: 'pi', text: '正:关节速→末端速' },
+          { cls: 'ph', text: '反:J⁻¹ 解关节速' }, { cls: 'pm', text: 'det=0 → 奇异' },
+        ]}
+        why={<><b>为什么 det 这么要紧:</b>它不是一个抽象指标,而是<b>「这个姿势还剩多少可动性」</b>。det 越接近 0,同样的末端速度就要越大的关节速度去凑;到 0 那一刻,某个方向<b>根本做不出来</b>。所以机械臂的工作空间边界、遥操作的手感变重、力控突然发飘,追下去往往都是同一件事:det(J) 在往 0 掉。</>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 具身智能 · PID 控制 ═══════════════
+//  目标=10、Kp=0.4、Kd=0.9、dt=0.5,被控对象是质量块(力→加速度,双积分)。
+//  纯 P 冲到 11.77 还在涨(震荡);加上 D 之后平稳收敛到 10。数字取自内核默认配置。
+function PIDDiagram() {
+  return (
+    <Shell icon={Icn.bulb} title="PID 控制原理"
+      sub="看懂：只有 P 为什么一定震荡，加一个 D 为什么就能停住">
+      <Sec n={1} title="每一拍只做一件事:算误差,再用三项合成推力">
+        <div className="gd-formula">
+          e = <span className="ft">目标 − 实际</span>
+          {'　　'}u = <span className="ft">K<sub>p</sub>·e</span> + <span className="fi">K<sub>i</sub>·∑e</span> + <span className="fo">K<sub>d</sub>·Δe/Δt</span>
+        </div>
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>P 比例 · 现在差多少</h4><p>误差越大推得越使劲。<em>但它只看「现在」</em> —— 到达目标那一刻误差为 0,推力也为 0,可<em>速度还在</em>。</p></div>
+          <div className="gd-card i"><h4>I 积分 · 一直差着没</h4><p>把误差<em>累计</em>起来。专治恒定扰动(比如重力)压出来的<em>稳态误差</em> —— P 和 D 都拿它没办法。</p></div>
+          <div className="gd-card o"><h4>D 微分 · 正冲得多快</h4><p>看误差<em>缩小的速度</em>,提前给一个反向的<em>刹车</em>。它是阻尼,不是动力。</p></div>
+        </div>
+      </Sec>
+
+      <Sec n={2} title="被控的是个质量块:力 → 加速度 → 速度 → 位置(双积分)">
+        <div className="gd-note">{Icn.info}<span>关键就在这个<b>双积分</b>:推力不直接改位置,先变成加速度、再攒成速度、才移动位置。所以<b>推力归零的那一刻,速度是攒下来的、不会归零</b> —— 于是冲过头。这不是参数没调好,是<b>纯 P 控双积分对象必然的结果</b>。</span></div>
+        <div className="gd-lane" style={{ marginTop: 12 }}>
+          <div className="gd-card t"><h4>纯 P(K<sub>p</sub>=0.4)</h4><p>朝 10 冲 → 到 10 时速度还在 → 冲到 <em>11.77 还在涨</em> → 反向推 → 又冲过头 → <em>来回震荡</em>。</p></div>
+          <div className="gd-card o"><h4>P + D(K<sub>d</sub>=0.9)</h4><p>还没到 10、误差正在快速缩小时,D 就<em>提前反向刹车</em> → 速度提前降下来 → <em>平稳停在 10</em>。</p></div>
+        </div>
+      </Sec>
+
+      <Sec n={3} title="三项各治一种病 —— 缺哪个,就犯哪种毛病">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>只有 P</h4><p>能动、但<em>震荡</em>;负载一变还留<em>稳态误差</em>。</p></div>
+          <div className="gd-card i"><h4>P + D</h4><p><em>不震荡了</em>,但恒定扰动下仍差一截 —— 这时才需要 I。</p></div>
+          <div className="gd-card o"><h4>D 给太大</h4><p>对噪声极敏感,读数一抖就<em>猛刹</em> —— 真机器上表现为关节发抖。</p></div>
+        </div>
+      </Sec>
+
+      <Flow
+        pills={[
+          { cls: 'p0', text: '目标' }, { cls: 'pd', text: 'e = 目标−实际' },
+          { cls: 'pt', text: 'P:现在差多少' }, { cls: 'pi', text: 'I:一直差着没' },
+          { cls: 'ph', text: 'D:冲得多快' }, { cls: 'pm', text: 'u → 力 → 位置' },
+        ]}
+        why={<><b>为什么机器人上到处是它:</b>关节要停在角度、底盘要停在位置、机械臂要压住一个力 —— 全是「测出误差、算出推力」这一个回路。PID 不需要知道被控对象的模型,<b>只靠误差就能工作</b>,这是它统治工业界几十年的原因;而它的三项各对应一种失败模式,调参本质上就是在问<b>「我现在犯的是哪一种毛病」</b>。</>} />
+    </Shell>
+  )
+}
+
 export const GUIDE_DIAGRAMS: Record<string, () => ReactNode> = {
+  //  具身智能职业线(2026-09-06 起补):这条线原来 51 个实验一张引导图都没有。
+  fk: FKDiagram,
+  jacobian: JacobianDiagram,
+  pid: PIDDiagram,
   binsearch: BinSearchDiagram,
   nqueens: NQueensDiagram,
   unionfind: UnionFindDiagram,

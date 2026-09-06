@@ -26,6 +26,8 @@ const SUITES = [
   ['学习进度的规则', 'progress-rules.test.ts'],
   ['跨设备合并的规则', 'sync-merge.test.ts'],
   ['讲解层的内容规则', 'guide-content.test.ts'],
+  ['图标一致性(同名同图标)', 'icons.test.ts'],
+  ['「看懂这一屏」覆盖率(欠账不许变多)', 'guide-coverage.test.ts'],
   ['实验单的内容规则', 'brief-content.test.ts'],
   ['实物渲染层的边界', 'render-only.test.ts'],
   ['CSS 令牌都有定义', 'css-tokens.test.ts'],

@@ -46,7 +46,8 @@ import * as sync from './sync.ts'
 const VIZ_OF_DISC: Record<string, { icon: string; label: string; href?: string; tip: string }> = {
   llm:  { icon: '🔬', label: 'Transformer 图解', href: '/lab/explainer', tip: '在浏览器里看 Qwen 怎么想：注意力 + 下一词预测（服务器推理，可切 0.5B/1.5B）' },
   algo: { icon: '🎴', label: '算法卡牌', href: '/lab/cards', tip: '卡是算法、敌人是有性质的数据，血条是时间预算' },
-  base: { icon: '🧩', label: '探索游戏', href: '/lab/world', tip: '在游戏里吃透 408 四门（xiami-world）' },
+  //  🧩 已经归「大模型」了(见 registry 的 ANCHORS 注释),这里换成手柄,免得同屏两个 🧩 指两件事
+  base: { icon: '🕹️', label: '探索游戏', href: '/lab/world', tip: '在游戏里吃透 408 四门（xiami-world）' },
 }
 
 export default function App() {

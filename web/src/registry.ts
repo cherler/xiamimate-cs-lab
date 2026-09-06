@@ -8898,9 +8898,12 @@ export type Anchor = {
 /** 锚点池：一个职业或一件具体的造物。现有 CS 实验挂在造物锚点上；职业/更多造物先占位。 */
 export const ANCHORS: Anchor[] = [
   { key: 'computer', label: '电脑', icon: '🖥️', kind: '造物' },
-  { key: 'software', label: '软件', icon: '🧩', kind: '造物' },
+  { key: 'software', label: '软件', icon: '📦', kind: '造物' },
   { key: 'internet', label: '互联网', icon: '🌐', kind: '造物' },
-  { key: 'llm', label: '大模型', icon: '🤖', kind: '造物' },
+  //  图标跟学科那边保持一致:同一个「大模型」在菜单里是 🧩、在地图芯片里却是 🤖,
+  //  两处都写着同样三个字,读的人会以为是两样东西(用户 2026-09-06 报的漏洞)。
+  //  统一到菜单那个;腾出来的 🤖 只留给终点「大模型推理引擎」,🧩 原来占着的「软件」改 📦。
+  { key: 'llm', label: '大模型', icon: '🧩', kind: '造物' },
   { key: 'robot', label: '机器人', icon: '🦾', kind: '造物' },
   { key: 'battery', label: '电池', icon: '🔋', kind: '造物', status: 'planned' },
   { key: 'phone', label: '手机', icon: '📱', kind: '造物', status: 'planned' },
