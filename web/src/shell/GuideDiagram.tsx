@@ -7166,6 +7166,549 @@ function ReflectionDiagram() {
   )
 }
 
+// ═══════════════ 具身智能 · 逆运动学 IK ═══════════════
+//  L1=L2=2、目标 (2,2):两组解 (0°,90°) 肘下 与 (90°,−90°) 肘上,回代 FK 都落到 (2,2)。
+function IKDiagram() {
+  return (
+    <Shell icon={Icn.pin} title="逆运动学 IK 原理"
+      sub="看懂：FK 唯一解，IK 为什么会「两个答案」甚至「没有答案」">
+      <Sec n={1} title="先问够不够得到 —— 这一步不做,后面全是幻觉">
+        <div className="gd-formula">
+          r = √(x² + y²){'　'}必须落在{'　'}<span className="ft">[ |L₁−L₂| , L₁+L₂ ]</span>
+          {'　　'}<span className="fi">(太远够不着,太近手臂折不过来)</span>
+        </div>
+        <div className="gd-note">{Icn.info}<span>L₁=L₂=2 时可达范围是 [0, 4];目标 (2,2) 的 r = 2√2 ≈ <b>2.828</b>,在范围内 ✓。<b>范围外的目标不是「算不准」,是根本没有解</b> —— 代进余弦定理会得到 |cos| {'>'} 1。</span></div>
+      </Sec>
+      <Sec n={2} title="余弦定理给出肘角,正负两支就是两种姿势">
+        <div className="gd-formula">
+          cos θ₂ = (x² + y² − L₁² − L₂²) / (2·L₁·L₂)
+          {'　　'}θ₂ = <span className="ft">±</span> acos(…){'　'}<span className="fo">← 那个 ± 就是两组解</span>
+        </div>
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>肘朝下</h4><p>θ₂ = <em>+90°</em>,配 θ₁ = <em>0°</em></p></div>
+          <div className="gd-card o"><h4>肘朝上</h4><p>θ₂ = <em>−90°</em>,配 θ₁ = <em>90°</em></p></div>
+        </div>
+        <div className="gd-note">{Icn.info}<span>两组解<b>回代 FK 都落到 (2,2)</b> —— 这就是检验 IK 对不对的唯一办法:<b>拿 FK 验它</b>。肩角 θ₁ = atan2(y,x) − atan2(L₂ sinθ₂, L₁+L₂ cosθ₂),θ₂ 的正负一变,第二项跟着变号。</span></div>
+      </Sec>
+      <Sec n={3} title="所以 IK 难在哪:不是解方程,是「选哪个解」">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>多解</h4><p>肘上/肘下都对。真机器上要看<em>关节限位、避障、和上一时刻的连续性</em>——不能这一帧肘上、下一帧肘下。</p></div>
+          <div className="gd-card i"><h4>无解</h4><p>够不到。要么<em>拒绝</em>,要么<em>投影到最近的可达点</em>。</p></div>
+          <div className="gd-card o"><h4>奇异</h4><p>伸直/对折时(θ₂=0 或 180°)两解<em>合成一个</em>,而且附近的解<em>极其敏感</em> —— 接上雅可比那一课的 det=0。</p></div>
+        </div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '末端目标 (x,y)' }, { cls: 'pd', text: '判可达' },
+          { cls: 'pt', text: '余弦定理求 θ₂(±)' }, { cls: 'pi', text: '回推 θ₁' },
+          { cls: 'ph', text: '两组解' }, { cls: 'pm', text: '按限位/连续性挑一组' },
+        ]}
+        why={<><b>为什么六轴机械臂就没有这么漂亮的闭式解:</b>二连杆平面臂靠余弦定理三行搞定,而一般的六自由度臂只有满足特定几何条件(比如后三轴交于一点的球腕)才有闭式解,否则得上<b>数值迭代</b>(牛顿法 / 雅可比伪逆)。所以工业臂的机械设计里,「球腕」不是为了好看 —— <b>是为了让 IK 有闭式解</b>。</>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 具身智能 · 位姿与四元数 ═══════════════
+function QuatDiagram() {
+  return (
+    <Shell icon={Icn.ruler} title="位姿与四元数原理"
+      sub="看懂：三种写法各有各的病，为什么机器人最后都选了四元数">
+      <Sec n={1} title="同一个「朝向」,三种等价写法">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>欧拉角</h4><p>roll / pitch / yaw,<em>三个数、最直观</em>,但有<em>万向锁</em>。</p></div>
+          <div className="gd-card i"><h4>旋转矩阵</h4><p>3×3、乘向量就转,<em>好算</em>,但 <em>9 个数带 6 条约束</em>,存储和插值都别扭。</p></div>
+          <div className="gd-card o"><h4>四元数</h4><p><em>4 个数</em>、紧凑、<em>无奇异</em>、好插值 —— 机器人/图形/IMU 的首选。</p></div>
+        </div>
+      </Sec>
+      <Sec n={2} title="轴-角 → 四元数:那个「一半」是全部机关">
+        <div className="gd-formula">
+          绕单位轴 (a<sub>x</sub>,a<sub>y</sub>,a<sub>z</sub>) 转 θ{'　'}⇒{'　'}
+          q = ( <span className="ft">cos(θ/2)</span>, <span className="fo">sin(θ/2)·轴</span> ){'　　'}且始终 <b>|q| = 1</b>
+        </div>
+        <div className="gd-note">{Icn.info}<span>绕 z 轴转 <b>90°</b>:q = (cos45°, 0, 0, sin45°) = <b>(0.707, 0, 0, 0.707)</b>;用它转 (1,0,0) 得到 <b>(0,1,0)</b> ✓。再让 q <b>自乘</b>(相当于转 180°),把 (1,0,0) 转到 <b>(−1,0,0)</b> ✓ —— 两步都能手核。</span></div>
+      </Sec>
+      <Sec n={3} title="万向锁:欧拉角在 pitch = ±90° 时丢一个自由度">
+        <div className="gd-note">{Icn.info}<span>pitch 转到 ±90° 时,<b>yaw 和 roll 绕到了同一根轴上</b> —— 于是只有它们的<b>差</b>还起作用,三个自由度塌成两个。这不是数值精度问题,是<b>这套参数化本身的奇点</b>,再高的精度也躲不开。四元数没有这个毛病,代价是四个数不直观、还得记住 <b>q 和 −q 表示同一个旋转</b>。</span></div>
+        <div className="gd-formula">
+          组合旋转 = <span className="ft">四元数相乘 q₁ ⊗ q₂</span>{'　'}<span className="fi">(不可交换 —— 先转哪个结果不同)</span>
+        </div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '绕某轴转 θ' }, { cls: 'pd', text: 'q = (cos θ/2, sin θ/2·轴)' },
+          { cls: 'pt', text: '展成 3×3 的 R' }, { cls: 'pi', text: 'R·向量 = 转过去' },
+          { cls: 'ph', text: 'q₁⊗q₂ = 组合' }, { cls: 'pm', text: '欧拉角:pitch=90° 锁死' },
+        ]}
+        why={<><b>为什么 IMU 输出的是四元数:</b>姿态解算要<b>不停地把小增量乘上去</b>,矩阵连乘会累积数值误差、慢慢不再正交(要反复重正交化);四元数只要每步归一化一次就行,便宜得多。<b>「好插值」也只有四元数有</b> —— 两个姿态之间的球面线性插值(slerp)是匀速转过去的,欧拉角插值会走出扭曲的怪路径。</>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 具身智能 · 轨迹规划 ═══════════════
+function TrajectoryDiagram() {
+  return (
+    <Shell icon={Icn.doc} title="轨迹规划 · 三次多项式原理"
+      sub="看懂：为什么「两点连直线匀速走」在真机器上是不能用的">
+      <Sec n={1} title="线性插值的病:速度突跳 = 瞬间无穷大加速度">
+        <div className="gd-note">{Icn.info}<span>0°→90°、2 秒走完,线性插值的速度<b>恒为 45°/s</b> —— 听着很好,可它在 t=0 那一刻<b>从 0 突跳到 45</b>,t=2 又<b>突跳回 0</b>。速度的跳变意味着<b>加速度无穷大</b>,电机给不出、机械也受不了:表现为顿挫、抖动、长期伤传动件。</span></div>
+      </Sec>
+      <Sec n={2} title="办法:用四个边界条件定一条三次曲线">
+        <div className="gd-formula">
+          θ(t) = a₀ + a₁t + a₂t² + a₃t³
+          {'　　'}边界:θ(0)=θ₀、θ(T)=θ_f、<span className="ft">θ̇(0)=0</span>、<span className="ft">θ̇(T)=0</span>
+        </div>
+        <div className="gd-formula">
+          ⇒ a₀ = θ₀{'　'}a₁ = <b>0</b>{'　'}a₂ = <span className="fo">3(θ_f−θ₀)/T²</span>{'　'}a₃ = <span className="fo">−2(θ_f−θ₀)/T³</span>
+        </div>
+        <div className="gd-note">{Icn.info}<span>四个未知数、四个条件,<b>恰好定死</b> —— 这就是为什么是三次而不是二次或四次。两端速度为 0 那两条,正是「顺滑起步、顺滑停住」的数学写法。</span></div>
+      </Sec>
+      <Sec n={3} title="于是三条曲线各是什么形状">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>位置:S 曲线</h4><p>两端平、中间陡。</p></div>
+          <div className="gd-card i"><h4>速度:钟形</h4><p><em>两端为 0</em>、中间最大 —— 没有跳变。</p></div>
+          <div className="gd-card o"><h4>加速度:有限</h4><p>随时间<em>线性</em>变化,不再是无穷大。</p></div>
+        </div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '起点 / 终点 / 时长' }, { cls: 'pd', text: '写 4 个边界条件' },
+          { cls: 'pt', text: '解 4 个系数' }, { cls: 'pi', text: '位置 = S 曲线' },
+          { cls: 'ph', text: '速度 = 钟形' }, { cls: 'pm', text: '加速度有限' },
+        ]}
+        why={<><b>为什么工业上还要再往上走一阶:</b>三次多项式的加速度虽然有限,但在 t=0 处<b>加加速度(jerk)仍然是跳变的</b> —— 高速高精场合(如芯片贴装)会看到残余振动。于是有五次多项式(再钉住两端加速度为 0)和 S 型速度规划。<b>每高一阶,就多买一层平滑,代价是同样距离要走更久。</b></>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 具身智能 · 机械臂运动方程 ═══════════════
+function DynEomDiagram() {
+  return (
+    <Shell icon={Icn.chip} title="机械臂运动方程原理"
+      sub="看懂：机械臂不是几个独立电机 —— 三项里每一项都是耦合">
+      <Sec n={1} title="一条方程,三项各管一件事">
+        <div className="gd-formula">
+          <span className="ft">M(q)·q̈</span> + <span className="fi">C(q,q̇)·q̇</span> + <span className="fo">G(q)</span> = τ
+        </div>
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>M(q) 质量矩阵</h4><p><em>随构型变</em>,而且<em>非对角 ≠ 0</em> —— 动关节 1 会甩到关节 2。这就是「耦合」。</p></div>
+          <div className="gd-card i"><h4>C(q,q̇)q̇ 科氏 / 离心</h4><p><em>q̇ = 0 时全为 0</em> —— 只在<em>运动时</em>出现,静止时根本不存在。</p></div>
+          <div className="gd-card o"><h4>G(q) 重力</h4><p><em>静止举着也要力矩</em> —— 它和速度、加速度都无关。</p></div>
+        </div>
+      </Sec>
+      <Sec n={2} title="两连杆平面臂的具体样子">
+        <div className="gd-formula">
+          M = [ α+2β cos q₂{'　'}δ+β cos q₂ ; δ+β cos q₂{'　'}δ ]
+          {'　　'}<span className="fi">非对角项含 cos q₂ ⇒ 手臂弯着的程度决定耦合有多强</span>
+        </div>
+        <div className="gd-note">{Icn.info}<span>C 那一项是 [−β sin q₂ (2q̇₁q̇₂ + q̇₂²), β sin q₂ q̇₁²] —— 注意<b>每一项都带 q̇</b>,所以「静止保持」时它整个消失,只剩 G。这一条最好验:让机械臂停住不动,需要的力矩就只有重力项。</span></div>
+      </Sec>
+      <Sec n={3} title="三种运动状态,分别激活哪几项">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>静止保持</h4><p>只有 <em>G</em>。</p></div>
+          <div className="gd-card i"><h4>匀速转动</h4><p><em>G + 科氏</em>(q̈=0,但 q̇≠0)。</p></div>
+          <div className="gd-card o"><h4>加速起摆</h4><p><em>三项全有</em>。</p></div>
+        </div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '构型 q、速度 q̇、加速度 q̈' }, { cls: 'pd', text: '算 M(q)' },
+          { cls: 'pt', text: '算 C(q,q̇)q̇' }, { cls: 'pi', text: '算 G(q)' },
+          { cls: 'ph', text: '合成 τ' }, { cls: 'pm', text: '这就是逆动力学' },
+        ]}
+        why={<><b>为什么「不是几个独立电机」这句话这么要紧:</b>如果各关节互不影响,每个关节配一个 PID 就完事了。可 M 的非对角项说的是 —— <b>你转关节 1,关节 2 会被甩</b>;关节 2 的 PID 只会把它当成「扰动」去压。转得越快,这个扰动越大,单关节 PID 就越跟不上。<b>这条方程是「计算力矩控制」存在的全部理由。</b></>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 具身智能 · 递归牛顿-欧拉 RNEA ═══════════════
+function RNEADiagram() {
+  return (
+    <Shell icon={Icn.ruler} title="递归牛顿-欧拉 RNEA 原理"
+      sub="看懂：两次扫描 O(n) 算出力矩，而且根本不用把 M/C/G 组出来">
+      <Sec n={1} title="外向扫描(基 → 梢):把运动往外传">
+        <div className="gd-formula">
+          ω<sub>i</sub> = ω<sub>i−1</sub> + q̇<sub>i</sub>{'　'}α<sub>i</sub> = α<sub>i−1</sub> + q̈<sub>i</sub>
+          {'　　'}a = a<sub>prev</sub> + α×r − ω²r{'　'}<span className="fi">(逐连杆往外)</span>
+        </div>
+        <div className="gd-note">{Icn.info}<span><b>重力技巧</b>:给基座一个假加速度 <b>a₀ = −g</b>(向上 g)。于是每根连杆<b>自动感到自重</b>,重力项根本不用单列 —— 这是 RNEA 最漂亮的一招。</span></div>
+      </Sec>
+      <Sec n={2} title="内向扫描(梢 → 基):把受力往里传">
+        <div className="gd-formula">
+          牛顿 F<sub>i</sub> = m<sub>i</sub>a<sub>ci</sub>{'　'}欧拉 N<sub>i</sub> = I<sub>i</sub>α<sub>i</sub>
+          {'　　'}f<sub>i</sub> = f<sub>i+1</sub> + F<sub>i</sub>{'　'}n<sub>i</sub> = N<sub>i</sub> + n<sub>i+1</sub> + r<sub>ci</sub>×F<sub>i</sub> + l<sub>i</sub>×f<sub>i+1</sub>
+        </div>
+        <div className="gd-formula">
+          最后:<span className="fo">τ<sub>i</sub> = n<sub>i</sub> 投影到关节轴</span>
+        </div>
+        <div className="gd-note">{Icn.info}<span>方向是反的:<b>运动从基座往外传、力从末端往里传</b>。这正是物理上的因果 —— 你转基座,末端跟着动;末端受力,一路传回基座。</span></div>
+      </Sec>
+      <Sec n={3} title="它和上一课算的是同一个 τ">
+        <div className="gd-formula">
+          RNEA 的结果 <b>≡</b> M(q)q̈ + C(q,q̇)q̇ + G(q)
+          {'　　'}<span className="fi">但复杂度 O(n)、内存 O(n),不显式组任何矩阵</span>
+        </div>
+        <div className="gd-note">{Icn.info}<span>显式组 M 是 O(n²)~O(n³) 的活;RNEA 两趟扫描就完事。所以<b>实时前馈力矩、计算力矩控制的主力都是它</b>。两条路算出同一个 τ —— <b>这也是验证实现对不对的标准做法:拿它俩对拍。</b></span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '给定 q, q̇, q̈' }, { cls: 'pd', text: '基座假加速度 a₀=−g' },
+          { cls: 'pt', text: '外向:传速度/加速度' }, { cls: 'pi', text: '内向:传力/力矩' },
+          { cls: 'ph', text: '投影到关节轴' }, { cls: 'pm', text: 'τ,O(n)' },
+        ]}
+        why={<><b>为什么控制回路里非它不可:</b>力矩控制常跑在 1kHz,每毫秒都要算一次 τ。O(n) 和 O(n³) 在 7 自由度上差的就是「跑得动」和「跑不动」。而那个基座假加速度的技巧还有个副产品:<b>想做失重仿真,把 a₀ 设成 0 就行</b> —— 不用改任何别的代码。</>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 具身智能 · 正向动力学(仿真) ═══════════════
+function FwdDynDiagram() {
+  return (
+    <Shell icon={Icn.chip} title="正向动力学 · 仿真原理"
+      sub="看懂：物理引擎每一步在做的，就是这一个式子加一次积分">
+      <Sec n={1} title="它是逆动力学的反问题">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>逆动力学</h4><p>给<em>运动</em>求<em>力矩</em> —— 这是<em>控制</em>要的。</p></div>
+          <div className="gd-card o"><h4>正向动力学</h4><p>给<em>力矩</em>求<em>运动</em> —— 这是<em>仿真</em>要的。</p></div>
+        </div>
+        <div className="gd-formula">
+          q̈ = <span className="ft">M(q)⁻¹</span> · ( τ − <span className="fi">C(q,q̇)q̇ − G(q)</span> )
+        </div>
+      </Sec>
+      <Sec n={2} title="两个实现上的要点">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>偏置 b = Cq̇ + G</h4><p>不用分别算 C 和 G —— <em>令 q̈=0 跑一次 RNEA</em> 就得到它。</p></div>
+          <div className="gd-card o"><h4>M 对称正定 ⇒ 一定可逆</h4><p>但<em>实际不真求逆</em>,用 <em>Cholesky 解方程</em> —— 更快也更稳。</p></div>
+        </div>
+        <div className="gd-note">{Icn.info}<span>「对称正定」不是顺口的形容词:它保证了 M 一定可逆(所以仿真不会在某个构型上崩),也保证 Cholesky 分解一定存在。<b>这是物理给的,不是数值上的运气。</b></span></div>
+      </Sec>
+      <Sec n={3} title="拿到 q̈ 之后:积分一步,这就是仿真器的循环">
+        <div className="gd-formula">
+          <span className="ft">半隐式欧拉</span>:{'　'}q̇ ← q̇ + q̈·dt{'　'}然后{'　'}q ← q + <b>q̇</b>·dt
+        </div>
+        <div className="gd-note">{Icn.info}<span>顺序是关键:<b>先更新速度、再用<u>新</u>速度更新位置</b>。显式欧拉(用旧速度)在振荡系统里会持续<b>注入能量、越算越发散</b>;半隐式欧拉几乎不花额外代价就把这个毛病去掉了 —— 所以几乎所有物理引擎都用它。研究对拍:τ=[10,2] → q̈=[−3.89, 9.16]。</span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '给定 τ' }, { cls: 'pd', text: 'b = Cq̇+G(一次 RNEA)' },
+          { cls: 'pt', text: '组 M' }, { cls: 'pi', text: '解 q̈ = M⁻¹(τ−b)' },
+          { cls: 'ph', text: '半隐式欧拉积一步' }, { cls: 'pm', text: '下一帧' },
+        ]}
+        why={<><b>round-trip 是最好的自检:</b>拿逆动力学(RNEA)算出的 τ 喂回正向动力学,应该<b>精确还原出原来的 q̈</b>。这一条对不上,说明两边的模型参数不一致 —— 而这正是仿真和真机「对不上」时最先要查的地方。</>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 具身智能 · 计算力矩控制 ═══════════════
+function ComputedTorqueDiagram() {
+  return (
+    <Shell icon={Icn.bulb} title="计算力矩控制原理"
+      sub="看懂：用模型把非线性抵消掉，剩下一个干净的线性误差方程">
+      <Sec n={1} title="先看纯 PID 为什么不够">
+        <div className="gd-note">{Icn.info}<span>纯 PID 把重力、科氏、关节耦合<b>统统当成扰动</b>去压。低速时勉强能用;一快起来,这些「扰动」比控制量还大 —— 表现为<b>稳态下垂</b>(重力压不平)和<b>快速运动时跟不上</b>。</span></div>
+      </Sec>
+      <Sec n={2} title="办法:把 PD 修正过的加速度代进运动方程,当作「我想要的 q̈」">
+        <div className="gd-formula">
+          内环 v = <span className="ft">q̈_d + K_d·ė + K_p·e</span>
+          {'　　'}外环 τ = <span className="fi">M(q)·v</span> + <span className="fo">C(q,q̇)q̇ + G(q)</span>
+        </div>
+        <div className="gd-note">{Icn.info}<span>代回被控对象 Mq̈ + Cq̇ + G = τ:<b>Cq̇+G 两边抵消、M 两边约掉</b> —— 这就是「反馈线性化」四个字的全部内容。</span></div>
+      </Sec>
+      <Sec n={3} title="剩下的东西干净得不像话">
+        <div className="gd-formula">
+          <b>ë + K_d·ė + K_p·e = 0</b>
+          {'　　'}<span className="fi">每个关节变成独立的二阶系统,完全解耦</span>
+        </div>
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>可任意配极点</h4><p>K_p = ω<sub>n</sub>²、K_d = 2ζω<sub>n</sub>;临界阻尼取 <em>K_d = 2√K_p</em>。</p></div>
+          <div className="gd-card i"><h4>只补重力</h4><p>τ = K_p e + K_d ė + <em>G</em>:消掉重力,<em>但科氏耦合还在</em>。</p></div>
+          <div className="gd-card o"><h4>纯 PID</h4><p>啥都不消,<em>稳态下垂</em>。</p></div>
+        </div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '期望轨迹 q_d' }, { cls: 'pd', text: '误差 e, ė' },
+          { cls: 'pt', text: '内环 v = q̈_d+K_d ė+K_p e' }, { cls: 'pi', text: '外环 τ = Mv+Cq̇+G' },
+          { cls: 'ph', text: '非线性被抵消' }, { cls: 'pm', text: 'ë+K_d ė+K_p e = 0' },
+        ]}
+        why={<><b>代价写在标题里:「用模型」。</b>抵消得干不干净,全看你的 M/C/G 有多准 —— 负载变了、关节有摩擦、连杆参数辨识有误差,抵消就不彻底,<b>残留的那部分又变回扰动</b>。所以真机上它常和自适应/鲁棒控制一起用。<b>模型越准,这一招越强;模型不准时,它甚至不如老实的 PID。</b></>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 具身智能 · 接触动力学 ═══════════════
+function ContactLCPDiagram() {
+  return (
+    <Shell icon={Icn.cross} title="接触动力学 · 摩擦锥原理"
+      sub="看懂：物理引擎每一步怎么解接触力 —— 两个不等式定住一切">
+      <Sec n={1} title="法向:不能拉、也不能穿">
+        <div className="gd-formula">
+          0 ≤ <span className="ft">f<sub>n</sub></span> ⊥ <span className="fo">φ(间隙)</span> ≥ 0
+          {'　　'}<span className="fi">要么分离(φ{'>'}0 ⇒ f<sub>n</sub>=0),要么接触(φ=0 ⇒ f<sub>n</sub>≥0)</span>
+        </div>
+        <div className="gd-note">{Icn.info}<span>那个 ⊥ 读作「互补」:<b>两个量至少有一个是 0</b>。它同时表达了「接触面不能把物体拉住」和「物体不能陷进去」—— 一行写完两条物理。静止支撑时 f<sub>n</sub> = m·g。</span></div>
+      </Sec>
+      <Sec n={2} title="切向:库仑摩擦锥">
+        <div className="gd-formula">
+          |f<sub>t</sub>| ≤ <span className="ft">μ·f<sub>n</sub></span>
+          {'　　'}粘(v<sub>t</sub>=0):f<sub>t</sub> 在<span className="fi">锥内</span>取反作用力{'　'}·{'　'}滑:f<sub>t</sub> = <span className="fo">μf<sub>n</sub></span> 在锥边界、反向阻滑
+        </div>
+        <div className="gd-note">{Icn.info}<span>「粘 / 滑」不是两套公式,是<b>同一个约束的 KKT 开关</b>:F ≤ μf<sub>n</sub> 就粘住(a=0),超过就滑。μ=0.5、f<sub>n</sub>=9.81 ⇒ 门槛 μf<sub>n</sub> = <b>4.905</b>;F=3 → <b>粘,a=0</b>;F=6 → <b>滑,a=(6−4.905)/1 = 1.095</b>。两个数都能手核。</span></div>
+      </Sec>
+      <Sec n={3} title="真引擎里:所有接触一起组成一个 LCP / QP">
+        <div className="gd-note">{Icn.info}<span>MuJoCo / Bullet 每一步把场景里<b>所有接触点</b>的这些不等式凑成一个大问题一起解 —— 因为它们互相影响(一只脚受力变了,另一只脚的受力跟着变)。工程上常把圆锥<b>线性化成金字塔</b>,把问题从二阶锥规划降成线性互补,快很多、略微失真。</span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '检测到接触' }, { cls: 'pd', text: '法向互补:不拉不穿' },
+          { cls: 'pt', text: '切向:|f_t| ≤ μf_n' }, { cls: 'pi', text: 'F vs μf_n 判粘/滑' },
+          { cls: 'ph', text: '所有接触组成 LCP/QP' }, { cls: 'pm', text: '解出接触力 → 积分' },
+        ]}
+        why={<><b>为什么接触是仿真里最难的一块:</b>前面几课的动力学都是<b>光滑</b>的(可微、可积分),而接触是<b>非光滑、集值</b>的 —— 力在「粘」和「滑」之间会突变,间隙一到 0 支撑力就从 0 跳到 mg。<b>所有「机器人在仿真里走得好、上真机就摔」的故事,一大半出在这里。</b></>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 具身智能 · 卡尔曼滤波 ═══════════════
+function KalmanDiagram() {
+  return (
+    <Shell icon={Icn.star} title="卡尔曼滤波原理"
+      sub="看懂：增益 K 就是一句「这次该信预测还是信观测」">
+      <Sec n={1} title="两拍循环:方差涨一次、缩一次">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>Predict 预测</h4><p>x′ = x + u(里程计走了 u);<em>P′ = P + Q</em> —— <em>推得越久越不确定,方差涨</em>。</p></div>
+          <div className="gd-card o"><h4>Update 校正</h4><p>来一个带噪观测 z(方差 R);x = x′ + K(z − x′);<em>P = (1−K)P′</em> —— <em>观测之后更确定,方差缩</em>。</p></div>
+        </div>
+      </Sec>
+      <Sec n={2} title="全部的机关就在增益 K 那一个分式里">
+        <div className="gd-formula">
+          K = <span className="ft">P′</span> / ( <span className="ft">P′</span> + <span className="fo">R</span> )
+          {'　　'}观测准(R 小) → K 大 → <b>多信观测</b>{'　'}·{'　'}预测准(P′ 小) → K 小 → <b>多信预测</b>
+        </div>
+        <div className="gd-note">{Icn.info}<span>K 永远落在 0 和 1 之间,它就是<b>两份不确定度的相对大小</b>。所以卡尔曼滤波不是「一个算法」,而是<b>「按各自的方差加权平均」这句话的严格写法</b> —— 而且可以证明,在高斯线性假设下它是<b>最优</b>的。</span></div>
+      </Sec>
+      <Sec n={3} title="为什么融合出来的比两边单独都准">
+        <div className="gd-note">{Icn.info}<span>因为 (1−K)P′ <b>一定小于 P′</b>,也一定小于 R。两个都不太准的信息,只要<b>噪声互相独立</b>,合起来就比任何一个单独的更准 —— 这是概率给的,不是调参调出来的。方差每步 predict 涨、update 缩,最后收敛到一个稳态值。</span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '上一时刻估计 x,P' }, { cls: 'pd', text: 'Predict:x+u,P+Q' },
+          { cls: 'pt', text: '来了观测 z(方差 R)' }, { cls: 'pi', text: 'K = P′/(P′+R)' },
+          { cls: 'ph', text: 'x = x′+K(z−x′)' }, { cls: 'pm', text: 'P = (1−K)P′' },
+        ]}
+        why={<><b>为什么它是状态估计/SLAM 的地基:</b>机器人身上<b>每个传感器都有噪声</b>,里程计会漂、GPS 会跳、IMU 有 bias。「哪个都不能全信」这件事,必须有一套可计算的说法 —— 卡尔曼给的就是这套说法。后面的 EKF/UKF/粒子滤波,改的都只是<b>「非线性怎么办」</b>,这两拍的骨架一直没变。</>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 具身智能 · 扩展卡尔曼滤波 EKF ═══════════════
+function EKFDiagram() {
+  return (
+    <Shell icon={Icn.star} title="扩展卡尔曼滤波 EKF 原理"
+      sub="看懂：非线性怎么办 —— 在当前估计点，就地把它拉直">
+      <Sec n={1} title="问题:观测模型不是线性的">
+        <div className="gd-formula">
+          地标在 (L=<span className="ft">10</span>, d=<span className="ft">5</span>),机器人在 x 轴上
+          {'　　'}z = h(x) = √( (L−x)² + d² ){'　'}<span className="fi">← 对 x 非线性</span>
+        </div>
+        <div className="gd-note">{Icn.info}<span>卡尔曼那套公式的前提是<b>线性</b>。h 一非线性,「高斯经过它还是高斯」就不成立了,整套推导塌掉。</span></div>
+      </Sec>
+      <Sec n={2} title="EKF 的答案:在估计点求一次雅可比,就地线性化">
+        <div className="gd-formula">
+          H = ∂h/∂x = <span className="fo">−(L − x̂) / h</span>
+          {'　　'}<span className="fi">在<b>当前估计点</b> x̂ 上求值</span>
+        </div>
+        <div className="gd-note">{Icn.info}<span>H 的符号和大小编码的是「<b>往哪个方向动一点,测出来的距离会怎么变</b>」。机器人在地标左边时,往右走距离变小 → H 为负。<b>这一条正是雅可比那一课在感知里的化身</b>。</span></div>
+      </Sec>
+      <Sec n={3} title="剩下的就是套卡尔曼,只是把「1」换成 H">
+        <div className="gd-formula">
+          创新 y = z − h(x̂){'　'}S = H²P + R{'　'}K = PH/S{'　'}x ← x̂ + Ky{'　'}P ← (1−KH)P
+        </div>
+        <div className="gd-note">{Icn.info}<span><b>EKF 会失效</b>,而且失效得不声不响:非线性太强、或者线性化点(x̂)本身就偏得远时,那条切线离真实曲线十万八千里,滤波器会<b>越来越自信地错下去</b>。那时就该换 UKF 或粒子滤波。</span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '非线性观测 h(x)' }, { cls: 'pd', text: '预测:x+u,P+Q' },
+          { cls: 'pt', text: '算 h(x̂)' }, { cls: 'pi', text: '求雅可比 H(在 x̂ 点)' },
+          { cls: 'ph', text: '套卡尔曼(用 H)' }, { cls: 'pm', text: '融合' },
+        ]}
+        why={<><b>EKF 统治了几十年,靠的是便宜:</b>它只比卡尔曼多一次求导,却把整个非线性世界纳了进来 —— 早期的 SLAM、GPS/INS 组合导航全是它。它的代价也很明确:<b>只在估计点附近对,而且它自己不知道自己错了</b>(协方差 P 不会因为线性化误差而变大)。</>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 具身智能 · 无迹卡尔曼滤波 UKF ═══════════════
+function UKFDiagram() {
+  return (
+    <Shell icon={Icn.star} title="无迹卡尔曼滤波 UKF 原理"
+      sub="看懂：一句话 —— 近似分布，比近似函数容易">
+      <Sec n={1} title="它和 EKF 面对的是同一道题,思路完全相反">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>EKF:近似函数</h4><p>把非线性 h <em>拉成一条切线</em>,再让高斯过这条线。</p></div>
+          <div className="gd-card o"><h4>UKF:近似分布</h4><p>挑几个点<em>过真正的 h</em>(<em>不求导</em>),再拿结果<em>拟合回一个高斯</em>。</p></div>
+        </div>
+      </Sec>
+      <Sec n={2} title="三步:取点 → 过函数 → 重组">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>① 取 sigma 点</h4><p><em>2n+1</em> 个:X₀ = μ、X₁,₂ = μ ± √((n+λ)P) —— <em>围绕均值、按协方差铺开</em>。</p></div>
+          <div className="gd-card i"><h4>② 过真非线性</h4><p>每个点各算一次 <em>h(Xᵢ)</em>。没有求导,也没有近似。</p></div>
+          <div className="gd-card o"><h4>③ 重组</h4><p>用权重 W<sub>m</sub>/W<sub>c</sub> 拼出 ẑ、S、互协方差 P<sub>xz</sub>,然后 K = P<sub>xz</sub>/S。</p></div>
+        </div>
+      </Sec>
+      <Sec n={3} title="什么时候和 EKF 分道扬镳">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>P 小</h4><p>sigma 点<em>靠得近</em>,那一小段曲线本来就近乎直 → <em>UKF ≈ EKF</em>。</p></div>
+          <div className="gd-card o"><h4>P 大</h4><p>点<em>铺得开</em>,把曲率也<em>采</em>进来了 → 两者<em>分道</em>,UKF 对高斯<em>到三阶精确</em>。</p></div>
+        </div>
+        <div className="gd-note">{Icn.info}<span>所以先验越不确定,UKF 越值钱。代价是<b>每步要算 2n+1 次 h</b> —— 状态维度一高就贵;好处是<b>不用求雅可比</b>,模型难求导或干脆是个黑盒时,它是唯一能用的。</span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '均值 μ、协方差 P' }, { cls: 'pd', text: '取 2n+1 个 sigma 点' },
+          { cls: 'pt', text: '每点过真 h' }, { cls: 'pi', text: '加权重组 ẑ,S,P_xz' },
+          { cls: 'ph', text: 'K = P_xz/S' }, { cls: 'pm', text: '融合' },
+        ]}
+        why={<><b>「近似分布比近似函数容易」这句话值得记一辈子:</b>它不只属于滤波 —— 蒙特卡洛、粒子滤波、乃至神经网络里的采样近似,用的都是同一个思路。<b>与其去啃那个难缠的函数,不如让几个点替你走一遍。</b></>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 具身智能 · 粒子滤波 ═══════════════
+function ParticleFilterDiagram() {
+  return (
+    <Shell icon={Icn.star} title="粒子滤波 · 蒙特卡洛定位原理"
+      sub="看懂：用一堆带权的点表示「我可能在哪」——能表多峰，卡尔曼不能">
+      <Sec n={1} title="信念不再是一个高斯,而是一群粒子">
+        <div className="gd-note">{Icn.info}<span>卡尔曼家族的信念永远是<b>一个</b>高斯(一个峰)。可机器人在长走廊里,「我可能在 A 处,也可能在完全对称的 B 处」是<b>两个峰</b> —— 高斯表达不了。粒子滤波用<b>一堆带权重的点</b>表示分布,想有几个峰就有几个峰。</span></div>
+      </Sec>
+      <Sec n={2} title="四步循环">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>① 预测</h4><p>每个粒子<em>按运动模型 + 噪声</em>各自动一下 —— 粒子云散开。</p></div>
+          <div className="gd-card i"><h4>② 加权</h4><p>w<sub>i</sub> ∝ 观测似然 <em>exp(−(z−x<sub>i</sub>)²/2σ²)</em> —— 越像观测的粒子权重越高。</p></div>
+          <div className="gd-card o"><h4>③ 重采样</h4><p><em>高权复制、低权淘汰</em>,权重重置均匀 —— 粒子聚拢到可能的地方。</p></div>
+          <div className="gd-card t"><h4>④ 估计</h4><p><em>加权均值</em>。</p></div>
+        </div>
+      </Sec>
+      <Sec n={3} title="重采样是必须的:不做就会「权重退化」">
+        <div className="gd-formula">
+          有效样本数 N<sub>eff</sub> = <span className="ft">1 / Σw²</span>
+          {'　　'}N<sub>eff</sub> 掉下来 = <b>权重集中到少数几个粒子</b> ⇒ 该重采样了
+        </div>
+        <div className="gd-note">{Icn.info}<span>不重采样的话,几步之后就只有一两个粒子还有权重,其余全在低概率区<b>白白算着</b> —— 名义上 1000 个粒子,实际有效的只剩 2 个。N<sub>eff</sub> 就是用来量这件事的<b>体温计</b>。</span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '一群粒子 = 信念' }, { cls: 'pd', text: '按运动散开' },
+          { cls: 'pt', text: '按观测似然加权' }, { cls: 'pi', text: '看 N_eff' },
+          { cls: 'ph', text: '重采样:高权复制' }, { cls: 'pm', text: '加权均值 = 估计' },
+        ]}
+        why={<><b>它是 EKF 失效时的答案,代价是粒子数:</b>状态维度一高,要铺满空间所需的粒子数<b>指数增长</b>(维度灾难)—— 所以粒子滤波在 2D/3D 定位上很好用,到了高维状态就跑不动了。<b>「用采样换掉解析」这笔交易,在低维时非常划算,高维时非常不划算。</b></>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 具身智能 · 互补滤波 ═══════════════
+function ComplementaryDiagram() {
+  return (
+    <Shell icon={Icn.ruler} title="互补滤波 · IMU 姿态原理"
+      sub="看懂：两个传感器的毛病正好互补 —— 一个短期准，一个长期准">
+      <Sec n={1} title="两个都不能单独用">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>陀螺仪:短期准、长期漂</h4><p>积分角速度:30 + 20×0.01 = <em>30.2°</em>。很准 —— 但 <em>bias 会逐秒累积</em>,越走越偏,且<em>永不回头</em>。</p></div>
+          <div className="gd-card o"><h4>加速度计:不漂、但抖</h4><p>由重力方向算出<em>绝对倾角</em> = <em>32°</em>。有绝对参考、<em>不会漂</em> —— 但噪声大,机器一动就乱跳。</p></div>
+        </div>
+      </Sec>
+      <Sec n={2} title="融合只有一行">
+        <div className="gd-formula">
+          θ = <span className="ft">α·(θ_prev + ω·dt)</span> + <span className="fo">(1−α)·θ_acc</span>
+          {'　　'}<span className="fi">= 高通陀螺(信它短期) + 低通加速度(信它长期)</span>
+        </div>
+        <div className="gd-note">{Icn.info}<span>「互补」二字是字面意思:<b>两个滤波器的频响加起来正好是 1</b> —— 高频段听陀螺、低频段听加速度,不重不漏。</span></div>
+      </Sec>
+      <Sec n={3} title="α 是一把明码标价的旋钮">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>α 大(≈0.98)</h4><p><em>平滑</em>,但纠漂<em>慢</em>。</p></div>
+          <div className="gd-card o"><h4>α 小</h4><p>跟加速度紧、<em>能压漂</em>,但<em>抖</em>。</p></div>
+        </div>
+        <div className="gd-note">{Icn.info}<span>它其实是<b>定增益的简化卡尔曼</b>:卡尔曼的 K 每步按方差算,互补滤波把它<b>固定成一个常数 (1−α)</b>。省掉了协方差的全部计算,所以便宜到能跑在最小的单片机上 —— 无人机飞控最早就是这么做姿态的。</span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '陀螺 ω' }, { cls: 'pd', text: '积分 → 短期准' },
+          { cls: 'pt', text: '加速度 → 绝对倾角' }, { cls: 'pi', text: 'α 加权融合' },
+          { cls: 'ph', text: '高通陀螺 + 低通加速度' }, { cls: 'pm', text: '不漂也不抖' },
+        ]}
+        why={<><b>为什么这题面试爱问:</b>它用最少的数学讲清了传感器融合的<b>核心直觉</b> —— <b>不同传感器的误差特性不同,融合的价值就在这个「不同」上</b>。两个都短期准长期漂的传感器,融了也没用。理解了这一条,再看卡尔曼的 K 就只是「把这个常数变成按方差自动算的」。</>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 具身智能 · 模型预测控制 MPC ═══════════════
+function MPCDiagram() {
+  return (
+    <Shell icon={Icn.bulb} title="模型预测控制 MPC 原理"
+      sub="看懂：反应式控制器不会「提前刹车」，而 MPC 会">
+      <Sec n={1} title="三个词:预测、优化、只走第一步">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>预测</h4><p>用<em>系统模型</em>把未来一段(预测时域)<em>推演出来</em>。</p></div>
+          <div className="gd-card i"><h4>优化</h4><p>解出<em>一整条控制序列</em>:既要到目标、又要满足约束、还要省劲。</p></div>
+          <div className="gd-card o"><h4>只执行第一步</h4><p>下一拍拿<em>新状态重新预测优化</em> —— 滚动时域 receding horizon。</p></div>
+        </div>
+        <div className="gd-note">{Icn.info}<span>「算了一整条却只走第一步」看着浪费,其实是<b>抗扰动的关键</b>:世界总会和模型不一样,所以每一步都<b>拿真实状态重来一遍</b>,而不是照着老计划走到底。这和 Agent 的「重规划」是同一个道理。</span></div>
+      </Sec>
+      <Sec n={2} title="一个具体对比:停在 x=10,而那也是一堵墙">
+        <div className="gd-lane">
+          <div className="gd-card o"><h4>MPC</h4><p>每步算<em>刹车距离</em>(照现在的速度刹停要多远):还够远就加速,预测「再不刹就冲过去了」就<em>提前刹车</em> → <em>稳稳停在 10</em>。</p></div>
+          <div className="gd-card t"><h4>反应式(纯比例)</h4><p>只看当前误差,<em>没有预测</em>,到跟前还在冲 → <em>越过目标冲到 ~16</em>。</p></div>
+        </div>
+        <div className="gd-note">{Icn.info}<span>「刹车距离」就是这里的预测。反应式控制器不是参数没调好 —— 它<b>结构上就不知道未来</b>,再怎么调也没法在还没到误差之前就开始减速。</span></div>
+      </Sec>
+      <Sec n={3} title="MPC 最值钱的地方:能显式写约束">
+        <div className="gd-note">{Icn.info}<span>不越界、不超速、不超力矩 —— 这些在 PID 里只能靠<b>限幅硬砍</b>(砍完就不是原来那个控制律了),在 MPC 里是<b>优化问题的约束条件</b>,求解器会在满足约束的前提下找最优。这是它在自动驾驶、四足步态、化工过程里当主力的根本原因。</span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '当前状态' }, { cls: 'pd', text: '用模型预测未来一段' },
+          { cls: 'pt', text: '带约束优化整条序列' }, { cls: 'pi', text: '只执行第一步' },
+          { cls: 'ph', text: '下一拍拿新状态' }, { cls: 'pm', text: '重新预测优化' },
+        ]}
+        why={<><b>代价也很清楚:每一步都要在线解一个优化问题。</b>所以 MPC 的工程史基本就是「怎么把这个问题解得够快」的历史 —— 从化工(秒级,随便解)到自动驾驶(10ms)再到四足(1ms),靠的是把问题化成 QP、用热启动、甚至提前把解算好存成表(显式 MPC)。<b>它不是更聪明的 PID,它是拿算力换预见性。</b></>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 具身智能 · 阻抗/力控 ═══════════════
+function ImpedanceDiagram() {
+  return (
+    <Shell icon={Icn.bulb} title="阻抗 / 力控原理"
+      sub="看懂：位置控制为什么会「砸」，柔顺控制怎么把力变成你能设的数">
+      <Sec n={1} title="纯位置控制的病:它只认位置误差">
+        <div className="gd-note">{Icn.info}<span>你命令末端去 x,它就<b>死命把位置误差压到 0</b>。一旦撞上墙或工件,那点消不掉的位置误差会让它输出<b>越来越大的力</b> —— 砸坏工件、伤人、打滑。它不是失控,它是<b>忠实地在执行一个错误的目标</b>。</span></div>
+      </Sec>
+      <Sec n={2} title="阻抗控制:把末端做成一个虚拟的弹簧 + 阻尼">
+        <div className="gd-formula">
+          F = <span className="ft">K·(x_目标 − x)</span> − <span className="fo">D·ẋ</span>
+          {'　　'}⇒ 接触力 ≈ <b>K × 侵入深度</b>{'　'}<span className="fi">而 K 是你自己设的</span>
+        </div>
+        <div className="gd-note">{Icn.info}<span>这一句是全部:<b>力不再是「压误差」的副产品,而是一个你能算出来、能设定的量</b>。它「想」去目标,但遇到阻挡就<b>柔顺让步</b>。</span></div>
+      </Sec>
+      <Sec n={3} title="同一个目标,K 一换,力差 6.6 倍">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>刚性位置控制 K=200</h4><p>命令去 x=8,墙在 x=5 → 稳态<em>硬顶出 480 N</em>(砸)。</p></div>
+          <div className="gd-card o"><h4>阻抗控制 K=25</h4><p>同样命令 → 动态逼近、轻柔接触,力 settle 到 <em>~73 N</em>。</p></div>
+        </div>
+        <div className="gd-note">{Icn.info}<span>K 小 = 软:轻轻贴着走、接触力小而可控;K 大 = 硬:趋近于位置控制。<b>所以「位置控制」其实是阻抗控制在 K→∞ 时的极端情形</b> —— 它们不是两套东西。</span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '命令末端去 x_目标' }, { cls: 'pd', text: '渲染虚拟弹簧 K + 阻尼 D' },
+          { cls: 'pt', text: '未接触:像位置控制一样靠近' }, { cls: 'pi', text: '接触:柔顺让步' },
+          { cls: 'ph', text: '力 ≈ K × 侵入深度' }, { cls: 'pm', text: '力可设、可控' },
+        ]}
+        why={<><b>为什么它是「会用力」的地基:</b>装配、打磨、拧螺丝、和人协作 —— 这些任务的成败标准根本不是「到没到位置」,而是「力对不对」。<b>把位置当目标,力就是失控的副产品;把阻抗当目标,力才成为一个可以设计的量。</b>再往上就是导纳控制、力/位混合控制,分的都是同一件事:哪个方向管位置、哪个方向管力。</>} />
+    </Shell>
+  )
+}
+
 export const GUIDE_DIAGRAMS: Record<string, () => ReactNode> = {
   //  具身智能职业线(2026-09-06 起补):这条线原来 51 个实验一张引导图都没有。
   fk: FKDiagram,
@@ -7191,6 +7734,23 @@ export const GUIDE_DIAGRAMS: Record<string, () => ReactNode> = {
   memwrite: MemWriteDiagram,
   mempaging: MemPagingDiagram,
   reflection: ReflectionDiagram,
+  //  具身智能 · 机器人学基础 / 刚体动力学
+  ik: IKDiagram,
+  quat: QuatDiagram,
+  trajectory: TrajectoryDiagram,
+  dyneom: DynEomDiagram,
+  rnea: RNEADiagram,
+  fwddyn: FwdDynDiagram,
+  computedtorque: ComputedTorqueDiagram,
+  contactlcp: ContactLCPDiagram,
+  //  具身智能 · 感知与控制
+  kalman: KalmanDiagram,
+  ekf: EKFDiagram,
+  ukf: UKFDiagram,
+  particlefilter: ParticleFilterDiagram,
+  complementary: ComplementaryDiagram,
+  mpc: MPCDiagram,
+  impedance: ImpedanceDiagram,
   binsearch: BinSearchDiagram,
   nqueens: NQueensDiagram,
   unionfind: UnionFindDiagram,
