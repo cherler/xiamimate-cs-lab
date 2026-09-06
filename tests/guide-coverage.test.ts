@@ -27,7 +27,7 @@ const DEBT_CAP: Record<string, number> = {
   '408 基础': 0,     // 铺满了
   '算法': 0,         // 2026-09-06 补齐
   '大模型': 0,       // 2026-09-06 补齐(Agent 工程线 11 张)
-  '具身智能': 8,     // 补齐中:已 43 张
+  '具身智能': 0,     // 2026-09-06 补齐(51 张)
 }
 //  ⚠️ 用户只发现了具身智能那 51 个;**这条判据一跑,算法和大模型各自也有欠账**——
 //  都是后加的那批实验(Agent 工程线、算法补充题)图没跟上。整块缺失就是这样悄悄攒起来的。
@@ -37,6 +37,14 @@ const reg = read('../web/src/registry.ts')
 const expGroup = new Map<string, string>()
 for (const m of reg.matchAll(/\bid: '([a-zA-Z0-9_-]+)',[\s\S]{0,400}?\bgroup: '([^']+)'/g))
   if (!expGroup.has(m[1]!)) expGroup.set(m[1]!, m[2]!)
+
+/* ⚠️ **静态解析看不见工厂函数生成的实验**。
+   软件库层那 40 多个实验是 `mkLib('id', …)` 造出来的,源码里根本没有 `id: 'x'` 字面量 ——
+   第一版判据因此把它们整个漏掉,还报了「51/51 全覆盖」的假绿灯,是浏览器抽查抓出来的。
+   它们**本来也不需要**「看懂这一屏」:库层的舞台(LibraryStage)本身就是一屏铺开的参考页
+   (特点/优缺点/覆盖/落地),再配一张图是重复。所以这里**显式把它们列出来并排除**,
+   而不是假装看不见 —— 排除要说出口,漏掉才是错。 */
+const libIds = new Set([...reg.matchAll(/mkLib\('([a-zA-Z0-9_-]+)'/g)].map(m => m[1]!))
 
 const discOfGroup = new Map<string, string>()
 {
@@ -68,11 +76,16 @@ console.log('\n— 「看懂这一屏」覆盖率 —')
 
 //  空跑自检:解析一崩,下面每一条都会「0 缺失」地绿过去
 registered.size >= 100 && expGroup.size >= 150 && discOfGroup.size >= 20
-  ? ok(`解析到 ${expGroup.size} 个实验 / ${discOfGroup.size} 个分组 / ${registered.size} 张已登记引导图`)
+  ? ok(`解析到 ${expGroup.size} 个带内核的实验 / ${discOfGroup.size} 个分组 / ${registered.size} 张已登记引导图`)
   : bad(`解析结果不对劲(实验 ${expGroup.size} / 分组 ${discOfGroup.size} / 图 ${registered.size}) —— 源文件写法变了,下面的判据等于空跑`)
+//  同样是空跑自检:mkLib 一改名,库层就又变成看不见的了 —— 那时上面的排除会静默失效
+libIds.size >= 30
+  ? ok(`另有 ${libIds.size} 个**库层**实验(mkLib 生成),按上面的理由不要求引导图`)
+  : bad(`只认出 ${libIds.size} 个库层实验 —— mkLib 改名了?那库层会被当成「缺图」或被静默漏掉`)
 
 const byDisc = new Map<string, { total: number; missing: string[] }>()
 for (const [id, g] of expGroup) {
+  if (libIds.has(id)) continue                            // 库层不要求(见上)
   const d = discOfGroup.get(g); if (!d) continue          // 孤儿分组(已下线的轨)不算
   const rec = byDisc.get(d) ?? { total: 0, missing: [] }
   rec.total++; if (!registered.has(id)) rec.missing.push(id)

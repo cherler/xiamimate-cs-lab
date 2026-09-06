@@ -8556,6 +8556,275 @@ function VLADiagram() {
   )
 }
 
+// ═══════════════ 具身智能 · FOC 磁场定向控制 ═══════════════
+function FOCDiagram() {
+  return (
+    <Shell icon={Icn.chip} title="FOC 磁场定向控制原理"
+      sub="看懂：换一个「跟着转子转」的坐标系，交流就变成了直流">
+      <Sec n={1} title="两次坐标变换,一次比一次关键">
+        <div className="gd-formula">
+          <span className="ft">Clarke</span> abc→αβ:{'　'}i_α = i_a{'　'}i_β = (1/√3)i_a + (2/√3)i_b
+          {'　'}<span className="fi">(三相去掉冗余的一相)</span>
+        </div>
+        <div className="gd-formula">
+          <span className="fo">Park</span> αβ→dq(按转子电角 θ_e 旋转):{'　'}i_d = i_α cosθ + i_β sinθ{'　'}i_q = i_β cosθ − i_α sinθ
+        </div>
+        <div className="gd-note">{Icn.info}<span>Park 这一下是全部机关:<b>坐标系跟着转子一起转</b>,于是原本随时间正弦变化的相电流,<b>在转子系里变成了直流</b>。交流一变直流,<b>一个普通 PI 就能做到零稳态误差</b> —— 而对着交流量做 PI 是永远追不上的。</span></div>
+      </Sec>
+      <Sec n={2} title="两个 PI,而且 i_d 的目标恒为 0">
+        <div className="gd-formula">
+          e_d = <span className="ft">0</span> − i_d{'　'}e_q = i_q* − i_q{'　'}→{'　'}U_d, U_q
+        </div>
+        <div className="gd-note">{Icn.info}<span><b>i_d* = 0</b> 就是「最大转矩每安培(MTPA)」:表贴永磁/步进电机<b>只有 i_q 产生转矩</b>,i_d 纯粹发热。把它压到 0,<b>每一安培都用在转矩上</b>。转矩 τ = 1.5·p·λ_m·i_q —— 于是控转矩就等于控一个直流量。</span></div>
+      </Sec>
+      <Sec n={3} title="再变回去:逆 Park → 逆 Clarke → SVPWM">
+        <div className="gd-note">{Icn.info}<span>SVPWM 比普通正弦 PWM <b>多约 15% 的母线电压利用率</b>(靠注入共模、中点钳位)—— 同样的电池,能多榨出 15% 的电压。<b>这是白捡的性能,所以工业上几乎没人用正弦 PWM。</b></span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '采三相电流' }, { cls: 'pd', text: 'Clarke → αβ' },
+          { cls: 'pt', text: 'Park → dq(交流变直流)' }, { cls: 'pi', text: '两个 PI(i_d→0)' },
+          { cls: 'ph', text: '逆变换 + SVPWM' }, { cls: 'pm', text: '转矩 τ = 1.5·p·λ_m·i_q' },
+        ]}
+        why={<><b>它是整条控制链的最内环:</b>关节 PID 或计算力矩算出「我要 5 N·m」,靠 FOC 把这句话<b>变成三相电压</b>。20kHz 跑一圈。相比开环微步,它<b>闭环量转子角、恒 90° 矢量</b> —— 不丢步,而且每安培都产生转矩。<b>上层控制算得再漂亮,最后都要落到这一环上。</b></>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 具身智能 · MoveIt 2(软件库层)═══════════════
+function MoveItDiagram() {
+  return (
+    <Shell icon={Icn.doc} title="MoveIt 2 框架原理"
+      sub="看懂：它不发明算法 —— 它把你已经学过的那些拼成一条流水线">
+      <Sec n={1} title="它是什么:ROS 2 上机械臂规划的事实标准">
+        <div className="gd-formula">
+          给<span className="ft">机器人模型 + 目标位姿</span>{'　→　'}算出<span className="fo">无碰撞、可执行的关节轨迹</span>
+        </div>
+        <div className="gd-note">{Icn.info}<span>中枢是 <b>move_group</b>,串起「场景 → 规划 → 碰撞 → 运动学 → 轨迹」一条流水线。BSD-3-Clause,PickNik 维护。</span></div>
+      </Sec>
+      <Sec n={2} title="拆开看,每一格都是前面某一课">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>OMPL(规划)</h4><p>默认规划器就是 <em>RRT-Connect</em>;还有 RRT / RRT* / PRM。</p></div>
+          <div className="gd-card i"><h4>FCL(碰撞)</h4><p><em>GJK 那一类</em>凸形碰撞检测。</p></div>
+          <div className="gd-card o"><h4>CHOMP(优化)</h4><p>把采样法给的粗路<em>打磨平滑</em>。</p></div>
+          <div className="gd-card t"><h4>时间参数化</h4><p>就是<em>梯形速度曲线</em> —— 给路径配上速度。</p></div>
+          <div className="gd-card i"><h4>KDL / IKFast</h4><p><em>逆运动学</em>与雅可比。</p></div>
+        </div>
+        <div className="gd-note">{Icn.info}<span>所以这一课不是学新算法,是<b>看清楚前面十来课在真实系统里各自站在哪一格</b>。库讲「用法」,实验讲「原理」,两层对着看。</span></div>
+      </Sec>
+      <Sec n={3} title="取舍要说明白">
+        <div className="gd-lane">
+          <div className="gd-card o"><h4>好处</h4><p>生态标准、<em>可插拔</em>、开箱即用。</p></div>
+          <div className="gd-card t"><h4>代价</h4><p>学习曲线<em>陡</em>、配置繁、和 <em>ROS 强耦合</em>、偏机械臂(移动导航是 Nav2)。</p></div>
+        </div>
+        <div className="gd-note">{Icn.info}<span>落地:Franka Panda、UR 等主流机械臂的标准工具链。</span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '机器人模型 + 目标' }, { cls: 'pd', text: '场景(障碍/附着物)' },
+          { cls: 'pt', text: 'OMPL 规划(RRT-Connect)' }, { cls: 'pi', text: 'FCL 碰撞检测' },
+          { cls: 'ph', text: 'CHOMP 平滑 + 时间参数化' }, { cls: 'pm', text: '可执行关节轨迹' },
+        ]}
+        why={<><b>为什么值得单独看一层「软件库」:</b>面试问「你会 MoveIt 吗」,想听的往往不是 API,而是<b>「你知不知道它底下是什么」</b>。默认规划器为什么是 RRT-Connect(快、双向)、为什么还要接 CHOMP(采样法的路太糙)、时间参数化在解决什么(路径 ≠ 轨迹)—— <b>这些答案全在前面几课里,库只是把它们摆到了一条线上。</b></>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 具身智能 · 主从遥操作 ═══════════════
+function TeleopDiagram() {
+  return (
+    <Shell icon={Icn.ruler} title="主从遥操作原理"
+      sub="看懂：采示范数据的入口 —— 为什么同构双臂可以不用 IK">
+      <Sec n={1} title="四步,一步都不能少">
+        <div className="gd-formula">
+          读 leader 舵机原始码(<span className="ft">0~4095</span>)
+          {' → '}<span className="fi">标定成关节角</span>
+          {' → '}<span className="fo">max_relative_target 安全钳</span>
+          {' → '}写 follower 目标
+        </div>
+      </Sec>
+      <Sec n={2} title="关键一条:同构 ⇒ 关节空间直接复制,不用 IK">
+        <div className="gd-note">{Icn.info}<span>SO-101 是<b>一对连杆尺寸完全相同</b>的臂。结构一样,<b>抄关节角就复现同一个末端位姿</b> —— 中间不需要正运动学、更不需要逆运动学。<b>只有两臂结构不同时,才要做重定向/IK</b>。这一条省掉了整条链上最容易出错的一环。</span></div>
+      </Sec>
+      <Sec n={3} title="安全钳不是可选项">
+        <div className="gd-note">{Icn.info}<span><b>max_relative_target</b> 限制每周期目标的<b>最大变化量</b>。人手一抖、通信丢一帧、标定有偏 —— 任何一个都会让目标突跳,而 follower 的伺服会<b>忠实地全速冲过去</b>,砸东西或伤人。<b>钳住相对量,是「让机器听人的」和「让机器安全地听人的」之间的那道差。</b></span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '人拧 leader 臂' }, { cls: 'pd', text: '读原始舵机码' },
+          { cls: 'pt', text: '标定 → 关节角' }, { cls: 'pi', text: '相对量安全钳' },
+          { cls: 'ph', text: '写 follower 目标' }, { cls: 'pm', text: '伺服 PID 内环执行' },
+        ]}
+        why={<><b>它是整条模仿学习流水的入口:</b>没有示范数据,BC / ACT / Diffusion Policy 全都无从谈起。而遥操作采到的数据质量<b>直接决定策略上限</b> —— 人操作得抖,策略就学得抖;人只在中间示范,策略就只会走中间(这正是 BC 那一课说的分布漂移)。<b>「数据采集」不是准备工作,它是算法的一部分。</b></>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 具身智能 · 数据集归一化 ═══════════════
+function NormStatsDiagram() {
+  return (
+    <Shell icon={Icn.ruler} title="数据集归一化原理"
+      sub="看懂：为什么必须用「整套数据集」的统计量，而不是每批现算">
+      <Sec n={1} title="病:各个特征的量纲差着好几个数量级">
+        <div className="gd-note">{Icn.info}<span>关节角是几弧度、夹爪开合是 0~1、力矩可能是几十 —— 直接喂进网络,<b>大量纲的特征会主导梯度</b>,小的那些几乎学不动。归一化就是把它们<b>拉到同一量级</b>。</span></div>
+      </Sec>
+      <Sec n={2} title="两种模式,各有各的脾气">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>MEAN_STD</h4><p>x′ = (x − μ)/(σ + eps)。<em>ACT 默认</em>;对无界的关节角/力矩自然,<em>对离群较稳</em>。</p></div>
+          <div className="gd-card o"><h4>MIN_MAX</h4><p>拉到固定区间。直观,但<em>对离群点极敏感</em> —— 一个异常值就能把其余全压扁。</p></div>
+        </div>
+      </Sec>
+      <Sec n={3} title="关键:统计量在整套数据集上算一次,存进 meta/stats">
+        <div className="gd-note">{Icn.info}<span>这和 BatchNorm 那种<b>每批现算</b>完全不同。存成固定值之后,归一化就是一个<b>固定、可逆的仿射变换</b> —— 于是<b>策略输出必须反归一化才能送给机器人</b>。这一步忘了,动作数量级全错,而且<b>不报错,只是机器人乱动</b>。</span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '整套数据集' }, { cls: 'pd', text: '算 μ/σ 或 min/max' },
+          { cls: 'pt', text: '存进 meta/stats' }, { cls: 'pi', text: '训练时归一化' },
+          { cls: 'ph', text: '策略输出' }, { cls: 'pm', text: '反归一化 → 机器人' },
+        ]}
+        why={<><b>为什么必须固定而不是每批算:</b>推理时你只有<b>一个</b>样本,没有「批」可以算统计量。统计量一旦固定并随模型一起发布,<b>训练和部署用的就是同一个变换</b> —— 这条一致性是所有「训练好好的、上真机就废」问题里,最先该排查的一个。</>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 具身智能 · delta_timestamps 时序窗口 ═══════════════
+function DeltaTSDiagram() {
+  return (
+    <Shell icon={Icn.doc} title="delta_timestamps 时序窗口原理"
+      sub="看懂：策略要的不是一帧，是一段 —— 这座桥怎么搭">
+      <Sec n={1} title="需求:观测要几帧历史,动作要一整块未来">
+        <div className="gd-formula">
+          用户按<span className="ft">秒</span>给偏移{'　'}obs: [−0.06, −0.04, −0.02, 0]{'　'}action: 未来 0~0.08
+        </div>
+        <div className="gd-note">{Icn.info}<span>数据在 parquet 里是<b>扁平的一行行帧</b>,而 ACT 要一整块未来动作、Diffusion 要几帧历史观测。<b>delta_timestamps 就是这座桥。</b></span></div>
+      </Sec>
+      <Sec n={2} title="三步:秒换帧 → 定位并钳边界 → 打 pad 掩码">
+        <div className="gd-formula">
+          delta_idx = <span className="ft">round(偏移 × fps)</span>{'　'}<span className="fi">fps=50 ⇒ −0.06s = −3 帧</span>
+        </div>
+        <div className="gd-formula">
+          query = <span className="fo">clamp(当前帧 + delta, ep_start, ep_end−1)</span>{'　'}<span className="fi">越出本 episode 就钳到边界</span>
+        </div>
+        <div className="gd-note">{Icn.info}<span>「按 episode 钳」这一条最要紧:<b>不能跨到上一段录制里去取帧</b> —— 那是完全不同的一次任务,取来当历史是纯粹的污染。</span></div>
+      </Sec>
+      <Sec n={3} title="被钳过的帧要标出来,训练时排除">
+        <div className="gd-formula">
+          is_pad = (当前帧 + delta 落在 [ep_start, ep_end) <b>外</b>)
+          {'　→　'}训练时按掩码<b>排除、不污染 loss</b>
+        </div>
+        <div className="gd-note">{Icn.info}<span>episode 开头取不到历史、结尾取不到未来 —— 那些位置被钳成了边界帧的<b>重复</b>。如果不打掩码,模型会学到「开头要连着做四次同样的事」这种<b>数据处理造出来的假规律</b>。</span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '按秒给偏移' }, { cls: 'pd', text: 'round(偏移×fps) → 帧' },
+          { cls: 'pt', text: '当前帧 + delta' }, { cls: 'pi', text: 'clamp 到 episode 边界' },
+          { cls: 'ph', text: '越界的标 is_pad' }, { cls: 'pm', text: '取出时序窗口' },
+        ]}
+        why={<><b>ACT 的动作块正是它的一个特例:</b>action_delta_indices = range(chunk_size) = [0..K−1]。所以「动作分块」在数据侧<b>不需要任何特殊代码</b> —— 只是一组偏移而已。<b>把「要一段时序」这件事下沉到数据集层,上面各种策略就都能共用同一套取数逻辑。</b></>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 具身智能 · ACT 动作分块与时序集成 ═══════════════
+function ACTTEDiagram() {
+  return (
+    <Shell icon={Icn.star} title="ACT 动作分块 · 时序集成原理"
+      sub="看懂：两招治 BC 的复合误差 —— 一招砍机会，一招削抖动">
+      <Sec n={1} title="第一招:动作分块 —— 把滚雪球的机会砍到 1/K">
+        <div className="gd-formula">
+          一次观测<span className="ft">预测未来 K 个动作</span>(LeRobot chunk_size = <b>100</b>)
+          {'　⇒　'}有效时域 T → <b>T/K</b>
+        </div>
+        <div className="gd-note">{Icn.info}<span>BC 的复合误差来自「每步都可能错一点,然后进入没见过的状态」。一次决策管 K 步,<b>决策次数就少了 K 倍</b>,滚雪球的机会自然也少了 K 倍。</span></div>
+      </Sec>
+      <Sec n={2} title="第二招:时序集成 —— 同一个动作被好几块预测到,加权平均">
+        <div className="gd-formula">
+          w<sub>i</sub> = <span className="fo">exp(−m·i)</span>{'　'}<span className="fi">i=0 是<b>最旧</b>的那条预测</span>
+          {'　　'}a<sub>t</sub> = Σ w<sub>i</sub>·P<sub>i</sub> / Σ w<sub>i</sub>
+        </div>
+        <div className="gd-note">{Icn.info}<span>每一步都重新预测一整块,于是<b>时刻 t 的动作会被好几块各预测一次</b>,它们互相不完全一致 —— 这就是抖的来源。加权平均把它们抹平。m 默认 <b>0.01</b> → 权重近似均匀、<b>还略偏旧</b>(别过度信最新那条抖的);m 大 → 更信旧的;m{'<'}0 → 更信新的,但会削弱分块的好处。</span></div>
+      </Sec>
+      <Sec n={3} title="⚠️ 一个八股陷阱:LeRobot 默认不开时序集成">
+        <div className="gd-note">{Icn.info}<span>默认走的是<b>队列 / receding-horizon</b>(一块用完再预测下一块),而不是每步重预测 + 集成。<b>「读配置别只读论文」</b> —— 论文里的招式和框架里的默认值经常不是一回事,这一条正是面试里区分「看过」和「用过」的地方。</span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '一次观测' }, { cls: 'pd', text: '预测未来 K 个动作' },
+          { cls: 'pt', text: '每步都重新预测一块' }, { cls: 'pi', text: '同一时刻被多块覆盖' },
+          { cls: 'ph', text: 'w_i = exp(−m·i) 加权' }, { cls: 'pm', text: '平滑轨迹' },
+        ]}
+        why={<><b>分块也有代价:</b>一次管 K 步意味着<b>这 K 步里对环境变化是「聋」的</b> —— 东西被人挪走了它也照做。所以 K 不是越大越好,它是在<b>「少犯复合误差」和「对变化的反应速度」</b>之间取平衡。时序集成某种意义上是在<b>把这个代价买回来一点</b>:每步都重预测,就还能感知到变化。</>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 具身智能 · miniduck 腿式 RL ═══════════════
+function MiniDuckDiagram() {
+  return (
+    <Shell icon={Icn.bulb} title="Open Duck Mini 步态学习原理"
+      sub="看懂：整条线最值钱的一句 ——「模仿奖励」不是「模仿学习」">
+      <Sec n={1} title="它走的是另一条路:腿式强化学习,不是模仿学习">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>LeRobot 那一套</h4><p>ACT / Diffusion Policy —— <em>从人的示范里学</em>。</p></div>
+          <div className="gd-card o"><h4>miniduck</h4><p>MuJoCo Playground 里 <em>Brax PPO</em> 训练(沿用 Berkeley Humanoid 配置),50Hz 策略跑在 <em>Pi Zero 2W</em> 上。</p></div>
+        </div>
+      </Sec>
+      <Sec n={2} title="核心陷阱:「模仿奖励」≠「模仿学习」">
+        <div className="gd-note">{Icn.info}<span>它确实有一项<b>模仿奖励</b> —— 鼓励策略贴近一条<b>参考步态</b>。但这只是<b>奖励函数里的一项</b>,策略仍然是<b>强化学习试错学出来的</b>,不是监督拟合专家动作。<b>参考步态在这里的作用是「把探索约束到像走路的那一带」,不是「照抄」。</b>这两件事混淆,是这条线上最常见的误读。</span></div>
+      </Sec>
+      <Sec n={3} title="怎么让它像在走路:相位 + 参考步态 + 策略残差">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>相位</h4><p>给一个<em>周期信号</em>当输入 —— 腿的节奏有了骨架。</p></div>
+          <div className="gd-card i"><h4>参考步态</h4><p>提供<em>大致的关节轨迹</em>,策略只需要学<em>残差</em>。</p></div>
+          <div className="gd-card o"><h4>PD 执行</h4><p>策略输出<em>目标位置</em>,底下 PD 把它跟住 —— <em>不是直接输出力矩</em>。</p></div>
+        </div>
+        <div className="gd-note">{Icn.info}<span>「学残差」是腿式 RL 的通用招式:<b>不让策略从零发明走路,只让它修正一个已经差不多的步态</b>。搜索空间小一个量级,训练才收敛得动。</span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '相位信号' }, { cls: 'pd', text: '参考步态给骨架' },
+          { cls: 'pt', text: '策略学残差' }, { cls: 'pi', text: 'PD 跟住目标位置' },
+          { cls: 'ph', text: '奖励:速度+模仿+姿态+能耗' }, { cls: 'pm', text: 'Brax PPO 训练' },
+        ]}
+        why={<><b>奖励分解才是腿式 RL 的真手艺:</b>只给速度奖励,它会学出各种奇形怪状的「爬行」;加上模仿项、姿态项、能耗项,才逼出像样的步态。<b>消融实验(带模仿 / 只 velocity / 无策略)最能说明问题</b> —— 少一项,毛病就换一种。这也是为什么腿式 RL 的论文一半篇幅在讲奖励。</>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 具身智能 · LeRobot × SO-101 实战 ═══════════════
+function LeRobotDiagram() {
+  return (
+    <Shell icon={Icn.star} title="LeRobot × SO-101 实战流水"
+      sub="看懂：前面所有课，落到一套能真买真搭的硬件上是什么样">
+      <Sec n={1} title="硬件:低成本、可 3D 打印、主从两条臂">
+        <div className="gd-formula">
+          <span className="ft">SO-101</span>:5 自由度 + 夹爪、6 颗 STS3215 舵机、<span className="fo">leader / follower 两条同构臂</span>
+        </div>
+        <div className="gd-note">{Icn.info}<span>HuggingFace × TheRobotStudio。配 <b>LeRobot</b>(HF 的机器人学习库)。「能真买真搭」这一条很关键 —— <b>具身智能是少数「不上手就学不会」的方向</b>。</span></div>
+      </Sec>
+      <Sec n={2} title="四步流水,每一步都对应前面某几课">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>① 装配标定</h4><p>舵机码 ↔ 关节角(<em>遥操作那一课</em>)。</p></div>
+          <div className="gd-card i"><h4>② 遥操作采数据</h4><p>leader 带 follower 录示范(相机 + 关节)成 <em>LeRobot 数据集</em>。</p></div>
+          <div className="gd-card o"><h4>③ 训练策略</h4><p><em>lerobot-train</em>,默认 <em>ACT</em>(也可 Diffusion Policy / π0 等 VLA)。</p></div>
+          <div className="gd-card t"><h4>④ 部署自主执行</h4><p><em>lerobot-rollout</em>,follower 臂自主完成任务(如抓起方块)。</p></div>
+        </div>
+      </Sec>
+      <Sec n={3} title="这条流水把整条线串起来了">
+        <div className="gd-note">{Icn.info}<span>标定要 <b>FK</b>;抓取目标位姿要 <b>PnP / 手眼</b>;规划要 <b>IK / 轨迹</b>;数据要 <b>归一化 / delta_timestamps</b>;策略是 <b>BC → ACT → Diffusion → VLA</b> 那一条谱系;而它们全都跑在 <b>FOC</b> 驱动的关节上。<b>前面 50 课不是散点,是这一条流水的各个环节。</b></span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '装配 + 标定' }, { cls: 'pd', text: '遥操作录示范' },
+          { cls: 'pt', text: '存成 LeRobot 数据集' }, { cls: 'pi', text: 'lerobot-train(ACT)' },
+          { cls: 'ph', text: 'lerobot-rollout' }, { cls: 'pm', text: 'follower 自主抓取' },
+        ]}
+        why={<><b>为什么这条线要以「实战」收尾:</b>具身智能里,<b>仿真里成立、真机上不成立</b>的事太多了 —— 接触、摩擦、标定误差、时延、数据分布。只有真的采过一批自己操作得歪歪扭扭的数据、看过策略学出来是什么德性,前面那些课里的「分布漂移」「多峰」「量纲」才会从名词变成你亲眼见过的现象。<b>这条流水的价值不在于抓起那个方块,在于它逼你把每一环都真的走一遍。</b></>} />
+    </Shell>
+  )
+}
+
 export const GUIDE_DIAGRAMS: Record<string, () => ReactNode> = {
   //  具身智能职业线(2026-09-06 起补):这条线原来 51 个实验一张引导图都没有。
   fk: FKDiagram,
@@ -8626,6 +8895,15 @@ export const GUIDE_DIAGRAMS: Record<string, () => ReactNode> = {
   bc: BCDiagram,
   diffpolicy: DiffPolicyDiagram,
   vla: VLADiagram,
+  //  具身智能 · 项目实战 / 软件库(收官八张)
+  foc: FOCDiagram,
+  moveit: MoveItDiagram,
+  teleop: TeleopDiagram,
+  normstats: NormStatsDiagram,
+  deltats: DeltaTSDiagram,
+  actte: ACTTEDiagram,
+  miniduck: MiniDuckDiagram,
+  lerobot: LeRobotDiagram,
   binsearch: BinSearchDiagram,
   nqueens: NQueensDiagram,
   unionfind: UnionFindDiagram,

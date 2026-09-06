@@ -26,7 +26,8 @@
     "sync:tokens": "node scripts/sync-brand-tokens.mjs",
     "smoke": "node scripts/web-smoke.mjs",
     "smoke:platform": "node scripts/platform-smoke.mjs",
-    "contrast": "node scripts/theme-contrast.mjs --all"
+    "contrast": "node scripts/theme-contrast.mjs --all",
+    "smoke:guide": "node scripts/guide-coverage-smoke.mjs"
   },
   "devDependencies": {
     "@types/matter-js": "^0.20.2",
