@@ -46,7 +46,7 @@ import * as sync from './sync.ts'
 const VIZ_OF_DISC: Record<string, { icon: string; label: string; href?: string; tip: string }> = {
   llm:  { icon: '🔬', label: 'Transformer 图解', href: '/lab/explainer', tip: '在浏览器里看 Qwen 怎么想：注意力 + 下一词预测（服务器推理，可切 0.5B/1.5B）' },
   algo: { icon: '🎴', label: '算法卡牌', href: '/lab/cards', tip: '卡是算法、敌人是有性质的数据，血条是时间预算' },
-  //  🧩 已经归「大模型」了(见 registry 的 ANCHORS 注释),这里换成手柄,免得同屏两个 🧩 指两件事
+  //  原来这里也是 🧩,和锚点「软件」同屏撞车;换成手柄,一眼就知道是游戏
   base: { icon: '🕹️', label: '探索游戏', href: '/lab/world', tip: '在游戏里吃透 408 四门（xiami-world）' },
 }
 
@@ -796,7 +796,7 @@ export default function App() {
                点开是**独立全屏面板**：出题 / 答疑 / 复习 / 面试四种用法，抽屉那格太挤放不开。 */}
           <button className="chip aichip" onClick={() => setAiOpen(true)}
              data-tip="AI 学伴：就着这个实验，焊死引擎出题 / 答疑 / 复习 / 当面试官（答案钉在真实步骤上、少幻觉）">
-            🤖 AI 学伴
+            💬 AI 学伴
           </button>
           {/*  可视化 / 游戏位：跟着顶条职业换。大模型→Transformer 图解（现成）；
                算法→算法卡牌、408→探索游戏（都还在开发，先占位，做完再接链接）；
@@ -1155,7 +1155,7 @@ export default function App() {
         <div className="aipanel" role="dialog" aria-label="AI 学伴"
              onClick={e => e.stopPropagation()}>
           <div className="aipanel-head">
-            <b>🤖 AI 学伴 · {exp.title}</b>
+            <b>💬 AI 学伴 · {exp.title}</b>
             <span className="aipanel-sub">出题 / 答疑 / 复习 / 面试 —— 答案钉在这个实验真跑出来的步骤上</span>
             <button className="aipanel-x" onClick={() => setAiOpen(false)} title="关闭（Esc）">✕</button>
           </div>

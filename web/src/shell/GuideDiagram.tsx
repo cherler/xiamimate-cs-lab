@@ -6508,11 +6508,689 @@ function PIDDiagram() {
   )
 }
 
+// ═══════════════ 算法补充 · mini 正则引擎 ═══════════════
+//  s="aab" p="c*a*b":c* 吃 0 个 c、a* 吃 2 个 a、b 配 b → dp[3][5]=真。转移与格子可逐格手核。
+function RegexDiagram() {
+  return (
+    <Shell icon={Icn.doc} title="mini 正则引擎原理"
+      sub="看懂：`*` 为什么只能用 DP 讲清楚 —— 它有「吃 0 个」和「再多吃一个」两条路">
+      <Sec n={1} title="先分清楚:正则的 `*` 和通配符的 `*` 不是一回事">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>正则 `x*`</h4><p>零或多个<em>它前面那个字符 x</em>。`a*` 只能配 a、aa、aaa… <em>配不了 b</em>。</p></div>
+          <div className="gd-card i"><h4>通配符 `*`</h4><p>任意<em>一段</em>,什么字符都行。两者写法一样、含义完全不同 —— 这是最常见的混淆。</p></div>
+        </div>
+      </Sec>
+      <Sec n={2} title="一张表:dp[i][j] = 「s 的前 i 个字符,配不配得上 p 的前 j 个」">
+        <div className="gd-formula">
+          p[j−1] 不是 `*`:{'　'}dp[i][j] = <span className="ft">dp[i−1][j−1]</span> 且 s[i−1] 配 p[j−1]{'　'}<span className="fi">(两边各消一个)</span>
+        </div>
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>① x* 吃 0 个</h4><p>把 <em>"x*" 整段跳过</em>:dp[i][j] = <em>dp[i][j−2]</em>。s 一个字符都不消。</p></div>
+          <div className="gd-card o"><h4>② x* 再多吃一个</h4><p>s[i−1] 得配得上 x,然后 dp[i][j] = <em>dp[i−1][j]</em> —— <em>消掉 s 一个字符,p 的 "x*" 留着继续吃</em>。</p></div>
+        </div>
+        <div className="gd-note">{Icn.info}<span>②那一条最容易写错:<b>j 不动</b>。因为 `x*` 还没用完,下一个字符可能还归它管 —— 「留在原地继续吃」正是 `*` 的全部含义。</span></div>
+      </Sec>
+      <Sec n={3} title="跑一遍:s = aab,p = c*a*b">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>c*</h4><p>s 里根本没有 c → 走①,<em>吃 0 个</em>,整段跳过。</p></div>
+          <div className="gd-card i"><h4>a*</h4><p>走②两次,<em>吃掉 aa</em>。</p></div>
+          <div className="gd-card o"><h4>b</h4><p>普通字符,和 s 最后的 b 对上 → <em>dp[3][5] = 真</em>。</p></div>
+        </div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: 's 与 p' }, { cls: 'pd', text: '逐格填表' },
+          { cls: 'pt', text: '普通字符:各消一个' }, { cls: 'pi', text: 'x*:吃 0 个' },
+          { cls: 'ph', text: 'x*:再多吃一个' }, { cls: 'pm', text: 'dp[n][m] = 答案' },
+        ]}
+        why={<><b>为什么不用回溯:</b>回溯遇到多个 `*` 会把同一个子问题反复重算,最坏指数级(著名的正则灾难性回溯就是这么来的)。DP 把「s 前 i 个 × p 前 j 个」这 n×m 个子问题<b>各算一次存起来</b>,稳定 O(nm)。代价是 O(nm) 空间 —— 这是一笔明码标价的交易。</>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 算法补充 · 通配符匹配 ═══════════════
+//  s="abcd" p="a*d":a↔a;遇 * 记锚点;d≠b 回溯让 * 吃 b、再吃 c;最后 d↔d → ✓。
+function WildcardDiagram() {
+  return (
+    <Shell icon={Icn.doc} title="通配符匹配原理"
+      sub="看懂：`*` 该吃几个字符 —— 用一个「锚点」把试错变成 O(n) 的回溯">
+      <Sec n={1} title="难点只有一个:`*` 该吃几个,当场决定不了">
+        <div className="gd-formula">
+          <span className="ft">?</span> = 任意<b>一个</b>字符{'　　'}<span className="fo">*</span> = 任意<b>一段</b>(可以是空)
+        </div>
+        <div className="gd-note">{Icn.info}<span>`?` 好办,一对一消掉就行。`*` 麻烦在于:走到它的时候,<b>你并不知道后面该留几个字符给它</b> —— 吃多了后面不够配,吃少了又接不上。</span></div>
+      </Sec>
+      <Sec n={2} title="办法:先当它吃 0 个,走不通再回来让它多吃一个">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>遇到 `*` → 记锚点</h4><p>记下 <em>`*` 在 p 里的位置</em> 和 <em>s 当前的位置</em>,然后<em>当它吃 0 个</em>,继续往后走。</p></div>
+          <div className="gd-card o"><h4>走不通 → 回溯</h4><p>回到锚点,让 `*` <em>多吃一个字符</em>(s 的起点后移一位),再往后试。</p></div>
+        </div>
+      </Sec>
+      <Sec n={3} title="跑一遍:s = abcd,p = a*d">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>a ↔ a</h4><p>普通字符,对上,两边各进一位。</p></div>
+          <div className="gd-card i"><h4>遇 `*`</h4><p>记锚点,先当<em>吃 0 个</em> → 拿 p 的 d 去配 s 的 b。</p></div>
+          <div className="gd-card o"><h4>d ≠ b → 回溯两次</h4><p>让 `*` 吃掉 <em>b</em>、再吃掉 <em>c</em>;最后 <em>d ↔ d</em> → 匹配 ✓</p></div>
+        </div>
+        <div className="gd-note">{Icn.info}<span>关键在于<b>只保留最近的一个锚点</b> —— 前面的 `*` 一旦成功往后走了,就不必再回头。这一条让最坏也只是 O(n·m)、空间 <b>O(1)</b>,而朴素递归会指数爆炸。</span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '双指针扫 s / p' }, { cls: 'pd', text: '?、普通字符:各进一位' },
+          { cls: 'pt', text: '遇 *:记锚点、先吃 0 个' }, { cls: 'ph', text: '走不通:回锚点、多吃一个' },
+          { cls: 'pm', text: 'p 走完 = 匹配' },
+        ]}
+        why={<><b>和正则那题的分水岭:</b>通配符的 `*` 吃的是<b>任意一段</b>,所以「多吃一个」永远合法 —— 才能用一个锚点线性回溯。正则的 `x*` 只能吃 <b>x</b>,「能不能多吃」取决于当前字符,一个锚点管不住,只好上 DP。<b>同一个星号,含义差一点,解法就差一个量级。</b></>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 算法补充 · 快速选择 Quickselect ═══════════════
+//  [7,2,9,4,5,1,8] 求第 3 大 → 升序第 n−k = 7−3 = 4 位;3 轮 partition 收敛到 A[4]=7。
+function QuickselectDiagram() {
+  return (
+    <Shell icon={Icn.ruler} title="快速选择 Quickselect 原理"
+      sub="看懂：为什么「只递归一侧」就能把 O(n㏒n) 降成 O(n)">
+      <Sec n={1} title="借快排的 partition,但每轮只往一边走">
+        <div className="gd-formula">
+          partition 把 pivot 放到它<b>排序后的最终位置 P</b>
+          {'　　'}P == 目标 → <span className="fo">就是它</span>{'　'}P {'>'} 目标 → <span className="ft">只递归左</span>{'　'}P {'<'} 目标 → <span className="fi">只递归右</span>
+        </div>
+        <div className="gd-note">{Icn.info}<span>partition 结束时,pivot 左边全比它小、右边全比它大 —— 所以 <b>pivot 已经站在最终位置上了</b>,不用再动。这一条是 Quickselect 的全部依据:比较一下位置,就知道答案在哪一侧。</span></div>
+      </Sec>
+      <Sec n={2} title="第 K 大 = 升序的第 n−K 位(下标从 0 数)">
+        <div className="gd-formula">
+          A = [7, 2, 9, 4, 5, 1, 8]{'　'}n = 7{'　'}K = 3
+          {'　　'}⇒ 目标下标 = <b>7 − 3 = 4</b>{'　'}<span className="fi">(升序里第 5 小 = 第 3 大)</span>
+        </div>
+        <div className="gd-note">{Icn.info}<span>这一步换算最容易错。升序排好是 [1,2,4,5,<b>7</b>,8,9],下标 4 上正是 <b>7</b> —— 也正是第 3 大(9、8、7)。三轮 partition 之后,A[4] 收敛到 7。</span></div>
+      </Sec>
+      <Sec n={3} title="为什么是 O(n):丢掉的那一半再也不看了">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>快排:两侧都递归</h4><p>T(n) = <em>2·T(n/2) + O(n)</em> = O(n㏒n)。每一层都要把全部数据扫一遍。</p></div>
+          <div className="gd-card o"><h4>快选:只递归一侧</h4><p>T(n) = <em>T(n/2) + O(n)</em> = n + n/2 + n/4 + … = <em>O(n)</em>。等比级数收敛到 2n。</p></div>
+        </div>
+        <div className="gd-note">{Icn.info}<span>「平均」二字要当真:pivot 选得极差时(每次只切掉一个)会退化成 <b>O(n²)</b>。工程上用随机 pivot 或三数取中来躲开;要最坏也 O(n),那是 median-of-medians。</span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '第 K 大' }, { cls: 'pd', text: '换成下标 n−K' },
+          { cls: 'pt', text: 'partition 定住 pivot' }, { cls: 'pi', text: '比一比位置' },
+          { cls: 'ph', text: '只递归那一侧' }, { cls: 'pm', text: '位置对上 = 答案' },
+        ]}
+        why={<><b>什么时候该用它:</b>只要问题是「第 K 大 / 前 K 个」而<b>不要求这 K 个有序</b>,快选就比排序划算。要是还要求有序,或者数据大到内存装不下,那就换小顶堆(Top-K 那一关)—— <b>堆胜在流式、O(n㏒K),快选胜在全量在内存时的 O(n)。</b></>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 算法补充 · Trie 自动补全 ═══════════════
+//  词表 cat/car/card/care/dog,前缀「car」→ 子树 car/card/care → 按热度排 care(4)/car(3)/card(2)。
+function TrieDiagram() {
+  return (
+    <Shell icon={Icn.chip} title="Trie 自动补全原理"
+      sub="看懂：搜索框「打几个字母就弹候选」是怎么做到跟词表大小无关的">
+      <Sec n={1} title="前缀树:路径拼出前缀,词挂在末尾节点上">
+        <div className="gd-graph">
+          <svg viewBox="0 0 380 160" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+            {[[190, 20, 120, 60], [190, 20, 300, 60], [120, 60, 120, 100], [120, 100, 70, 140], [120, 100, 170, 140]].map(([x1, y1, x2, y2], k) =>
+              <line key={k} x1={x1} y1={y1} x2={x2} y2={y2} stroke="var(--line)" strokeWidth="1.6" />)}
+            {[[190, 20, '根'], [120, 60, 'c·a'], [300, 60, 'd·o·g'], [120, 100, 'r'], [70, 140, 'd'], [170, 140, 'e']].map(([x, y, t], k) => (
+              <g key={k}>
+                <circle cx={x as number} cy={y as number} r="16" fill="var(--panel)" stroke={k === 3 ? 'var(--now)' : 'var(--f-idx)'} strokeWidth={k === 3 ? 2.6 : 1.8} />
+                <text x={x as number} y={(y as number) + 4} fontSize="10" textAnchor="middle" fill="var(--ink)">{t}</text>
+              </g>
+            ))}
+            <text x="140" y="98" fontSize="9" fill="var(--now)">前缀节点</text>
+            <text x="60" y="158" fontSize="9" fill="var(--faint)">card</text>
+            <text x="160" y="158" fontSize="9" fill="var(--faint)">care</text>
+            <text x="96" y="52" fontSize="9" fill="var(--faint)">cat</text>
+          </svg>
+        </div>
+        <div className="gd-note">{Icn.info}<span>同一个前缀的词<b>共用同一段路径</b> —— cat/car/card/care 都从 c→a 出发。这既省空间,又让「找前缀」变成一次沿树下行。</span></div>
+      </Sec>
+      <Sec n={2} title="三步补全:走到前缀 → 收集子树 → 按热度取 Top-K">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>① 走到前缀节点</h4><p>沿 c→a→r 下行,<em>O(前缀长度)</em> —— 和词表有一万还是一亿个词<em>完全无关</em>。</p></div>
+          <div className="gd-card i"><h4>② DFS 收子树</h4><p>从这个节点往下,凡是打了「词尾」标记的都收:<em>car / card / care</em>。</p></div>
+          <div className="gd-card o"><h4>③ 按热度排 Top-K</h4><p><em>care(4) / car(3) / card(2)</em> —— 候选顺序由频率定,不是字典序。</p></div>
+        </div>
+        <div className="gd-note">{Icn.info}<span>「跟词表大小无关」只对第①步成立。第②步的代价取决于<b>这个前缀底下有多少词</b> —— 所以输入越短候选越多、越慢,工程上会在节点上<b>预存该子树的 Top-K</b> 把②③也摊平。</span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '词表建 Trie' }, { cls: 'pd', text: '用户敲前缀' },
+          { cls: 'pt', text: '沿树走到前缀节点' }, { cls: 'pi', text: 'DFS 收全部补全' },
+          { cls: 'ph', text: '按热度排序' }, { cls: 'pm', text: 'Top-K 候选' },
+        ]}
+        why={<><b>为什么不是哈希表:</b>哈希能 O(1) 答「这个词在不在」,但答不了「<b>以 car 开头的都有哪些</b>」—— 哈希把前缀关系彻底打散了。Trie 的价值就在它<b>把前缀关系变成了树的结构本身</b>,所以「共同前缀」这类问题(补全、最长公共前缀、字典序遍历)天然属于它。</>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 算法补充 · LRU 缓存 ═══════════════
+function LRUCacheDiagram() {
+  return (
+    <Shell icon={Icn.chip} title="LRU 缓存原理"
+      sub="看懂：为什么非得是「哈希表 + 双向链表」两个结构一起上">
+      <Sec n={1} title="要求苛刻在于:get 和 put 都要 O(1)">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>只用哈希表</h4><p>找得快,但<em>不知道谁最久没用</em> —— 要淘汰只能全扫一遍,O(n)。</p></div>
+          <div className="gd-card i"><h4>只用链表</h4><p>顺序有了,但<em>找一个 key 要从头走</em>,O(n)。</p></div>
+          <div className="gd-card o"><h4>两个一起上</h4><p>哈希表 <em>key → 节点指针</em>(找得快)+ 双向链表 <em>维护使用顺序</em>(摘得快)。</p></div>
+        </div>
+      </Sec>
+      <Sec n={2} title="为什么必须是「双向」链表">
+        <div className="gd-note">{Icn.info}<span>哈希表给你的是<b>节点本身</b>,要把它从链表里摘下来,得知道<b>它的前驱</b>。单向链表只能从头找前驱 → O(n),那 O(1) 就破了。<b>双向</b>那根 prev 指针,买的就是这一下 O(1) 摘除。</span></div>
+        <div className="gd-formula">
+          头 = <span className="fo">最近用过</span>{'　'}←—— 链表 ——→{'　'}尾 = <span className="ft">最久没用</span>{'　　'}淘汰 = <b>摘尾</b>
+        </div>
+      </Sec>
+      <Sec n={3} title="两个操作,各自只做两件事">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>get(k)</h4><p>哈希表定位 → 命中就<em>把节点移到头部</em>(它刚被用),返回值;未命中返回 −1。</p></div>
+          <div className="gd-card o"><h4>put(k, v)</h4><p>已存在:更新 + 移到头。不存在:插到头;<em>若超容量就摘掉尾部</em>那个最久没用的。</p></div>
+        </div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '一次访问' }, { cls: 'pd', text: '哈希表定位' },
+          { cls: 'pt', text: '命中 → 移到头' }, { cls: 'pi', text: '未命中 → 插到头' },
+          { cls: 'ph', text: '超容量 → 摘尾' }, { cls: 'pm', text: '头最新 · 尾最旧' },
+        ]}
+        why={<><b>它和操作系统的页面置换是同一件事:</b>408 里的 LRU 页面置换、CPU 的 Cache 替换策略、Redis 的 maxmemory-policy,内核都是这一个 —— <b>「最近用过的,大概率还会再用」</b>。区别只在硬件里没法真的维护一条链表(太贵),所以退而用近似 LRU(时钟算法、二次机会)。</>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 算法补充 · LFU 缓存 ═══════════════
+function LFUCacheDiagram() {
+  return (
+    <Shell icon={Icn.chip} title="LFU 缓存原理"
+      sub="看懂：按「用了几次」淘汰，同次数再按「谁最久没用」打破平手">
+      <Sec n={1} title="和 LRU 差在看什么">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>LRU:只看时间</h4><p>淘汰<em>最久没用的</em>。一次偶然的扫描就能把整个缓存冲掉(缓存污染)。</p></div>
+          <div className="gd-card o"><h4>LFU:先看频率</h4><p>淘汰<em>用得最少的</em>;<em>频率相同</em>时再按「最久没用」打平手 —— <em>LFU 内部还嵌着一层 LRU</em>。</p></div>
+        </div>
+        <div className="gd-note">{Icn.info}<span>那句「频率相同再看最久没用」不是补丁,是<b>必需的</b>:容量满时同频率的可能有好几个,没有第二把尺子就无从下手。</span></div>
+      </Sec>
+      <Sec n={2} title="怎么做到 O(1):频率桶 + 每桶一条链表 + 一个 minFreq">
+        <div className="gd-formula">
+          freq=1 → [链表]{'　'}freq=2 → [链表]{'　'}freq=3 → [链表]{'　　'}<span className="fo">minFreq</span> 指着当前最小的那个桶
+        </div>
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>访问一个 key</h4><p>从 freq 桶摘出来,<em>挂到 freq+1 桶的头部</em>。桶内顺序即 LRU 顺序。</p></div>
+          <div className="gd-card o"><h4>要淘汰</h4><p>直接去 <em>minFreq 桶</em>,摘它的<em>尾部</em> —— 频率最低里最久没用的那个,O(1)。</p></div>
+        </div>
+        <div className="gd-note">{Icn.info}<span>minFreq 的维护有个巧处:<b>新插入的 key 频率是 1,所以 minFreq 直接置 1</b>;而搬走一个 key 后若它原来的桶空了、且那正是 minFreq,minFreq 就 +1。只有这两种情况会动它。</span></div>
+      </Sec>
+      <Sec n={3} title="LeetCode 460 那串:capacity = 2">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>put(3) 时</h4><p>淘汰的是<em>频率最低</em>的那个 key 2 —— 不看它是不是刚放进来的。</p></div>
+          <div className="gd-card o"><h4>put(4) 时</h4><p>两个 key <em>同频</em>,这才轮到第二把尺子:淘汰<em>最久没用</em>的 key 1。</p></div>
+        </div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '一次访问' }, { cls: 'pd', text: '频率 +1' },
+          { cls: 'pt', text: '搬到下一个桶的头' }, { cls: 'pi', text: '维护 minFreq' },
+          { cls: 'ph', text: '淘汰:minFreq 桶的尾' }, { cls: 'pm', text: '频率低且最久没用' },
+        ]}
+        why={<><b>LFU 更好吗?不一定。</b>它记的是「历史上用了多少次」,于是<b>老资格很难被淘汰</b> —— 一个曾经很火、现在没人要的 key 会赖在缓存里(缓存陈旧)。真实系统用的是带<b>衰减</b>的 LFU(Redis 的 LFU 就会随时间降频),或者 W-TinyLFU 这类混合策略。<b>「按频率」和「按时间」各有各的病,这才是这道题真正的考点。</b></>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ 算法补充 · 海量数据 Top-K ═══════════════
+function TopKDiagram() {
+  return (
+    <Shell icon={Icn.star} title="海量数据 Top-K 原理"
+      sub="看懂：内存装不下全量计数时，靠哪两个机制把问题变小">
+      <Sec n={1} title="机制一:哈希分片 —— 同一个词一定落同一片">
+        <div className="gd-formula">
+          片号 = <span className="ft">hash(词) % N</span>
+          {'　　'}⇒ 同一个词 → 同一个片号 → <b>它的计数绝不会被拆到两片</b>
+        </div>
+        <div className="gd-note">{Icn.info}<span>这一条是「分而治之」<b>能成立的前提</b>,不是顺带的性质。要是同一个词可能落到两片,每片各数一半,最后求和就得跨片对账 —— 那分片就白分了。<b>哈希是确定的</b>,所以每片可以完全独立统计。</span></div>
+      </Sec>
+      <Sec n={2} title="机制二:大小为 K 的小顶堆 —— 堆顶就是门槛">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>堆顶 = 这 K 个里最小的</h4><p>也就是<em>目前的第 K 大</em>,它就是<em>入选门槛</em>。</p></div>
+          <div className="gd-card i"><h4>新词 ≤ 堆顶</h4><p>直接扔 —— 它<em>进不了前 K</em>,O(1) 判掉。</p></div>
+          <div className="gd-card o"><h4>新词 {'>'} 堆顶</h4><p><em>淘汰堆顶、换上它</em>,再下沉调整,O(㏒K)。门槛随之抬高。</p></div>
+        </div>
+        <div className="gd-note">{Icn.info}<span>反直觉的地方:求<b>最大</b>的 K 个,用的是<b>小</b>顶堆。因为你要频繁问的是「<b>这批里最弱的是谁,该不该被替掉</b>」—— 那个人恰好在小顶堆的堆顶。</span></div>
+      </Sec>
+      <Sec n={3} title="为什么不全排序">
+        <div className="gd-formula">
+          全排序 <span className="ft">O(n㏒n)</span>{'　'}·{'　'}小顶堆 <span className="fo">O(n㏒K)</span>
+          {'　　'}n = 10 亿、K = 100 时,㏒K ≈ 7 而 ㏒n ≈ 30
+        </div>
+        <div className="gd-note">{Icn.info}<span>更要紧的是<b>空间</b>:排序要把全部数据握在手里,而堆<b>只占 K 个位置</b>,数据可以流式地过 —— 这才是「海量」二字的真正约束。</span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '海量原始流' }, { cls: 'pd', text: '哈希分片(同词同片)' },
+          { cls: 'pt', text: '每片独立计数' }, { cls: 'pi', text: '喂进大小 K 的小顶堆' },
+          { cls: 'ph', text: '≤堆顶就扔 · >堆顶就换' }, { cls: 'pm', text: '堆里 = Top-K' },
+        ]}
+        why={<><b>这道题为什么是系统设计的入门题:</b>它把两个最常用的招式摆在一起 —— <b>分片</b>(把装不下的问题切成装得下的)和<b>流式 + 有界内存</b>(不留全量,只留一个 K 大小的摘要)。热搜词、高频 IP、热门商品、日志里的 Top 错误,全是同一个模子;再往上就是 Count-Min Sketch 那类<b>连计数都只留近似值</b>的方法。</>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ Agent 工程 · 主循环与终止 ═══════════════
+function ReactAgentDiagram() {
+  return (
+    <Shell icon={Icn.bulb} title="Agent 主循环原理"
+      sub="看懂：循环谁都会写，难的是让它「正确地停」">
+      <Sec n={1} title="循环本身只有三拍">
+        <div className="gd-formula">
+          <span className="ft">Thought 想</span> → <span className="fi">Action 调工具</span> → <span className="fo">Observation 看结果</span> → 想 → …
+        </div>
+        <div className="gd-note">{Icn.info}<span>术语先钉住:一次<b>模型请求 + 它发起的工具</b>叫一个 <b>step</b>;预算通常按 step 或成本算,不按「轮」算。</span></div>
+      </Sec>
+      <Sec n={2} title="四条终止路径 —— 工程上写错的全在这儿">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>① 正常收尾</h4><p>模型<em>不再发工具调用</em>,给出 Final Answer。这是唯一「体面」的出口。</p></div>
+          <div className="gd-card i"><h4>② stuck 检测</h4><p>最近几步<em>动作完全一样</em> → 它卡住了 → 中止。不做这一条就是<em>死循环烧钱</em>。</p></div>
+          <div className="gd-card o"><h4>③ 撞预算</h4><p>步数/成本到顶 → 停,交<em>当前 best-effort</em>,而不是干脆什么都不给。</p></div>
+          <div className="gd-card t"><h4>④ 出错兜底</h4><p>中途异常<em>不硬崩</em>,autosubmit 交一版当前最好结果(SWE-agent 的做法)—— <em>别白跑</em>。</p></div>
+        </div>
+      </Sec>
+      <Sec n={3} title="为什么它是「确定性状态机」而不是模型的事">
+        <div className="gd-note">{Icn.info}<span>「调哪个工具」是模型决定的、不确定;<b>「什么时候停」必须由 harness 说了算</b>。把停不停交给模型,就等于把预算交给一个不知道自己在烧钱的东西 —— 这条分界线是整套 Agent 工程的地基。</span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '任务进来' }, { cls: 'pd', text: '想 → 做 → 看' },
+          { cls: 'pt', text: '不再发调用 → 收尾' }, { cls: 'pi', text: '动作重复 → stuck' },
+          { cls: 'ph', text: '预算到顶 → 交 best-effort' }, { cls: 'pm', text: '异常 → autosubmit' },
+        ]}
+        why={<><b>为什么这题面试必问:</b>循环三行就写完,而<b>四条出口每缺一条就对应一种线上事故</b> —— 缺②烧钱、缺③失控、缺④白跑一小时。会写循环不算会,<b>把「怎么停」列全了才算</b>。</>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ Agent 工程 · 工具调用流水线 ═══════════════
+function ToolCallDiagram() {
+  return (
+    <Shell icon={Icn.chip} title="工具调用 Tool Calling 原理"
+      sub="看懂：模型只负责「想调谁」，harness 那条四步流水线才是工程">
+      <Sec n={1} title="分界线:哪一半是模型的,哪一半是你的">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>模型的一半</h4><p>决定<em>调哪个工具、传什么参数</em>。不确定、可能出错、可能瞎编。</p></div>
+          <div className="gd-card o"><h4>你的一半</h4><p>解析 → 门禁 → 执行 → 回灌。<em>确定性流水线</em> —— 面试问的、线上炸的,都是这一半。</p></div>
+        </div>
+      </Sec>
+      <Sec n={2} title="四步流水线">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>① 解析 parse</h4><p>模型那段文本 → <em>{'{工具名, 参数}'}</em>;不合法 → <em>PARSE_ERROR</em>。编码不止 JSON:Codex 用自由文本 apply_patch、Aider 用文本 diff。</p></div>
+          <div className="gd-card i"><h4>② 门禁 guard</h4><p>是已知工具吗(<em>UNKNOWN_TOOL</em>)?权限允许吗(<em>DENY</em>)?这一步挡在执行之前。</p></div>
+          <div className="gd-card o"><h4>③ 执行 execute</h4><p>真跑,<em>带超时</em>。</p></div>
+          <div className="gd-card t"><h4>④ 回灌 inject</h4><p>结果(或错误)当成一条 tool_result,<em>配对着它的调用</em>喂回模型。</p></div>
+        </div>
+      </Sec>
+      <Sec n={3} title="最要紧的一条八股:出错不要抛异常终止循环">
+        <div className="gd-formula">
+          工具报错 → <span className="ft">当作一条结果喂回去</span> → 模型看得见 → <span className="fo">它自己重试 / 换招</span>
+        </div>
+        <div className="gd-note">{Icn.info}<span>把异常向上抛,循环就死了、这一轮白跑;<b>把错误喂回去,模型才有机会自我修复</b>。「配对」也不能省 —— tool_result 必须带上它对应的 call_id,否则模型分不清哪条结果是哪次调用的。</span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '模型发出调用' }, { cls: 'pd', text: '解析' },
+          { cls: 'pt', text: '门禁' }, { cls: 'pi', text: '执行(带超时)' },
+          { cls: 'ph', text: '回灌(配对)' }, { cls: 'pm', text: '下一轮' },
+        ]}
+        why={<><b>为什么把门禁摆在执行之前:</b>这四步的顺序不是随便排的 —— 解析失败就没必要问权限,权限不过就绝不能执行。<b>每一步都是下一步的前提</b>,顺序错一处,就会出现「先删了库再发现没权限」这种事。</>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ Agent 工程 · 提示词组装与前缀缓存 ═══════════════
+function PromptBuildDiagram() {
+  return (
+    <Shell icon={Icn.ruler} title="提示词组装原理"
+      sub="看懂：为什么「段的排序」能决定这一轮花 1 倍钱还是 0.1 倍">
+      <Sec n={1} title="前缀缓存是「最长相同前缀」匹配,不是「有没有出现过」">
+        <div className="gd-formula">
+          缓存覆盖 <span className="ft">tools</span> → <span className="fi">system</span> → <span className="fo">messages</span>
+          {'　　'}<b>断点及之前任何一处变了 → 缓存全失效,后面全部重算</b>
+        </div>
+        <div className="gd-note">{Icn.info}<span>「最长相同前缀」这五个字是全部机关:它<b>从头开始比</b>,一撞上不一样的就停。所以靠前的一个字符变了,后面几万 token 命中过的缓存<b>一起作废</b>。</span></div>
+      </Sec>
+      <Sec n={2} title="于是规则很硬:静态的排前面,动态的排后面">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>缓存写</h4><p>1.25× 基础价 —— 第一轮多花一点。</p></div>
+          <div className="gd-card o"><h4>缓存读</h4><p><em>0.1×</em> 基础价 —— 命中就是<em>省 90%</em>。</p></div>
+          <div className="gd-card i"><h4>断点放哪</h4><p>放在<em>「逐轮都不变的最后一块」</em>之后 —— 让不变的部分尽可能长。</p></div>
+        </div>
+      </Sec>
+      <Sec n={3} title="经典翻车:把每轮都变的东西塞到靠前的块里">
+        <div className="gd-note">{Icn.info}<span>时间戳、运行时快照、随机 id —— 只要它进了靠前的块,<b>前缀每轮都不同、缓存永远不命中</b>,每轮全价重算。最坑的是它<b>不报错、功能完全正常</b>,只是账单是别人的十倍。</span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '各段素材' }, { cls: 'pd', text: '按 tools→system→messages 排' },
+          { cls: 'pt', text: '静态在前' }, { cls: 'pi', text: '断点划在不变的末尾' },
+          { cls: 'ph', text: '第 1 轮写缓存 1.25×' }, { cls: 'pm', text: '之后读缓存 0.1×' },
+        ]}
+        why={<><b>它和 KV 缓存、上下文压缩是同一件事的三个面:</b>都建立在「<b>相同前缀的注意力计算可以复用</b>」上。所以上下文压缩也有一条铁律 —— <b>压缩要保住前缀</b>,否则省下的 token 还不够重算缓存的钱。</>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ Agent 工程 · 规划与 Todo ═══════════════
+function PlanningDiagram() {
+  return (
+    <Shell icon={Icn.doc} title="规划 · 计划模式 + Todo 原理"
+      sub="看懂：三个机制里，最不显眼的「复述」其实是在操控注意力">
+      <Sec n={1} title="计划模式是硬门禁,不是建议 —— 这是真实的产品分叉">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>强制(Claude Code)</h4><p>在<em>权限层</em>把「写」堵死:<em>批准计划前只能读</em>,逼你先看后动。bypass 模式才降级成软提示。</p></div>
+          <div className="gd-card i"><h4>建议(DeepSeek plan-mode)</h4><p><em>纯建议</em>,工具照样能调 —— 模型「答应了先规划」不等于它做不到别的。</p></div>
+        </div>
+        <div className="gd-note">{Icn.info}<span>这条分叉和沙箱/权限那一关是一脉:<b>约束写在提示词里叫建议,写在权限层才叫门禁</b>。</span></div>
+      </Sec>
+      <Sec n={2} title="Todo 是状态机,不是清单">
+        <div className="gd-formula">
+          pending → <span className="fo">in_progress</span> → completed
+          {'　　'}<b>任何时刻恰好一个 in_progress</b>{'　'}<span className="fi">(逼串行,别并行摊大)</span>
+        </div>
+        <div className="gd-note">{Icn.info}<span>「恰好一个」是硬约束。允许多个进行中,模型就会同时开五件事、每件做一半 —— 长任务翻车最常见的形态。</span></div>
+      </Sec>
+      <Sec n={3} title="复述:每轮把整张 todo 重新贴到上下文近端">
+        <div className="gd-note">{Icn.info}<span>这一条最容易被当成「记账」而放过。它真正在做的是<b>注意力操控</b>:把全局计划推回模型的<b>近端注意力</b>,对抗长任务里的 <b>lost-in-the-middle 漂移</b>。不是给人看的,是<b>把模型摁在当前这一步上</b>。</span></div>
+        <div className="gd-formula">
+          现实和计划总会岔开{'　'}→{'　'}<span className="ft">重规划</span>(整表替换){'　'}而不是硬着头皮走完
+        </div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '任务进来' }, { cls: 'pd', text: '计划模式:只读探查' },
+          { cls: 'pt', text: '批准 → 解锁写' }, { cls: 'pi', text: 'todo 恰一个进行中' },
+          { cls: 'ph', text: '每轮复述整表' }, { cls: 'pm', text: '岔开了就重规划' },
+        ]}
+        why={<><b>为什么复杂任务不能上来就写:</b>模型一旦开始改代码,上下文就被 diff 和报错填满,<b>原始需求会被挤到中间那段最没注意力的位置</b>。先规划、再复述,本质上都是在跟「注意力是有限且不均匀的」这件事作斗争 —— 这才是这三个机制真正的共同点。</>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ Agent 工程 · 上下文压缩 ═══════════════
+function CtxCompactDiagram() {
+  return (
+    <Shell icon={Icn.ruler} title="上下文压缩原理"
+      sub="看懂：窗口爆了怎么办 —— 三步操作，一步比一步贵">
+      <Sec n={1} title="① 分区:留头、留尾、压中间">
+        <div className="gd-formula">
+          <span className="ft">留头</span>(系统 + 首任务,钉住) ‖ <span className="fi">压中间</span> ‖ <span className="fo">留最近</span>(原样)
+        </div>
+        <div className="gd-note">{Icn.info}<span>分界线<b>不许拆开「工具调用 ↔ 结果」这一对</b> —— 拆了模型会看到一个没有结果的调用,或者一条不知道来自哪次调用的结果,比压缩本身更糟。</span></div>
+      </Sec>
+      <Sec n={2} title="② 先剪超大工具输出 —— 最便宜的一招">
+        <div className="gd-note">{Icn.info}<span>一次 <code>cat</code> 大文件、一次全量日志,往往就占了会话的一半。<b>先剪它,够了就停</b>,连模型调用都不用花。<b>顺序本身就是优化</b>:便宜的招先试。</span></div>
+      </Sec>
+      <Sec n={3} title="③ 还超 → 压中间:总结 vs 省略,一笔明码标价的交易">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>总结</h4><p>8 段摘要。<em>有损</em>、<em>要花一次模型调用</em>,但<em>记得住</em>大意。</p></div>
+          <div className="gd-card o"><h4>省略</h4><p>一行标记顶掉。<em>免费</em>、但<em>彻底失忆</em> —— 那段发生过什么再也问不出来。</p></div>
+        </div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '窗口满了' }, { cls: 'pd', text: '分区(不拆调用↔结果)' },
+          { cls: 'pt', text: '剪超大工具输出' }, { cls: 'pi', text: '够了就停' },
+          { cls: 'ph', text: '还超 → 总结 / 省略' }, { cls: 'pm', text: '接着跑' },
+        ]}
+        why={<><b>为什么「留头」不能省:</b>系统提示和最初的任务描述一旦被压掉,Agent 就会<b>忘记自己在干什么</b> —— 而它不会告诉你,只会开始做一件相邻但不对的事。留头留尾压中间,对应的正是「<b>身份和目标最重要、最近的细节次之、中间的过程最可弃</b>」这个排序。顺带:压缩要<b>保住前缀</b>,不然前缀缓存全废(见提示词组装那一关)。</>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ Agent 工程 · 沙箱与权限 ═══════════════
+function PermGuardDiagram() {
+  return (
+    <Shell icon={Icn.cross} title="沙箱 / 权限原理"
+      sub="看懂：两道互相独立的墙，为什么必须都过才放行">
+      <Sec n={1} title="第一道:规则/审批 —— 首次匹配即生效">
+        <div className="gd-formula">
+          <span className="ft">deny</span> → <span className="fi">ask</span> → <span className="fo">allow</span>
+          {'　　'}<b>按这个次序查,第一条匹配上就定案</b>
+        </div>
+        <div className="gd-note">{Icn.info}<span>次序不是随便排的:<b>危险的先拦下</b>。要是 allow 排在前面,一条宽松规则就能盖住后面所有的 deny —— 和访问控制那一关(路由器 ACL)是同一条道理。</span></div>
+      </Sec>
+      <Sec n={2} title="第二道:沙箱 —— 物理隔离,fail-closed">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>fail-closed</h4><p>判不准就<em>拦</em> —— 宁可拦错,不可放过。安全系统的默认方向和功能系统正好相反。</p></div>
+          <div className="gd-card i"><h4>网络默认关</h4><p>不联网,数据就带不出去。</p></div>
+          <div className="gd-card o"><h4>写限工作区内</h4><p>就算规则被绕过,能改的也只有这一片。</p></div>
+        </div>
+        <div className="gd-note">{Icn.info}<span>两道墙<b>相互独立</b>(Codex 的两个正交轴):规则管「该不该」,沙箱管「能不能」。<b>都过了才真跑</b> —— 任何一道单独出问题,另一道还兜得住。</span></div>
+      </Sec>
+      <Sec n={3} title="越权时怎么办:升级,而且只升这一次">
+        <div className="gd-formula">
+          模型带理由申请更宽范围 → <span className="ft">一次人工批准</span> → <b>只这一次</b>
+          {'　'}<span className="fi">(不是 allow-always)</span>
+        </div>
+        <div className="gd-note">{Icn.info}<span>「只这一次」是防<b>权限蔓延</b>:一次为了装个包而开的 allow-always,会永远留在那里,而下次用它的可能是完全不同的操作。</span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '模型要跑一条命令' }, { cls: 'pd', text: '定性' },
+          { cls: 'pt', text: '规则:deny→ask→allow' }, { cls: 'pi', text: '沙箱:fail-closed' },
+          { cls: 'ph', text: '两墙都过 → 执行' }, { cls: 'pm', text: '越权 → 一次性升级' },
+        ]}
+        why={<><b>为什么这套是「确定性决议」:</b>放不放行<b>绝不能由模型说了算</b> —— 模型是被审查的那一方,让它自己判自己,等于没有审查。这条边界和 Agent 主循环里的「谁决定停」是同一句话:<b>凡是关乎钱和安全的判断,都必须留在 harness 里。</b></>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ Agent 工程 · 子 Agent 委派 ═══════════════
+function SubagentDiagram() {
+  return (
+    <Shell icon={Icn.chip} title="子 Agent 委派原理"
+      sub="看懂：派活出去的头号理由不是「分工」，是「省父的上下文」">
+      <Sec n={1} title="为什么要独立子 agent">
+        <div className="gd-formula">
+          子在<span className="ft">自己独立的上下文</span>里读一堆文件、试一堆
+          {'　'}→{'　'}<span className="fo">只把最终结论回传</span>
+          {'　'}⇒ 子干了一大堆活,<b>父的上下文只涨一点点</b>
+        </div>
+        <div className="gd-note">{Icn.info}<span>大块探索被<b>关在子里</b>,不污染父。这才是子 agent 存在的头号理由 —— 「分工」只是顺带的。</span></div>
+      </Sec>
+      <Sec n={2} title="新开还是承接:spawn vs fork">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>spawn 新开</h4><p>子<em>从空白起</em>。便宜、没有父的历史 —— 也意味着<em>要把背景讲清楚</em>才干得对。</p></div>
+          <div className="gd-card o"><h4>fork 承接</h4><p>子<em>承接父的前缀</em>。有上下文、<em>KV 缓存友好</em>,但更贵。</p></div>
+        </div>
+      </Sec>
+      <Sec n={3} title="防 fork 炸弹:两道上限">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>深度上限</h4><p>Claude Code <em>maxDepth 3</em>:到顶就把 spawn 工具<em>摘掉</em> —— 不是靠提示词说「别再派了」。</p></div>
+          <div className="gd-card i"><h4>并发上限</h4><p><em>≤20</em>。没有这两条,子生子就是<em>指数爆炸</em>。</p></div>
+          <div className="gd-card o"><h4>权限不可自扩</h4><p>派出时<em>定死</em>,子自己扩不了 —— 接上「沙箱/权限」那一课。</p></div>
+        </div>
+        <div className="gd-note">{Icn.info}<span>「到顶就把工具摘掉」比「告诉模型别派了」硬得多 —— <b>能力上没有,就不可能做</b>。这和计划模式在权限层堵死写操作是同一个手法。</span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '父接到复杂任务' }, { cls: 'pd', text: '派子(spawn / fork)' },
+          { cls: 'pt', text: '子在独立上下文里干' }, { cls: 'pi', text: '只回传最终结论' },
+          { cls: 'ph', text: '深度/并发上限守着' }, { cls: 'pm', text: '父上下文只涨一点' },
+        ]}
+        why={<><b>子崩了不连累父</b>,这一条常被忽略但很值钱:子 agent 天然是一道<b>故障隔离边界</b>。所以「派子」同时买到三样 —— 省上下文、限权限、隔离故障;代价是背景要重新讲一遍(spawn)或者贵一点(fork)。</>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ Agent 工程 · 记忆检索打分 ═══════════════
+function MemRetrieveDiagram() {
+  return (
+    <Shell icon={Icn.star} title="记忆检索打分原理"
+      sub="看懂：不是「grep 一下」，是三个信号加权排序取 top-k">
+      <Sec n={1} title="三个信号,各管一件事">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>最近度 recency</h4><p><em>decay<sup>龄</sup></em>,decay = 0.995/小时 —— <em>指数衰减</em>,越久越淡。</p></div>
+          <div className="gd-card i"><h4>重要度 importance</h4><p>LLM 给这条记忆打的 <em>1~10 分 / 10</em>。「用户是 VIP」=9 vs「吃了早饭」=1。</p></div>
+          <div className="gd-card o"><h4>相关度 relevance</h4><p>记忆向量与<em>查询向量的余弦</em> —— 只有它跟「这次问的是什么」有关。</p></div>
+        </div>
+        <div className="gd-formula">
+          得分 = w<sub>rec</sub>·最近度 + w<sub>rel</sub>·相关度 + w<sub>imp</sub>·重要度{'　'}→{'　'}排序{'　'}→{'　'}<b>只取 top-k 进上下文</b>
+        </div>
+      </Sec>
+      <Sec n={2} title="权重不同,捞回来的东西就不同 —— 论文和代码还不一样">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>论文:1 · 1 · 1</h4><p>三者<em>等权</em>。</p></div>
+          <div className="gd-card o"><h4>代码:0.5 · 3 · 2</h4><p>[最近 · 相关 · 重要] —— <em>相关度最重</em>,最近度反而最轻。</p></div>
+        </div>
+        <div className="gd-note">{Icn.info}<span>这不是笔误,是<b>实践里调出来的</b>:等权时「刚发生的琐事」会把「三天前那条关键偏好」挤下去。<b>换一组权重,排名会整个翻过来</b> —— 所以这三个权重是这套系统真正的调参旋钮。</span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '查询来了' }, { cls: 'pd', text: '算最近度' },
+          { cls: 'pt', text: '算相关度' }, { cls: 'pi', text: '算重要度' },
+          { cls: 'ph', text: '加权求和排序' }, { cls: 'pm', text: 'top-k 进上下文' },
+        ]}
+        why={<><b>为什么不能全捞进去:</b>上下文是有限且有价的,而且塞得越多、<b>有用的那条越容易被淹没</b>(lost-in-the-middle)。检索的本质不是「找到」,是<b>「在有限的位置里,决定谁值得占一个」</b> —— 所以它必然是一个打分排序问题,而不是查询问题。</>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ Agent 工程 · 记忆写入与冲突消解 ═══════════════
+function MemWriteDiagram() {
+  return (
+    <Shell icon={Icn.doc} title="记忆写入 · 冲突消解原理"
+      sub="看懂：为什么不能无脑追加 —— 记忆会自相矛盾，越用越脏">
+      <Sec n={1} title="两阶段:先抽取,再逐条决定怎么写">
+        <div className="gd-formula">
+          <span className="ft">抽取</span>:从新对话里抽出若干<b>候选事实</b>
+          {'　→　'}<span className="fo">更新</span>:每条候选<b>先检索最相似的旧记忆</b>,再挑一个操作
+        </div>
+      </Sec>
+      <Sec n={2} title="四个操作 —— 关键在于「和旧的比过之后才决定」">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>ADD</h4><p>没有相似的 → <em>新建</em>。</p></div>
+          <div className="gd-card i"><h4>UPDATE</h4><p><em>补充 / 修正</em>已有那条。</p></div>
+          <div className="gd-card o"><h4>DELETE</h4><p>与已有<em>矛盾</em> → <em>删掉旧的</em>。</p></div>
+          <div className="gd-card t"><h4>NOOP</h4><p>已经知道了 → <em>不动</em>。</p></div>
+        </div>
+        <div className="gd-note">{Icn.info}<span>典型例子:「用户住北京」和「用户搬上海了」。<b>无脑追加会让两条并存</b>,下次检索捞回来哪条全看权重 —— 记忆自相矛盾、越用越脏。DELETE 那一条就是专治它的。</span></div>
+      </Sec>
+      <Sec n={3} title="⚠️ 论文是四操作,现在 OSS 默认改回了单遍 ADD-only">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>四操作(mem0 论文)</h4><p>干净,但<em>每条候选都要一次 LLM 调用</em>去判 —— 慢且贵。</p></div>
+          <div className="gd-card o"><h4>单遍 ADD-only(现默认)</h4><p><em>只加不改</em>。简单快,代价是<em>矛盾会积起来</em>。</p></div>
+        </div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '新对话' }, { cls: 'pd', text: '抽出候选事实' },
+          { cls: 'pt', text: '检索最相似的旧记忆' }, { cls: 'pi', text: 'LLM 判操作' },
+          { cls: 'ph', text: 'ADD / UPDATE / DELETE / NOOP' }, { cls: 'pm', text: '记忆库更新' },
+        ]}
+        why={<><b>三课连起来看:</b>检索是「读」、这一课是「写」、反思是「消化」。写是三者里<b>唯一会把记忆库弄坏</b>的一环 —— 读错了只是这次答不好,写错了会一直错下去。所以「先比对再决定」这一步再贵也省不掉,除非你接受它慢慢变脏。</>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ Agent 工程 · MemGPT 虚拟内存 ═══════════════
+function MemPagingDiagram() {
+  return (
+    <Shell icon={Icn.chip} title="MemGPT 虚拟内存原理"
+      sub="看懂：把上下文当 RAM、外部存储当磁盘 —— 和 408 的页面置换是同一套">
+      <Sec n={1} title="两层存储:进 prompt 的是「内存」,不进的是「磁盘」">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>主上下文(RAM,进 prompt)</h4><p>① 系统指令(只读) ② 工作记忆 core(可函数改) ③ <em>FIFO 消息队列</em>(首槽 = 被驱逐消息的递归摘要)</p></div>
+          <div className="gd-card o"><h4>外部存储(磁盘,不进 prompt)</h4><p>① <em>recall</em>:全消息库 ② <em>archival</em>:任意文本,可检索</p></div>
+        </div>
+      </Sec>
+      <Sec n={2} title="内存压力:两条水位线">
+        <div className="gd-formula">
+          队列涨到 <span className="fi">70%</span> → 插一条<b>内存压力警告</b>
+          {'　　'}到 <span className="ft">100%</span> → <b>flush</b>:驱逐约 <span className="fo">50%</span> 窗口的老消息到 recall
+        </div>
+        <div className="gd-note">{Icn.info}<span>驱逐的同时,用「<b>旧摘要 + 被驱逐消息</b>」生成新的<b>递归摘要</b>放回队列首槽 —— 有损,但腾出了 RAM。「递归」二字是说:<b>摘要自己也会被摘进下一份摘要</b>,所以越老的事越模糊,而不是突然消失。</span></div>
+      </Sec>
+      <Sec n={3} title="缺页:要用到已经被驱逐的旧信息">
+        <div className="gd-formula">
+          函数调用去 <span className="ft">recall / archival</span> 检索
+          {'　→　'}<b>追加到队尾</b>、重新进上下文{'　'}<span className="fi">(page fault)</span>
+        </div>
+        <div className="gd-note">{Icn.info}<span>和 408 的缺页一模一样:<b>访问到不在「内存」里的东西 → 从「磁盘」调回来 → 继续</b>。区别只在这里的搬运工是模型自己发的函数调用,而不是硬件的 MMU。</span></div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '消息不断进队列' }, { cls: 'pd', text: '70% 压力警告' },
+          { cls: 'pt', text: '100% flush' }, { cls: 'pi', text: '驱逐 ~50% 到 recall' },
+          { cls: 'ph', text: '递归摘要回填首槽' }, { cls: 'pm', text: '要用旧的 → 缺页调回' },
+        ]}
+        why={<><b>为什么这个类比值钱:</b>它把一个新问题(上下文不够用)接到了一套<b>被研究了五十年的老问题</b>上 —— 于是页面置换、工作集、抖动(thrashing)这些结论全都能借过来。比如:驱逐得太狠会导致频繁缺页,这在 408 里叫抖动,在这里叫「一直在检索却干不了活」。<b>同一个病,同一个名字。</b></>} />
+    </Shell>
+  )
+}
+
+// ═══════════════ Agent 工程 · 反思与巩固 ═══════════════
+function ReflectionDiagram() {
+  return (
+    <Shell icon={Icn.bulb} title="反思 / 巩固原理"
+      sub="看懂：光存原始观察不够 —— 得定期把零散的攒成高层的">
+      <Sec n={1} title="触发:不是定时,是「重要度攒够了」">
+        <div className="gd-formula">
+          最近一批观察的<b>重要度之和</b> {'>'} 阈值(论文里约 <span className="ft">150</span>){'　'}→{'　'}反思一次
+        </div>
+        <div className="gd-note">{Icn.info}<span>按重要度而不是按条数/时间触发,意思是:<b>平淡的一天不值得反思,发生大事的一小时值得</b>。阈值调低=反思勤(贵、但跟得紧),调高=反思懒。</span></div>
+      </Sec>
+      <Sec n={2} title="反思三步:提问 → 检索 → 综合出洞察(带证据)">
+        <div className="gd-lane">
+          <div className="gd-card t"><h4>① 提问</h4><p>让 LLM 就最近观察提出几个<em>最值得想的问题</em>。</p></div>
+          <div className="gd-card i"><h4>② 检索</h4><p>每个问题各自去<em>检索相关记忆</em>(就是「记忆检索打分」那一课)。</p></div>
+          <div className="gd-card o"><h4>③ 综合</h4><p>得出<em>洞察</em>,并<em>引用证据</em> —— 哪几条观察支撑它。</p></div>
+        </div>
+        <div className="gd-note">{Icn.info}<span>「引用证据」这一条别当成排版要求:它让洞察<b>可追溯、可推翻</b>。没有证据链的洞察和幻觉长得一模一样。</span></div>
+      </Sec>
+      <Sec n={3} title="洞察本身也是记忆,还能再被反思 —— 于是长成一棵树">
+        <div className="gd-formula">
+          raw 观察 = <span className="ft">叶子</span>{'　'}→{'　'}洞察 = <span className="fo">往上长的节点</span>(高重要度)
+          {'　'}→{'　'}更高层反思{'　'}⇒{'　'}<b>反思树</b>
+        </div>
+      </Sec>
+      <Flow
+        pills={[
+          { cls: 'p0', text: '观察不断累积' }, { cls: 'pd', text: '重要度攒够' },
+          { cls: 'pt', text: '提最值得想的问题' }, { cls: 'pi', text: '各自检索相关记忆' },
+          { cls: 'ph', text: '综合出洞察 + 证据' }, { cls: 'pm', text: '洞察入库,可再被反思' },
+        ]}
+        why={<><b>为什么叫「巩固」而不是「总结」:</b>总结是压缩,目的是省地方;巩固是<b>提炼出原始观察里没有明说的东西</b>——「他连着三次都选了同一家店」这条,任何一条单独的观察里都没有。前者少了信息,后者<b>多了信息</b>。这也是它值得单独花一次模型调用的原因。</>} />
+    </Shell>
+  )
+}
+
 export const GUIDE_DIAGRAMS: Record<string, () => ReactNode> = {
   //  具身智能职业线(2026-09-06 起补):这条线原来 51 个实验一张引导图都没有。
   fk: FKDiagram,
   jacobian: JacobianDiagram,
   pid: PIDDiagram,
+  //  算法轨补充题(2026-09-06 补齐)
+  regex: RegexDiagram,
+  wildcard: WildcardDiagram,
+  quickselect: QuickselectDiagram,
+  trie: TrieDiagram,
+  lrucache: LRUCacheDiagram,
+  lfucache: LFUCacheDiagram,
+  topk: TopKDiagram,
+  //  大模型轨 · Agent 工程线(2026-09-06 补齐)
+  reactagent: ReactAgentDiagram,
+  toolcall: ToolCallDiagram,
+  promptbuild: PromptBuildDiagram,
+  planning: PlanningDiagram,
+  ctxcompact: CtxCompactDiagram,
+  permguard: PermGuardDiagram,
+  subagent: SubagentDiagram,
+  memretrieve: MemRetrieveDiagram,
+  memwrite: MemWriteDiagram,
+  mempaging: MemPagingDiagram,
+  reflection: ReflectionDiagram,
   binsearch: BinSearchDiagram,
   nqueens: NQueensDiagram,
   unionfind: UnionFindDiagram,

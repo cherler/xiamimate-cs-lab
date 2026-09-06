@@ -25,8 +25,8 @@ const read = (p: string) => readFileSync(new URL(p, import.meta.url), 'utf8')
 /** 每条职业线**还欠多少张**引导图的上限。补完一批就把数字调小 —— 它是欠账台账,不是及格线。 */
 const DEBT_CAP: Record<string, number> = {
   '408 基础': 0,     // 铺满了
-  '算法': 7,         // regex / wildcard / quickselect / trie / lfucache / lrucache / topk
-  '大模型': 11,      // Agent 工程那一批(reactagent / toolcall / 记忆系统…)后加的,图没跟上
+  '算法': 0,         // 2026-09-06 补齐
+  '大模型': 0,       // 2026-09-06 补齐(Agent 工程线 11 张)
   '具身智能': 48,    // 51 个实验、先补了 fk / jacobian / pid 三张
 }
 //  ⚠️ 用户只发现了具身智能那 51 个;**这条判据一跑,算法和大模型各自也有欠账**——

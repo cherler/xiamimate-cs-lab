@@ -8871,7 +8871,7 @@ export const DISCIPLINES: Discipline[] = [
     guide: { from: '一次排序', to: '会学习的模型', toIcon: '🧠' },
   },
   {
-    key: 'llm', title: '大模型', icon: '🧩', status: 'active',
+    key: 'llm', title: '大模型', icon: '🤖', status: 'active',
     sub: 'Transformer → 推理引擎 · 求职',
     groups: ['Transformer 原理', '大模型算法', '大模型推理', '大模型项目实战', '大模型软件库与框架'],
     guide: { from: '一次注意力', to: '大模型推理引擎', toIcon: '🤖' },
@@ -8898,12 +8898,12 @@ export type Anchor = {
 /** 锚点池：一个职业或一件具体的造物。现有 CS 实验挂在造物锚点上；职业/更多造物先占位。 */
 export const ANCHORS: Anchor[] = [
   { key: 'computer', label: '电脑', icon: '🖥️', kind: '造物' },
-  { key: 'software', label: '软件', icon: '📦', kind: '造物' },
+  { key: 'software', label: '软件', icon: '🧩', kind: '造物' },
   { key: 'internet', label: '互联网', icon: '🌐', kind: '造物' },
-  //  图标跟学科那边保持一致:同一个「大模型」在菜单里是 🧩、在地图芯片里却是 🤖,
-  //  两处都写着同样三个字,读的人会以为是两样东西(用户 2026-09-06 报的漏洞)。
-  //  统一到菜单那个;腾出来的 🤖 只留给终点「大模型推理引擎」,🧩 原来占着的「软件」改 📦。
-  { key: 'llm', label: '大模型', icon: '🧩', kind: '造物' },
+  //  「大模型」在菜单里和在地图芯片里必须是同一个图标(用户 2026-09-06 报的漏洞)。
+  //  **用户定的是 🤖**(学科/锚点/终点三处都用它,它们本来就是同一件事的三个面);
+  //  「算法」保持 🧮。🧩 因此还给「软件」。
+  { key: 'llm', label: '大模型', icon: '🤖', kind: '造物' },
   { key: 'robot', label: '机器人', icon: '🦾', kind: '造物' },
   { key: 'battery', label: '电池', icon: '🔋', kind: '造物', status: 'planned' },
   { key: 'phone', label: '手机', icon: '📱', kind: '造物', status: 'planned' },
