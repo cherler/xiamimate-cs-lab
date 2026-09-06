@@ -1,0 +1,8 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+<!-- 第三台设备 · Cache(内存层级)。从 CPU 那台的外壳条进来,或从房子里点书桌上那台。
+     ⚠️ vite 默认只打包 index.html,新入口必须同时写进 vite.config 的 rollupOptions.input,
+     否则本地好好的、上了线只有首页(这个坑栽过一次)。 -->
+<title>搭机器 · Cache 内存层级</title>
+<style>html,body{margin:0;height:100%;background:#141019;overflow:hidden}#c{display:block;width:100vw;height:calc(100vh - 36px);margin-top:36px}</style>
+</head><body><canvas id="c"></canvas><script type="module" src="/game/build/cache.ts"></script></body></html>

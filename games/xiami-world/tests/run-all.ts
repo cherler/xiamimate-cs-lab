@@ -14,6 +14,7 @@ import { run as houseRun } from './run.test.ts'
 import { run as dnsDuel } from './dns-duel.test.ts'
 import { run as thermalDuel } from './thermal-duel.test.ts'
 import { run as partner } from './partner.test.ts'
+import { run as cache } from './cache.test.ts'
 
 circuit()
 route()
@@ -37,6 +38,7 @@ stack()
 combat()
 thermalDuel()
 await partner()
+cache()
 
 //  自检：证明这个测试台真的能判红。
 //  一个永远绿的判据比没有判据更糟 —— 它会让你以为验过了。

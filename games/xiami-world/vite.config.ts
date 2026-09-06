@@ -35,7 +35,8 @@ export default defineConfig(({ mode, command }) => {
     /* 仓里十几个 .html 都是历史方向的试片,**vite 默认只打包 index.html**。
        主线现在挂在 index.html 上;build.html 挂的是同一个模块,所有冒烟脚本都按它的
        地址走,一并打进来,免得「本地 /build.html 好好的、上了线只有首页」。
-       cpu.html(第二台设备)现在从房子剖面图里点书房那台电脑就能进,所以一并列上。 */
-    build: { target: 'es2022', rollupOptions: { input: { index: 'index.html', build: 'build.html', cpu: 'cpu.html' } } },
+       cpu.html(第二台设备)现在从房子剖面图里点书房那台电脑就能进,所以一并列上;
+       cache.html(第三台)同理 —— **每加一个入口都要回来加一行**,不然只有本地跑得起来。 */
+    build: { target: 'es2022', rollupOptions: { input: { index: 'index.html', build: 'build.html', cpu: 'cpu.html', cache: 'cache.html' } } },
   }
 })

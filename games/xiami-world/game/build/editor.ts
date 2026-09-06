@@ -651,7 +651,11 @@ requestAnimationFrame(frame)
 HUB = mountHub({
   title: '搭机器 · 真路由器',
   key: 'world',
-  links: [{ label: '电脑 · CPU 流水线 →', href: pageUrl('cpu.html') }],
+  //  房子里还有别的机器 —— 电脑那台点图就能进,Cache 在电脑肚子里,只能从这儿走
+  links: [
+    { label: '电脑 · CPU 流水线 →', href: pageUrl('cpu.html') },
+    { label: '电脑 · Cache 内存层级 →', href: pageUrl('cache.html') },
+  ],
   read: () => best,
   write: d => { if (d && typeof d === 'object') best = d as Record<number, Best> },
   reset: () => { best = {} },
