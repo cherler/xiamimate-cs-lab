@@ -49,6 +49,8 @@ export type HubOpts = {
   /** 游戏自己的按钮(比如「继续上次那一局」),摆在暂停/进度面板里。
    *  放这儿而不是画到画布上:两个游戏的画布布局差得远,而这类操作本来就属于「管进度」。 */
   actions?: () => { label: string; on: () => void }[]
+  /** 条上额外的链接(比如「另一台机器」)。 */
+  links?: { label: string; href: string }[]
   /** 暂停状态变化时通知游戏(停掉定时器/动画)。 */
   onPause?: (paused: boolean) => void
 }
@@ -170,11 +172,12 @@ export function mountHub(o: HubOpts): Hub {
     if (onPlatform()) (home as HTMLAnchorElement).href = homeUrl()
     else home.onclick = () => alert('现在是独立运行(没挂在 /lab/ 下),没有主站可回。')
     const t = document.createElement('b'); t.textContent = o.title
+    const extra = (o.links ?? []).map(l => { const a = document.createElement('a'); a.className = 'btn'; a.href = l.href; a.textContent = l.label; return a })
     const sp = document.createElement('div'); sp.className = 'sp'
     const st = document.createElement('span'); st.className = 'st'; st.textContent = cloudText()
     const prog = document.createElement('button'); prog.textContent = '进度'; prog.onclick = () => openPanel()
     const pz = document.createElement('button'); pz.textContent = paused ? '继续' : '⏸ 暂停(Esc)'; pz.onclick = () => setPaused(!paused)
-    bar.append(home, t, sp, st, prog, pz)
+    bar.append(home, t, ...extra, sp, st, prog, pz)
   }
   function closeMask() { if (mask) { mask.remove(); mask = null } }
   function panel(title: string, lines: string[], buttons: { label: string; cls?: string; on: () => void }[], note?: string) {

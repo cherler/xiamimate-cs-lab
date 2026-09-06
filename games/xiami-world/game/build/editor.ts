@@ -15,6 +15,9 @@ const IMG = (u: string) => { const i = new Image(); i.src = u; return i }
 const CUT = IMG(cutUrl), ROUTER = IMG(routerUrl), CORR = IMG(corrUrl)
 const iready = (i: HTMLImageElement) => i.complete && i.naturalWidth > 0
 let introRouter = { x: 0, y: 0, w: 0, h: 0 } // 房子里那台路由器的可点区域(renderIntro 里更新)
+let introCpu = { x: 0, y: 0, w: 0, h: 0 }    // 书房那台电脑 —— 点进去是第二台机器(CPU 流水线,另一个页面)
+/** 同目录下的另一个页面。相对当前文档解析,所以 /lab/world/ 与本地 dev 都对。 */
+const pageUrl = (f: string) => new URL(f, location.href).href
 let W = 0, H = 0
 const DPR = Math.min(2, devicePixelRatio || 1)
 //  画布上面还有一条「虾米课堂」外壳条,所以量画布自己的尺寸 —— 读 innerHeight 会多算 36px
@@ -285,7 +288,14 @@ cv.addEventListener('pointerdown', e => {
   sfx.resume(); ensureBgm()
   const { x: ex, y: ey } = at(e)
   const MB = musicBtnGeo(); if (mode !== 'intro' && ex >= MB.x && ex <= MB.x + MB.w && ey >= MB.y && ey <= MB.y + MB.h) { toggleMusic(); return }
-  if (mode === 'intro') { const r = introRouter; if (ex >= r.x - 10 && ex <= r.x + r.w + 10 && ey >= r.y - 10 && ey <= r.y + r.h + 10) mode = 'menu'; return }
+  if (mode === 'intro') {
+    //  容差 6 而不是 10:书房那张桌子上挤着两台机器,容差一大两个热点就会叠在一起,
+    //  而叠住的表现是「点路由器却进了电脑」—— 不报错,只是点不对。
+    const hit = (r: { x: number; y: number; w: number; h: number }) => ex >= r.x - 6 && ex <= r.x + r.w + 6 && ey >= r.y - 6 && ey <= r.y + r.h + 6
+    if (hit(introCpu)) { location.href = pageUrl('cpu.html'); return }
+    if (hit(introRouter)) mode = 'menu'
+    return
+  }
   if (mode === 'menu') { menuClick(ex, ey); return }
   const M = menuBtnGeo(); if (ex >= M.x && ex <= M.x + M.w && ey >= M.y && ey <= M.y + M.h) { mode = 'menu'; return }
   if (ey > H - 104) { uiClick(ex, ey); return }
@@ -463,17 +473,27 @@ function renderIntro() {
   const cw = Math.min(W * 0.62, 940), ch = cw * (iready(CUT) ? CUT.naturalHeight / CUT.naturalWidth : 0.62)
   const hx = W / 2 - cw / 2, hy = H * 0.56 - ch / 2
   coverImg(CUT, hx, hy, cw, ch)
-  // 房子里那台路由器(书房桌上),高亮 + 可点
-  const rw = cw * 0.085, rx = hx + cw * 0.175 - rw / 2, ry = hy + ch * 0.40 - rw / 2
-  introRouter = { x: rx, y: ry, w: rw, h: rw }
   const pulse = 0.55 + 0.35 * Math.sin(tprev / 260)
-  ctx.fillStyle = `rgba(10,8,5,.5)`; rr(rx - 6, ry - 6, rw + 12, rw + 12, 8); ctx.fill()
-  coverImg(ROUTER, rx, ry, rw, rw)
-  ctx.globalAlpha = pulse; ctx.strokeStyle = AMBER; ctx.lineWidth = 3; rr(rx - 6, ry - 6, rw + 12, rw + 12, 8); ctx.stroke(); ctx.globalAlpha = 1
-  ctx.fillStyle = 'rgba(20,16,12,.9)'; ctx.font = 'bold 14px system-ui'; ctx.textAlign = 'left'; const lt = '← 点这台路由器,钻进去'; const ltw = ctx.measureText(lt).width + 20; rr(rx + rw + 8, ry + rw / 2 - 15, ltw, 30, 8); ctx.fill(); ctx.fillStyle = CREAM; ctx.textBaseline = 'middle'; ctx.fillText(lt, rx + rw + 18, ry + rw / 2); ctx.textBaseline = 'alphabetic'
+  /** 房子里一台可钻进去的机器:高亮框 + 一行说明。返回可点区域。 */
+  const spot = (fx: number, fy: number, fw: number, label: string, img?: HTMLImageElement) => {
+    const w = cw * fw, x = hx + cw * fx - w / 2, y = hy + ch * fy - w / 2
+    ctx.fillStyle = 'rgba(10,8,5,.5)'; rr(x - 6, y - 6, w + 12, w + 12, 8); ctx.fill()
+    if (img) coverImg(img, x, y, w, w)
+    ctx.globalAlpha = pulse; ctx.strokeStyle = AMBER; ctx.lineWidth = 3; rr(x - 6, y - 6, w + 12, w + 12, 8); ctx.stroke(); ctx.globalAlpha = 1
+    ctx.fillStyle = 'rgba(20,16,12,.9)'; ctx.font = 'bold 14px system-ui'; ctx.textAlign = 'left'
+    const tw = ctx.measureText(label).width + 20
+    rr(x + w + 8, y + w / 2 - 15, tw, 30, 8); ctx.fill()
+    ctx.fillStyle = CREAM; ctx.textBaseline = 'middle'; ctx.fillText(label, x + w + 18, y + w / 2); ctx.textBaseline = 'alphabetic'
+    return { x, y, w, h: w }
+  }
+  //  两台机器都在书房那张桌子上:路由器(叠一张图上去)与电脑(画里本来就有那台显示器)。
+  //  位置错开是量过的 —— 两个框挨得太近会互相压住,而这种压住只在某些窗口宽度下才看得出来。
+  introRouter = spot(0.155, 0.425, 0.062, '← 点这台路由器,钻进去', ROUTER)
+  introCpu = spot(0.205, 0.293, 0.062, '← 这台电脑:CPU 五级流水线')
   const gd = ctx.createLinearGradient(0, 0, 0, 210); gd.addColorStop(0, 'rgba(10,7,4,.92)'); gd.addColorStop(1, 'rgba(10,7,4,0)'); ctx.fillStyle = gd; ctx.fillRect(0, 0, W, 210)
   ctx.fillStyle = CREAM; ctx.textAlign = 'center'; ctx.font = 'bold 36px system-ui'; ctx.fillText('网,断了。', W / 2, H * 0.14)
   ctx.fillStyle = AMBER; ctx.font = '18px system-ui'; ctx.fillText('信号追进了家里这台路由器 —— 点开它,钻进去,把它一处处修好。', W / 2, H * 0.14 + 36)
+  ctx.fillStyle = '#c8bfa8'; ctx.font = '14px system-ui'; ctx.fillText('书房那台电脑也能钻 —— 里面是另一台机器:CPU 的五级流水线。', W / 2, H * 0.14 + 62)
 }
 function renderMenu() {
   coverImg(CORR, 0, 0, W, H, 0.62)
@@ -631,11 +651,13 @@ requestAnimationFrame(frame)
 ;(window as unknown as { __play: (i: number) => void }).__play = (i) => { loadLevel(i); mode = 'play' }
 ;(window as unknown as { __menu: () => void }).__menu = () => { mode = 'menu' }
 ;(window as unknown as { __intro: () => object }).__intro = () => introRouter
+;(window as unknown as { __introCpu: () => object }).__introCpu = () => introCpu
 
 // —— 虾米课堂外壳:返回主页 / 暂停 / 关卡进度(本机 + 账号同步)——
 HUB = mountHub({
   title: '搭机器 · 真路由器',
   key: 'world',
+  links: [{ label: '电脑 · CPU 流水线 →', href: pageUrl('cpu.html') }],
   read: () => best,
   write: d => { if (d && typeof d === 'object') best = d as Record<number, Best> },
   reset: () => { best = {} },

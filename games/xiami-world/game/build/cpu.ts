@@ -375,6 +375,8 @@ requestAnimationFrame(frame)
 HUB = mountHub({
   title: '搭机器 · CPU 流水线',
   key: 'cpu',
+  //  回房子 = 回同目录的首页(/lab/world/ 或本地 dev 的 /),相对当前文档解析
+  links: [{ label: '← 回房子 · 路由器', href: new URL('./', location.href).href }],
   read: () => best,
   write: d => { if (d && typeof d === 'object') best = d as Record<number, { parts: number; cycles: number }> },
   reset: () => { best = {}; loadLevel(0) },

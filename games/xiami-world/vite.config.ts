@@ -35,8 +35,7 @@ export default defineConfig(({ mode, command }) => {
     /* 仓里十几个 .html 都是历史方向的试片,**vite 默认只打包 index.html**。
        主线现在挂在 index.html 上;build.html 挂的是同一个模块,所有冒烟脚本都按它的
        地址走,一并打进来,免得「本地 /build.html 好好的、上了线只有首页」。
-       ⚠️ cpu.html(第二台设备的灰盒竖切)**是故意不列进来的** —— 它还没并进主线菜单,
-       只在 dev 用 :5183/cpu.html 看。等它成熟了要记得加进这个 input,别又漏一次。 */
-    build: { target: 'es2022', rollupOptions: { input: { index: 'index.html', build: 'build.html' } } },
+       cpu.html(第二台设备)现在从房子剖面图里点书房那台电脑就能进,所以一并列上。 */
+    build: { target: 'es2022', rollupOptions: { input: { index: 'index.html', build: 'build.html', cpu: 'cpu.html' } } },
   }
 })

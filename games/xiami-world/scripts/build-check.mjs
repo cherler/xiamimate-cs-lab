@@ -210,6 +210,29 @@ console.log('\n搭机器 · 十三关真地址冒烟\n')
     `L12 反例:掩码调成 /3 太长→同网段的 011 被误当外网、一路走到公网口(wrong=${badMask.wrong})`)
 }
 
+/* ── 房子剖面图:两台机器各有各的入口,而且不能叠住 ──
+   叠住的表现是「点路由器却进了电脑」——**不报错,只是点不对**,所以必须有判据钉着。
+   窗口宽度会改变房子的画幅,所以三个宽度都量一遍。 */
+{
+  const overlap = (a, z, t) => !(a.x + a.w + t < z.x - t || z.x + z.w + t < a.x - t || a.y + a.h + t < z.y - t || z.y + z.h + t < a.y - t)
+  //  前面的关卡判据把页面切进了 play 态,房子早不在屏幕上了 —— 必须先重载回开场。
+  //  (第一版忘了这一步,判据红在「点了没反应」,而真实原因是压根没在那一屏。)
+  await p.goto(`http://localhost:${PORT}/build.html`, { waitUntil: 'networkidle' }); await p.waitForTimeout(400)
+  let bad = []
+  for (const [w, h] of [[1024, 720], [1360, 860], [1680, 900]]) {
+    await p.setViewportSize({ width: w, height: h }); await p.waitForTimeout(200)
+    const g = await p.evaluate(() => ({ r: window.__intro(), c: window.__introCpu() }))
+    if (overlap(g.r, g.c, 6)) bad.push(`${w}×${h}`)
+  }
+  ok(bad.length === 0, `房子里两个入口(路由器 / 电脑)在 1024~1680 三个宽度下都不叠(叠了会「点这个进那个」)${bad.length ? ':' + bad : ''}`)
+  await p.setViewportSize({ width: 1280, height: 720 }); await p.waitForTimeout(200)
+  const c = await p.evaluate(() => window.__introCpu())
+  await p.mouse.click(c.x + c.w / 2, c.y + c.h / 2 + 36)   // +36 = 顶部那条虾米课堂外壳
+  await p.waitForTimeout(600)
+  ok(new URL(p.url()).pathname.endsWith('cpu.html'), `点书房那台电脑 → 跳到第二台机器(实测 ${new URL(p.url()).pathname})`)
+  await p.goto(`http://localhost:${PORT}/build.html`, { waitUntil: 'networkidle' }); await p.waitForTimeout(300)
+}
+
 /* ── 通用 ── */
 await p.evaluate(() => window.__menu()); await p.waitForTimeout(250)
 ok(errs.length === 0, `全程无控制台报错(含菜单渲染)${errs.length ? ':' + errs[0] : ''}`)
