@@ -1,5 +1,5 @@
 /**
- * 第二台机器 · CPU 五级流水线 —— 七关冒烟判据。
+ * 第二台机器 · CPU 五级流水线 —— 八关冒烟判据。
  *
  * 这台机器要证明的是「仿真是真的」,所以判据全部围绕一件事:
  * **参考答案不是写死的,是同一段程序顺序执行一遍算出来的**;你搭的流水线跑出来必须和它一致。
@@ -25,7 +25,7 @@ const N = null
 const play = (i) => p.evaluate(i => window.__cpuPlay(i), i)
 const go = (st, tp) => p.evaluate(({ st, tp }) => { window.__cpuSet(st, tp); return window.__cpuRun() }, { st, tp })
 
-console.log('\n第二台机器 · CPU 五级流水线 · 七关\n')
+console.log('\n第二台机器 · CPU 五级流水线 · 八关\n')
 
 /* ── L0 分成五级:顺序是仿真自己认的,不是我规定的 ── */
 {
@@ -114,22 +114,48 @@ console.log('\n第二台机器 · CPU 五级流水线 · 七关\n')
     `L5 目标 ≤${l.par.cycles} 拍正好卡在中间:装了够得着(${fast.cycles}),不装够不着(${slow.cycles}) —— 这一关的判据是拍数`)
 }
 
-/* ── L6 终关:数据冒险 + load-use + 控制冒险 + 结构冒险,四样全在一段里 ── */
+/* ── L6 切几级:硬件全给,唯一的变量是刀下在哪 ──
+   这一关的判据换了单位:不是拍数,是**总时间 = 拍数 × 拍长**。
+   16 种切法全跑一遍 —— 既要「都算得对」(切法不该影响结果),也要「最优确实是那一种」。 */
 {
   const l = await play(6)
-  ok(JSON.stringify(l.ref) === JSON.stringify([0, 23, 37, 14]), `L6 参考:${l.prog.join(' / ')} → [${l.ref}]`)
+  const cut = (cs) => p.evaluate(cs => { window.__cpuCuts(cs); return window.__cpuRun() }, cs)
+  const all = []
+  for (let m = 0; m < 16; m++) all.push({ cs: [0, 1, 2, 3].map(i => !!((m >> i) & 1)), r: await cut([0, 1, 2, 3].map(i => !!((m >> i) & 1))) })
+  ok(all.every(x => x.r.ok), `L6 十六种切法**全都算得对** —— 切在哪儿只该影响快慢,不该影响结果(错的 ${all.filter(x => !x.r.ok).length} 种)`)
+  const best = all.slice().sort((a, z) => a.r.time - z.r.time)[0]
+  ok(best.r.time === l.par.cycles && best.cs.every(Boolean),
+    `L6 最快的是「全切五级」:总时间 ${best.r.time}(拍长 ${best.r.tick} × ${best.r.cycles} 拍),和目标 ${l.par.cycles} 对得上`)
+  const none = all.find(x => x.cs.every(c => !c)).r
+  //  7 条指令却只跑 6 拍:单周期机器里分支**当拍**就判完,那条走错路的 li 根本没被取进来。
+  //  (第一版我按 7 写,是我的预期错了、不是引擎错了 —— 引擎说的对。)
+  ok(none.cycles === 6 && none.tick === 14,
+    `L6 一刀不切 = 单周期:每条指令一拍(${none.cycles} 拍,分支当拍判完、错路那条没取),但拍长是整条通路 ${none.tick} —— 总时间 ${none.time}`)
+  //  这一关真正的教学点:同样切两刀,总时间差一倍 —— **刀数不重要,位置才重要**
+  const two = all.filter(x => x.cs.filter(Boolean).length === 2).map(x => x.r.time).sort((a, b) => a - b)
+  ok(two.length === 6 && two[two.length - 1] >= two[0] * 1.8,
+    `L6 同样切两刀,总时间从 ${two[0]} 到 ${two[two.length - 1]} —— 差 ${(two[two.length - 1] / two[0]).toFixed(1)} 倍,刀数不重要、位置才重要`)
+  const worst = all.slice().sort((a, z) => z.r.time - a.r.time)[0]
+  ok(worst.r.time > none.time,
+    `L6 反例:切得不是地方(${worst.cs.map(c => c ? '|' : '·').join('')})比**根本不切**还慢:${worst.r.time} vs ${none.time} —— 最重的那段没减轻,拍数却涨了`)
+}
+
+/* ── L7 终关:数据冒险 + load-use + 控制冒险 + 结构冒险,四样全在一段里 ── */
+{
+  const l = await play(7)
+  ok(JSON.stringify(l.ref) === JSON.stringify([0, 23, 37, 14]), `L7 参考:${l.prog.join(' / ')} → [${l.ref}]`)
   const good = await go(FIVE, ['icache', 'hazard', 'flush', 'wire', 'wire'])
-  ok(good.ok, `L6 终关 旁路×2 + 冒险检测 + 分支作废 → 跑对(regs=[${good.regs}])`)
-  ok(good.cycles <= l.par.cycles, `L6 拍数达标:${good.cycles} 拍 ≤ 目标 ${l.par.cycles} 拍(停顿 ${good.stalls} 拍)`)
-  ok(good.parts <= l.par.parts, `L6 件数达标:${good.parts} 件 ≤ 目标 ${l.par.parts} 件`)
+  ok(good.ok, `L7 终关 旁路×2 + 冒险检测 + 分支作废 → 跑对(regs=[${good.regs}])`)
+  ok(good.cycles <= l.par.cycles, `L7 拍数达标:${good.cycles} 拍 ≤ 目标 ${l.par.cycles} 拍(停顿 ${good.stalls} 拍)`)
+  ok(good.parts <= l.par.parts, `L7 件数达标:${good.parts} 件 ≤ 目标 ${l.par.parts} 件`)
   const noFlush = await go(FIVE, ['icache', 'hazard', N, 'wire', 'wire'])
-  ok(!noFlush.ok && noFlush.regs[1] === 999, `L6 反例:缺分支作废→走错路那条把 r1 写成了 999(regs=[${noFlush.regs}])`)
+  ok(!noFlush.ok && noFlush.regs[1] === 999, `L7 反例:缺分支作废→走错路那条把 r1 写成了 999(regs=[${noFlush.regs}])`)
   const noHazard = await go(FIVE, ['icache', N, 'flush', 'wire', 'wire'])
-  ok(!noHazard.ok, `L6 反例:缺冒险检测→load-use 那处读到旧值(regs=[${noHazard.regs}])`)
+  ok(!noHazard.ok, `L7 反例:缺冒险检测→load-use 那处读到旧值(regs=[${noHazard.regs}])`)
   const noWire = await go(FIVE, ['icache', 'hazard', 'flush', N, N])
   const noCache = await go(FIVE, [N, 'hazard', 'flush', 'wire', 'wire'])
-  ok(noCache.ok && noCache.cycles > good.cycles, `L6 缺〈指令缓存〉也是对的,但慢:${noCache.cycles} 拍 vs ${good.cycles} 拍 → 拿不到「飞快」`)
-  ok(noWire.ok && noWire.cycles > good.cycles, `L6 反例(慢解):只停顿不接线→还是对的,但从 ${good.cycles} 拍涨到 ${noWire.cycles} 拍`)
+  ok(noCache.ok && noCache.cycles > good.cycles, `L7 缺〈指令缓存〉也是对的,但慢:${noCache.cycles} 拍 vs ${good.cycles} 拍 → 拿不到「飞快」`)
+  ok(noWire.ok && noWire.cycles > good.cycles, `L7 反例(慢解):只停顿不接线→还是对的,但从 ${good.cycles} 拍涨到 ${noWire.cycles} 拍`)
 }
 
 /* ── 文案里不许有 markdown 强调 ──

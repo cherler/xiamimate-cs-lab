@@ -61,7 +61,11 @@ let slots: (Stage | null)[] = new Array(NSLOT).fill(null)
 let tops: (Top | null)[] = new Array(NSLOT).fill(null)
 
 // —— 关卡(每一关都能在真 CPU 上指得到)——
-type Level = { name: string; story: string; hint: string; prog: Instr[]; mem: number[]; parts: Tool[]; par: { parts: number; cycles: number }; finale?: boolean }
+/** 切级关的一条微操作:一件事 + 它要花多少「工作量」(决定拍长的那个量)。 */
+type MicroOp = { name: string; short: string; work: number; role: Stage }
+type Level = { name: string; story: string; hint: string; prog: Instr[]; mem: number[]; parts: Tool[]; par: { parts: number; cycles: number }; finale?: boolean
+  /** 有它就是**切级关**:不摆零件了,改成在微操作之间下刀(插流水寄存器)。评分换成**总时间 = 拍数 × 拍长**。 */
+  split?: { ops: MicroOp[] } }
 const FIVE: Tool[] = ['if', 'id', 'ex', 'mem', 'wb']
 const LEVELS: Level[] = [
   {
@@ -125,6 +129,30 @@ const LEVELS: Level[] = [
     mem: [5, 9, 2, 4], parts: [...FIVE, 'wire', 'hazard', 'icache'], par: { parts: 9, cycles: 11 },
   },
   {
+    name: '真·CPU · 切几级(拍长 vs 拍数)',
+    story: '流水线不是越深越好 —— 切得越细拍长越短,可拍数和冒险的代价一起涨上来。',
+    hint: '硬件这回全给你装好了(旁路 / 冒险检测 / 分支作废 / 指令缓存)—— 这一关只问一件事:「刀下在哪」。一条指令的组合逻辑要干五件事,各自的工作量写在卡片上;你在两件事之间插一个〈流水寄存器〉,就把它们切成两段。一拍的时长 =「最重那一段」(木桶),拍数 = 指令数 + 段数 − 1 + 停顿。评分不再看拍数,看「总时间 = 拍数 × 拍长」。全切开(五级)未必最快 —— 自己试。',
+    prog: [
+      { op: 'lw', d: 1, addr: 0 }, { op: 'add', d: 2, a: 1, b: 1 },
+      { op: 'lw', d: 3, addr: 1 }, { op: 'add', d: 1, a: 3, b: 2 },
+      { op: 'beq', a: 1, b: 1, to: 6 }, { op: 'li', d: 2, imm: 999 },
+      { op: 'add', d: 3, a: 1, b: 2 },
+    ],
+    mem: [5, 9, 2, 4],
+    split: {
+      ops: [
+        { name: '取指令', short: '取指', work: 3, role: 'if' },
+        { name: '译码 + 读寄存器', short: '译码', work: 2, role: 'id' },
+        { name: 'ALU 运算', short: 'ALU', work: 4, role: 'ex' },
+        { name: '访存', short: '访存', work: 3, role: 'mem' },
+        { name: '写回寄存器', short: '写回', work: 2, role: 'wb' },
+      ],
+    },
+    //  评分沿用同一套字段,只是**单位换了**:parts = 用了几刀,cycles = **总时间**(拍数×拍长)。
+    //  56 是引擎穷举 16 种切法跑出来的最优(全切五级:拍长 4 × 14 拍),不是我拍脑袋定的。
+    parts: [], par: { parts: 4, cycles: 56 },
+  },
+  {
     name: '终关 · 一段真程序跑到底',
     story: '取数、加法、分支 —— 数据冒险、load-use、控制冒险、结构冒险,四样全在这一段里。',
     hint: '把学过的全用上:两条〈旁路线〉抽两条前递通路,一个〈冒险检测〉兜住 lw 后面那一拍,一个〈分支作废〉划掉跳走后还在流水线里的那几条,一个〈指令缓存〉让取指不用跟访存抢门。停顿越少越好,但结果错了再快也没用 —— 寄存器终值必须和「顺序执行一遍」的参考答案一模一样。',
@@ -141,6 +169,23 @@ const LEVELS: Level[] = [
   },
 ]
 let lvl = 0
+/** 切级关:每两个微操作之间要不要插一个流水寄存器。长度 = 微操作数 − 1。 */
+let cuts: boolean[] = []
+/** 各微操作落在第几段(前面切了几刀就是第几段)。 */
+function segOf(ops: MicroOp[], cs: boolean[]) {
+  let seg = 0
+  return ops.map((_, i) => { if (i > 0 && cs[i - 1]) seg++; return seg })
+}
+/** 每段的工作量之和;**一拍的时长 = 最重那一段**(木桶原理)。 */
+function segWork(ops: MicroOp[], cs: boolean[]) {
+  const seg = segOf(ops, cs), out: number[] = []
+  ops.forEach((o, i) => { out[seg[i]!] = (out[seg[i]!] ?? 0) + o.work })
+  return out
+}
+function layoutFromCuts(ops: MicroOp[], cs: boolean[]): Layout {
+  const seg = segOf(ops, cs), at = (r: Stage) => seg[ops.findIndex(o => o.role === r)]!
+  return { nslot: Math.max(...seg) + 1, ifS: at('if'), idS: at('id'), exS: at('ex'), memS: at('mem'), wbS: at('wb'), tops: [], full: true }
+}
 const L = () => LEVELS[lvl]!
 const REF = () => runSeq(L().prog, L().mem)
 
@@ -157,16 +202,27 @@ type Run = { regs: number[]; cycles: number; trace: Cyc[]; overrun: boolean; jam
  *   加法在〈执行〉级出炉、lw 在〈访存〉级出炉,所以同一条线对两者的效果不一样。
  * - 冒险检测放在译码级上方 = 下一拍还拿不到值就停一拍,给执行级塞一个气泡。
  */
-function runPipe(prog: Instr[], mem: number[]): Run {
-  const exSlot = slots.indexOf('ex'), idSlot = slots.indexOf('id'), wbSlot = slots.indexOf('wb'), memSlot = slots.indexOf('mem')
-  const ifSlot = slots.indexOf('if')
-  /** 这条指令**取回来了吗**:只有已经走过〈取指〉级的,后面几级才该对它做事。
+/** 五件事各住在第几段。摆零件关里一段一件事;切级关里几件事可以**挤在同一段**。 */
+type Layout = { nslot: number; ifS: number; idS: number; exS: number; memS: number; wbS: number; tops: (Top | null)[]
+  /** 切级关:旁路 / 冒险检测 / 分支作废 / 指令缓存**全都当作已装好** —— 那几关已经让你一个个建过了,
+   *  这一关要问的是另一件事:**刀下在哪**。 */
+  full?: boolean }
+/** 从「一段一个零件」的摆法读出布局 —— 摆零件那七关用它。 */
+const layoutFromSlots = (): Layout => ({
+  nslot: NSLOT, ifS: slots.indexOf('if'), idS: slots.indexOf('id'),
+  exS: slots.indexOf('ex'), memS: slots.indexOf('mem'), wbS: slots.indexOf('wb'), tops,
+})
+function runPipe(prog: Instr[], mem: number[], lay: Layout): Run {
+  const NS = lay.nslot, ifSlot = lay.ifS, idSlot = lay.idS, exSlot = lay.exS, memSlot = lay.memS, wbSlot = lay.wbS
+  const tops = lay.tops
+  /** 这条指令**取回来了吗**:只有走到〈取指〉那一段(或更后面)的,才该被后面几级处理。
    *  少了这一条,取指就是个纯摆设 —— 把它摆到最后、甚至摆在译码后面,机器照样算对,
-   *  而关卡文案却说「顺序是仿真自己认的」。那就是画面在撒谎。(对抗性审查抓出来的) */
-  const fetched = (slot: number) => ifSlot >= 0 && slot > ifSlot
+   *  而关卡文案却说「顺序是仿真自己认的」。那就是画面在撒谎。(对抗性审查抓出来的)
+   *  用 `>=` 而不是 `>`:切级关里取指和译码可以**在同一段**,那一段里当然是先取后译。 */
+  const fetched = (slot: number) => ifSlot >= 0 && slot >= ifSlot
   const bornAt = (j: number) => prog[j]!.op === 'lw' ? memSlot : exSlot   // 这条指令的结果在哪一级出炉
   const regs = new Array<number>(NREG).fill(0)
-  const pipe: (number | null)[] = new Array(NSLOT).fill(null)
+  const pipe: (number | null)[] = new Array(NS).fill(null)
   const readVal: number[][] = prog.map(() => [0, 0])   // 译码那一拍读到的两个操作数
   const val: number[] = prog.map(() => 0)              // 这条指令的结果(加法在执行级填、lw 在访存级填)
   const trace: Cyc[] = []
@@ -176,8 +232,17 @@ function runPipe(prog: Instr[], mem: number[]): Run {
 
   while (cycles < 60) {
     cycles++
-    // ① 写回(前半拍)
-    if (wbSlot >= 0 && fetched(wbSlot) && pipe[wbSlot] !== null) { const i = pipe[wbSlot]!, d = dstOf(prog[i]!); if (d >= 0) regs[d] = val[i]! }
+    /** 写回。**只有当写回段比译码段靠后时,它才该排在译码前面**——那时写回的是一条
+     *  更老的指令,对应真 MIPS「寄存器堆前半拍写、后半拍读」。切级关里两者可能挤在
+     *  同一段(极端是全不切=单周期),那就是**同一条指令**,顺序必须按数据通路来:
+     *  先译码、算完、访存完,最后才写回。写死成「写回永远最先」的话,单周期机器会把
+     *  还没算出来的东西写回去 —— 十六种切法里有一多半因此算错,而它们本该都是对的。 */
+    const doWB = () => { if (wbSlot >= 0 && fetched(wbSlot) && pipe[wbSlot] !== null) { const i = pipe[wbSlot]!, d = dstOf(prog[i]!); if (d >= 0) regs[d] = val[i]! } }
+    //  判据是「写回段是否**严格**在访存段之后」——微操作顺序固定,所以 wbS ≥ memS ≥ exS ≥ idS,
+    //  这一条同时管住了两种同段情形:写回和译码同段(同一条指令)、写回和访存同段(lw 的值还没取到)。
+    //  只写 wbSlot > idSlot 会漏掉后者:十六种切法里有八种因此把 lw 的值丢了,而且**丢得静悄悄**。
+    const wbFirst = wbSlot > memSlot
+    if (wbFirst) doWB()
     // ② 译码:此刻寄存器堆里是什么就读什么 —— 读到旧值正是「冒险」本身
     if (idSlot >= 0 && fetched(idSlot) && pipe[idSlot] !== null) {
       const i = pipe[idSlot]!, s = srcOf(prog[i]!)
@@ -188,8 +253,8 @@ function runPipe(prog: Instr[], mem: number[]): Run {
     const operands = (i: number, s: [number, number]) => {
       const v = [readVal[i]![0]!, readVal[i]![1]!]
       for (let k = 0; k < 2; k++) {
-        for (let sl = NSLOT - 1; sl > exSlot; sl--) {             // 从最靠后的槽找起 = 取最新的那份
-          if (tops[sl] !== 'wire') continue
+        for (let sl = NS - 1; sl > exSlot; sl--) {             // 从最靠后的槽找起 = 取最新的那份
+          if (!lay.full && tops[sl] !== 'wire') continue
           const j = pipe[sl]; if (j === null || j === undefined) continue
           if (sl <= bornAt(j)) continue                            // 它的结果还没出炉,这根线抽的是空的
           if (dstOf(prog[j]!) === s[k]) { v[k] = val[j]!; break }
@@ -210,18 +275,26 @@ function runPipe(prog: Instr[], mem: number[]): Run {
     }
     // ④ 访存:lw 的数据到这一级末尾才出来(排在执行后面 = 同拍的执行级拿不到它)
     if (memSlot >= 0 && fetched(memSlot) && pipe[memSlot] !== null) { const i = pipe[memSlot]!, ins = prog[i]!; if (ins.op === 'lw') val[i] = mem[ins.addr] ?? 0 }
+    if (!wbFirst) doWB()   // 写回和译码同段(同一条指令)时,写回排在最后
     trace.push({ slots: [...pipe], stalled: false })
     // ⑤ 冒险检测:译码级那条指令的源值,下一拍到得了执行级吗?到不了就停一拍
     let stall = false
-    if (idSlot >= 0 && tops[idSlot] === 'hazard' && pipe[idSlot] !== null) {
+    if (idSlot >= 0 && (lay.full || tops[idSlot] === 'hazard') && pipe[idSlot] !== null) {
       const i = pipe[idSlot]!
       for (const s of srcOf(prog[i]!)) {
-        for (let sl = idSlot + 1; sl < NSLOT; sl++) {
+        for (let sl = idSlot + 1; sl < NS; sl++) {
           const j = pipe[sl]; if (j === null || j === undefined || j >= i) continue
           if (dstOf(prog[j]!) !== s) continue
-          if (wbSlot >= 0 && sl >= wbSlot) break                   // 它这一拍(或更早)已经写回,读得到
-          const ns = sl + 1                                        // 下一拍它挪到哪
-          if (ns < NSLOT && tops[ns] === 'wire' && ns > exSlot && ns > bornAt(j)) break // 那时旁路抽得到
+          //  「它这一拍已经写回、读得到」这条捷径**只在写回排在译码之前时成立**(wbFirst)。
+          //  切级关里写回可能排在最后(和访存/译码同段),那时译码读的是**没写回之前**的值 ——
+          //  少了 wbFirst 这个前提,机器不停顿也不前递,静静地读到旧值、结果全错。
+          if (wbFirst && wbSlot >= 0 && sl >= wbSlot) break
+          //  「下一拍它挪到哪」——**要走几拍取决于译码到执行有多远**,不是固定一拍。
+          //  切级关里译码和执行可能挤在同一段(距离 0):那这条指令是**同一拍**被译码又被执行的,
+          //  前递必须**当拍**就到位,而不是「下一拍」。写死成 sl+1 的话,机器会以为来得及、
+          //  于是不停顿也拿不到值 —— 静静地算错。
+          const ns = sl + (exSlot - idSlot)
+          if (ns < NS && (lay.full || tops[ns] === 'wire') && ns > exSlot && ns > bornAt(j)) break // 那时旁路抽得到
           stall = true; break
         }
         if (stall) break
@@ -231,14 +304,14 @@ function runPipe(prog: Instr[], mem: number[]): Run {
     // ⑥ 分支作废:跳定了,那么执行级**前面**那几条全是走错路取进来的,得当场划掉。
     //    没装〈分支作废〉的话它们照样往下跑、照样写寄存器 —— 真机器没有作废硬件时就是这样,
     //    所以早期 MIPS 干脆规定紧跟分支那一条一定执行(延迟槽),把这件事写进了指令集。
-    if (taken >= 0 && tops[exSlot] === 'flush') {
+    if (taken >= 0 && (lay.full || tops[exSlot] === 'flush')) {
       const killed: number[] = []
       for (let s = 0; s < exSlot; s++) { const j = pipe[s]; if (j !== null && j !== undefined) killed.push(j); pipe[s] = null }
       if (killed.length) trace[trace.length - 1]!.killed = killed
       stall = false   // 前面都空了,没什么可停的
     }
     // ⑦ 推进一格(停顿时:译码级及之前冻住,往执行级塞一个气泡)
-    for (let s = NSLOT - 1; s > 0; s--) {
+    for (let s = NS - 1; s > 0; s--) {
       if (stall && s <= idSlot) continue
       pipe[s] = (stall && s === idSlot + 1) ? null : pipe[s - 1]!
     }
@@ -247,7 +320,7 @@ function runPipe(prog: Instr[], mem: number[]): Run {
     //  真机器的办法不是等,而是**把指令和数据分成两个缓存**(哈佛结构):装上〈指令缓存〉就不用抢了。
     //  注意:抢门只会让机器变慢,**不会算错** —— 所以这一关的考点是拍数,不是对错。
     const memBusy = memSlot >= 0 && fetched(memSlot) && pipe[memSlot] !== null && prog[pipe[memSlot]!]!.op === 'lw'
-    const jam = !stall && memBusy && ifSlot >= 0 && tops[ifSlot] !== 'icache' && pc < prog.length
+    const jam = !stall && memBusy && ifSlot >= 0 && !lay.full && tops[ifSlot] !== 'icache' && pc < prog.length
     if (jam) { jams++; trace[trace.length - 1]!.jam = true }
     if (!stall) { pipe[0] = jam ? null : fetch() }
     if (pc >= prog.length && pipe.every(x => x === null)) break
@@ -257,7 +330,11 @@ function runPipe(prog: Instr[], mem: number[]): Run {
 }
 
 let run: Run | null = null
-const machineOk = () => (['if', 'id', 'ex', 'mem', 'wb'] as Stage[]).every(s => slots.includes(s))
+const isSplit = () => !!L().split
+const machineOk = () => isSplit() || (['if', 'id', 'ex', 'mem', 'wb'] as Stage[]).every(s => slots.includes(s))
+/** 切级关的两个读数:拍长(最重那一段)与总时间(拍数 × 拍长)。 */
+const tickLen = () => { const sp = L().split; return sp ? Math.max(...segWork(sp.ops, cuts)) : 1 }
+const totalTime = () => run ? run.cycles * tickLen() : 0
 const resultOk = () => { const r = REF(); return !!run && !run.overrun && run.regs.every((v, i) => v === r[i]) }
 const partCount = () => slots.filter(Boolean).length + tops.filter(Boolean).length
 let best: Record<number, { parts: number; cycles: number }> = {}
@@ -268,7 +345,13 @@ const unlocked = (i: number) => i === 0 || passed(i - 1)
 // —— 交互 ——
 const levelTools = (): Tool[] => [...L().parts, 'erase']
 let tool: Tool = 'if'
-function loadLevel(i: number) { lvl = Math.max(0, Math.min(LEVELS.length - 1, i)); slots = new Array(NSLOT).fill(null); tops = new Array(NSLOT).fill(null); run = null; tool = L().parts[0]! }
+function loadLevel(i: number) {
+  lvl = Math.max(0, Math.min(LEVELS.length - 1, i))
+  slots = new Array(NSLOT).fill(null); tops = new Array(NSLOT).fill(null); run = null
+  const sp = L().split
+  cuts = sp ? new Array(sp.ops.length - 1).fill(false) : []   // 切级关一开始一刀不切 = 单周期
+  tool = L().parts[0] ?? 'if'
+}
 
 /* 版面竖着码,别再让哪一块压到另一块上:
    关卡条 20~52 / 页眉 74~150 / 机器 176~358(上排旁路 176、下排五级 274)/ 时空图 400 起。
@@ -278,6 +361,21 @@ function geo() {
   return { cw, ch, x0: 300, y0: 274, topY: 176 }
 }
 function levelBtns() { const bw = Math.min(210, (W - 48) / LEVELS.length - 8); return LEVELS.map((_, i) => ({ i, x: 24 + i * (bw + 8), y: 20, bw, bh: 32 })) }
+/** 切级关的板子:一排微操作卡片,卡片之间是可点的「下刀口」。 */
+function splitGeo() {
+  const ops = L().split!.ops
+  const cw = Math.min(140, (W - 620) / ops.length), gap = 28, ch = 96
+  return { ops, cw, gap, ch, x0: 300, y0: 230 }
+}
+/** 点在第几个刀口上(卡片之间那条缝),没点中回 -1。 */
+function hitCut(px: number, py: number) {
+  const g = splitGeo()
+  for (let i = 0; i < g.ops.length - 1; i++) {
+    const x = g.x0 + (i + 1) * g.cw + i * g.gap
+    if (px >= x - 4 && px <= x + g.gap + 4 && py >= g.y0 - 10 && py <= g.y0 + g.ch + 10) return i
+  }
+  return -1
+}
 function hit(px: number, py: number) {
   const g = geo()
   for (let s = 0; s < NSLOT; s++) {
@@ -304,6 +402,10 @@ cv.addEventListener('pointerdown', ev => {
   if (e.clientY >= T.y && e.clientY <= T.y + T.ts) {
     for (let i = 0; i < items.length; i++) { const x = T.x0 + i * (T.ts + T.gap); if (e.clientX >= x && e.clientX <= x + T.ts) { tool = items[i]!; return } }
   }
+  if (isSplit()) {   // 切级关:点刀口,不摆零件
+    const k = hitCut(q.x, q.y); if (k >= 0) { cuts[k] = !cuts[k]; run = null }
+    return
+  }
   const c = hit(e.clientX, e.clientY); if (!c) return
   //  上排只收「旁路线/冒险检测/分支作废」,下排只收五个阶段 —— 放错排就什么也不做
   const isTop = (t: Tool): t is Top => t === 'wire' || t === 'hazard' || t === 'flush' || t === 'icache'
@@ -318,10 +420,14 @@ addEventListener('keydown', e => {
   if (e.key === 'ArrowLeft') loadLevel(lvl - 1)
 })
 function doRun() {
-  run = machineOk() ? runPipe(L().prog, L().mem) : null
+  const sp = L().split
+  run = !machineOk() ? null : runPipe(L().prog, L().mem, sp ? layoutFromCuts(sp.ops, cuts) : layoutFromSlots())
   if (run && resultOk()) {
     const b = best[lvl] || { parts: Infinity, cycles: Infinity }
-    best[lvl] = { parts: Math.min(b.parts, partCount()), cycles: Math.min(b.cycles, run.cycles) }
+    //  切级关的成绩是**总时间**(拍数×拍长),不是拍数 —— 深流水拍数多但每拍短,只比拍数会得出反的结论
+    best[lvl] = isSplit()
+      ? { parts: Math.min(b.parts, cuts.filter(Boolean).length), cycles: Math.min(b.cycles, totalTime()) }
+      : { parts: Math.min(b.parts, partCount()), cycles: Math.min(b.cycles, run.cycles) }
     HUB?.save()   // 存盘交给课堂外壳:它同时管本机与账号同步
   }
 }
@@ -373,8 +479,46 @@ function frame() {
   text('参考答案 = 同一段程序顺序执行一遍', 24, ly, 12, DIM)
   text(ref.map((v, i) => `r${i}=${v}`).join('  '), 24, ly + 22, 14, TEAL)
 
+  const g = geo()   // 时空图也要用它的坐标,所以提到分支外面
+  // —— 切级关:换一块板 ——
+  if (lv.split) {
+    const sg = splitGeo(), segs = segWork(sg.ops, cuts), seg = segOf(sg.ops, cuts)
+    const tick = Math.max(...segs)
+    text('一条指令的组合逻辑 · 在两件事之间下刀(点缝隙)插一个流水寄存器', sg.x0, sg.y0 - 34, 12, DIM)
+    sg.ops.forEach((o, i) => {
+      const x = sg.x0 + i * (sg.cw + sg.gap), heavy = segs[seg[i]!] === tick
+      box(x, sg.y0, sg.cw, sg.ch, heavy ? '#3a2418' : '#241d33', heavy ? AMBER : '#7d5fa8')
+      text(o.short, x + sg.cw / 2, sg.y0 + 34, 17, '#d8c4ff', 'center', true)
+      text(o.name, x + sg.cw / 2, sg.y0 + 56, 10, DIM, 'center')
+      text(`工作量 ${o.work}`, x + sg.cw / 2, sg.y0 + 78, 12, heavy ? AMBER : CREAM, 'center', true)
+      //  这一段的合计:画在段的第一张卡上方
+      if (i === 0 || seg[i] !== seg[i - 1]) {
+        const w = segs[seg[i]!]!
+        //  「最重」那句要短:段一多,它会压到下一段的标签上
+        text(`第 ${seg[i]! + 1} 段 · 合计 ${w}${w === tick ? ' ←定拍长' : ''}`, x, sg.y0 - 12, 11, w === tick ? AMBER : DIM)
+      }
+    })
+    //  刀口:切了画一根实线(流水寄存器),没切画一条虚的「可以下刀」提示
+    for (let i = 0; i < sg.ops.length - 1; i++) {
+      const x = sg.x0 + (i + 1) * sg.cw + i * sg.gap + sg.gap / 2
+      ctx.strokeStyle = cuts[i] ? TEAL : '#4a4158'
+      ctx.lineWidth = cuts[i] ? 4 : 1.5
+      ctx.setLineDash(cuts[i] ? [] : [4, 4])
+      ctx.beginPath(); ctx.moveTo(x, sg.y0 - 6); ctx.lineTo(x, sg.y0 + sg.ch + 6); ctx.stroke()
+      ctx.setLineDash([])
+      text(cuts[i] ? '寄存器' : '+', x, sg.y0 + sg.ch + 22, cuts[i] ? 10 : 15, cuts[i] ? TEAL : '#5a5170', 'center', true)
+    }
+    const cutN = cuts.filter(Boolean).length
+    text(`拍长 = 最重那一段 = ${tick}`, sg.x0, sg.y0 + sg.ch + 52, 14, AMBER, 'left', true)
+    if (run) {
+      text(`拍数 ${run.cycles}(其中停顿 ${run.trace.filter(c => c.stalled).length})`, sg.x0 + 220, sg.y0 + sg.ch + 52, 14, CREAM)
+      const t = totalTime(), okk = resultOk()
+      text(`总时间 = ${run.cycles} × ${tick} = ${t}`, sg.x0 + 430, sg.y0 + sg.ch + 52, 15, t <= lv.par.cycles ? TEAL : CREAM, 'left', true)
+      text(okk ? (t <= lv.par.cycles ? '✓ 结果对 · 已达目标' : '✓ 结果对 —— 但还能更快') : '✕ 结果错了', sg.x0, sg.y0 + sg.ch + 76, 13, okk ? (t <= lv.par.cycles ? TEAL : AMBER) : RED)
+    } else text('按「运行机器」看它跑', sg.x0 + 220, sg.y0 + sg.ch + 52, 13, DIM)
+    text(`目标:总时间 ≤ ${lv.par.cycles}   ·   现在切了 ${cutN} 刀 = ${cutN + 1} 段`, sg.x0, sg.y0 + sg.ch + 100, 12, DIM)
+  } else {
   // 机器:上排旁路/冒险检测,下排五级
-  const g = geo()
   text('旁路线 / 冒险检测', g.x0, g.topY - 10, 12, DIM)
   const exSlot = slots.indexOf('ex')
   for (let s = 0; s < NSLOT; s++) {
@@ -404,6 +548,7 @@ function frame() {
     ctx.moveTo(xa, g.topY + g.ch); ctx.lineTo(xa, g.topY + g.ch + 10); ctx.lineTo(xb, g.topY + g.ch + 10); ctx.lineTo(xb, g.y0); ctx.stroke()
     ctx.beginPath(); ctx.moveTo(xb - 5, g.y0 - 8); ctx.lineTo(xb, g.y0); ctx.lineTo(xb + 5, g.y0 - 8); ctx.stroke()
   }
+  }   // ← 切级关 / 摆零件关,两块板到此分开
 
   // 时空图 —— 课本上那张斜梯形,是这台机器自己跑出来的。
   // 起点要**同时**让开机器和左栏:左栏会随指令条数/有没有存储器面板变高,写死就会被压上。
@@ -415,12 +560,13 @@ function frame() {
       text(`#${i}`, 24, ty + 20 + i * rh, 12, DIM)
       run!.trace.forEach((c, t) => {
         const s = c.slots.indexOf(i); if (s < 0) return
-        const st = slots[s], x = 56 + t * cwid, held = c.stalled && s <= slots.indexOf('id')
+        const st = slots[s], x = 56 + t * cwid, held = c.stalled && s <= (lv.split ? layoutFromCuts(lv.split.ops, cuts).idS : slots.indexOf('id'))
         const killed = !!c.killed?.includes(i)   // 这一拍被分支作废划掉:它到此为止,后面不再出现
         box(x, ty + 4 + i * rh, cwid - 4, rh - 6,
           killed ? '#2a1030' : held ? '#3a2118' : '#22304a',
           killed ? '#c07adf' : held ? RED : '#4a6fb0', 1.5)
-        text(st ? STAGE_NAME[st] : '·', x + (cwid - 4) / 2, ty + 22 + i * rh, 12, killed ? '#e0bfff' : CREAM, 'center')
+        //  切级关里一段可能装着好几件事,标不出单个阶段名 —— 标「第几段」,和上面那块板对得上
+        text(lv.split ? `${s + 1}段` : st ? STAGE_NAME[st] : '·', x + (cwid - 4) / 2, ty + 22 + i * rh, 12, killed ? '#e0bfff' : CREAM, 'center')
         if (killed) { // 真的划一道:走错路取进来的,当场废掉
           ctx.strokeStyle = '#e07adf'; ctx.lineWidth = 2; ctx.beginPath()
           ctx.moveTo(x + 3, ty + rh - 5 + i * rh); ctx.lineTo(x + cwid - 7, ty + 7 + i * rh); ctx.stroke()
@@ -447,18 +593,24 @@ function frame() {
     ctx.fillText(got === null ? '—' : String(got), rx + 34, y)
     text(`应为 ${want}`, rx + 96, y, 12, DIM)
   }
-  text(`目标 ≤${lv.par.parts} 件 · ≤${lv.par.cycles} 拍`, rx, 316, 12, DIM)
+  //  切级关的单位不一样:件→刀、拍→总时间。共用一套字段但**显示要跟着换**,不然读数在骗人。
+  const sp2 = lv.split
+  text(sp2 ? `目标 ≤${lv.par.parts} 刀 · 总时间 ≤${lv.par.cycles}` : `目标 ≤${lv.par.parts} 件 · ≤${lv.par.cycles} 拍`, rx, 316, 12, DIM)
   if (run) {
-    const okk = resultOk(), mp = partCount() <= lv.par.parts, mc = run.cycles <= lv.par.cycles
+    const okk = resultOk()
+    const used = sp2 ? cuts.filter(Boolean).length : partCount()
+    const score = sp2 ? totalTime() : run.cycles
+    const mp = used <= lv.par.parts, mc = score <= lv.par.cycles
     text(okk ? '✓ 结果对了' : run.overrun ? '✕ 机器空转(五级摆得不成样子)' : '✕ 有寄存器读到了旧值', rx, 342, 16, okk ? TEAL : RED, 'left', true)
-    text(`用了 ${run.cycles} 拍 · ${partCount()} 件${okk ? `  ${mp ? '🏅省料 ' : ''}${mc ? '🏅飞快' : ''}` : ''}`, rx, 364, 13, CREAM)
+    text(sp2 ? `总时间 ${score} · 切了 ${used} 刀${okk ? `  ${mp ? '🏅省刀 ' : ''}${mc ? '🏅最快' : ''}` : ''}`
+      : `用了 ${score} 拍 · ${used} 件${okk ? `  ${mp ? '🏅省料 ' : ''}${mc ? '🏅飞快' : ''}` : ''}`, rx, 364, 13, CREAM)
     const stalls = run.trace.filter(c => c.stalled).length
-    text(stalls || run.jams ? `停顿 ${stalls} 拍 · 抢门 ${run.jams} 拍` : '一拍都没停', rx, 384, 12, stalls || run.jams ? AMBER : TEAL)
+    text(stalls || run.jams ? `停顿 ${stalls} 拍${sp2 ? '' : ` · 抢门 ${run.jams} 拍`}` : '一拍都没停', rx, 384, 12, stalls || run.jams ? AMBER : TEAL)
   }
 
   // 零件盘
-  const T = trayGeo(), items = levelTools()
-  text(`零件盘 · 点一个,再点槽位放下${tool === 'wire' ? '(旁路线放在结果已经出炉的那一级上方)' : tool === 'hazard' ? '(冒险检测放在译码级上方)' : tool === 'flush' ? '(分支作废放在执行级上方 —— 分支在哪一级判出跳不跳,就装在哪一级)' : tool === 'icache' ? '(指令缓存放在取指级上方 —— 让取指有自己的存储器,不用再跟访存抢)' : ''}`, T.x0, T.y - 10, 12, AMBER)
+  const T = trayGeo(), items = isSplit() ? [] : levelTools()   // 切级关不摆零件,盘子就别画了
+  text(isSplit() ? '这一关不摆零件 —— 点微操作之间的缝隙下刀(再点一下撤销)' : `零件盘 · 点一个,再点槽位放下${tool === 'wire' ? '(旁路线放在结果已经出炉的那一级上方)' : tool === 'hazard' ? '(冒险检测放在译码级上方)' : tool === 'flush' ? '(分支作废放在执行级上方 —— 分支在哪一级判出跳不跳,就装在哪一级)' : tool === 'icache' ? '(指令缓存放在取指级上方 —— 让取指有自己的存储器,不用再跟访存抢)' : ''}`, T.x0, T.y - 10, 12, AMBER)
   items.forEach((t, i) => {
     const x = T.x0 + i * (T.ts + T.gap), on = tool === t
     box(x, T.y, T.ts, T.ts, on ? '#3a342a' : '#20190f', on ? '#ffe6a8' : '#5a4e3a', on ? 3 : 1.5)
@@ -498,4 +650,5 @@ type Win = Record<string, unknown>
 ;(window as unknown as Win).__cpuTexts = () => LEVELS.flatMap(l => [l.name, l.story, l.hint])
 ;(window as unknown as Win).__cpuPlay = (i: number) => { loadLevel(i); return { prog: L().prog.map(instrText), mem: L().mem, ref: REF(), parts: L().parts, par: L().par } }
 ;(window as unknown as Win).__cpuSet = (st: (Stage | null)[], tp: (Top | null)[]) => { slots = [...st]; tops = [...tp]; run = null }
-;(window as unknown as Win).__cpuRun = () => { doRun(); return run ? { regs: run.regs, ref: REF(), cycles: run.cycles, stalls: run.trace.filter(c => c.stalled).length, jams: run.jams, overrun: run.overrun, ok: resultOk(), parts: partCount() } : null }
+;(window as unknown as Win).__cpuCuts = (cs: boolean[]) => { cuts = [...cs]; run = null }
+;(window as unknown as Win).__cpuRun = () => { doRun(); return run ? { regs: run.regs, ref: REF(), cycles: run.cycles, stalls: run.trace.filter(c => c.stalled).length, jams: run.jams, overrun: run.overrun, ok: resultOk(), parts: partCount(), tick: tickLen(), time: totalTime(), segs: L().split ? segWork(L().split!.ops, cuts) : [] } : null }
