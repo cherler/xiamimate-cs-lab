@@ -27,25 +27,36 @@ type Instr =
   | { op: 'li'; d: number; imm: number }
   | { op: 'add'; d: number; a: number; b: number }
   | { op: 'lw'; d: number; addr: number }
+  | { op: 'beq'; a: number; b: number; to: number }   // 两个寄存器相等就跳到第 to 条
 const NREG = 4
-const instrText = (i: Instr) => i.op === 'li' ? `li   r${i.d}, #${i.imm}` : i.op === 'lw' ? `lw   r${i.d}, [${i.addr}]` : `add  r${i.d}, r${i.a}, r${i.b}`
-const srcOf = (i: Instr): number[] => i.op === 'add' ? [i.a, i.b] : []
-const dstOf = (i: Instr) => i.d
+const instrText = (i: Instr) => i.op === 'li' ? `li   r${i.d}, #${i.imm}`
+  : i.op === 'lw' ? `lw   r${i.d}, [${i.addr}]`
+    : i.op === 'beq' ? `beq  r${i.a}, r${i.b}, →${i.to}`
+      : `add  r${i.d}, r${i.a}, r${i.b}`
+const srcOf = (i: Instr): number[] => i.op === 'add' || i.op === 'beq' ? [i.a, i.b] : []
+/** 写哪个寄存器;分支谁也不写,回 -1 —— 它既不参与写回,也永远不该被当成前递的来源。 */
+const dstOf = (i: Instr) => i.op === 'beq' ? -1 : i.d
 
-/** 参考答案:同一段程序**顺序执行**一遍。流水线跑出来的终值必须和它一致。 */
+/** 参考答案:同一段程序**顺序执行**一遍(带分支,所以是按 PC 走,不是从头到尾)。 */
 function runSeq(prog: Instr[], mem: number[]) {
   const r = new Array<number>(NREG).fill(0)
-  for (const ins of prog) r[ins.d] = ins.op === 'li' ? ins.imm : ins.op === 'lw' ? (mem[ins.addr] ?? 0) : r[ins.a]! + r[ins.b]!
+  let pc = 0, guard = 0
+  while (pc >= 0 && pc < prog.length && guard++ < 400) {
+    const ins = prog[pc]!
+    if (ins.op === 'beq') { pc = r[ins.a] === r[ins.b] ? ins.to : pc + 1; continue }
+    r[ins.d] = ins.op === 'li' ? ins.imm : ins.op === 'lw' ? (mem[ins.addr] ?? 0) : r[ins.a]! + r[ins.b]!
+    pc++
+  }
   return r
 }
 
 // —— 机器:5 个槽,每槽放一个阶段零件;槽的正上方可以放旁路线 / 冒险检测 ——
 type Stage = 'if' | 'id' | 'ex' | 'mem' | 'wb'
-type Top = 'wire' | 'hazard'
+type Top = 'wire' | 'hazard' | 'flush'
 type Tool = Stage | Top | 'erase'
 const NSLOT = 5
 const STAGE_NAME: Record<Stage, string> = { if: '取指', id: '译码', ex: '执行', mem: '访存', wb: '写回' }
-const toolName = (t: Tool) => t === 'wire' ? '旁路线' : t === 'hazard' ? '冒险检测' : t === 'erase' ? '擦除' : STAGE_NAME[t]
+const toolName = (t: Tool) => t === 'wire' ? '旁路线' : t === 'hazard' ? '冒险检测' : t === 'flush' ? '分支作废' : t === 'erase' ? '擦除' : STAGE_NAME[t]
 let slots: (Stage | null)[] = new Array(NSLOT).fill(null)
 let tops: (Top | null)[] = new Array(NSLOT).fill(null)
 
@@ -82,18 +93,46 @@ const LEVELS: Level[] = [
     mem: [7, 8, 5, 9], parts: [...FIVE, 'wire', 'hazard'], par: { parts: 8, cycles: 8 },
   },
   {
+    name: '真·CPU · 控制冒险(分支)',
+    story: '分支要到执行级才知道跳不跳 —— 而这时候,后面两条早就被取进流水线了。',
+    hint: '取指级只会一条接一条地往下取,可 beq 得等到〈执行〉级比完两个寄存器才知道跳不跳。等它知道的时候,后面两条已经在流水线里了 —— 跳了的话,它们全是走错路取进来的,再往下跑就会真的写进寄存器。放一个〈分支作废〉在〈执行〉级上方,把它们当场划掉(时空图上会看到被划掉的格子)。不放的话它们照跑不误 —— 真机器没有作废硬件时就是这样,所以早期 MIPS 干脆规定紧跟分支那一条一定执行,那就是「延迟槽」。',
+    /*  走错路的那条是 `add r3,r3,r3` 而不是 `li r3,#99` —— 它**改**结果而不是**设**结果。
+        第一版用的是 li:一台什么零件都不装的机器(分支操作数读到旧值→误判相等→提前跳走)
+        会连那条一起跳过,于是**碰巧**得到同一组终值、判据判它通过 —— 答案对了理由是错的。
+        换成 add 之后,任何一条走错路的指令都会在终值上留下痕迹。(对抗性审查抓出来的) */
+    prog: [
+      { op: 'li', d: 1, imm: 1 }, { op: 'li', d: 2, imm: 2 },
+      { op: 'beq', a: 1, b: 2, to: 7 },   // 1≠2 → 不该跳(操作数读到旧值的机器会误判成跳)
+      { op: 'li', d: 3, imm: 7 },
+      { op: 'li', d: 0, imm: 3 },
+      { op: 'add', d: 3, a: 3, b: 1 },    // 距分支 3 条 —— 落在「作废阴影」之外,误跳就一定漏掉它
+      { op: 'beq', a: 3, b: 3, to: 8 },   // 自己等于自己 → 一定跳,下面那条不该执行
+      { op: 'add', d: 3, a: 3, b: 3 },    // 走错路才会跑到的一条:它**改**结果,一定在终值上留痕
+      { op: 'add', d: 0, a: 3, b: 1 },
+    ],
+    mem: [], parts: [...FIVE, 'wire', 'hazard', 'flush'], par: { parts: 9, cycles: 15 },
+  },
+  {
     name: '终关 · 一段真程序跑到底',
-    story: '两条取数、三条加法,隔一条的、隔两条的、load-use 的冒险全在里面 —— 用最少的拍数跑对。',
-    hint: '把学过的全用上:两条〈旁路线〉抽两条通路,一个〈冒险检测〉兜住 lw 后面那一拍。停顿越少越好,但结果错了再快也没用 —— 寄存器终值必须和「顺序执行一遍」的参考答案一模一样。',
-    prog: [{ op: 'lw', d: 1, addr: 0 }, { op: 'lw', d: 2, addr: 1 }, { op: 'add', d: 3, a: 1, b: 2 }, { op: 'add', d: 1, a: 3, b: 2 }, { op: 'add', d: 2, a: 1, b: 3 }],
-    mem: [5, 9, 2, 4], parts: [...FIVE, 'wire', 'hazard'], par: { parts: 8, cycles: 10 }, finale: true,
+    story: '取数、加法、分支 —— 数据冒险、load-use、控制冒险,三种全在这一段里。',
+    hint: '把学过的全用上:两条〈旁路线〉抽两条前递通路,一个〈冒险检测〉兜住 lw 后面那一拍,一个〈分支作废〉划掉跳走后还在流水线里的那几条。停顿越少越好,但结果错了再快也没用 —— 寄存器终值必须和「顺序执行一遍」的参考答案一模一样。',
+    prog: [
+      { op: 'lw', d: 1, addr: 0 }, { op: 'lw', d: 2, addr: 1 },
+      { op: 'add', d: 3, a: 1, b: 2 },
+      { op: 'beq', a: 1, b: 2, to: 7 },   // 5≠9 → 不跳
+      { op: 'add', d: 1, a: 3, b: 2 },
+      { op: 'beq', a: 1, b: 1, to: 7 },   // 一定跳,下面那条不该执行
+      { op: 'li', d: 1, imm: 999 },       // 走错路才会跑到的一条
+      { op: 'add', d: 2, a: 1, b: 3 },
+    ],
+    mem: [5, 9, 2, 4], parts: [...FIVE, 'wire', 'hazard', 'flush'], par: { parts: 9, cycles: 15 }, finale: true,
   },
 ]
 let lvl = 0
 const L = () => LEVELS[lvl]!
 const REF = () => runSeq(L().prog, L().mem)
 
-type Cyc = { slots: (number | null)[]; stalled: boolean }
+type Cyc = { slots: (number | null)[]; stalled: boolean; killed?: number[] }
 type Run = { regs: number[]; cycles: number; trace: Cyc[]; overrun: boolean }
 
 /**
@@ -108,43 +147,57 @@ type Run = { regs: number[]; cycles: number; trace: Cyc[]; overrun: boolean }
  */
 function runPipe(prog: Instr[], mem: number[]): Run {
   const exSlot = slots.indexOf('ex'), idSlot = slots.indexOf('id'), wbSlot = slots.indexOf('wb'), memSlot = slots.indexOf('mem')
+  const ifSlot = slots.indexOf('if')
+  /** 这条指令**取回来了吗**:只有已经走过〈取指〉级的,后面几级才该对它做事。
+   *  少了这一条,取指就是个纯摆设 —— 把它摆到最后、甚至摆在译码后面,机器照样算对,
+   *  而关卡文案却说「顺序是仿真自己认的」。那就是画面在撒谎。(对抗性审查抓出来的) */
+  const fetched = (slot: number) => ifSlot >= 0 && slot > ifSlot
   const bornAt = (j: number) => prog[j]!.op === 'lw' ? memSlot : exSlot   // 这条指令的结果在哪一级出炉
   const regs = new Array<number>(NREG).fill(0)
   const pipe: (number | null)[] = new Array(NSLOT).fill(null)
   const readVal: number[][] = prog.map(() => [0, 0])   // 译码那一拍读到的两个操作数
   const val: number[] = prog.map(() => 0)              // 这条指令的结果(加法在执行级填、lw 在访存级填)
   const trace: Cyc[] = []
-  let next = 0, cycles = 0, overrun = false
-  pipe[0] = next < prog.length ? next++ : null   // 第 1 拍取指级里就该站着第 0 条,不然白空转一拍
+  let pc = 0, cycles = 0, overrun = false
+  const fetch = () => (pc >= 0 && pc < prog.length ? pc++ : null)
+  pipe[0] = fetch()   // 第 1 拍取指级里就该站着第 0 条,不然白空转一拍
 
   while (cycles < 60) {
     cycles++
     // ① 写回(前半拍)
-    if (wbSlot >= 0 && pipe[wbSlot] !== null) { const i = pipe[wbSlot]!; regs[dstOf(prog[i]!)] = val[i]! }
+    if (wbSlot >= 0 && fetched(wbSlot) && pipe[wbSlot] !== null) { const i = pipe[wbSlot]!, d = dstOf(prog[i]!); if (d >= 0) regs[d] = val[i]! }
     // ② 译码:此刻寄存器堆里是什么就读什么 —— 读到旧值正是「冒险」本身
-    if (idSlot >= 0 && pipe[idSlot] !== null) {
+    if (idSlot >= 0 && fetched(idSlot) && pipe[idSlot] !== null) {
       const i = pipe[idSlot]!, s = srcOf(prog[i]!)
       readVal[i] = [s[0] === undefined ? 0 : regs[s[0]]!, s[1] === undefined ? 0 : regs[s[1]]!]
     }
     // ③ 执行:旁路线送来的新值在这里顶掉刚才读到的旧值
-    if (exSlot >= 0 && pipe[exSlot] !== null) {
+    /** 取这条指令在执行级实际拿到的两个操作数:译码读到的旧值,被旁路线送来的新值顶掉。 */
+    const operands = (i: number, s: [number, number]) => {
+      const v = [readVal[i]![0]!, readVal[i]![1]!]
+      for (let k = 0; k < 2; k++) {
+        for (let sl = NSLOT - 1; sl > exSlot; sl--) {             // 从最靠后的槽找起 = 取最新的那份
+          if (tops[sl] !== 'wire') continue
+          const j = pipe[sl]; if (j === null || j === undefined) continue
+          if (sl <= bornAt(j)) continue                            // 它的结果还没出炉,这根线抽的是空的
+          if (dstOf(prog[j]!) === s[k]) { v[k] = val[j]!; break }
+        }
+      }
+      return v as [number, number]
+    }
+    let taken = -1   // 这一拍在执行级判出「要跳」的那条分支,-1 = 没有
+    if (exSlot >= 0 && fetched(exSlot) && pipe[exSlot] !== null) {
       const i = pipe[exSlot]!, ins = prog[i]!
       if (ins.op === 'li') val[i] = ins.imm
-      else if (ins.op === 'add') {
-        const v = [readVal[i]![0]!, readVal[i]![1]!], s = [ins.a, ins.b]
-        for (let k = 0; k < 2; k++) {
-          for (let sl = NSLOT - 1; sl > exSlot; sl--) {           // 从最靠后的槽找起 = 取最新的那份
-            if (tops[sl] !== 'wire') continue
-            const j = pipe[sl]; if (j === null || j === undefined) continue
-            if (sl <= bornAt(j)) continue                          // 它的结果还没出炉,这根线抽的是空的
-            if (dstOf(prog[j]!) === s[k]) { v[k] = val[j]!; break }
-          }
-        }
-        val[i] = v[0]! + v[1]!
+      else if (ins.op === 'add') { const v = operands(i, [ins.a, ins.b]); val[i] = v[0] + v[1] }
+      else if (ins.op === 'beq') {
+        //  分支在执行级才判得出跳不跳 —— 而这时候后面两条早就取进流水线了。控制冒险就是这么来的。
+        const v = operands(i, [ins.a, ins.b])
+        if (v[0] === v[1]) { pc = ins.to; taken = i }
       }
     }
     // ④ 访存:lw 的数据到这一级末尾才出来(排在执行后面 = 同拍的执行级拿不到它)
-    if (memSlot >= 0 && pipe[memSlot] !== null) { const i = pipe[memSlot]!, ins = prog[i]!; if (ins.op === 'lw') val[i] = mem[ins.addr] ?? 0 }
+    if (memSlot >= 0 && fetched(memSlot) && pipe[memSlot] !== null) { const i = pipe[memSlot]!, ins = prog[i]!; if (ins.op === 'lw') val[i] = mem[ins.addr] ?? 0 }
     trace.push({ slots: [...pipe], stalled: false })
     // ⑤ 冒险检测:译码级那条指令的源值,下一拍到得了执行级吗?到不了就停一拍
     let stall = false
@@ -163,13 +216,22 @@ function runPipe(prog: Instr[], mem: number[]): Run {
       }
     }
     if (stall) trace[trace.length - 1]!.stalled = true
-    // ⑥ 推进一格(停顿时:译码级及之前冻住,往执行级塞一个气泡)
+    // ⑥ 分支作废:跳定了,那么执行级**前面**那几条全是走错路取进来的,得当场划掉。
+    //    没装〈分支作废〉的话它们照样往下跑、照样写寄存器 —— 真机器没有作废硬件时就是这样,
+    //    所以早期 MIPS 干脆规定紧跟分支那一条一定执行(延迟槽),把这件事写进了指令集。
+    if (taken >= 0 && tops[exSlot] === 'flush') {
+      const killed: number[] = []
+      for (let s = 0; s < exSlot; s++) { const j = pipe[s]; if (j !== null && j !== undefined) killed.push(j); pipe[s] = null }
+      if (killed.length) trace[trace.length - 1]!.killed = killed
+      stall = false   // 前面都空了,没什么可停的
+    }
+    // ⑦ 推进一格(停顿时:译码级及之前冻住,往执行级塞一个气泡)
     for (let s = NSLOT - 1; s > 0; s--) {
       if (stall && s <= idSlot) continue
       pipe[s] = (stall && s === idSlot + 1) ? null : pipe[s - 1]!
     }
-    if (!stall) { pipe[0] = next < prog.length ? next++ : null }
-    if (next >= prog.length && pipe.every(x => x === null)) break
+    if (!stall) { pipe[0] = fetch() }
+    if (pc >= prog.length && pipe.every(x => x === null)) break
     if (cycles >= 60) overrun = true
   }
   return { regs, cycles, trace, overrun }
@@ -224,8 +286,10 @@ cv.addEventListener('pointerdown', ev => {
     for (let i = 0; i < items.length; i++) { const x = T.x0 + i * (T.ts + T.gap); if (e.clientX >= x && e.clientX <= x + T.ts) { tool = items[i]!; return } }
   }
   const c = hit(e.clientX, e.clientY); if (!c) return
-  if (c.row === 'stage') slots[c.slot] = tool === 'erase' ? null : (tool === 'wire' || tool === 'hazard' ? slots[c.slot]! : tool)
-  else tops[c.slot] = tool === 'erase' ? null : (tool === 'wire' || tool === 'hazard' ? tool : tops[c.slot]!)
+  //  上排只收「旁路线/冒险检测/分支作废」,下排只收五个阶段 —— 放错排就什么也不做
+  const isTop = (t: Tool): t is Top => t === 'wire' || t === 'hazard' || t === 'flush'
+  if (c.row === 'stage') slots[c.slot] = tool === 'erase' ? null : (isTop(tool) ? slots[c.slot]! : tool)
+  else tops[c.slot] = tool === 'erase' ? null : (isTop(tool) ? tool : tops[c.slot]!)
   run = null
 })
 addEventListener('keydown', e => {
@@ -296,11 +360,16 @@ function frame() {
   const exSlot = slots.indexOf('ex')
   for (let s = 0; s < NSLOT; s++) {
     const x = g.x0 + s * (g.cw + 10), t = tops[s]
-    box(x, g.topY, g.cw, g.ch, t ? (t === 'wire' ? '#1d3a34' : '#3a2f1a') : '#1b1622', t ? (t === 'wire' ? TEAL : AMBER) : '#332c40')
+    box(x, g.topY, g.cw, g.ch,
+      t === 'wire' ? '#1d3a34' : t === 'flush' ? '#2a1030' : t === 'hazard' ? '#3a2f1a' : '#1b1622',
+      t === 'wire' ? TEAL : t === 'flush' ? '#c07adf' : t === 'hazard' ? AMBER : '#332c40')
     if (t) {
-      text(t === 'wire' ? '旁路线' : '冒险检测', x + g.cw / 2, g.topY + 34, 15, t === 'wire' ? '#8fe0c8' : AMBER, 'center', true)
-      const useful = t === 'wire' ? (exSlot >= 0 && s > exSlot) : slots[s] === 'id'
-      text(useful ? (t === 'wire' ? '↩ 送回执行级' : '值没到就停一拍') : '接在这里没用', x + g.cw / 2, g.topY + 58, 11, useful ? DIM : RED, 'center')
+      //  三种零件各有各的「有用位置」,画错了画面就在撒谎 —— 加零件时这三处要一起加
+      const col = t === 'wire' ? '#8fe0c8' : t === 'flush' ? '#e0a8ff' : AMBER
+      const useful = t === 'wire' ? (exSlot >= 0 && s > exSlot) : t === 'flush' ? slots[s] === 'ex' : slots[s] === 'id'
+      const what = t === 'wire' ? '↩ 送回执行级' : t === 'flush' ? '跳了就划掉前面几条' : '值没到就停一拍'
+      text(toolName(t), x + g.cw / 2, g.topY + 34, 15, col, 'center', true)
+      text(useful ? what : '接在这里没用', x + g.cw / 2, g.topY + 58, 11, useful ? DIM : RED, 'center')
     }
   }
   for (let s = 0; s < NSLOT; s++) {
@@ -320,7 +389,7 @@ function frame() {
   // 时空图 —— 课本上那张斜梯形,是这台机器自己跑出来的。
   // 起点要**同时**让开机器和左栏:左栏会随指令条数/有没有存储器面板变高,写死就会被压上。
   const ty = Math.max(g.y0 + g.ch + 46, ly + 56)
-  text('时空图(每一拍,哪条指令在哪一级;红=被停顿卡住)', 24, ty - 12, 13, DIM)
+  text('时空图(每一拍,哪条指令在哪一级;红=被停顿卡住,紫色划掉=被分支作废)', 24, ty - 12, 13, DIM)
   if (run) {
     const cwid = Math.min(52, (W - 80) / Math.max(1, run.trace.length)), rh = 28
     lv.prog.forEach((_, i) => {
@@ -328,8 +397,15 @@ function frame() {
       run!.trace.forEach((c, t) => {
         const s = c.slots.indexOf(i); if (s < 0) return
         const st = slots[s], x = 56 + t * cwid, held = c.stalled && s <= slots.indexOf('id')
-        box(x, ty + 4 + i * rh, cwid - 4, rh - 6, held ? '#3a2118' : '#22304a', held ? RED : '#4a6fb0', 1.5)
-        text(st ? STAGE_NAME[st] : '·', x + (cwid - 4) / 2, ty + 22 + i * rh, 12, CREAM, 'center')
+        const killed = !!c.killed?.includes(i)   // 这一拍被分支作废划掉:它到此为止,后面不再出现
+        box(x, ty + 4 + i * rh, cwid - 4, rh - 6,
+          killed ? '#2a1030' : held ? '#3a2118' : '#22304a',
+          killed ? '#c07adf' : held ? RED : '#4a6fb0', 1.5)
+        text(st ? STAGE_NAME[st] : '·', x + (cwid - 4) / 2, ty + 22 + i * rh, 12, killed ? '#e0bfff' : CREAM, 'center')
+        if (killed) { // 真的划一道:走错路取进来的,当场废掉
+          ctx.strokeStyle = '#e07adf'; ctx.lineWidth = 2; ctx.beginPath()
+          ctx.moveTo(x + 3, ty + rh - 5 + i * rh); ctx.lineTo(x + cwid - 7, ty + 7 + i * rh); ctx.stroke()
+        }
       })
     })
     run.trace.forEach((_, t) => text(String(t + 1), 56 + t * cwid + (cwid - 4) / 2, ty + 4 + lv.prog.length * rh + 14, 11, DIM, 'center'))
@@ -357,7 +433,7 @@ function frame() {
 
   // 零件盘
   const T = trayGeo(), items = levelTools()
-  text(`零件盘 · 点一个,再点槽位放下${tool === 'wire' ? '(旁路线放在结果已经出炉的那一级上方)' : tool === 'hazard' ? '(冒险检测放在译码级上方)' : ''}`, T.x0, T.y - 10, 12, AMBER)
+  text(`零件盘 · 点一个,再点槽位放下${tool === 'wire' ? '(旁路线放在结果已经出炉的那一级上方)' : tool === 'hazard' ? '(冒险检测放在译码级上方)' : tool === 'flush' ? '(分支作废放在执行级上方 —— 分支在哪一级判出跳不跳,就装在哪一级)' : ''}`, T.x0, T.y - 10, 12, AMBER)
   items.forEach((t, i) => {
     const x = T.x0 + i * (T.ts + T.gap), on = tool === t
     box(x, T.y, T.ts, T.ts, on ? '#3a342a' : '#20190f', on ? '#ffe6a8' : '#5a4e3a', on ? 3 : 1.5)

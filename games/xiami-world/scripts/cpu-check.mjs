@@ -1,5 +1,5 @@
 /**
- * 第二台机器 · CPU 五级流水线 —— 五关冒烟判据。
+ * 第二台机器 · CPU 五级流水线 —— 六关冒烟判据。
  *
  * 这台机器要证明的是「仿真是真的」,所以判据全部围绕一件事:
  * **参考答案不是写死的,是同一段程序顺序执行一遍算出来的**;你搭的流水线跑出来必须和它一致。
@@ -25,7 +25,7 @@ const N = null
 const play = (i) => p.evaluate(i => window.__cpuPlay(i), i)
 const go = (st, tp) => p.evaluate(({ st, tp }) => { window.__cpuSet(st, tp); return window.__cpuRun() }, { st, tp })
 
-console.log('\n第二台机器 · CPU 五级流水线 · 五关\n')
+console.log('\n第二台机器 · CPU 五级流水线 · 六关\n')
 
 /* ── L0 分成五级:顺序是仿真自己认的,不是我规定的 ── */
 {
@@ -84,18 +84,37 @@ console.log('\n第二台机器 · CPU 五级流水线 · 五关\n')
   ok(!memLast.ok, `L3 反例:把〈访存〉挪到〈写回〉后面→数据还没取出来就写回去了(regs=[${memLast.regs}])`)
 }
 
-/* ── L4 终关:两条 lw + 三条加法,三种冒险全在里面 ── */
+/* ── L4 控制冒险:分支到执行级才判得出跳不跳,后面两条早进来了 ── */
 {
   const l = await play(4)
-  ok(JSON.stringify(l.ref) === JSON.stringify([0, 23, 37, 14]), `L4 参考:${l.prog.join(' / ')} → [${l.ref}]`)
-  const good = await go(FIVE, [N, 'hazard', N, 'wire', 'wire'])
-  ok(good.ok, `L4 终关 两条旁路 + 一个冒险检测 → 跑对(regs=[${good.regs}])`)
-  ok(good.cycles <= l.par.cycles, `L4 拍数达标:${good.cycles} 拍 ≤ 目标 ${l.par.cycles} 拍(停顿 ${good.stalls} 拍)`)
-  ok(good.parts <= l.par.parts, `L4 件数达标:${good.parts} 件 ≤ 目标 ${l.par.parts} 件`)
-  const noHazard = await go(FIVE, [N, N, N, 'wire', 'wire'])
-  ok(!noHazard.ok, `L4 反例:没有冒险检测→load-use 那处读到旧值(regs=[${noHazard.regs}])`)
-  const noWire = await go(FIVE, [N, 'hazard', N, N, N])
-  ok(noWire.ok && noWire.cycles > good.cycles, `L4 反例(慢解):只停顿不接线→还是对的,但从 ${good.cycles} 拍涨到 ${noWire.cycles} 拍`)
+  ok(JSON.stringify(l.ref) === JSON.stringify([9, 1, 2, 8]), `L4 参考(带分支,按 PC 走一遍):${l.prog.join(' / ')} → [${l.ref}]`)
+  const good = await go(FIVE, [N, 'hazard', 'flush', 'wire', 'wire'])
+  ok(good.ok, `L4 装上〈分支作废〉→ 跳走后那条没被执行(regs=[${good.regs}])`)
+  ok(good.regs[3] === 8 && good.regs[0] === 9,
+    `L4 不跳的那条分支不该误伤:它后面那三条(含落在作废阴影之外的 add r3,r3,r1)全跑了(r3=${good.regs[3]})`)
+  const noFlush = await go(FIVE, [N, 'hazard', N, 'wire', 'wire'])
+  ok(!noFlush.ok && noFlush.regs[3] === 16,
+    `L4 反例:没有作废→走错路那条 add r3,r3,r3 真的把 r3 翻了倍(regs=[${noFlush.regs}] 应为 [${l.ref}])`)
+  const wrongSpot = await go(FIVE, [N, 'hazard', N, 'flush', 'wire'])
+  ok(!wrongSpot.ok,
+    `L4 反例:作废装在〈访存〉上方→分支不在那一级判,等于没装(regs=[${wrongSpot.regs}])`)
+  ok(good.cycles <= l.par.cycles, `L4 拍数达标:${good.cycles} ≤ 目标 ${l.par.cycles}`)
+}
+
+/* ── L5 终关:数据冒险 + load-use + 控制冒险,三种全在一段里 ── */
+{
+  const l = await play(5)
+  ok(JSON.stringify(l.ref) === JSON.stringify([0, 23, 37, 14]), `L5 参考:${l.prog.join(' / ')} → [${l.ref}]`)
+  const good = await go(FIVE, [N, 'hazard', 'flush', 'wire', 'wire'])
+  ok(good.ok, `L5 终关 旁路×2 + 冒险检测 + 分支作废 → 跑对(regs=[${good.regs}])`)
+  ok(good.cycles <= l.par.cycles, `L5 拍数达标:${good.cycles} 拍 ≤ 目标 ${l.par.cycles} 拍(停顿 ${good.stalls} 拍)`)
+  ok(good.parts <= l.par.parts, `L5 件数达标:${good.parts} 件 ≤ 目标 ${l.par.parts} 件`)
+  const noFlush = await go(FIVE, [N, 'hazard', N, 'wire', 'wire'])
+  ok(!noFlush.ok && noFlush.regs[1] === 999, `L5 反例:缺分支作废→走错路那条把 r1 写成了 999(regs=[${noFlush.regs}])`)
+  const noHazard = await go(FIVE, [N, N, 'flush', 'wire', 'wire'])
+  ok(!noHazard.ok, `L5 反例:缺冒险检测→load-use 那处读到旧值(regs=[${noHazard.regs}])`)
+  const noWire = await go(FIVE, [N, 'hazard', 'flush', N, N])
+  ok(noWire.ok && noWire.cycles > good.cycles, `L5 反例(慢解):只停顿不接线→还是对的,但从 ${good.cycles} 拍涨到 ${noWire.cycles} 拍`)
 }
 
 ok(errs.length === 0, `全程无控制台报错${errs.length ? ':' + errs[0] : ''}`)
