@@ -18,6 +18,7 @@ import { run as cache } from './cache.test.ts'
 import { run as infer } from './infer.test.ts'
 import { run as ssd } from './ssd.test.ts'
 import { run as dram } from './dram.test.ts'
+import { run as gpu } from './gpu.test.ts'
 
 circuit()
 route()
@@ -45,6 +46,7 @@ cache()
 infer()
 ssd()
 dram()
+gpu()
 
 //  自检：证明这个测试台真的能判红。
 //  一个永远绿的判据比没有判据更糟 —— 它会让你以为验过了。

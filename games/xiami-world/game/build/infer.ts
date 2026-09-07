@@ -261,6 +261,8 @@ HUB = mountHub({
   links: [
     { label: '← 回房子 · 路由器', href: new URL('./', location.href).href },
     { label: '← Cache 内存层级', href: new URL('cache.html', location.href).href },
+    //  推理引擎跑在 GPU 上 —— 再往下一层就是那台机器本身
+    { label: 'GPU →', href: new URL('gpu.html', location.href).href },
   ],
   read: () => best,
   write: d => { if (d && typeof d === 'object') best = d as Record<number, { time: number }> },
