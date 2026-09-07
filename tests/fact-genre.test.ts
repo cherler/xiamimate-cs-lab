@@ -34,9 +34,10 @@ const DEBT_CAP = 0
 
 /**
  * 「正确项明显长过干扰项」的**存量**欠账上限。
- * 486 是这条判据刚立起来时的实测值（全部来自更早几轮写的 facts）。补一批就把它调小。
+ * 486 是这条判据刚立起来时的实测值（全部来自更早几轮写的 facts）。补一批就把它调小 ——
+ * 现在是 424：库层那 143 条把「选项」和「出处」对调之后降下来的（见 catalog.ts 里那段注释）。
  */
-const LEN_DEBT_CAP = 486
+const LEN_DEBT_CAP = 424
 
 console.log('\n— AI 学伴 · 题型纪律 —')
 
@@ -151,7 +152,60 @@ rows.length >= 200 && rows.reduce((n, r) => n + r.concept + r.count, 0) >= 700
   ok(`干扰项不足三个的题有 ${thin.length} 道${thin.length ? '：' + thin.slice(0, 4).join(' ') : ''}`)
 }
 
-/* ⑥ 能判红的自检：规则本身有没有鉴别力 */
+/* ⑥ 库层那批题的形状 —— 选项不许再是一段说明书。
+      原来「Hugging Face Transformers 是干什么的?」的正确项是 142 字的说明书、干扰项是 7 字标签，
+      挑最长的就中、读完也没学到东西。现在短结论上来当选项、说明书下去当出处。 */
+{
+  const libs = CATALOG.filter(e => e.doc.kind === 'library')
+  const long: string[] = []
+  let swapped = 0
+  for (const e of libs) {
+    let t: Record<string, unknown>[] = []
+    try { t = traceOf(e) as Record<string, unknown>[] } catch { continue }
+    for (const f of e.facts) {
+      let r
+      try { r = f.compute(t) } catch { continue }
+      if (r.answer.length < r.evidence.length) swapped++
+      if (r.answer.length > 60) long.push(`${e.id}/${f.id} ${r.answer.length} 字`)
+    }
+  }
+  swapped >= 140
+    ? ok(`库层有 ${swapped} 条把选项和出处对调了（说明书挪进了讲解）`)
+    : bad(`只有 ${swapped} 条对调 —— 那段变换是不是失效了?（它按 doc.kind === 'library' 卡的）`)
+  long.length === 0
+    ? ok(`库层没有哪个选项超过 60 字（对调前最长 167 字）`)
+    : bad(`库层还有 ${long.length} 个选项是长说明书：${long.slice(0, 5).join('；')}`)
+
+  /*  「这个库是干什么的」那一问的干扰项，必须是**别的库真实的角色描述** ——
+      不是「一个物理仿真器」这种笼统标签。这样长度天然齐平，而且排除它需要真知道那个库。 */
+  const isRoleAsk = (a: string) => /是干什么的|是什么|做什么|干嘛|什么角色/.test(a)
+  const roles = new Set<string>()
+  for (const e of libs) {
+    const f = e.facts[0]
+    if (!f || !isRoleAsk(f.ask)) continue
+    try { roles.add(f.compute(traceOf(e) as Record<string, unknown>[]).answer) } catch { /* 跳过 */ }
+  }
+  const notRole: string[] = []
+  let crossed = 0
+  for (const e of libs) {
+    const f = e.facts[0]
+    if (!f || !isRoleAsk(f.ask)) continue
+    let r
+    try { r = f.compute(traceOf(e) as Record<string, unknown>[]) } catch { continue }
+    const ds = f.distractors(r.answer, [])
+    if (!ds.every(d => roles.has(d))) { notRole.push(e.id); continue }
+    if (ds.includes(r.answer)) { notRole.push(`${e.id}(干扰项里混进了正确答案)`); continue }
+    crossed++
+  }
+  crossed >= 30
+    ? ok(`${crossed} 道「这个库是干什么的」用的是别的库真实的角色描述当干扰项`)
+    : bad(`只有 ${crossed} 道换成了跨库干扰项 —— 词面重合的筛子是不是把候选全滤光了?`)
+  notRole.length <= libs.length - crossed
+    ? ok(`其余 ${notRole.length} 道保留了原干扰项（挑不出三个够远的候选，宁可不换）`)
+    : bad(`有 ${notRole.length} 道的干扰项既不是跨库角色、也不该保留：${notRole.slice(0, 5).join(' ')}`)
+}
+
+/* ⑦ 能判红的自检：规则本身有没有鉴别力 */
 {
   const fakeAll = { id: 'x', title: 'x', kernel: null as never, doc: { kind: 'x', params: {}, entities: [], streams: [] }, facts: [] }
   //  a) 「至少一条原理题」这条规则,喂一个零原理题的实验必须算它欠账

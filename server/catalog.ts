@@ -4112,10 +4112,91 @@ for (const [id, extra] of Object.entries(CONCEPT_FACTS)) {
   if (e) e.facts = [...e.facts, ...extra]
 }
 
+/**
+ * 库层那批题:把「选项」和「出处」对调。
+ *
+ * 起因:用户报了「题目肤浅」之后,判据又抓出一批**靠长度就能猜中**的题,其中最离谱的
+ * 全在软件库层 —— 比如「Hugging Face Transformers 是干什么的?」,正确项是一段 142 字的
+ * 说明书,三个干扰项是「一个物理仿真器」「一个推理编译器」「一个向量库」,各 7 个字。
+ * 不用懂也能挑出最长那条,而且读完也没学到东西 —— 那段说明书本来就不是「选项」,是「讲解」。
+ *
+ * 好在这批 fact 的 `evidence` 字段里**早就写着一句精炼版的结论**
+ * (「通信中间件+工具生态、非真OS、DDS」「刚体动力学算法库(RNEA/ABA/CRBA)+解析导数」)——
+ * 那正是选项该有的长度。所以不是重写,是**对调**:短结论上来当选项,整段说明下去当出处
+ * (讲解会用到)。一处变换管 143 条,不去动 143 个地方。
+ *
+ * ⚠️ 只在库层做。别的实验的 evidence 是**轨迹引文**(「URL#1 发号 100000000 → …」),
+ * 那种东西当选项就是答非所问 —— 所以这个变换按 doc.kind 卡死,不许推广。
+ */
+for (const e of CATALOG) {
+  if (e.doc.kind !== 'library') continue
+  e.facts = e.facts.map(f => {
+    const probe = (() => { try { return f.compute(traceOf(e)) } catch { return null } })()
+    /*  出处太短(当不了一句完整结论)或不比答案短的,原样留着。
+        门槛一开始定在 12,结果把「GBDT/决策树」「预处理→编译→汇编→链接」这种**正好合适**的
+        短结论挡在外面,那 5 条的选项仍是 70~90 字的说明书 —— 判据当场抓到。放宽到 6。 */
+    if (!probe || probe.evidence.length < 6 || probe.evidence.length >= probe.answer.length) return f
+    return {
+      ...f,
+      genre: 'concept' as const,      // 对调后答案变短,别被「短答案=计数题」的兜底推断认错
+      compute: (t: Frame[]) => {
+        const r = f.compute(t)
+        return { answer: r.evidence, step: r.step, evidence: r.answer }
+      },
+      //  干扰项函数拿到的仍是**原来那个**答案 —— 有的干扰项是按答案算出来的,不能给它换参数
+      distractors: (_a: string, t: Frame[]) => f.distractors(f.compute(t).answer, t),
+    }
+  })
+}
+
 const BY_ID = new Map(CATALOG.map(e => [e.id, e]))
 
 export function getEntry(id: string): CatalogEntry | undefined {
   return BY_ID.get(id)
+}
+
+/**
+ * 库层「这个库是干什么的」那一问:干扰项换成**别的库的角色描述**。
+ *
+ * 原来的干扰项是「一个物理仿真器」「一个向量库」这种 7 字标签,和正确项一比长度悬殊,
+ * 挑最长的就中;而且它们太笼统,排除起来不需要知识。换成别的库那句真实的角色描述之后:
+ *   · 长度天然齐平(都是对调上来的同一种句子);
+ *   · 每一条都是**真实存在的角色**,只是属于别的库 —— 想排除就得知道那个库是干嘛的;
+ *   · 必然是错的(描述的是另一个库),不会出现"两个都对"。
+ * 于是这道题从「认最长的」变成了「这四句话里哪句说的是 Pinocchio」。
+ *
+ * ⚠️ 两个库的角色可能真的重叠(都叫「框架」「库」),那样干扰项就可能也说得通。
+ * 所以候选要过一道**词面重合**的筛:和正确答案共享两个以上实词的一律不用。
+ */
+{
+  const isRoleAsk = (a: string) => /是干什么的|是什么|做什么|干嘛|什么角色/.test(a)
+  const libs = CATALOG.filter(e => e.doc.kind === 'library')
+  //  取每个库的首条 fact(约定就是「这个库是干什么的」)对调后的那句角色描述
+  const roleOf = new Map<string, string>()
+  for (const e of libs) {
+    const f = e.facts[0]
+    if (!f || !isRoleAsk(f.ask)) continue
+    try { roleOf.set(e.id, f.compute(run(e.kernel.compile(e.doc) as CompiledModel<Frame>)).answer) } catch { /* 跑不出来就不参与 */ }
+  }
+  /** 两句话共享几个长度≥2 的实词 —— 用来避开角色真的撞车的库。 */
+  const overlap = (a: string, b: string) => {
+    const grams = (s: string) => new Set((s.match(/[\u4e00-\u9fa5]{2,4}/g) ?? []))
+    const ga = grams(a); let n = 0
+    for (const g of grams(b)) if (ga.has(g)) n++
+    return n
+  }
+  for (const e of libs) {
+    const f = e.facts[0]
+    if (!f || !isRoleAsk(f.ask)) continue
+    const mine = roleOf.get(e.id); if (!mine) continue
+    const pool = [...roleOf.entries()].filter(([id, r]) => id !== e.id && overlap(mine, r) < 2).map(([, r]) => r)
+    if (pool.length < 3) continue        // 挑不出三个够远的就保留原干扰项
+    //  按实验 id 的哈希定点取,保证每次出题都一样(可复现),不随机
+    const h = [...e.id].reduce((n, c) => (n * 31 + c.charCodeAt(0)) >>> 0, 7)
+    const picks = [0, 1, 2].map(k => pool[(h + k * 37) % pool.length]!)
+    if (new Set(picks).size < 3) continue
+    e.facts = e.facts.map(x => x === f ? { ...x, distractors: () => picks } : x)
+  }
 }
 
 /** 跑内核得到确定性 trace（出题/验答的唯一真源）。 */
