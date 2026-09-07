@@ -18,6 +18,16 @@ export type Question = {
   factId: string
   /** 这道题是原理题还是计数题 —— 前端可以据此标注,判据也据此配比。 */
   genre: FactGenre
+  /**
+   * 题型。
+   *   'direct'      —— 正向单选:一句对的 + 三句错的
+   *   'odd-one-out' —— 「下列说法错误的是」:三句对的 + 一句错的,答案是那句错的
+   *
+   * 为什么要有第二种:用户问「1004 条题面刷完就没新题了,要不要上大模型生成题面兜底」。
+   * 换措辞不换考点,同一个知识点问第四遍也还是那道题;**换题型**才是真的换了一道题 ——
+   * 而且这一种的四个选项全是我们钉死的真命题/假命题,模型一句都不用编。
+   */
+  variant: 'direct' | 'odd-one-out'
   question: string
   options: string[]
   correctIndex: number       // 由引擎设定，大模型碰不到
@@ -118,7 +128,14 @@ export type BuildOptions = { count?: number; useLLM?: boolean; principal?: Princ
  */
 export const MAX_COUNT_QUESTIONS = 0
 
+/** 判据用的同步入口 —— 出题本来就不含异步了,async 只为兼容既有调用方。 */
+export function buildQuizSync(expId: string, count?: number): Question[] {
+  return buildQuizImpl(expId, { count })
+}
 export async function buildQuiz(expId: string, opts: BuildOptions = {}): Promise<Question[]> {
+  return buildQuizImpl(expId, opts)
+}
+function buildQuizImpl(expId: string, opts: BuildOptions = {}): Question[] {
   const entry = getEntry(expId)
   if (!entry) throw new Error(`未知实验：${expId}（可用：见 /lab/ai/experiments）`)
   const trace = traceOf(entry)
@@ -128,20 +145,61 @@ export async function buildQuiz(expId: string, opts: BuildOptions = {}): Promise
   const targeted = opts.factId ? entry.facts.filter(f => f.id === opts.factId) : null
   const picks = targeted && targeted.length > 0 ? targeted : pickBalanced(entry, trace, opts.count)
 
+  /*  一套题里最多掺一道「找错的」—— 它需要本实验另有 ≥3 条原理题(拿它们的正确答案当真命题)。
+      掺一道就够:多了会让整套题都变成同一种形式,反而更单调。 */
+  const truths = servableFacts(entry, trace)
+    .filter(f => genreOf(f, trace) === 'concept')
+    .map(f => { try { return f.compute(trace).answer } catch { return '' } })
+    .filter(Boolean)
+  const oddIdx = truths.length >= 4 && picks.length > 1 ? Math.floor(Math.random() * picks.length) : -1
+
   //  全同步:引擎算答案、我们写的题面、洗牌。一套题 10 毫秒级,不等任何网络。
-  return picks.map((fact): Question => {
+  return picks.map((fact, qi): Question => {
     const genre = genreOf(fact, trace)
     const { answer, step, evidence } = fact.compute(trace)      // ← 引擎算出的钉死答案
     const distractors = fact.distractors(answer, trace).filter(d => d !== answer)
-    const options = shuffle([answer, ...distractors])
-    const correctIndex = options.indexOf(answer)                // ← 我们设定，模型碰不到
-    return {
-      expId, title: entry.title, factId: fact.id, genre,
-      question: askWithData(entry, fact, trace),
-      options, correctIndex,
-      explanation: engineExplanation(entry, answer, evidence),
-      provenance: { engineAnswer: answer, traceLen: trace.length, sourceStep: step, evidence, phrasedBy: 'engine' },
+    const direct = (): Question => {
+      const options = shuffle([answer, ...distractors])
+      return {
+        expId, title: entry.title, factId: fact.id, genre, variant: 'direct',
+        question: askWithData(entry, fact, trace),
+        options, correctIndex: options.indexOf(answer),         // ← 我们设定，模型碰不到
+        explanation: engineExplanation(entry, answer, evidence),
+        provenance: { engineAnswer: answer, traceLen: trace.length, sourceStep: step, evidence, phrasedBy: 'engine' },
+      }
     }
+    if (qi === oddIdx && distractors.length > 0) {
+      /*  「下列说法错误的是」:三句**别的 fact 的正确答案**(都是真的)+ 一句本 fact 的干扰项(假的)。
+          正确选项 = 那句假的。四个选项没有一句是模型写的。 */
+      /*  选四句话的时候要按长度配平。
+          ⚠️ 第一版随手取一条干扰项当假命题,结果三句真命题都是 50 字的答案、假的只有 12 字
+          (「让它一直跑,反正迟早会对」)——**挑最短的就中**,正是前几轮那个「挑最长的就中」
+          的镜像。第二版反过来要求「假的必须够长」,结果 46 个够格的实验里只有 1 个通得过 ——
+          存量的干扰项本来就短,这条守卫等于把功能判了死刑。
+          第三版才对:**不挑长的,挑配得上的** —— 对每条干扰项,去找长度最接近它的三句真命题,
+          取整体最齐的那一组。真假两边都不靠长度露馅,而且不挑食。 */
+      const pool = truths.filter(x => x !== answer)
+      let best: { wrong: string; others: string[]; spread: number } | null = null
+      for (const w of distractors) {
+        const near = [...pool].sort((a, b) => Math.abs(a.length - w.length) - Math.abs(b.length - w.length)).slice(0, 3)
+        if (near.length < 3) continue
+        const lens = [w, ...near].map(x => x.length)
+        const spread = Math.max(...lens) / Math.max(1, Math.min(...lens))
+        if (!best || spread < best.spread) best = { wrong: w, others: near, spread }
+      }
+      //  连最齐的一组都差到两倍以上,就别出这道题了 —— 那说明这个实验的选项本来就没配平
+      if (best && best.spread <= 2) {
+        const opts = shuffle([best.wrong, ...best.others])
+        return {
+          expId, title: entry.title, factId: fact.id, genre, variant: 'odd-one-out',
+          question: `下列关于「${entry.title}」的说法，哪一条是**错误**的？`,
+          options: opts, correctIndex: opts.indexOf(best.wrong),
+          explanation: `错的是「${best.wrong}」，其余三条都是这个实验里成立的结论。`,
+          provenance: { engineAnswer: best.wrong, traceLen: trace.length, sourceStep: step, evidence, phrasedBy: 'engine' },
+        }
+      }
+    }
+    return direct()
   })
 }
 
@@ -153,21 +211,35 @@ export async function buildQuiz(expId: string, opts: BuildOptions = {}): Promise
  * 答案由引擎/人工钉死,模型碰不到,它只是把「为什么」说成人话。
  */
 export async function explainQuestion(
-  expId: string, factId: string, opts: { principal?: Principal; useLLM?: boolean } = {},
+  expId: string, factId: string,
+  opts: { principal?: Principal; useLLM?: boolean; question?: string; options?: string[]; correctIndex?: number } = {},
 ): Promise<{ explanation: string; source: 'llm' | 'engine'; billing?: Billing }> {
   const entry = getEntry(expId)
   if (!entry) throw new Error(`未知实验：${expId}`)
   const fact = entry.facts.find(f => f.id === factId)
   if (!fact) throw new Error(`实验 ${expId} 里没有事实 ${factId}`)
   const trace = traceOf(entry)
-  const { answer, evidence } = fact.compute(trace)
-  const distractors = fact.distractors(answer, trace).filter(d => d !== answer)
+  const { answer: factAnswer, evidence } = fact.compute(trace)
+
+  /*  客户端可以把屏幕上那道题原样传回来(「找错的」那种题型的选项不是从单条 fact 推得出的)。
+      但**「哪个是对的」不许客户端说了算**:这里校验它声称的正确选项确实是引擎/我们写死的
+      某条答案或干扰项 —— 对不上就不认,退回按 fact 自己算。 */
+  const known = new Set<string>()
+  for (const f of entry.facts) {
+    try { const a = f.compute(trace).answer; known.add(a); for (const d of f.distractors(a, trace)) known.add(d) } catch { /* 跳过 */ }
+  }
+  const claimed = opts.options?.[opts.correctIndex ?? -1]
+  const trusted = !!claimed && known.has(claimed)
+  const answer = trusted ? claimed : factAnswer
+  const distractors = trusted && opts.options
+    ? opts.options.filter(o => o !== claimed)
+    : fact.distractors(factAnswer, trace).filter(d => d !== factAnswer)
   const fallback = { explanation: engineExplanation(entry, answer, evidence), source: 'engine' as const }
   if (opts.useLLM === false) return fallback
   try {
     const r = await generate({
       module: 'lab_ai', task: 'quiz_explain', system: prompt('quiz-explain'),
-      prompt: `实验：${entry.title}\n题面：${askWithData(entry, fact, trace)}\n` +
+      prompt: `实验：${entry.title}\n题面：${trusted && opts.question ? opts.question : askWithData(entry, fact, trace)}\n` +
         `正确答案：${answer}\n三个干扰项（都是错的，逐个驳倒）：\n${distractors.map(d => `  · ${d}`).join('\n')}\n` +
         `引擎给出的出处：${evidence}\n\n请写讲解。`,
       maxTokens: 400, provider: 'minimax', principal: opts.principal ?? null,

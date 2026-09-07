@@ -29,6 +29,8 @@ type Question = {
   /** 原理题还是计数题 —— 标出来,读的人一眼知道这道题在考理解还是在考跟着跑一遍。
    *  服务端旧版本没有这个字段,所以是可选的。 */
   genre?: 'concept' | 'count'
+  /** 'odd-one-out' = 「下列说法错误的是」,四个选项全是钉死的真/假命题 */
+  variant?: 'direct' | 'odd-one-out'
   explanation: string; provenance: { engineAnswer: string; phrasedBy: 'llm' | 'fallback'; sourceStep?: number; evidence?: string }
 }
 type Card = { front: string; back: string; source: 'engine' | 'llm' }
@@ -144,11 +146,15 @@ function QuizView({ expId, onCite, onFactAnswer, drillFactId, onDrillConsumed }:
       取不回来也不要紧:题目自带一份引擎兜底讲解(标准答案 + 出处)。 */
   const [why, setWhy] = useState<Record<string, string>>({})
   const [whyLoading, setWhyLoading] = useState<Record<string, boolean>>({})
-  async function fetchWhy(factId: string) {
+  async function fetchWhy(q: Question) {
+    const factId = q.factId
     if (why[factId] || whyLoading[factId]) return
     setWhyLoading(w => ({ ...w, [factId]: true }))
     try {
-      const d = await postJSON<{ explanation: string; source: string }>('/lab/ai/explain', { expId, factId })
+      //  题面与选项一并回传:「找错的」那种题型服务端推不回来。
+      //  但「哪个是对的」由服务端拿引擎认识的字符串校验,客户端说了不算。
+      const d = await postJSON<{ explanation: string; source: string }>('/lab/ai/explain',
+        { expId, factId, question: q.question, options: q.options, correctIndex: q.correctIndex })
       if (d.source === 'llm' && d.explanation) setWhy(w => ({ ...w, [factId]: d.explanation }))
     } catch { /* 兜底讲解已经在题目里了,取不到就用它 */ }
     finally { setWhyLoading(w => ({ ...w, [factId]: false })) }
@@ -190,7 +196,9 @@ function QuizView({ expId, onCite, onFactAnswer, drillFactId, onDrillConsumed }:
           <div key={qi} className="aic-q">
             <p className="aic-qtext">
               {qi + 1}. {q.question}
-              {q.genre && <span className="aic-genre">{q.genre === 'concept' ? '原理' : '算一遍'}</span>}
+              {q.variant === 'odd-one-out'
+                ? <span className="aic-genre">找错的</span>
+                : q.genre && <span className="aic-genre">{q.genre === 'concept' ? '原理' : '算一遍'}</span>}
             </p>
             <div className="aic-opts">
               {q.options.map((opt, oi) => {
@@ -205,7 +213,7 @@ function QuizView({ expId, onCite, onFactAnswer, drillFactId, onDrillConsumed }:
                       if (picked[qi] != null) return   // 已答过不重复记账
                       setPicked(p => ({ ...p, [qi]: oi }))
                       //  讲解**答完才取** —— 它本来就只在这时候显示,提前给三道都生成是白等 10 秒
-                      void fetchWhy(q.factId)
+                      void fetchWhy(q)
                       //  作答即计入进度:factId + 对错 + 出处实验 + 题面(错题本要显示)
                       onFactAnswer?.(q.factId, oi === q.correctIndex, expId, q.question)
                     }}>

@@ -20,7 +20,7 @@
  */
 import { CATALOG, traceOf, genreOf } from '../server/catalog.ts'
 import { CONCEPT_FACTS } from '../server/catalog/concepts.ts'
-import { pickBalanced, inputBrief, MAX_COUNT_QUESTIONS } from '../server/quiz.ts'
+import { pickBalanced, inputBrief, MAX_COUNT_QUESTIONS, buildQuizSync } from '../server/quiz.ts'
 
 let failures = 0
 const ok = (m: string) => console.log('  ✅ ' + m)
@@ -44,6 +44,12 @@ const LEN_DEBT_CAP = 424
  * 191 是「计数题不再出成题目」之后的实测值 —— 那一刀把这笔欠账露了出来。
  */
 const THIN_DEBT_CAP = 191
+
+/**
+ * 现在有几个实验出得了「找错的」题。**下限，只许涨不许跌。**
+ * 1 是实测值 —— 它被选项长度那笔债卡着（见规则⑧的注释），债还上它就自己涨。
+ */
+const ODD_UNLOCKED_MIN = 1
 
 console.log('\n— AI 学伴 · 题型纪律 —')
 
@@ -225,7 +231,47 @@ rows.length >= 200 && rows.reduce((n, r) => n + r.concept + r.count, 0) >= 700
     : bad(`有 ${notRole.length} 道的干扰项既不是跨库角色、也不该保留：${notRole.slice(0, 5).join(' ')}`)
 }
 
-/* ⑧ 能判红的自检：规则本身有没有鉴别力 */
+/* ⑧ 「找错的」题型 —— 三句真的 + 一句假的，答案是那句假的。
+      用户问「1004 条题面刷太多次就没新题了，要不要上大模型生成题面兜底」。
+      换措辞不换考点：同一个知识点问第四遍，措辞再新也还是那道题。**换题型才是真的换了一道**，
+      而且这一种的四个选项全是我们钉死的真/假命题，模型一句都不用编。
+
+      ⚠️ 但它现在几乎跑不起来，原因要说明白：存量的正确答案 54~164 字、干扰项只有 5~24 字，
+      四句话凑不成一组长度齐平的 —— 硬凑就变成「挑最短的就中」（前几轮那个「挑最长的就中」
+      的镜像）。所以它被**同一笔债**（LEN_DEBT_CAP 那 424 道）卡着：选项配平了它就自动解锁。
+      这条判据记的是现状，不是理想值 —— 只许涨不许跌。 */
+{
+  let made = 0, unlocked = 0
+  const bad: string[] = []
+  for (const e of CATALOG) {
+    let t: Record<string, unknown>[] = []
+    try { t = traceOf(e) as Record<string, unknown>[] } catch { continue }
+    if (e.facts.filter(f => genreOf(f, t) === 'concept').length < 4) continue
+    let got = false
+    for (let k = 0; k < 40; k++) {
+      for (const q of buildQuizSync(e.id, 3)) {
+        if (q.variant !== 'odd-one-out') continue
+        made++; got = true
+        const right = q.options[q.correctIndex]!
+        const lens = q.options.map(o => o.length)
+        //  真假两边都不许靠长度露馅
+        if (Math.max(...lens) / Math.max(1, Math.min(...lens)) > 2) bad.push(`${e.id} 四个选项长度差 ${Math.max(...lens)}/${Math.min(...lens)}`)
+        if (new Set(q.options).size !== 4) bad.push(`${e.id} 四个选项有重复`)
+        void right
+      }
+    }
+    if (got) unlocked++
+  }
+  unlocked >= ODD_UNLOCKED_MIN
+    ? ok(`能出「找错的」实验有 ${unlocked} 个（下限 ${ODD_UNLOCKED_MIN}）—— 抽样生成 ${made} 道；选项配平后会自动变多`)
+    : bad.push(`能出「找错的」的实验掉到 ${unlocked} 个 < 下限 ${ODD_UNLOCKED_MIN}`)
+  bad.length === 0
+    ? ok('「找错的」里四个选项长度在一个量级（挑最长/最短都猜不中），且无重复')
+    : bad.slice(0, 4).forEach(m => console.log('  ❌ ' + m))
+  if (bad.length) failures++
+}
+
+/* ⑨ 能判红的自检：规则本身有没有鉴别力 */
 {
   const fakeAll = { id: 'x', title: 'x', kernel: null as never, doc: { kind: 'x', params: {}, entities: [], streams: [] }, facts: [] }
   //  a) 「至少一条原理题」这条规则,喂一个零原理题的实验必须算它欠账

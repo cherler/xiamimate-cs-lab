@@ -79,11 +79,13 @@ const server = createServer(async (req, res) => {
     if (req.method === 'POST' && path === '/lab/ai/explain') {
       //  讲解按需生成:用户答完某道题才来要。题面和答案都已经定死了,这里只补「为什么」。
       const raw = await readBody(req)
-      let body: { expId?: string; factId?: string; useLLM?: boolean } = {}
+      let body: { expId?: string; factId?: string; useLLM?: boolean; question?: string; options?: string[]; correctIndex?: number } = {}
       try { body = raw ? JSON.parse(raw) : {} } catch { return send(res, 400, { error: '请求体不是合法 JSON' }) }
       if (!body.expId || !body.factId) return send(res, 400, { error: '缺少 expId 或 factId' })
       const r = await explainQuestion(body.expId, body.factId, {
         useLLM: body.useLLM, principal: principalOf(req),
+        //  题面与选项由客户端带回(「找错的」那种题型推不回来);但「哪个是对的」由服务端校验
+        question: body.question, options: body.options, correctIndex: body.correctIndex,
       })
       return send(res, 200, r)
     }
