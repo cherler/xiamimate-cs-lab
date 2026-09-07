@@ -10,7 +10,6 @@
  */
 import { getEntry, traceOf, type CatalogEntry } from './catalog.ts'
 import { generate, type Principal } from './llm.ts'
-import { servableFacts } from './quiz.ts'
 
 export type Turn = { role: 'interviewer' | 'candidate'; text: string }
 
@@ -26,7 +25,12 @@ const MAX_ROUNDS = 3     // 学生答满 3 轮后进入总评
 
 function keyPoints(entry: CatalogEntry): string {
   const t = traceOf(entry)
-  return servableFacts(entry, traceOf(entry) as Record<string, unknown>[]).map(f => {
+  /*  ⚠️ 这里要的是**全部** facts,不是 servableFacts。
+      两者口径不同,别混:
+        · servableFacts —— 「端给用户当题目」的那一份,会滤掉摘不出数据的计数题(题面没法写);
+        · entry.facts   —— 「拿来判卷/答疑的地面真值」,越全越好,反正不直接给用户看。
+      上一轮顺手把这里也改成 servableFacts 了,等于让面试官拿一份**残缺的答案**去判卷。 */
+  return entry.facts.map(f => {
     try { return `- ${f.label}：${f.compute(t as never).answer}` } catch { return `- ${f.label}` }
   }).join('\n')
 }
