@@ -1771,7 +1771,13 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
     ⚠️ 光写 `height:44vh` 没用：`.gnote` 是外层 flex 的子项，会被 flex-shrink 压回去
     （720px 高的屏上实测被压到只剩 72px，比不改还糟）。要连 `flex-shrink:0` 一起写死，
     并给一个不吃掉整个舞台的下限。 */
-.gnote.gnote-read{height:min(44vh,420px);flex:0 0 auto}
+/*  ⚠️ 这里**不要再写死高度**。
+    删掉「大白话打比方」那一段之后内容短了不少，而且宽屏上「讲的是什么」和「名词表」
+    是并排的 —— 让它按内容自然长、由 `.gnote` 的 max-height:44vh 封顶，效果比钉死好：
+    1920 上实测正好装满不用滚，1280 上也比钉死的 420px 多露出 60 多像素。
+    （历史：内容里还有大白话正文时，这块高度是被右栏「实验操作」撑出来的、
+    读的那一列只能自己滚，当时才需要钉死。前提变了，这条也就该撤。） */
+.gnote.gnote-read{flex:0 0 auto}
 .gnbody{flex:1 1 auto;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 232px;
   gap:0;overflow:hidden;position:relative}
 /*  底部一道渐隐:告诉人「下面还有」。第 0 步那一屏有三段(大白话/讲的是什么/名词),

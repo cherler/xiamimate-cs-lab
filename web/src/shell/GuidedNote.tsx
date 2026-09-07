@@ -47,7 +47,7 @@ export function GuidedNote({
   parts: WhyPart[]
   /**  第 0 步那一屏的大白话开场。给了就顶掉「本步推演」那三张卡 ——
        第 0 步还没有"本步"，而这里正是先把画面建起来的位置。 */
-  plain?: { hook: string; body: string; what?: string; terms?: string; watch: string } | null
+  plain?: { hook: string; what?: string; terms?: string; watch: string } | null
   tone: Tone | null
   /** 已经验证过的那句结论；null = 还没算出来 */
   verdict: Verdict | null
@@ -98,8 +98,12 @@ export function GuidedNote({
             /*  第 0 步：先用人话把画面建起来。
                 不套 `.gnflow` 那三张编号卡 —— 那是「本步输入→规则→结果」的骨架，
                 而这里没有"本步"，硬塞进去会让人以为已经走过一步了。 */
+            /*  ⚠️ 这里**不再有「大白话打比方」那一段**。
+                用户 2026-09-07：「把『大白话（打比方）』这部分去掉吧。没必要」。
+                比方是用来建画面的，而他真正卡住的地方是「屏幕上这些词我不认识」——
+                比方解决不了那个，反而把真正有用的两段挤到了屏幕外面。
+                240 条 body 文案一并从 guide.ts 删掉了（不留死数据），要找可以翻 git 历史。 */
             <div className="gnplain">
-              <p className="gnpb">{rich(plain.body)}</p>
               {/*  百科段接在大白话后面 —— 打完比方才轮到「这件事本身是怎么回事」。
                    用户原话：「第 0 步的实验解释，说的内容是不是有点太少了」
                    「是指这件事（实验）的百科内容」。 */}

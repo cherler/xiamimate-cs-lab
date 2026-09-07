@@ -733,14 +733,27 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{
 /*  ── 大白话（第 0 步）──
     导览主体里那两段。字号比四段推演大半档、行距放宽 —— 它是**读**的，不是查的。
     中文一个字≈2ch，想一行 40 字就写 84ch。 */
-.gnplain{max-width:84ch;margin:2px 0 0}
-.gnplain .gnpb{margin:0;font-size:var(--t-ui);line-height:2;color:var(--ink)}
+/*  ⚠️ **不能只写 `max-width:84ch`**。
+    84ch 折算下来是 630px（中文一个字≈2ch，这个宽度约合一行 40 字，正是想要的行宽），
+    可读区在 1920 的屏上有 960px、2560 上有 1412px —— 于是右边空出 330 到 780px，
+    用户截图圈出来的就是那一片。
+    改成**按可用宽度自动分栏**：窄了是一栏（跟以前一样），宽了就把「讲的是什么」和「名词表」
+    并排摆，行宽始终保持在读得舒服的区间，空白也没了。
+    ⚠️ 用 grid 而不是 CSS 多栏（`column-count`）：这块区域是**定高可滚动**的，
+    多栏在定高容器里会往横向翻页，而不是继续往下滚。 */
+.gnplain{margin:2px 0 0;display:flex;flex-wrap:wrap;gap:0 30px;align-items:flex-start}
+/*  两块内容各占一份、自己长满剩余宽度。
+    ⚠️ 这里也不能用 grid 的 `auto-fit` —— 它按「能放下几栏」造栏，
+    2560 的屏上会造出三栏而内容只有两块，第三栏空着，右边照样是一片白。
+    flex 只在**实际存在的项**之间分配剩余空间，几块就是几栏。 */
+.gnplain>.gnph{flex:1 1 420px;min-width:0}
 /*  「这一屏在跑什么」：接在大白话后面的机制段。跟大白话同一档字号（都是要读的），
     靠一条竖线和小标题区分,不另起卡片 —— 卡片会让人以为是两件事。 */
-.gnplain .gnph{margin:12px 0 0;padding:0 0 0 13px;border-left:2px solid var(--line);
+.gnplain .gnph{margin:0;padding:0 0 0 13px;border-left:2px solid var(--line);
   font-size:var(--t-ui);line-height:2;color:var(--ink)}
 .gnplain .gnphk{display:block;color:var(--dim);font-size:var(--t-meta);letter-spacing:.02em;margin-bottom:2px}
-.gnplain .gnpw{margin:14px 0 0;padding:11px 14px;border-radius:8px;line-height:1.9;
+/*  「盯着看什么」横跨所有栏 —— 它是收尾的一句话，不该被切成一栏 */
+.gnplain .gnpw{flex:1 1 100%;margin:14px 0 0;padding:11px 14px;border-radius:8px;line-height:1.9;
   background:var(--panel-2);border-left:3px solid var(--now);font-size:var(--t-meta);color:var(--dim)}
 .gnplain .gnpw b{color:var(--now);margin-right:2px}
 

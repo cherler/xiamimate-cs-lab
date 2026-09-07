@@ -10,11 +10,15 @@
  * 一段不带术语的开场，摆在第 0 步「还没开始」那一屏（导览里）。
  *
  * 这里判的是**写法**，不是文采 —— 文采判不了，但下面这几条一走样就一定难读：
- *   ① 三段齐全（钩子 / 正文 / 盯着看什么），空字符串不算
+ *   ① 各段齐全（钩子 / 讲的是什么 / 名词表 / 盯着看什么），空字符串不算
  *   ② 钩子是**一句**话，别写成摘要
- *   ③ 正文有下限也有上限：太短建不起画面，太长没人读完（卡片高度封在版面里）
- *   ④ 钩子不许照抄 question —— 那句已经印在同一屏上了，抄一遍等于没写
- *   ⑤ 正文里不许出现 Markdown 的标题/列表符号：这一段是**读**的，不是查的
+ *   ③ 钩子不许照抄 question —— 那句已经印在同一屏上了，抄一遍等于没写
+ *   ④ 名词段要真是一份名词表（至少讲清 3 个词），不是一段泛泛的介绍
+ *
+ * ⚠️ 原来还有一段 `body`（拿生活里的东西打比方的大白话）。
+ * 用户 2026-09-07 看过之后要求去掉：「把『大白话（打比方）』这部分去掉吧。没必要」——
+ * 他卡住的地方是「屏幕上这些词我不认识」，比方解决不了那个，
+ * 反而把真正有用的两段挤到了屏幕外面。240 条文案已从 guide.ts 删除，要找翻 git 历史。
  *
  * 覆盖率是**只许涨不许跌**的台账（240 个实验，一批批补）。
  *
@@ -29,7 +33,7 @@ const bad = (m: string) => { failures++; console.log('  ❌ ' + m) }
 console.log('\n— 导览 · 大白话纪律 —')
 
 /**
- * 写了大白话的实验数**下限**。
+ * 写齐了 plain 的实验数**下限**。
  * 从 6（用户点名的计算机组成原理那几个）一批批补到 **240 —— 全覆盖**。
  * 所以这条从台账变成了及格线：新增实验必须自带一段大白话，少一条就判红。
  */
@@ -62,16 +66,16 @@ all.length >= 200
 /* ① 覆盖率台账 */
 {
   withPlain.length >= PLAIN_MIN
-    ? ok(`写了大白话的实验 ${withPlain.length} 个（下限 ${PLAIN_MIN}）—— 还差 ${all.length - withPlain.length} 个`)
-    : bad(`大白话掉到 ${withPlain.length} 个 < 下限 ${PLAIN_MIN} —— 是不是被删了?`)
+    ? ok(`写齐了 plain 的实验 ${withPlain.length} 个（下限 ${PLAIN_MIN}）—— 还差 ${all.length - withPlain.length} 个`)
+    : bad(`plain 掉到 ${withPlain.length} 个 < 下限 ${PLAIN_MIN} —— 是不是被删了?`)
 }
 
 /* ② 三段齐全 */
 {
   const empty = withPlain.filter(([, g]) =>
-    !g.plain!.hook.trim() || !g.plain!.body.trim() || !g.plain!.watch.trim()).map(([id]) => id)
+    !g.plain!.hook.trim() || !g.plain!.watch.trim()).map(([id]) => id)
   empty.length === 0
-    ? ok('每条大白话的三段都不为空（钩子 / 正文 / 盯着看什么）')
+    ? ok('钩子和「盯着看什么」都不为空')
     : bad(`有 ${empty.length} 条缺段：${empty.join(' ')}`)
 }
 
@@ -83,17 +87,6 @@ all.length >= 200
   long.length === 0
     ? ok(`钩子都在 ${HOOK_MAX} 字以内（它是大标题，长了会折行挤掉正文）`)
     : bad(`有 ${long.length} 条钩子过长：${long.join('、')}`)
-}
-
-/* ④ 正文的上下限 */
-{
-  const LO = 90, HI = 460
-  const off = withPlain.map(([id, g]) => ({ id, n: [...g.plain!.body].length }))
-    .filter(x => x.n < LO || x.n > HI)
-    .map(x => `${x.id}(${x.n}字)`)
-  off.length === 0
-    ? ok(`正文都在 ${LO}–${HI} 字之间（短了建不起画面，长了没人读完 —— 卡片高度封在版面里）`)
-    : bad(`有 ${off.length} 条正文长度出界：${off.join('、')}`)
 }
 
 /* ⑤ 钩子不许照抄 question */
@@ -128,10 +121,10 @@ all.length >= 200
     let hit = 0; for (const g of A) if (B.has(g)) hit++
     return hit / Math.min(A.size, B.size)
   }
-  const dup = withWhat.filter(([, g]) => sim(g.plain!.body, g.plain!.what!) >= 0.4).map(([id]) => id)
+  const dup = withWhat.filter(([, g]) => g.plain!.terms && sim(g.plain!.terms!, g.plain!.what!) >= 0.4).map(([id]) => id)
   dup.length === 0
-    ? ok('「讲的是什么」跟大白话正文不雷同（两段挨着显示，说同一件事等于白写一段）')
-    : bad(`有 ${dup.length} 条跟正文雷同：${dup.join(' ')}`)
+    ? ok('「讲的是什么」跟名词段不雷同（两段挨着显示，说同一件事等于白写一段）')
+    : bad(`有 ${dup.length} 条跟名词段雷同：${dup.join(' ')}`)
   const marked = withWhat.filter(([, g]) => /(^|\n)\s*(#|[-*·]\s|\d+[.、)])/.test(g.plain!.what!)).map(([id]) => id)
   marked.length === 0
     ? ok('「讲的是什么」里没有标题/列表符号')
@@ -162,21 +155,12 @@ all.length >= 200
     : bad('自检失败：名词计数是坏的，⑤c 等于空跑')
 }
 
-/* ⑥ 正文不许用标题/列表符号 —— 这一段是读的，不是查的 */
-{
-  const marked = withPlain.filter(([, g]) => /(^|\n)\s*(#|[-*·]\s|\d+[.、)])/.test(g.plain!.body))
-    .map(([id]) => id)
-  marked.length === 0
-    ? ok('正文里没有标题/列表符号（分点会让人跳着扫，而这一段要的是从头读到尾）')
-    : bad(`有 ${marked.length} 条正文用了分点：${marked.join(' ')}`)
-}
-
 /* ⑦ 能判红的自检 —— 每条规则拿人为造的坏数据试一次 */
 {
-  const fake = { hook: '', body: '短', watch: '' }
-  !fake.hook.trim() && [...fake.body].length < 90
-    ? ok('自检：空钩子和过短正文确实会被②④判红')
-    : bad('自检失败：②④对人为造的坏数据没反应，等于空跑')
+  const fake = { hook: '', watch: '' }
+  !fake.hook.trim() && !fake.watch.trim()
+    ? ok('自检：空钩子 / 空「盯着看什么」确实会被②判红')
+    : bad('自检失败：②对人为造的坏数据没反应，等于空跑')
   const norm = (x: string) => x.replace(/[^一-龥A-Za-z0-9]/g, '')
   norm('这是一句话！') === norm('这是一句话。')
     ? ok('自检：⑤的比较忽略标点（「问？」和「问。」算同一句）')
