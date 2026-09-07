@@ -24,7 +24,7 @@ const bad = (m: string) => { failures++; console.log('  ❌ ' + m) }
 
 console.log('\n— AI 学伴 · 提示词纪律 —')
 
-const IDS = ['quiz-concept', 'quiz-count'] as const
+const IDS = ['quiz-explain'] as const
 const rendered = Object.fromEntries(IDS.map(id => [id, prompt(id)])) as Record<string, string>
 
 /* ① 渲染得出来，而且不许剩占位符 —— 剩下的会被当字面量发给模型，且没人会发现 */
@@ -48,7 +48,7 @@ const rendered = Object.fromEntries(IDS.map(id => [id, prompt(id)])) as Record<s
     ['干扰项要可信', /可信的错误认知|站得住的错误理由/],
     ['不许「以上都对」', /以上都对/],
     ['讲解要驳倒其余选项', /逐个说明其余.{0,6}选项|各错在哪/],
-    ['不许自己算数字', /严禁自己计算|不要.{0,6}编造/],
+    ['不许自己算数字', /不要自己计算|不要.{0,6}编造/],
   ]
   for (const id of IDS) {
     const miss = RULES.filter(([, re]) => !re.test(rendered[id]!)).map(([n]) => n)
@@ -56,15 +56,14 @@ const rendered = Object.fromEntries(IDS.map(id => [id, prompt(id)])) as Record<s
       ? ok(`${id}.md 里五条出题工艺规则齐全`)
       : bad(`${id}.md 少了：${miss.join('、')} —— 删掉之后模型会退回随手写选项`)
   }
-  //  计数题那份必须要求写出输入数据；原理题那份必须禁止罗列中间状态。两条方向相反，不能串
-  const wantData = /必须.{0,4}原样写出/
-  wantData.test(rendered['quiz-count']!)
-    ? ok('quiz-count.md 要求题面必须写出那组输入数据')
-    : bad('quiz-count.md 没要求写出输入数据 —— 题面会变成「对一组数据……」，没法答')
-  const noDump = /不要罗列完整的中间状态/
-  noDump.test(rendered['quiz-concept']!)
-    ? ok('quiz-concept.md 禁止把中间状态抄进题面')
-    : bad('quiz-concept.md 没禁止罗列中间状态 —— 题面会把答案给出去')
+  /*  题面不再过大模型（我们手写的 ask 直接用），所以那两条关于「题面怎么写」的规则
+      不在提示词里了，改由代码 + 判据保证：计数题的数据由 askWithData 注入、
+      「不许把中间状态抄进题面」由我们自己写 ask 时把关。
+      这里只剩一条:模型不许自己重写题面。 */
+  const noRewrite = /不要重写题面/
+  noRewrite.test(rendered['quiz-explain']!)
+    ? ok('quiz-explain.md 明令模型不许重写题面（题面是我们写的，不过模型）')
+    : bad('quiz-explain.md 没拦住模型重写题面 —— 那正是「某组关键字」那道题的由来')
 }
 
 /* ③ 选项内容本身：不许出现「以上都对」这类白送分的选项 */
@@ -118,7 +117,7 @@ const rendered = Object.fromEntries(IDS.map(id => [id, prompt(id)])) as Record<s
     ? ok('自检：unresolved 认得出没填上的占位符')
     : bad('自检失败：unresolved 抓不到占位符，规则①等于空跑')
   //  b) 变量能填上、snippet 能拼进来
-  const withVar = prompt('quiz-concept', { nothing: 'x' })
+  const withVar = prompt('quiz-explain', { nothing: 'x' })
   withVar.includes('长度要接近')
     ? ok('自检：{{snippet:option-rules}} 真的被拼进来了（不是原样留着）')
     : bad('自检失败：snippet 没拼进来，那几条规则等于没写')

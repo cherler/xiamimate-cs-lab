@@ -139,6 +139,20 @@ function QuizView({ expId, onCite, onFactAnswer, drillFactId, onDrillConsumed }:
   const [error, setError] = useState('')
   const [qs, setQs] = useState<Question[] | null>(null)
   const [picked, setPicked] = useState<Record<number, number>>({})
+  /*  讲解按需取:出题接口现在是全同步的(引擎 10 毫秒级,题面就是我们写好的那句),
+      讲解才是要等大模型的那一步 —— 而它只在答完之后显示,所以答完再去取。
+      取不回来也不要紧:题目自带一份引擎兜底讲解(标准答案 + 出处)。 */
+  const [why, setWhy] = useState<Record<string, string>>({})
+  const [whyLoading, setWhyLoading] = useState<Record<string, boolean>>({})
+  async function fetchWhy(factId: string) {
+    if (why[factId] || whyLoading[factId]) return
+    setWhyLoading(w => ({ ...w, [factId]: true }))
+    try {
+      const d = await postJSON<{ explanation: string; source: string }>('/lab/ai/explain', { expId, factId })
+      if (d.source === 'llm' && d.explanation) setWhy(w => ({ ...w, [factId]: d.explanation }))
+    } catch { /* 兜底讲解已经在题目里了,取不到就用它 */ }
+    finally { setWhyLoading(w => ({ ...w, [factId]: false })) }
+  }
   const [drilled, setDrilled] = useState(false)   // 这组是不是"定向出的最弱那条"
 
   async function gen(factId?: string) {
@@ -190,6 +204,8 @@ function QuizView({ expId, onCite, onFactAnswer, drillFactId, onDrillConsumed }:
                     onClick={() => {
                       if (picked[qi] != null) return   // 已答过不重复记账
                       setPicked(p => ({ ...p, [qi]: oi }))
+                      //  讲解**答完才取** —— 它本来就只在这时候显示,提前给三道都生成是白等 10 秒
+                      void fetchWhy(q.factId)
                       //  作答即计入进度:factId + 对错 + 出处实验 + 题面(错题本要显示)
                       onFactAnswer?.(q.factId, oi === q.correctIndex, expId, q.question)
                     }}>
@@ -202,8 +218,9 @@ function QuizView({ expId, onCite, onFactAnswer, drillFactId, onDrillConsumed }:
               <>
                 <div className="aic-explain">
                   <p className="aic-explain-verdict">{chosen === q.correctIndex ? '✓ 对了。' : `✗ 正确答案：${q.options[q.correctIndex]}。`}</p>
-                  <Md text={q.explanation} />
-                  <span className="aic-prov">答案由引擎钉死{q.provenance.phrasedBy === 'llm' ? '，题面由大模型改写' : ''}</span>
+                  <Md text={why[q.factId] ?? q.explanation} />
+                  {whyLoading[q.factId] && <p className="aic-hint">讲解生成中…</p>}
+                  <span className="aic-prov">答案由引擎钉死、题面照原样出{why[q.factId] ? '，讲解由大模型据要点生成' : ''}</span>
                 </div>
                 {q.provenance.sourceStep != null && <CiteChip step={q.provenance.sourceStep} evidence={q.provenance.evidence} onCite={onCite} />}
               </>

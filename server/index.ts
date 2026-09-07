@@ -7,7 +7,8 @@
  * 路由（都挂在 /lab/ai 下，线上由 Caddy/gateway 把 /lab/* 分流到本仓）：
  *   GET  /lab/ai/health        健康检查
  *   GET  /lab/ai/experiments   可出题的实验清单
- *   POST /lab/ai/quiz          出题 { expId, count?, useLLM? }
+ *   POST /lab/ai/quiz          出题 { expId, count?, useLLM? } —— 全同步,不走大模型
+ *   POST /lab/ai/explain       某道题的讲解 { expId, factId, useLLM? } —— 答完才调,按需生成
  *   GET  /lab/ai/suggest       常见疑问 ?expId=（返回每个 fact 的可点问题,答疑不用打字）
  *   POST /lab/ai/ask           答疑 { expId, question, step?, factId?, useLLM? }（喂真实 trace+要点当依据;factId 来自点选疑问、附出处）
  *   POST /lab/ai/review        复习包 { expId, useLLM? }（钉死事实卡 + 概念卡 + 小结）
@@ -18,7 +19,7 @@
  * 本机开发未配 XM_API_BASE 时全程透明、不计费、不报错。
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
-import { buildQuiz } from './quiz.ts'
+import { buildQuiz, explainQuestion } from './quiz.ts'
 import { askAboutExperiment, suggestQuestions } from './ask.ts'
 import { buildReview } from './review.ts'
 import { interview, interviewAnswer, type Turn } from './interview.ts'
@@ -73,6 +74,18 @@ const server = createServer(async (req, res) => {
         count: body.count, useLLM: body.useLLM, principal: principalOf(req), factId: body.factId,
       })
       return send(res, 200, { expId: body.expId, questions })
+    }
+
+    if (req.method === 'POST' && path === '/lab/ai/explain') {
+      //  讲解按需生成:用户答完某道题才来要。题面和答案都已经定死了,这里只补「为什么」。
+      const raw = await readBody(req)
+      let body: { expId?: string; factId?: string; useLLM?: boolean } = {}
+      try { body = raw ? JSON.parse(raw) : {} } catch { return send(res, 400, { error: '请求体不是合法 JSON' }) }
+      if (!body.expId || !body.factId) return send(res, 400, { error: '缺少 expId 或 factId' })
+      const r = await explainQuestion(body.expId, body.factId, {
+        useLLM: body.useLLM, principal: principalOf(req),
+      })
+      return send(res, 200, r)
     }
     if (req.method === 'GET' && path === '/lab/ai/suggest') {
       const expId = url.searchParams.get('expId') ?? ''

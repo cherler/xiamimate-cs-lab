@@ -27,7 +27,8 @@ export type Question = {
     traceLen: number
     sourceStep: number
     evidence: string
-    phrasedBy: 'llm' | 'fallback'
+    /** 题面从来不过模型:'engine' = 我们写的 ask（计数题注入了数据）。 */
+    phrasedBy: 'engine'
   }
 }
 
@@ -48,52 +49,20 @@ function extractJSON(text: string): { question?: string; explanation?: string } 
   try { return JSON.parse(m[0]) } catch { return null }
 }
 
-/*  提示词搬去了 server/prompts/*.md(见那边的 README)。
-    搬家的理由和它们的内容一样重要:提示词以前是这里的字符串拼接,改一个字要动 TS、
-    review 时混在逻辑中间看不清、也没法让判据去检查「那几条规矩还在不在」。
-    现在 tests/prompt-rules.test.ts 逐条盯着它们。 */
-const systemFor = (genre: FactGenre) => prompt(genre === 'count' ? 'quiz-count' : 'quiz-concept')
-
-async function phrase(
-  entry: CatalogEntry, fact: Fact, genre: FactGenre, answer: string, distractors: string[], evidence: string,
-  trace: Record<string, unknown>[], principal: Principal, useLLM: boolean,
-): Promise<{ question: string; explanation: string; by: 'llm' | 'fallback' }> {
-  //  计数题的保底题面也得带上数据 —— 「这个数组」在出题面板里是指不到任何东西的
-  const data = genre === 'count' ? inputBrief(entry, trace) : ''
-  const fallback = {
-    question: askWithData(entry, fact, trace),
-    explanation: `标准答案 **${answer}** 由「${entry.title}」实验引擎逐步计算得出。出处：${evidence}`,
-    by: 'fallback' as const,
-  }
-  if (!useLLM) return fallback
-  try {
-    const userPrompt =
-      `实验：${entry.title}\n` +
-      `已知事实（考点）：${fact.label}\n` +
-      `正确答案：${answer}\n` +
-      /*  ⚠️ 干扰项以前没传给模型 —— 于是「讲解要说清楚别的为什么错」这件事在结构上就做不到,
-          模型根本不知道别的选项是什么。这一条是照 OpenMAIC 的 analysis 字段
-          （"why A is correct and why other options are wrong"）补上的。 */
-      `三个干扰项（都是错的，讲解里要逐个驳倒）：\n${distractors.map(d => `  · ${d}`).join('\n')}\n` +
-      `引擎给出的出处/证据：${evidence}\n` +
-      (data ? `这道题问的是这组输入上的具体数字，题面里必须写出它：${data}\n` : '') +
-      `请据此写题面与讲解。`
-    const r = await generate({
-      module: 'lab_ai', task: 'quiz', system: systemFor(genre), prompt: userPrompt,
-      maxTokens: 400, provider: 'minimax', principal,
-    })
-    const j = extractJSON(r.text)
-    if (j?.question && j?.explanation) {
-      const q = String(j.question)
-      //  计数题的题面要是没把数据带上,就退回保底题面 —— 宁可题面呆板,也不能出一道没法答的题
-      if (data && !q.includes(data.slice(1, 4))) return { ...fallback, explanation: String(j.explanation) }
-      return { question: q, explanation: String(j.explanation), by: 'llm' }
-    }
-    return fallback
-  } catch (e) {
-    console.warn('[quiz] 大模型出题失败，用保底题面:', (e as Error).message)
-    return fallback
-  }
+/**
+ * 题面**不过大模型**。
+ *
+ * 原来这里有一步「让模型把 fact.ask 改写成题面」,删了,两个原因:
+ *   1. 它是纯减分项。1004 条 ask 本来就是手写的完整问句;模型改写只会引入偏差 ——
+ *      用户截图里那句「在快速排序对**某组关键字**进行排序的过程中……」,
+ *      就是模型把我们写的「把这个数组快速排序完成」改没了数据指代的结果。
+ *   2. 它是延迟的全部来源。引擎出一套题 13 毫秒,三次并行的改写调用要 10 秒 ——
+ *      而讲解**只在用户答完那道题之后才显示**,提前给三道题都生成多半是白生成。
+ *
+ * 现在:题面 = askWithData(我们写的 ask,计数题再注入数据),讲解交给 explainQuestion 按需生成。
+ */
+function engineExplanation(entry: CatalogEntry, answer: string, evidence: string): string {
+  return `标准答案 **${answer}**。依据：${evidence}（来自「${entry.title}」实验引擎）`
 }
 
 /**
@@ -155,28 +124,62 @@ export async function buildQuiz(expId: string, opts: BuildOptions = {}): Promise
   const trace = traceOf(entry)
   if (trace.length === 0) throw new Error(`实验 ${expId} 跑不出 trace`)
 
-  const useLLM = opts.useLLM !== false
   //  factId 定向:只出这一条事实的题（「去练最弱那条」用）。事实过期(找不到)就退回整套,不至于空。
   const targeted = opts.factId ? entry.facts.filter(f => f.id === opts.factId) : null
   const picks = targeted && targeted.length > 0 ? targeted : pickBalanced(entry, trace, opts.count)
 
-  //  每条 fact 的题面改写是一次独立大模型调用,彼此无依赖——并行发,别串行等。
-  //  Promise.all 保留 picks 顺序,题目顺序不变;引擎钉死答案在 compute 里(同步)先算好。
-  const out = await Promise.all(picks.map(async (fact): Promise<Question> => {
+  //  全同步:引擎算答案、我们写的题面、洗牌。一套题 10 毫秒级,不等任何网络。
+  return picks.map((fact): Question => {
     const genre = genreOf(fact, trace)
     const { answer, step, evidence } = fact.compute(trace)      // ← 引擎算出的钉死答案
     const distractors = fact.distractors(answer, trace).filter(d => d !== answer)
     const options = shuffle([answer, ...distractors])
     const correctIndex = options.indexOf(answer)                // ← 我们设定，模型碰不到
-    const { question, explanation, by } = await phrase(entry, fact, genre, answer, distractors, evidence, trace, opts.principal ?? null, useLLM)
     return {
       expId, title: entry.title, factId: fact.id, genre,
-      question, options, correctIndex, explanation,
-      provenance: { engineAnswer: answer, traceLen: trace.length, sourceStep: step, evidence, phrasedBy: by },
+      question: askWithData(entry, fact, trace),
+      options, correctIndex,
+      explanation: engineExplanation(entry, answer, evidence),
+      provenance: { engineAnswer: answer, traceLen: trace.length, sourceStep: step, evidence, phrasedBy: 'engine' },
     }
-  }))
-  return out
+  })
 }
+
+/**
+ * 答完一道题之后,按需生成讲解。
+ *
+ * 讲解要做两件事:说清正确答案为什么对、**逐个驳倒其余三个选项**。
+ * 所以三个干扰项必须一起传给模型 —— 以前根本没传,那句要求在结构上就做不到。
+ * 答案由引擎/人工钉死,模型碰不到,它只是把「为什么」说成人话。
+ */
+export async function explainQuestion(
+  expId: string, factId: string, opts: { principal?: Principal; useLLM?: boolean } = {},
+): Promise<{ explanation: string; source: 'llm' | 'engine'; billing?: Billing }> {
+  const entry = getEntry(expId)
+  if (!entry) throw new Error(`未知实验：${expId}`)
+  const fact = entry.facts.find(f => f.id === factId)
+  if (!fact) throw new Error(`实验 ${expId} 里没有事实 ${factId}`)
+  const trace = traceOf(entry)
+  const { answer, evidence } = fact.compute(trace)
+  const distractors = fact.distractors(answer, trace).filter(d => d !== answer)
+  const fallback = { explanation: engineExplanation(entry, answer, evidence), source: 'engine' as const }
+  if (opts.useLLM === false) return fallback
+  try {
+    const r = await generate({
+      module: 'lab_ai', task: 'quiz_explain', system: prompt('quiz-explain'),
+      prompt: `实验：${entry.title}\n题面：${askWithData(entry, fact, trace)}\n` +
+        `正确答案：${answer}\n三个干扰项（都是错的，逐个驳倒）：\n${distractors.map(d => `  · ${d}`).join('\n')}\n` +
+        `引擎给出的出处：${evidence}\n\n请写讲解。`,
+      maxTokens: 400, provider: 'minimax', principal: opts.principal ?? null,
+    })
+    const text = r.text.trim()
+    return text ? { explanation: text, source: 'llm', billing: r.billing } : fallback
+  } catch (e) {
+    console.warn('[quiz] 讲解生成失败，用引擎兜底:', (e as Error).message)
+    return fallback
+  }
+}
+type Billing = { metered: boolean; credits: number; tokens: number; note: string }
 
 /**
  * 端给用户看的事实(出题 / 答疑的可点问题 / 复习闪卡)。
