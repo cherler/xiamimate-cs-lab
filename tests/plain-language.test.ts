@@ -29,10 +29,11 @@ const bad = (m: string) => { failures++; console.log('  ❌ ' + m) }
 console.log('\n— 导览 · 大白话纪律 —')
 
 /**
- * 写了大白话的实验数**下限**。补一批就把它调高，只许涨不许跌。
- * 6 是第一批（用户点名的计算机组成原理那几个）。
+ * 写了大白话的实验数**下限**。
+ * 从 6（用户点名的计算机组成原理那几个）一批批补到 **240 —— 全覆盖**。
+ * 所以这条从台账变成了及格线：新增实验必须自带一段大白话，少一条就判红。
  */
-const PLAIN_MIN = 6
+const PLAIN_MIN = 240
 
 const all = Object.entries(GUIDES)
 const withPlain = all.filter(([, g]) => g.plain)

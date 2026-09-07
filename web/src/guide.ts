@@ -318,6 +318,11 @@ export const TERMS: Term[] = [
 export const GUIDES: Record<string, Guide> = {
   urlshortener: {
     question: '长 URL 怎么变成又短又唯一的短码？短码又怎么跳回长 URL？',
+    plain: {
+      hook: '一条长链接怎么变成六个字符，还能变回去？',
+      body: '发号器给每条新链接派一个自增的号，然后把这个十进制的号换算成 62 进制（0-9、a-z、A-Z 共 62 个字符），六位就能表示五百多亿条。\u3000换算是可逆的：拿短码按 62 进制算回原来的号，查一次库就拿到长链接。\u3000剩下一个小决定影响很大：跳转要用 302 而不是 301 —— 301 会被浏览器长期缓存，之后的点击根本不经过你的服务器，点击量就统计不到了。',
+      watch: '看号码怎么一步步换算成短码、再怎么算回去。位数每加一位，容量乘 62 —— 这就是为什么六位就够用很久。',
+    },
     read: [{ at: '映射表', is: '长 URL → 发号 ID → Base62 短码，逐条长出来。', anchor: '.url-map' }, { at: '读数', is: '发号器下一号、已建短链、容量。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { phase: string; counter: number; entries: { id: number; code: string }[]; lookup: { code: string; id: number } | null; capacity: number; focus: string }; return [
       { k: '本步输入', v: st.phase === 'done' ? '发号→编码→跳转→容量全走完' : st.phase === 'redirect' ? `访问短码 /${st.lookup?.code}` : st.phase === 'capacity' ? '算短码位数够不够' : st.entries.length ? `发号器发第 ${st.entries.length} 个号` : '准备发号' },
@@ -375,6 +380,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   feed: {
     question: '普通用户发帖为什么"推"、大V发帖为什么"拉"？刷 feed 时两路怎么合成时间线？',
+    plain: {
+      hook: '你发一条动态，是立刻推给所有粉丝，还是等他们来刷？',
+      body: '普通用户几百个粉丝，发帖时直接写进每个粉丝的收件箱，代价很小，而粉丝刷新时读自己的收件箱就行 —— 极快。\u3000但大 V 有几百万粉丝，发一条要写几百万次，谁也扛不住。所以大 V 反过来：只存在自己的发件箱，粉丝刷新时**现拉现合并**。\u3000于是真实系统是推拉结合：普通人走推、大 V 走拉，刷新时把两路合成一条时间线。',
+      watch: '看两种方式各自的写入次数和读取代价。同一个人发帖，粉丝数从几百变成几百万，最优策略就翻转了。',
+    },
     read: [{ at: '两路箱', is: '「我」的收件箱(推来的) + 大V 的 outbox(不扩散)。', anchor: '.fd-boxes' }, { at: '读数', is: '推累计写入、大V拉省下的写、收件箱/Feed 条数。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { phase: string; op: string; event: { author: string; text: string; mode: string; fanout: number } | null; myInbox: unknown[]; vOutbox: unknown[]; pushWrites: number; savedWrites: number; feed: { text: string; t: number }[]; focus: string }; return [
       { k: '本步输入', v: st.phase === 'done' ? '发帖(推/拉)+刷feed归并全走完' : st.event ? `${st.event.author} 发帖（走${st.event.mode === 'push' ? '推' : '拉'}）` : st.op === 'merge' ? '「我」刷 feed' : '准备' },
@@ -566,6 +576,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   impedance: {
     question: '机械臂去拧螺丝、打磨、和人协作，为什么不能只用位置控制？怎么让它"会用力"、柔顺接触？',
+    plain: {
+      hook: '拧螺丝的时候，你的手不是在控制位置，是在控制力。',
+      body: '让机械臂「移动到某个坐标」很简单，但去拧螺丝、打磨、跟人握手就不行 —— 位置差一毫米，接触力可能就差几十牛，要么打滑要么把工件顶坏。\u3000阻抗控制的思路是**把机械臂假装成一根弹簧**：你设定它的软硬程度，它碰到东西就按这个软硬程度顺势后退，接触力自然就被限住了。\u3000设得硬就精准但危险，设得软就柔顺但跟不准 —— 这是同一个旋钮的两端。',
+      watch: '调那个刚度参数，看接触力和位置误差怎么此消彼长。纯位置控制那一版，碰到障碍时力会直接飙上去。',
+    },
     read: [{ at: '轨道', is: '末端(块)、墙、目标、软弹簧；末端遇墙柔顺贴住。', anchor: '.fk-svg' }, { at: '接触力对比', is: '刚性(砸,红) vs 柔顺(贴,绿) 两条力条。', anchor: '.imp-cmp' }],
     step: (s: never) => { const st = s as { phase: string; op: string; xCmd: number; xWall: number; x: number; contactForce: number; penetration: number; stiffForce: number; t: number; focus: string }; return [
       { k: '本步输入', v: st.op === 'intro' ? `命令末端去 x=${st.xCmd}、墙在 x=${st.xWall}` : st.op === 'stiff' ? '刚性位置控制' : `阻抗控制 t=${st.t}s` },
@@ -579,6 +594,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   mpc: {
     question: '质量块要精准停在目标(也是墙)，为什么反应式控制会冲过头？MPC 怎么"往前看"提前刹车？',
+    plain: {
+      hook: '开车看的是前面几百米，不是脚下这一米。',
+      body: '反应式控制只看当前误差：还差多远就使多大劲。快到墙跟前时惯性还在，一冲就撞。\u3000模型预测控制会**往前推演**：拿一个模型算出「按这套动作走，未来几秒会怎样」，在所有不撞墙的方案里挑最省力的，然后**只执行第一步**，下一拍拿新状态重算。\u3000只执行第一步是关键 —— 这样反馈才能及时进来，开环的优化就变成了闭环。',
+      watch: '看它每一拍推演出的未来轨迹，以及约束（墙）怎么把某些方案直接排除掉。提前减速是算出来的，不是调出来的。',
+    },
     read: [{ at: '位置图', is: 'MPC(绿,预测刹车停在目标) vs 反应式(红,冲过目标);当前步显示预测停点。', anchor: '.fk-svg' }, { at: '读数', is: '当前模式、位置、预测停点、反应式 vs MPC。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { phase: string; op: string; target: number; t: number; x: number; v: number; u: number; brakeDist: number; predStop: number; braking: boolean; reacMax: number; focus: string }; return [
       { k: '本步输入', v: st.op === 'intro' ? `质量块从 0 要停在目标 x=${st.target}` : st.op === 'reactive' ? '反应式(纯比例,无预测)' : `MPC t=${st.t}s：x=${st.x}、v=${st.v}` },
@@ -613,6 +633,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   diffpolicy: {
     question: '绕障碍向左或向右都对，为什么 BC 会"取平均"直行撞上去？扩散策略怎么修？',
+    plain: {
+      hook: '绕过障碍，向左向右都对 —— 取个平均就撞上去了。',
+      body: '模仿学习里，示范数据中有的人往左绕、有的人往右绕。普通的模型学的是「平均动作」，而左和右的平均是**直行**，正好撞上障碍。\u3000这就是多峰问题：正确答案有好几个，它们的平均反而是错的。\u3000扩散策略换了个办法：不预测一个动作，而是从噪声出发一步步「去噪」成一个动作 —— 这个过程天然能表达「有好几个可能」，采样时随机落到其中一个，而不是落在中间。',
+      watch: '看普通模型输出的动作怎么落在两个正确动作的中间。扩散策略多采几次，你会看到它有时往左、有时往右，但从不居中。',
+    },
     read: [{ at: '动作轴', is: '双峰分布(±1)、BC 均值落 0(撞)、两个噪声样本去噪收敛到右/左模态。', anchor: '.fk-svg' }, { at: '读数', is: '当前、BC 均值、扩散样本 A/B。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { phase: string; op: string; bcAction: number; shown: number; aVal: number; bVal: number; focus: string }; return [
       { k: '本步输入', v: st.op === 'intro' ? '绕障动作是双峰：左(−1)或右(+1)' : st.op === 'bc' ? 'BC 回归拟合' : `扩散去噪第 ${st.shown} 步` },
@@ -647,6 +672,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   lerobot: {
     question: '想自己动手搞一套会自主抓取的机械臂，从买硬件到部署要走哪几步？',
+    plain: {
+      hook: '从买硬件到机械臂自己会抓，中间有几步？',
+      body: '先有一套能被电脑控制的臂（主从两只，一只给人拧、一只跟随），然后人**遥操作着做几十上百遍示范**，把每一帧的图像和关节角都录下来。\u3000接着训练一个模型：看到这样的画面，该输出什么动作。最后把模型装回机器上，让它自己跑。\u3000最费时间的从来不是训练，是采数据 —— 而且数据跟这套硬件绑死，换个夹爪就可能得重采。',
+      watch: '跟着走一遍这条链路：采集 → 训练 → 部署。看每一步的产出物是什么，就知道卡在哪一步最贵。',
+    },
     read: [{ at: '工作流', is: '硬件→装配标定→采集→训练→部署，逐段点亮。', anchor: '.lr-flow' }, { at: '手臂仿真', is: '真算 FK 的 SO-101 手臂 + 方块 + 夹爪开合。', anchor: '.fk-svg' }],
     step: (s: never) => { const st = s as { phase: string; op: string; stageLabel: string; poseName: string; gripper: string; holding: boolean; armPts: number[][]; focus: string }; return [
       { k: '本步输入', v: st.op === 'intro' ? 'SO-101 硬件 + LeRobot 库' : st.op === 'pose' || st.op === 'summary' ? `部署执行：${st.poseName}` : `${st.stageLabel}` },
@@ -906,6 +936,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   memwrite: {
     question: '新信息来了，往长期记忆里怎么写，才不会"住北京"和"搬上海了"自相矛盾？',
+    plain: {
+      hook: '「他住北京」和「他搬去上海了」，记忆里该留哪条？',
+      body: '都留着会自相矛盾，只留新的又可能丢掉有用的历史。\u3000所以写记忆不是简单追加，得先判断：这条新信息是**补充**（那就加一条）、是**更新**（那就把旧的标记为过期）、还是**矛盾**（那就要么问一句，要么按时间取新的）。\u3000最容易出错的是把「更新」当成「补充」—— 于是检索时两条都被取出来，模型看着互相打架的材料，答出来的东西也就飘了。',
+      watch: '看新信息进来时怎么跟已有记忆比对、判成哪一类。把判断关掉直接追加，你会看到检索结果里出现互相矛盾的两条。',
+    },
     read: [{ at: '新事实', is: '本步进来的事实 + 检索到的相似旧记忆 + 决定的操作。', anchor: '.mw-fact' }, { at: '记忆库', is: '每条记忆，刚被操作的按 ADD/UPDATE/DELETE 变色，陈旧矛盾的划掉。', anchor: '.mw-store' }, { at: '读数', is: '模式、库大小、陈旧条数。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { stage: string; mode: string; fact: string; similar: string; op: string; store: { stale?: boolean }[] }; const stale = st.store.filter(m => m.stale).length; return [
       { k: '本步输入', v: st.stage === 'intro' ? `已有记忆库 + ${st.mode} 模式` : `新事实「${st.fact}」，检索相似：${st.similar || '无'}` },
@@ -949,6 +984,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   actte: {
     question: '机械臂按模仿学到的策略动，怎么不抖、不越走越偏（复合误差）？',
+    plain: {
+      hook: '模仿学来的动作为什么会抖？',
+      body: '因为它一帧一帧地决定「下一步怎么动」，而每一帧的判断都带一点噪声 —— 连起来就是不断的微小抖动，而且偏差会越积越多。\u3000办法是**一次输出一整段动作**（比如未来 50 步），而不是一步。段内是连贯的，抖动自然消失。\u3000更进一步，让相邻的几段在时间上重叠、把重叠部分做加权平均 —— 切换处的接缝也被抹平了。这就是时序集成。',
+      watch: '对比逐帧输出和整段输出的轨迹平滑度。看重叠段怎么被加权融合，接缝处的跳变消失了。',
+    },
     read: [{ at: '重叠预测', is: '同一动作被好几块预测到 + 各自权重。', anchor: '.at-votes' }, { at: '轨迹', is: '真值 / 只用最新(抖) / 时序集成(平滑)。', anchor: '.at-traj' }, { at: '读数', is: '块长、权重、集成 vs 最新。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { stage: string; K: number; detailT: number; votes: { val: number }[]; ensembled: number; newest: number; trajTrue: number[]; m: number }; return [
       { k: '本步输入', v: st.stage === 'intro' ? `模仿策略 + 权重 m=${st.m}` : st.stage === 'chunk' ? `一次观测预测 K=${st.K} 个动作` : st.stage === 'overlap' ? `动作 a${st.detailT} 的 ${st.votes.length} 条重叠预测` : st.stage === 'ensemble' ? '加权集成这些重叠预测' : st.stage === 'traj' ? '整条轨迹' : '收尾' },
@@ -960,6 +1000,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   deltats: {
     question: '策略要的不是单帧、是一段"历史观测/未来动作块"，怎么从扁平表里把这些帧取出来、还不越到别条轨迹？',
+    plain: {
+      hook: '模型要的是一段，而数据存的是一帧一帧。',
+      body: '策略的输入是「最近几帧的画面」，输出是「未来几十步的动作」 —— 而数据集里存的是一张扁平的表，每行一帧。\u3000所以取一个训练样本，要从表里按相对偏移把好几帧一起捞出来。\u3000麻烦在边界：一段录像开头的第 0 帧，往前没有历史；结尾处往后没有未来。**跨到隔壁那一段录像上去取，就取到了完全不相干的动作** —— 这是最容易犯又最难发现的错。',
+      watch: '看每个样本取了哪几帧、边界处怎么处理（补齐还是丢弃）。故意允许跨段，你会看到训练数据里混进不连贯的动作。',
+    },
     read: [{ at: 'episode 条', is: '本轨迹的帧范围 + 当前采样帧。', anchor: '.dt-ep' }, { at: '两窗口表', is: '观测/动作块，每行 秒→帧偏移→目标帧→取到帧→pad。', anchor: '.dt-table' }, { at: '读数', is: 'fps、episode、pad 数。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { stage: string; fps: number; absIdx: number; epStart: number; epEnd: number; obs: { pad: boolean }[]; act: { pad: boolean }[] }; const pads = st.obs.filter(c => c.pad).length + st.act.filter(c => c.pad).length; return [
       { k: '本步输入', v: st.stage === 'intro' ? `当前帧 ${st.absIdx}、episode [${st.epStart},${st.epEnd})、fps=${st.fps}` : st.stage === 'sec2idx' ? '各偏移(秒)' : st.stage === 'clamp' ? '目标帧 = 当前帧 + 帧偏移' : st.stage === 'pad' ? '哪些帧落在 episode 外' : '取出的窗口' },
@@ -971,6 +1016,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   normstats: {
     question: '一条样本里关节角到 ±3、夹爪 0~1、还有个离群力矩，量纲天差地别——怎么把它们拉到同一量级，喂进策略又还能还原？',
+    plain: {
+      hook: '关节角是 ±3，夹爪是 0~1，力矩偶尔冲到几百。',
+      body: '量纲差这么远，直接喂给网络的话，数值大的那一维会主导整个损失，小的那几维等于没在学。\u3000所以要先归一化：每一维各自减去均值、除以标准差，拉到同一个尺度。\u3000但有个坑：**离群值会把标准差抬得很高**，于是正常数据全被压扁到零附近。对这类数据用分位数（比如 1% 和 99%）来定范围，比用均值方差稳得多。',
+      watch: '看每一维归一化前后的分布。故意混进一个极端值，用均值方差的那一版会把其余数据全压平。',
+    },
     read: [{ at: '原始表', is: '6 个样本 × 3 特征，后面亮出 μ/σ/min/max。', anchor: '.ns-table' }, { at: '两归一化表', is: 'MEAN_STD 与 MIN_MAX 两视图，当前策略用的那个高亮。', anchor: '.ns-tbl' }, { at: '反归一化框', is: '策略输出→还原真实动作；忘了会差一大截。', anchor: '.ns-unnorm' }],
     step: (s: never) => { const st = s as { stage: string; policy: string; mode: string; cols: { name: string; mean: number; std: number; min: number; max: number; ms: number[]; mm: number[] }[]; unnormFeat: string; policyOut: number; unnormVal: number; forgotVal: number }; const th = st.cols[0]!, ta = st.cols[2]!; return [
       { k: '本步输入', v: st.stage === 'intro' ? '三个特征量纲差异大' : st.stage === 'stats' ? '6 个样本、整套数据集' : st.stage === 'meanstd' ? `μ=${th.mean}、σ=${th.std}` : st.stage === 'minmax' ? `min=${ta.min}、max=${ta.max}` : st.stage === 'unnorm' ? `策略输出 ${st.policyOut}(归一化)` : '两端归一化' },
@@ -982,6 +1032,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   teleop: {
     question: '人拧一只机械臂、另一只实时跟随，中间到底做了什么？为什么不用逆运动学？',
+    plain: {
+      hook: '人拧一只机械臂，另一只跟着动 —— 中间做了什么？',
+      body: '几乎什么都没做。主臂的每个关节读出角度，直接发给从臂的对应关节，让它转到同样的角度。\u3000**不需要逆运动学** —— 因为两只臂结构完全一样，关节角一一对应，根本不用去算「末端该在哪」再反解。这也是主从同构设计最大的好处。\u3000难点在于延迟和力反馈：人感觉不到从臂那边碰到了什么，所以采数据时容易做出一些机器学不会的动作。',
+      watch: '看主臂关节角怎么原样映射到从臂。换成结构不同的两只臂，这条捷径就没了，必须绕道笛卡尔空间。',
+    },
     read: [{ at: '关节表', is: '6 关节：leader 原始码→标定角→跳变Δ→安全钳后目标。', anchor: '.tp-table' }, { at: '安全钳说明', is: '抖动关节被钳(开)还是直通急跳(关)。', anchor: '.tp-note' }, { at: '读数', is: '安全钳、阈值、被钳关节数。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { stage: string; safety: string; maxRel: number; joints: { name: string; leaderTick: number; leaderDeg: number; present: number; delta: number; goal: number; clamped: boolean }[]; clampedN: number }; const g = st.joints[4]!; return [
       { k: '本步输入', v: st.stage === 'intro' ? '一对同构臂：人拧 leader' : st.stage === 'readraw' ? '6 个舵机原始码(0~4095)' : st.stage === 'calib' ? '原始码 + homing_offset' : st.stage === 'safety' ? `目标角 vs follower 当前角` : '跟随完成的一步' },
@@ -993,6 +1048,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   miniduck: {
     question: '一只 BD-X 小鸭机器人怎么"学"会走路？它的"模仿"和前面 ACT/BC 的"模仿"是一回事吗？',
+    plain: {
+      hook: '小鸭机器人学走路，跟机械臂学抓取不是一回事。',
+      body: '机械臂模仿的是**人示范的动作**，有现成的正确答案。而走路没人能示范给一只两条腿的小鸭 —— 人的身体结构跟它不一样。\u3000所以它走的是另一条路：在仿真里靠强化学习自己试，摔上几百万次，学会一套能站稳往前走的策略，再迁移到真机上。\u3000难点从「怎么模仿」变成了「仿真和现实差多少」—— 仿真里能走，真机上一放就摔。',
+      watch: '看仿真里的摔倒次数怎么随训练下降。再想想仿真里没建模的东西（地面摩擦、电机延迟），那就是迁移到真机时的落差。',
+    },
     read: [{ at: '相位条', is: '步态相位 t=(i mod N)/N → φ=(cos,sin)。', anchor: '.mk-phase' }, { at: '腿关节表', is: '参考 q̂ vs 实际 q、偏差、PD 力矩。', anchor: '.mk-table' }, { at: '奖励分解', is: 'R_vel + R_imit(主导 −15‖q−q̂‖²) + alive。', anchor: '.mk-reward' }, { at: '结局横幅', is: '消融后直立/退化/摔倒。', anchor: '.mk-out' }],
     step: (s: never) => { const st = s as { stage: string; modeLabel: string; phaseT: number; cosp: number; sinp: number; v: number; cmdV: number; imitJoint: number; rVel: number; rImit: number; alive: number; reward: number; imitOn: boolean; fallen: boolean; outcome: string }; return [
       { k: '本步输入', v: st.stage === 'intro' ? '腿式 RL(Brax PPO@MuJoCo)、非模仿学习' : st.stage === 'phase' ? `第 i 步 → 相位 t=${st.phaseT}` : st.stage === 'policy' ? '策略残差 a、默认姿势 q_def' : st.stage === 'reward' ? `v=${st.v}(指令 ${st.cmdV})、‖q−q̂‖²=${st.imitJoint}` : st.stage === 'ablate' ? '当前消融模式' : '整步跑完' },
@@ -1004,6 +1064,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   foc: {
     question: '三相电机的电流是随转子转的交流量，PID 根本追不上——FOC 是怎么把它变成能用两个 PI 独立控的？',
+    plain: {
+      hook: '电机里的电流是随转子转的交流量，PID 追不上。',
+      body: '三相电机的每一相电流都在正弦变化，你让 PID 去追一个不断变化的目标，它永远慢半拍。\u3000磁场定向控制的招数是**换一个坐标系** —— 换到跟着转子一起转的那个视角上。在这个视角里，原本旋转的交流量变成了两个几乎不动的直流量：一个管扭矩，一个管磁场。\u3000直流量就好办了，两个普通 PID 各管一个，控得又稳又准。算完再变换回三相输出。\u3000「跟着转子一起转」这个视角，就是全部的巧思。',
+      watch: '看三相电流在坐标变换前后的样子：变换前是三条正弦，变换后是两条几乎水平的线。PID 追后者才追得上。',
+    },
     read: [{ at: '流水线', is: 'Clarke→Park→PI→逆变换+SVPWM 四块逐步现算。', anchor: '.fc-flow' }, { at: 'Park 块', is: 'i_d/i_q——交流相电流转成直流。', anchor: '.fc-badge' }, { at: '转矩条', is: 'τ=1.5·p·λ_m·i_q，随 i_q 翻转。', anchor: '.fc-torque' }],
     step: (s: never) => { const st = s as { stage: string; cmdLabel: string; thetaDeg: number; iqTarget: number; iAlpha: number; iBeta: number; iD: number; iQ: number; eD: number; eQ: number; uD: number; uQ: number; uAc: number; poles: number; lambdaM: number; torque: number }; const z = (x: number) => (Object.is(x, -0) ? 0 : x); return [
       { k: '本步输入', v: st.stage === 'intro' ? `力矩指令 ${st.cmdLabel}、θ_e=${st.thetaDeg}°` : st.stage === 'clarke' ? '测得三相电流 i_a,i_b,i_c' : st.stage === 'park' ? `αβ 电流 + θ_e=${st.thetaDeg}°` : st.stage === 'pi' ? `i_d=${z(st.iD)}、i_q=${z(st.iQ)}、目标 i_d*=0/i_q*=${st.iqTarget}` : '两轴电压 U_d,U_q' },
@@ -1015,6 +1080,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   dyneom: {
     question: '机械臂能不能一个电机管一个关节、各自 PID 就行？动力学方程 M q̈+C q̇+G=τ 到底在说什么？',
+    plain: {
+      hook: '每个关节配一个 PID，各管各的，行不行？',
+      body: '勉强能动，但控不好。因为机械臂的关节**互相牵扯**：肩关节一甩，肘关节就会受到离心力和科氏力；姿态一变，重力对每个关节的力矩也全变了。\u3000动力学方程 M q̈ + C q̇ + G = τ 说的就是这件事：扭矩要分三份，一份克服惯性、一份对付速度耦合、一份扛重力。\u3000各管各的 PID 看不到这些耦合项，只能把增益整定得很保守 —— 慢，而且到处有稳态误差。',
+      watch: '看同一个动作下三项各占多少力矩。姿态和速度一变，占比就大幅变化 —— 固定增益的 PID 应付不了这种变化。',
+    },
     read: [{ at: '质量矩阵 M', is: '2×2，非对角=关节耦合。', anchor: '.dy-matrix' }, { at: '三项表', is: '惯性 M q̈ / 科氏 C q̇ / 重力 G 逐列汇成 τ。', anchor: '.dy-terms' }, { at: '读数', is: '运动状态、耦合项、G、τ。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { stage: string; motionLabel: string; M: number[][]; Cqd: number[]; G: number[]; Mqdd: number[]; tau: number[]; qd: number[]; qdd: number[] }; const z = (x: number) => (Object.is(x, -0) ? 0 : x); return [
       { k: '本步输入', v: st.stage === 'intro' ? `运动状态 ${st.motionLabel}` : st.stage === 'mass' ? '构型 q=[30°,45°]' : st.stage === 'coriolis' ? `关节角速度 q̇=[${st.qd}]` : st.stage === 'gravity' ? '构型 q（重力方向）' : st.stage === 'assemble' ? `q̈=[${st.qdd}]、M/C/G 三项` : '完整运动方程' },
@@ -1026,6 +1096,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   rnea: {
     question: '逆动力学(给运动求力矩)怎么算得又快又不用组一大堆矩阵？RNEA 的两次扫描在做什么？',
+    plain: {
+      hook: '求每个关节要出多大力，不必组一堆大矩阵。',
+      body: '递归牛顿-欧拉算法只扫两遍：**先从底座往末端推**，算出每一节的速度和加速度（前一节怎么动，加上自己转了多少）；**再从末端往底座收**，算出每一节要承受多大的力和力矩（末端的力一路传回来）。\u3000两遍扫完就得到全部关节力矩，复杂度跟关节数成正比，没有矩阵求逆。\u3000所以它快到能在控制回路里每毫秒跑一次 —— 这是实时力控的前提。',
+      watch: '跟着两遍扫描走：外推时速度加速度怎么累积，内收时力怎么一节节传回来。每一节只跟相邻两节打交道。',
+    },
     read: [{ at: '外向表', is: '基→梢：每连杆 ω/α/质心加速度。', anchor: '.rn-flow' }, { at: '内向表', is: '梢→基：F=m·a_c、N=I·α → τ。', anchor: '.rn-table' }, { at: '对拍条', is: 'RNEA 的 τ = M q̈+C q̇+G。', anchor: '.rn-verify' }],
     step: (s: never) => { const st = s as { stage: string; grav: string; q: number[]; qd: number[]; qdd: number[]; a0: number[]; out: { aCom: number[] }[]; tau: number[]; eomTau: number[] }; return [
       { k: '本步输入', v: st.stage === 'intro' ? `q=[${st.q}]°、q̇=[${st.qd}]、q̈=[${st.qdd}]` : st.stage === 'outward' ? `基座假加速度 a₀=[${st.a0}]（重力技巧）` : st.stage === 'inward' ? '各连杆质心加速度 a_c' : st.stage === 'verify' ? 'RNEA 的 τ 与运动方程' : '完整两次扫描' },
@@ -1037,6 +1112,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   fwddyn: {
     question: '物理仿真(MuJoCo/Bullet)每一步在算什么？给定关节力矩，怎么求出关节加速度、再推进到下一帧？',
+    plain: {
+      hook: '物理引擎每走一步，到底在算什么？',
+      body: '已知这一刻各关节的力矩，求出各关节的加速度 —— 也就是解 M q̈ = τ − C q̇ − G。算出加速度就能积分出速度和位置，一步就走完了。\u3000这跟逆动力学正好相反：那边是「给运动求力」，这边是「给力求运动」。\u3000难点在于要解一个线性方程组，而且 M 随姿态不断变化。所以仿真的每一步都要重新组装并求解一次 —— 这是物理引擎的主要开销。',
+      watch: '看每一步怎么从力矩解出加速度、再积分成运动。步长取大了积分误差会累积，能量开始漂移。',
+    },
     read: [{ at: '偏置块', is: 'b=Cq̇+G（速度+重力项）。', anchor: '.fw-flow' }, { at: '质量矩阵块', is: 'M 与 det、M⁻¹。', anchor: '.fw-mat' }, { at: 'q̈ 块', is: 'q̈=M⁻¹(τ−b)。', anchor: '.fw-qdd' }],
     step: (s: never) => { const st = s as { stage: string; tqLabel: string; tau: number[]; bias: number[]; detM: number; qdd: number[]; qdNext: number[]; qNext: number[]; dt: number }; const z = (x: number) => (Object.is(x, -0) ? 0 : x); return [
       { k: '本步输入', v: st.stage === 'intro' ? `施加力矩 τ=[${st.tau}]（${st.tqLabel}）` : st.stage === 'bias' ? 'q,q̇（算速度+重力项）' : st.stage === 'massinv' ? '构型 q（组质量矩阵）' : st.stage === 'solve' ? `τ−b=[${z(Math.round((st.tau[0]! - st.bias[0]!) * 100) / 100)},${z(Math.round((st.tau[1]! - st.bias[1]!) * 100) / 100)}]` : `q̈=[${st.qdd}]、dt=${st.dt}` },
@@ -1048,6 +1128,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   computedtorque: {
     question: '机械臂非线性又耦合，固定增益 PID 只能保守整定。计算力矩控制怎么用模型把它"拉直"成线性的？',
+    plain: {
+      hook: '既然有模型，为什么不用它把非线性抵消掉？',
+      body: '普通 PID 面对的是一个不断变化的对象：姿态一变，等效惯量和重力就变了，所以增益只能按最坏情况保守整定。\u3000计算力矩控制的思路是**先用动力学模型把重力、耦合项算出来直接补掉**，补完之后剩下的系统近似成一个简单的二阶线性系统 —— 再上 PID 就轻松了。\u3000代价是它极度依赖模型准不准：负载变了、模型参数偏了，补偿反而成了干扰。',
+      watch: '看补偿项占了多大比例。故意把模型质量改错 20%，跟踪误差会立刻变大 —— 这就是它对模型的依赖程度。',
+    },
     read: [{ at: '误差块', is: 'e、ė、Kp/Kd。', anchor: '.ct-flow' }, { at: '伺服律块', is: 'v=q̈_d+Kd ė+Kp e。', anchor: '.ct-blk' }, { at: '误差动力学块', is: '线性 ë+Kd ė+Kp e=0 或残留。', anchor: '.ct-dyn' }],
     step: (s: never) => { const st = s as { stage: string; modeLabel: string; e: number[]; ed: number[]; qddDes: number[]; Kp: number; Kd: number; innerV: number[]; Mv: number[]; Cqd: number[]; G: number[]; pdPart: number[]; tau: number[]; useM: boolean; useGrav: boolean; linear: boolean }; const z = (x: number) => (Object.is(x, -0) ? 0 : x); return [
       { k: '本步输入', v: st.stage === 'intro' ? `模式 ${st.modeLabel}` : st.stage === 'error' ? `目标与实际之差` : st.stage === 'law' ? `q̈_d=[${st.qddDes}]、Kd=${st.Kd}、Kp=${st.Kp}` : st.stage === 'torque' ? `伺服律 v=[${st.innerV}]` : '把 τ 代回被控对象' },
@@ -1059,6 +1144,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   contactlcp: {
     question: '物理引擎(MuJoCo/Bullet)每一步怎么解接触力？为什么接触不是普通的 ODE，而要解一个互补问题？',
+    plain: {
+      hook: '接触为什么不能像普通微分方程那样解？',
+      body: '因为接触有两个「要么…要么…」的硬条件：**要么分开、要么有压力**，而且压力只能推不能拉；摩擦力要么没到极限、要么已经滑动。\u3000这些条件是不等式和互补关系，不是等式 —— 普通的积分器处理不了。\u3000所以物理引擎每一步要解一个线性互补问题：找一组接触力，让所有互补条件同时成立。这也是接触仿真慢、且容易抖的根源。',
+      watch: '看每个接触点上「距离」和「法向力」这一对：一个为正另一个必为零。这就是互补条件的实际形状。',
+    },
     read: [{ at: '法向行', is: '法向互补 f_n=mg。', anchor: '.lc-line' }, { at: '摩擦锥条', is: 'μf_n 边界 vs 推力 F。', anchor: '.lc-bar' }, { at: '粘/滑条', is: 'F vs μf_n → 粘或滑。', anchor: '.lc-verdict' }],
     step: (s: never) => { const st = s as { stage: string; pushLabel: string; m: number; g: number; mu: number; F: number; fn: number; maxStatic: number; stick: boolean; ft: number; accel: number }; return [
       { k: '本步输入', v: st.stage === 'intro' ? `${st.pushLabel}、μ=${st.mu}` : st.stage === 'normal' ? '竖直平衡（求法向力）' : st.stage === 'cone' ? `f_n=${st.fn}、μ=${st.mu}` : st.stage === 'stickslip' ? `F=${st.F} 与 μf_n=${st.maxStatic}` : `F=${st.F}、f_t=${st.ft}、m=${st.m}` },
@@ -1070,6 +1160,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   ekf: {
     question: '卡尔曼滤波要求线性，可机器人测的是「到地标的距离」这种非线性量——EKF 怎么办？',
+    plain: {
+      hook: '卡尔曼滤波要求一切都是线性的，可现实不是。',
+      body: '机器人测的是「到地标的距离」，那是坐标的平方和开根号 —— 弯的。\u3000扩展卡尔曼的办法很直接：**在当前估计点附近把这条曲线当成直线**（求一次导数），然后照着线性卡尔曼那一套走。\u3000所以它是个近似：曲线弯得越厉害、当前估计离真值越远，这条切线就越不像。估计一旦偏了，近似跟着变差，可能越滚越远收不回来。',
+      watch: '看每一步在哪个点上做线性化。把非线性调强再跑，你会看到估计慢慢发散 —— 那就是这个近似的边界。',
+    },
     read: [{ at: '数轴图', is: '地标(10,5)、机器人先验/预测/后验位置。', anchor: '.ek-svg' }, { at: '雅可比块', is: 'H=∂h/∂x 就地线性化(EKF 精髓)。', anchor: '.ek-jt' }, { at: '读数', is: '信任、H、x̂、方差 P。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { stage: string; trustLabel: string; xPrior: number; u: number; PPrior: number; Q: number; L: number; xPred: number; PPred: number; hPred: number; z: number; innov: number; H: number; R: number; S: number; K: number; xPost: number; PPost: number }; return [
       { k: '本步输入', v: st.stage === 'intro' ? `信任 ${st.trustLabel}、非线性观测` : st.stage === 'predict' ? `先验 x̂=${st.xPrior}、运动 u=${st.u}` : st.stage === 'measmodel' ? `预测位置 x̂=${st.xPred}、地标 L=${st.L}` : st.stage === 'jacobian' ? `在估计点 x̂=${st.xPred} 求偏导` : `创新 y=${st.innov}、H=${st.H}、R=${st.R}` },
@@ -1081,6 +1176,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   particlefilter: {
     question: 'EKF 用一个高斯表信念、强非线性/多峰就崩。粒子滤波怎么用一堆样本表示任意分布？',
+    plain: {
+      hook: '与其用一个高斯猜位置，不如撒一千个猜测。',
+      body: '机器人可能在走廊 A，也可能在长得一模一样的走廊 B —— 这种「有好几个可能」的信念，一个高斯分布根本表达不了。\u3000粒子滤波撒一大把候选位置，每个都按运动模型往前推，然后**按「跟观测有多吻合」给它们打分**，分高的多复制几份、分低的淘汰。\u3000几轮下来粒子就聚到真实位置附近。代价是粒子要够多，而且可能出现「全挤在一处」的退化。',
+      watch: '看粒子云怎么从散开慢慢聚拢，以及重采样那一步怎么淘汰低分粒子。多峰的情况下它会同时保住好几团。',
+    },
     read: [{ at: '粒子云图', is: '数轴上粒子(半径∝权重)、重采样后聚拢。', anchor: '.pf-svg' }, { at: '加权块', is: 'w∝观测似然。', anchor: '.pf-blk' }, { at: '读数', is: 'N_eff、加权均值估计。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { stage: string; modeLabel: string; z: number; sigma: number; particles: { pos: number; wn: number }[]; neff: number; N: number; resampled: number[]; estimate: number; mode: string }; return [
       { k: '本步输入', v: st.stage === 'intro' ? `${st.N} 个粒子、测量 z=${st.z}` : st.stage === 'predict' ? '每粒子按运动+噪声动' : st.stage === 'weight' ? `测量 z=${st.z}、σ=${st.sigma}` : st.stage === 'neff' ? '归一化权重' : '归一权重的累积分布' },
@@ -1092,6 +1192,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   ukf: {
     question: 'EKF 要求雅可比、导数难算又只是一阶近似。UKF 怎么不求导就处理非线性？',
+    plain: {
+      hook: '不求导，也能处理非线性。',
+      body: '扩展卡尔曼要算雅可比矩阵 —— 有些模型的导数根本推不出来，或者推起来极容易出错。\u3000无迹卡尔曼换了个思路：**挑一小撮有代表性的点**（sigma 点），让它们原样穿过那个非线性函数，然后看穿过之后这撮点的均值和散布。\u3000用几个点的实际结果，去代替一阶泰勒展开的猜测 —— 精度更高，还不用求导。\u3000代价是每一步要多算几次函数。',
+      watch: '看那几个 sigma 点怎么被选出来、穿过非线性之后怎么散开。对比 EKF 的切线近似，弯得厉害时差距很明显。',
+    },
     read: [{ at: 'h(x)曲线', is: 'sigma 点撒在真曲线上(不是切线)。', anchor: '.uk-svg' }, { at: 'sigma 块', is: '取点→过真非线性→重组。', anchor: '.uk-blk' }, { at: '对比框', is: 'UKF vs EKF 同题结果。', anchor: '.uk-cmpbox' }],
     step: (s: never) => { const st = s as { stage: string; uncLabel: string; xPred: number; P: number; sqrtTerm: number; sigmas: { x: number; h: number }[]; zPred: number; S: number; Pxz: number; K: number; xPost: number; PPost: number; xEkf: number; unc: string }; return [
       { k: '本步输入', v: st.stage === 'intro' ? `先验 ${st.uncLabel}、非线性观测` : st.stage === 'sigma' ? `均值 μ=${st.xPred}、协方差 P=${st.P}` : st.stage === 'transform' ? `3 个 sigma 点` : st.stage === 'recombine' ? '过 h 后的 3 个值' : `ẑ=${st.zPred}、S=${st.S}、Pxz=${st.Pxz}` },
@@ -1103,6 +1208,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   complementary: {
     question: '陀螺仪短期准但会漂、加速度计不漂但抖——怎么把这两个传感器融成一个好用的倾角？',
+    plain: {
+      hook: '陀螺仪短期准但会漂，加速度计不漂但抖。',
+      body: '两个传感器的毛病正好互补：一个的强项是另一个的弱项。\u3000互补滤波的做法简单到只有一行：**把陀螺仪的积分结果做高通、加速度计的结果做低通，加起来**。短时间内信陀螺仪（平滑），长时间靠加速度计把漂移拉回来（不跑偏）。\u3000它比卡尔曼便宜得多，参数只有一个，很多小型飞控就用这个。',
+      watch: '调那个融合系数，看结果怎么在「跟着抖」和「跟着漂」之间移动。两个极端各自暴露一个传感器的毛病。',
+    },
     read: [{ at: '倾角刻度尺', is: '陀螺/加速度/融合三个标记。', anchor: '.co-scale' }, { at: '融合块', is: 'θ=α·陀螺+(1−α)·加速度。', anchor: '.co-hot2' }, { at: '取舍块', is: 'α 大平滑纠漂慢/小压漂快但抖。', anchor: '.co-behav' }],
     step: (s: never) => { const st = s as { stage: string; blendLabel: string; thetaPrev: number; omega: number; dt: number; thetaAcc: number; alpha: number; gyroPred: number; fused: number; driftPerSec: number; blend: string }; return [
       { k: '本步输入', v: st.stage === 'intro' ? `混合 ${st.blendLabel}` : st.stage === 'gyro' ? `上一角 ${st.thetaPrev}°、角速度 ω=${st.omega}°/s` : st.stage === 'accel' ? '重力方向' : st.stage === 'fuse' ? `陀螺 ${st.gyroPred}°、加速度 ${st.thetaAcc}°` : '两个极端 vs 互补' },
@@ -1114,6 +1224,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   rrtstar: {
     question: 'RRT 能找到一条避障路、但往往绕。RRT* 加了哪两步，让路径随采样越来越接近最优？',
+    plain: {
+      hook: 'RRT 能找到一条路，但那条路常常绕得离谱。',
+      body: '因为新节点接上来之后就再也不改了 —— 哪怕后来发现有更近的父节点。\u3000RRT* 多做两件事：新节点接入时**在附近找一圈，挑代价最小的当父亲**；接上之后再**回头看看附近的老节点，改接到自己身上会不会更近**。\u3000这两下让路径随着采样次数增加不断变短，最终收敛到最优。代价是每次采样都要多做一轮邻域搜索。',
+      watch: '看那些「改接父节点」的时刻：整片子树的代价当场降下来。采样越多，路径越直。',
+    },
     read: [{ at: '树图', is: '节点+父边、x_new+邻域圈、选父边绿/重连边橙。', anchor: '.rs-svg' }, { at: '选父块', is: 'cost[邻居]+dist 取最小。', anchor: '.rs-hot2' }, { at: '重连块', is: '邻居经 x_new 更省则改接。', anchor: '.rs-rwchip' }],
     step: (s: never) => { const st = s as { stage: string; algoLabel: string; xnew: { x: number; y: number }; radius: number; neighbors: { id: string; dist: number; viaCost: number }[]; nearestId: string; rrtCost: number; chosenParent: string; starCost: number; rewired: { id: string; oldCost: number; newCost: number }[] }; return [
       { k: '本步输入', v: st.stage === 'intro' ? `算法 ${st.algoLabel}` : st.stage === 'sample' ? `采样 x_new=(${st.xnew.x},${st.xnew.y})、r=${st.radius}` : st.stage === 'chooseparent' ? '邻域各节点的 cost 与距离' : st.stage === 'rewire' ? `x_new(代价 ${st.starCost})` : 'RRT vs RRT* 结果' },
@@ -1125,6 +1240,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   potentialfield: {
     question: '不采样不搜图，让目标"吸"机器人、障碍"推"机器人，顺合力走——这么简单的势场法栽在哪？',
+    plain: {
+      hook: '目标吸引你、障碍推开你，顺着合力走就行 —— 真这么简单？',
+      body: '不。这个方法优雅得让人心动：不用搜索、不用采样，每一步只看当前受力。\u3000但它有个致命弱点：**吸引力和排斥力可能正好抵消**，机器人卡在原地动不了，而那个位置并不是目标。凹形障碍里尤其容易出现这种局部极小点。\u3000所以纯势场法几乎不单独用，通常作为全局规划出来的路径上的局部避障补充。',
+      watch: '找一个凹形障碍，看机器人怎么被吸进去然后卡住。合力为零，但目标还在前面 —— 这就是局部极小。',
+    },
     read: [{ at: '2D 平面', is: '目标/障碍(+影响圈)/机器人 + 引力绿/斥力红/合力蓝箭头。', anchor: '.po-svg' }, { at: '合力块', is: 'F=F_att+F_rep。', anchor: '.po-t' }, { at: '结局横幅', is: '绕过 or 卡局部极小。', anchor: '.po-out' }],
     step: (s: never) => { const st = s as { stage: string; scenLabel: string; robot: number[]; goal: number[]; rhoGoal: number; rhoObs: number; rho0: number; fAtt: number[]; fRep: number[]; fTotal: number[]; fMag: number; distToGoal: number; stuck: boolean; scen: string }; return [
       { k: '本步输入', v: st.stage === 'intro' ? `场景 ${st.scenLabel}` : st.stage === 'attractive' ? `机器人 ${JSON.stringify(st.robot)}、目标 ${JSON.stringify(st.goal)}` : st.stage === 'repulsive' ? `到障碍 ρ=${st.rhoObs}、影响半径 ρ0=${st.rho0}` : st.stage === 'total' ? `引力 [${st.fAtt}]、斥力 [${st.fRep}]` : '合力与离目标距离' },
@@ -1136,6 +1256,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   chomp: {
     question: 'RRT/A* 出的是折线路径。CHOMP 换个思路：把整条轨迹当变量、直接"优化"成又平滑又避障，怎么做？',
+    plain: {
+      hook: '先找到一条能走的路，再把它拉直、拉平。',
+      body: '采样类规划器给出的是一条折线，能走但很难看，机器人跟着走会顿挫。\u3000CHOMP 换了个视角：**把整条轨迹当成一个变量**，写一个代价函数 —— 既要远离障碍，又要自身尽量平滑 —— 然后做梯度下降，整条轨迹一起往下滑。\u3000好处是出来的路又平又顺，可以直接执行。\u3000坏处是它只能局部优化：初始轨迹穿过障碍的哪一侧，基本就决定了最终结果。',
+      watch: '看轨迹怎么在两个代价的拉扯下变形：障碍把它推开，平滑项把它拉直。换个初始轨迹，可能收敛到另一侧。',
+    },
     read: [{ at: '轨迹图', is: '初始直线(虚)/更新后曲线(绿)+障碍+影响圈。', anchor: '.cm-svg' }, { at: '避障梯度块', is: '推离障碍。', anchor: '.cm-r2' }, { at: '下降块', is: 'q2 挪到新位置。', anchor: '.cm-h' }],
     step: (s: never) => { const st = s as { stage: string; wLabel: string; w: string; kObs: number; d0: number; distToObs: number; gObs: number[]; gSmooth: number[]; q2New: number[] }; return [
       { k: '本步输入', v: st.stage === 'intro' ? `权重 ${st.wLabel}` : st.stage === 'traj' ? '初始直线 5 路点' : st.stage === 'obstacle' ? `q2 离障碍 ${st.distToObs}、d0=${st.d0}` : st.stage === 'smooth' ? 'q2 与邻居' : '两个梯度' },
@@ -1147,6 +1272,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   trapezoid: {
     question: '规划出"走哪条路"之后，电机怎么知道每一刻该走多快？梯形速度曲线怎么算总时间？',
+    plain: {
+      hook: '规划出走哪条路之后，每一刻该走多快？',
+      body: '最简单实用的答案是梯形：**匀加速起步、匀速巡航、匀减速停下**，速度曲线画出来是个梯形。\u3000给定总路程、最大速度、最大加速度，就能算出加速段多长、匀速段多长、总共要多久。\u3000路程太短时匀速段会消失，梯形退化成三角形 —— 还没加到最大速度就该刹车了。\u3000要更平滑就把加速度也做成渐变，那是 S 形曲线。',
+      watch: '改总路程，看匀速段怎么缩短直至消失。加速度和最大速度这两个约束，哪个先顶到，决定了曲线的形状。',
+    },
     read: [{ at: 'v(t) 图', is: '速度-时间曲线：梯形或三角。', anchor: '.tz-svg' }, { at: '判形块', is: 'D vs 2·d_a → 梯形/三角。', anchor: '.tz-t' }, { at: '读数', is: '加速段、形态、总时间。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { stage: string; distLabel: string; D: number; vMax: number; aMax: number; tA: number; dA: number; isTrap: boolean; vPeak: number; dCruise: number; tCruise: number; tTotal: number }; return [
       { k: '本步输入', v: st.stage === 'intro' ? `${st.distLabel}、v_max=${st.vMax}、a_max=${st.aMax}` : st.stage === 'accel' ? '约束 v_max、a_max' : st.stage === 'regime' ? `D=${st.D} 与 2·d_a=${Math.round(2 * st.dA * 100) / 100}` : st.stage === 'profile' ? '各段距离' : '各段时间' },
@@ -1158,6 +1288,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   gjk: {
     question: '运动规划每走一步都要问"机器人和障碍碰了吗"。GJK 怎么只靠支撑函数，就判两个凸形碰没碰？',
+    plain: {
+      hook: '两个形状碰上了没有？不必算它们的交集。',
+      body: 'GJK 把问题换了个问法：**把两个形状的「差集」算出来，问它包不包含原点**。包含就是碰了，不包含就是没碰。\u3000妙的是这个差集根本不用真的构造出来 —— 只要能回答「这个方向上最远的点在哪」（支撑函数），就能一步步在差集里找一个包住原点的单纯形。\u3000所以它对任意凸形都通用：球、胶囊、多面体，只要写得出支撑函数。',
+      watch: '看每一轮朝哪个方向找支撑点、单纯形怎么一步步逼近原点。碰撞判定收敛得非常快，通常几轮就够。',
+    },
     read: [{ at: '世界空间', is: '两凸形 A、B、当前支撑顶点(高亮)。', anchor: '.gk-svg' }, { at: 'Minkowski 空间', is: '原点 O、单纯形演化、搜索方向。', anchor: '.gk-mink' }, { at: '读数', is: 'a·d(≥0 越过原点)、结论。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { stage: string; scenLabel: string; iterNo: number; dir: number[]; a: number[]; sA: number[]; sB: number[]; adot: number; passed: boolean; simplex: number[][]; contained: boolean; collide: boolean | null }; return [
       { k: '本步输入', v: st.stage === 'intro' ? `两凸形、场景 ${st.scenLabel}` : st.stage === 'done' ? `跑了 ${st.iterNo} 轮` : `第 ${st.iterNo} 轮、搜索方向 d=[${st.dir}]` },
@@ -1169,6 +1304,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   dubins: {
     question: '车不能像质点那样横着走、还有最小转弯半径。两个位姿之间，只能前进的车最短怎么开？',
+    plain: {
+      hook: '车不能横着挪，还有最小转弯半径。',
+      body: '两点之间直线最短 —— 那是对质点说的。对一辆只能前进、转弯半径有下限的车来说，最短路径永远由**几段最小半径的圆弧和直线**拼成。\u3000Dubins 证明了只有六种组合形式，挨个算一遍取最短就行。\u3000这就是为什么停车入库要来回打方向：直线过不去，只能靠圆弧凑。',
+      watch: '看那几种「左转-直行-右转」的组合各自的长度。起终点的朝向一变，最优组合就换了一种。',
+    },
     read: [{ at: '世界图', is: '起/终位姿(带朝向箭头)、两端转向圆、最优 Dubins 路径。', anchor: '.du-svg' }, { at: '四词条', is: '4 种 CSC 词的长度、最优高亮。', anchor: '.du-word' }, { at: '读数', is: '最优词、最短总长、三段。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { stage: string; scenLabel: string; goal: number[]; words: Record<string, number | null>; bestType: string; t: number; p: number; q: number; len: number; segs: string; headingDeg: number }; return [
       { k: '本步输入', v: st.stage === 'intro' ? `${st.scenLabel}、最小转弯半径 R=1` : st.stage === 'circles' ? '起/终各有左右转向圆' : st.stage === 'words' ? '四种 CSC 词' : st.stage === 'best' ? `LSL=${st.words.LSL}、RSR=${st.words.RSR}、LSR=${st.words.LSR}、RSL=${st.words.RSL}` : `最优词 ${st.bestType}` },
@@ -1180,6 +1320,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   rrtconnect: {
     question: '单树 RRT 从起点慢慢长到终点。怎么用两棵树两头对着挖、把规划加速？',
+    plain: {
+      hook: '一棵树从起点长过去，不如两棵树对着挖。',
+      body: '从起点长一棵、从终点长一棵，每次采样后两棵树都朝对方伸一段，一旦连上就成功了 —— 就像修隧道时两头对着挖。\u3000快在哪儿？树的生长是**指数级铺开**的，两棵各长一半的距离，比一棵长满全程要少铺很多。\u3000还有一招叫贪心延伸：伸的时候不止一小段，而是一路伸到撞墙为止，收敛更快。',
+      watch: '看两棵树各自的形状和它们连上的那一刻。跟单树版比较总采样次数，差距很明显。',
+    },
     read: [{ at: '世界图', is: '绿=起点树、红=终点树、q_new/CONNECT 高亮、相遇后拼路径。', anchor: '.fk-svg' }, { at: '读数', is: '两树节点数、本步 EXTEND/CONNECT。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { op: string; phase: string; extendS: boolean; treeS: unknown[]; treeG: unknown[]; qnew: { x: number; y: number } | null; connectPath: { x: number; y: number }[] | null; rejected: number; path: { x: number; y: number }[] | null }; return [
       { k: '本步输入', v: st.op === 'intro' ? '起点树、终点树各一个根' : st.op === 'extend' ? `EXTEND ${st.extendS ? '起点' : '终点'}树、一个采样点` : st.op === 'connect' ? `q_new=(${st.qnew?.x},${st.qnew?.y})、另一棵树最近节点` : st.op === 'reject' ? '迈步撞障碍/出界' : '两树相遇点' },
@@ -1191,6 +1336,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   dstarlite: {
     question: '机器人边走边发现新障碍。每发现一个就从头重新规划太浪费——怎么只"修"旧计划受影响的那一小块？',
+    plain: {
+      hook: '走着走着发现前面堵了，要从头重新规划吗？',
+      body: '不必。新障碍只影响它周围那一小片区域的代价，**大部分旧计划仍然有效**，从头算一遍是巨大的浪费。\u3000D* Lite 的做法是记住每个格子的代价，发现变化时只把受影响的格子标记为「不一致」，然后只重算这些格子及其波及范围。\u3000所以它特别适合边走边发现的场景：每次更新的代价跟变化的规模成正比，跟地图大小无关。',
+      watch: '在机器人前方放一个新障碍，看有多少格子被重算。跟整张图的格子数一比，就知道省了多少。',
+    },
     read: [{ at: '栅格 g 表', is: '每格数字=从起点到该格的最优代价；障碍✕、路径高亮。', anchor: '.ds-svg' }, { at: '受影响格', is: '增量修复中 g 值变了的格（橙色高亮）。', anchor: '.ds-chg' }, { at: '读数', is: '增量展开 vs 从头重搜。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { stage: string; gGoal: number; expInit: number; changed: string[]; expInc: number; expFull: number; reused: number }; return [
       { k: '本步输入', v: st.stage === 'intro' ? '会变的地图、g/rhs 两个量' : st.stage === 'initial' ? '起点(0,2)→终点(6,2)' : st.stage === 'change' ? '(3,2) 变障碍、正在路上' : st.stage === 'repair' ? '受影响格进优先队列' : '增量 vs 从头' },
@@ -1202,6 +1352,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   prm: {
     question: 'RRT 每次朝一个目标长一棵树。要在同一个固定环境里反复规划不同起终点，怎么才不用每次重来？',
+    plain: {
+      hook: '同一个环境要反复规划，何必每次重来？',
+      body: '概率路图先做一次**离线的准备**：在自由空间里随机撒一大堆点，把彼此能直连的点连起来，形成一张路网。\u3000之后每来一个起终点，只要把它们接进这张网，然后在网上跑一次最短路就行 —— 极快。\u3000所以它适合环境固定、查询很多的场合（仓库机器人）；而环境一直在变的话，路网天天要重建，就不如 RRT 划算。',
+      watch: '看路网的构建阶段和查询阶段分别花了多少。撒的点越多，网越密，查询质量越好但建网越慢。',
+    },
     read: [{ at: '路图', is: '障碍+节点+边(灰=路图/红虚=被挡/绿=最短路)。', anchor: '.pm-svg' }, { at: '连边块', is: 'k 近邻+碰撞检测。', anchor: '.pm-r' }, { at: '结局横幅', is: '连通找到路/断开。', anchor: '.pm-out' }],
     step: (s: never) => { const st = s as { stage: string; densLabel: string; nodes: { id: string }[]; edges: { a: string; b: string; blocked: boolean }[]; roadmap: unknown[]; path: string[]; pathLen: number; connected: boolean }; const blk = st.edges.filter(e => e.blocked); return [
       { k: '本步输入', v: st.stage === 'intro' ? `采样密度 ${st.densLabel}` : st.stage === 'sample' ? '自由空间' : st.stage === 'connect' ? `${st.nodes.length} 个节点` : st.stage === 'query' ? '起点 S、终点 G' : '路图连通性' },
@@ -1213,6 +1368,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   mdp: {
     question: '强化学习怎么衡量"一个状态有多好"？贝尔曼方程和值迭代在算什么？',
+    plain: {
+      hook: '怎么衡量「站在这个位置有多好」？',
+      body: '看从这儿出发，往后能拿到多少奖励 —— 但要给未来打个折，今天的一块钱比明年的一块钱值钱。\u3000贝尔曼方程把这句话写成了等式：**一个状态的价值 = 立刻拿到的奖励 + 折扣 × 下一个状态的价值**。\u3000它是递归的，所以可以反复迭代：先随便给所有状态一个值，按这个式子更新一遍、再一遍，值会收敛到真实价值。这就是值迭代。',
+      watch: '看每一轮迭代后各状态的价值怎么变化，以及最优策略怎么从价值里读出来（往价值最高的邻居走）。',
+    },
     read: [{ at: '状态链', is: 'A→B→C→G，每状态的值 V 和策略。', anchor: '.md-svg' }, { at: '值迭代表', is: '每次扫描后的 V，值从 G 往回传。', anchor: '.md-ittable' }, { at: '收敛框', is: 'V*=γ^步数·1、最优策略。', anchor: '.md-conv' }],
     step: (s: never) => { const st = s as { stage: string; gamLabel: string; gamma: number; iters: Record<string, number>[]; vFinal: Record<string, number>; policy: Record<string, string>; nIters: number; bkC: { left: number } }; return [
       { k: '本步输入', v: st.stage === 'intro' ? `折扣 ${st.gamLabel}` : st.stage === 'components' ? '状态/动作/奖励/γ' : st.stage === 'bellman' ? '状态 C 的邻居值' : st.stage === 'iterate' ? '反复扫描' : '收敛的 V' },
@@ -1224,6 +1384,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   qlearning: {
     question: '真实机器人不知道转移和奖励模型，值迭代用不了。Q-learning 怎么只靠试错的经验学出最优？',
+    plain: {
+      hook: '不知道游戏规则，能学会玩吗？',
+      body: '能。值迭代需要知道「做这个动作会转到哪个状态、拿多少奖励」，而真实机器人根本没有这份说明书。\u3000Q-learning 干脆不要模型：直接记「在这个状态做这个动作有多划算」，每做一次就用实际拿到的奖励去修正这个估计。\u3000它有个漂亮的性质：**不管你实际按什么策略在探索，学到的都是最优策略的价值** —— 所以可以一边瞎试一边学最优解。',
+      watch: '看那张 Q 表怎么随试错慢慢填出来。探索率调成 0，它会困在最早发现的那条路上，再也找不到更好的。',
+    },
     read: [{ at: '状态链', is: 'A→B→C→G，Q(·,→) 值。', anchor: '.ql-svg' }, { at: 'TD 更新块', is: 'Q←Q+α[r+γmaxQ−Q]、TD 误差 δ。', anchor: '.ql-g' }, { at: '收敛框', is: 'Q→值迭代的 V*。', anchor: '.ql-conv' }],
     step: (s: never) => { const st = s as { stage: string; alLabel: string; alpha: number; gamma: number; td: { r: number; maxNext: number; oldQ: number; delta: number; newQ: number }; q1ep: Record<string, number>; qConv: Record<string, number> }; return [
       { k: '本步输入', v: st.stage === 'intro' ? `学习率 ${st.alLabel}、免模型` : st.stage === 'qtable' ? 'Q 表初始全 0' : st.stage === 'tdupdate' ? `经验 (C,→,r=1,G)` : st.stage === 'episode' ? '一回合的在线更新' : '多回合后的 Q' },
@@ -1235,6 +1400,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   policygrad: {
     question: 'Q-learning 先学值再选动作。策略梯度直接学策略，怎么"把好动作的概率推上去"？基线又是干嘛的？',
+    plain: {
+      hook: '与其先估价值再挑动作，不如直接学「该怎么做」。',
+      body: 'Q-learning 学的是每个动作值多少，再取最大的。但动作是连续的时候（关节该转 12.7 度还是 12.8 度），「取最大」本身就成了难题。\u3000策略梯度直接输出动作的概率分布，然后**把拿到高回报的那些动作的概率往上推、低的往下压**。\u3000它天然支持连续动作，也能学出随机策略。代价是方差大：同一个策略跑两次回报可能差很多，梯度估计跟着抖。',
+      watch: '看每条轨迹的回报怎么变成对动作概率的推动。回报的方差越大，学习曲线抖得越厉害。',
+    },
     read: [{ at: '概率条', is: '动作 L/R 的 π，采样前/后。', anchor: '.pg-bars' }, { at: '梯度块', is: '∇log π·权重(回报或优势)。', anchor: '.pg-blk' }, { at: '读数', is: '优势 A、权重、π 变化。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { stage: string; baseLabel: string; base: string; acts: string[]; rewards: number[]; pi: number[]; sampled: number; rS: number; b: number; adv: number; weight: number; gradLog: number[]; thetaNew: number[]; piNew: number[] }; const a = st.acts[st.sampled]; return [
       { k: '本步输入', v: st.stage === 'intro' ? `基线 ${st.baseLabel}` : st.stage === 'policy' ? '参数 θ=[0,0]' : st.stage === 'sample' ? `按 π 采样` : st.stage === 'gradient' ? `采到 ${a}、回报 ${st.rS}` : `权重 ${st.weight}、梯度` },
@@ -1246,6 +1416,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   ppo: {
     question: '策略梯度一步迈太大会把策略更新崩坏。PPO 用什么招把每次更新限住？',
+    plain: {
+      hook: '更新迈太大一步，策略就崩了。',
+      body: '策略梯度的麻烦在于：一次更新如果把策略改动太多，之前采的数据就不再反映新策略的行为，估出来的梯度全是错的，训练当场崩掉。\u3000PPO 的办法很朴素：**给每次更新加一个「不许改太多」的夹子**，新旧策略的比值超过一定范围就把梯度削掉。\u3000这一招简单到可以几十行写完，却稳得出奇 —— 所以它成了事实上的默认算法。',
+      watch: '看那个裁剪范围怎么把过大的更新削平。把范围放宽再训一遍，你会看到某一次更新之后回报断崖下跌。',
+    },
     read: [{ at: 'L^clip 曲线', is: 'r 超过 1+ε 后变平=无梯度。', anchor: '.pp-svg' }, { at: '裁剪块', is: 'min(r·A, clip(r)·A)。', anchor: '.pp-h' }, { at: '效果框', is: '大步拦住/小步正常。', anchor: '.pp-eff' }],
     step: (s: never) => { const st = s as { stage: string; moveLabel: string; move: string; eps: number; A: number; r: number; rA: number; clipR: number; clipA: number; Lclip: number; clipped: boolean }; return [
       { k: '本步输入', v: st.stage === 'intro' ? `步幅 ${st.moveLabel}、优势 A=${st.A}` : st.stage === 'ratio' ? '新旧策略' : st.stage === 'surrogate' ? `r=${st.r}、A=${st.A}` : st.stage === 'clip' ? `r=${st.r}、ε=${st.eps}` : '裁剪后的目标' },
@@ -1257,6 +1432,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   pinhole: {
     question: '相机怎么把一个 3D 点变成一张图上的像素？为什么图像边缘的直线会拍弯？',
+    plain: {
+      hook: '相机怎么把三维世界压成一张平面图？',
+      body: '想象一个小孔：外面的光线穿过这个点，投到后面的成像面上。**离得越远的东西投出来越小** —— 这就是透视，也是深度信息丢失的地方。\u3000一个 3D 点变成像素要走两步：先按相机的位置姿态换算到相机坐标系，再按焦距投影到成像面、换算成像素格子。\u3000真实镜头不是理想小孔，边缘会弯 —— 所以还要一组畸变参数把弯的掰直。',
+      watch: '看一个 3D 点怎么一步步变成像素坐标。把畸变参数打开，图像边缘的直线会明显弯曲。',
+    },
     read: [{ at: '像平面图', is: '主点、理想像素、畸变像素+偏移。', anchor: '.ph-svg' }, { at: '透视块', is: 'x_n=X/Z 除以深度。', anchor: '.ph-blk' }, { at: '畸变块', is: 'x_d=x_n(1+k1r²+k2r⁴)。', anchor: '.ph-r' }],
     step: (s: never) => { const st = s as { stage: string; distLabel: string; dist: string; P: number[]; fx: number; cx: number; xn: number; yn: number; r2v: number; uIdeal: number; vIdeal: number; uDist: number; vDist: number; shift: number }; return [
       { k: '本步输入', v: st.stage === 'intro' ? `3D 点 (${st.P})、畸变 ${st.distLabel}` : st.stage === 'perspective' ? `深度 Z=${st.P[2]}` : st.stage === 'intrinsic' ? `归一化 (${st.xn},${st.yn})、fx=${st.fx}、cx=${st.cx}` : st.stage === 'distortion' ? `r²=${st.r2v}` : '理想 vs 畸变像素' },
@@ -1268,6 +1448,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   pointcloud: {
     question: '一片又密又不均的原始点云，配准/建图前怎么"梳理"？每个点的表面法线又是怎么算出来的？',
+    plain: {
+      hook: '激光扫回来一堆点，怎么先梳理一遍？',
+      body: '原始点云又密又不均匀：近处几十万点，远处稀稀拉拉，还混着噪声。\u3000常规做法是先**体素下采样** —— 把空间切成小格子，每格只留一个代表点，密度立刻均匀，点数降一个量级。\u3000然后算每个点的**法线**：找它周围一小圈邻居，拟合一个平面，平面的垂线就是法线。法线是后面配准、分割、渲染都要用的基础信息。',
+      watch: '看下采样前后的点数和分布。邻域半径取小了法线会被噪声带偏，取大了会把拐角抹平 —— 这个半径是关键参数。',
+    },
     read: [{ at: '2D 散点图', is: '原始点(小)、下采样质心(大绿)、查询点+k 近邻高亮、法线/切向箭头。', anchor: '.pc-svg' }, { at: '流程块', is: '①下采样 ②k 近邻 ③协方差 C ④PCA。', anchor: '.pc-blk' }, { at: 'PCA 块', is: '最小特征值的特征向量=法线。', anchor: '.pc-pca' }],
     step: (s: never) => { const st = s as { stage: string; L: number; raw: unknown[]; voxels: unknown[]; nbrs: unknown[]; query: number[]; cov: number[][]; lamBig: number; lamSmall: number; normal: number[]; tangent: number[] }; return [
       { k: '本步输入', v: st.stage === 'intro' ? `原始点云 ${st.raw.length} 点、下采样 L=${st.L}` : st.stage === 'voxel' ? `边长 L=${st.L} 的体素网格` : st.stage === 'neighbors' ? `目标点 (${st.query})、k=${st.nbrs.length}` : st.stage === 'covariance' ? `${st.nbrs.length} 个邻居去均值` : `协方差 C=[[${st.cov[0]}],[${st.cov[1]}]]` },
@@ -1279,6 +1464,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   stereo: {
     question: '单个相机把 3D 压成 2D 就丢了深度，两个平行相机怎么把深度找回来？为什么远处测得越来越不准？',
+    plain: {
+      hook: '两只眼睛怎么看出远近？',
+      body: '闭上一只眼交替看，近处的东西左右跳得厉害，远处的几乎不动。这个「跳动量」就是视差，而**深度跟视差成反比**。\u3000两个平行放置的相机也是这样：同一个点在两张图里的横坐标差多少，就能算出它有多远。\u3000所以远处测不准是必然的：视差已经小到一两个像素，再远一点差别就淹没在噪声里了。想测更远，只能把两个相机拉得更开。',
+      watch: '调基线（两相机的间距）和深度，看视差怎么变。深度翻倍，视差减半 —— 精度就是这么掉下去的。',
+    },
     read: [{ at: '左右图像条', is: '同一点在 x_L / x_R、横坐标差=视差。', anchor: '.st-svg' }, { at: '流程块', is: '①左右投影 ②视差 ③深度 ④精度。', anchor: '.st-blk' }, { at: '读数', is: '视差、深度 Z=fb/d、ΔZ。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { stage: string; f: number; b: number; X: number; Ztrue: number; xL: number; xR: number; disp: number; Zrec: number; dZ: number; dZnear: number; dZfar: number; scenLabel: string }; return [
       { k: '本步输入', v: st.stage === 'intro' ? `${st.scenLabel}、f=${st.f}px、b=${st.b}m` : st.stage === 'project' ? `3D 点 X=${st.X}m、Z=${st.Ztrue}m` : st.stage === 'disparity' ? `x_L=${st.xL}、x_R=${st.xR}` : st.stage === 'depth' ? `视差 d=${st.disp}px` : `深度 Z=${st.Ztrue}m、1px 视差误差` },
@@ -1290,6 +1480,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   handeye: {
     question: '相机装在机械臂夹爪上，怎么标出"相机相对夹爪的固定变换 X"？为什么 A 的旋转角必须等于 B 的？',
+    plain: {
+      hook: '相机装在夹爪上，它到底相对夹爪偏了多少？',
+      body: '让机械臂做几次已知的运动，同时相机观察一个固定的标定板。机械臂自己知道夹爪动了多少（A），相机能算出自己动了多少（B），而两者之间差着一个固定不变的变换 X —— 于是有 AX = XB。\u3000解这个方程就得到相机相对夹爪的安装位置。\u3000有个必要条件：运动的**旋转轴不能都平行**，否则方程约束不足，解不唯一。',
+      watch: '看几组运动怎么共同约束出那个固定变换。把所有运动都改成绕同一个轴转，你会发现解不出来。',
+    },
     read: [{ at: '示意图', is: '夹爪—X→相机，方程 A·X=X·B。', anchor: '.he-svg' }, { at: '流程块', is: '①运动对 ②角度自检 ③解 R_X ④解 t_X。', anchor: '.he-blk' }, { at: '还原对比', is: '还原 R_X/t_X vs 真值。', anchor: '.he-cmp' }],
     step: (s: never) => { const st = s as { stage: string; scenLabel: string; motions: { angA: number; angB: number; axA: number[]; axB: number[]; tB: number[] }[]; angleMatch: boolean; RXrec: number[][]; tXrec: number[]; rotOK: boolean; transOK: boolean }; return [
       { k: '本步输入', v: st.stage === 'intro' ? `${st.scenLabel}、eye-in-hand` : st.stage === 'motions' ? '机器人动两次' : st.stage === 'angle' ? `θ_A=${st.motions[0].angA}/${st.motions[1].angA}、θ_B=${st.motions[0].angB}/${st.motions[1].angB}` : st.stage === 'rotation' ? `轴对应 n_A=[${st.motions[0].axA}]/[${st.motions[1].axA}]、n_B=[${st.motions[0].axB}]/[${st.motions[1].axB}]` : '解出 R_X 后' },
@@ -1301,6 +1496,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   vo: {
     question: '单目相机连续两帧，怎么从匹配点反推"相机自己转了多少、往哪走了"？为什么单目定不了绝对尺度？',
+    plain: {
+      hook: '只靠一个相机的连续两帧，能知道自己怎么动了吗？',
+      body: '能知道**转了多少、朝哪个方向走** —— 但走了多远不知道。\u3000因为「小物体近距离移动」和「大物体远距离移动」在图像上完全一样。单目视觉天生定不了绝对尺度。\u3000解决办法要么加一个传感器（双目、IMU、轮速计）给一个真实长度作参照，要么在场景里放一个已知尺寸的标定物。\u3000所以纯单目的轨迹图，比例尺是随便定的。',
+      watch: '看从匹配点解出来的旋转和平移方向。平移向量只有方向没有长度 —— 那就是尺度不确定性的实际表现。',
+    },
     read: [{ at: '帧1/帧2', is: '同一批点在两帧的像位置；帧2 画对极线+极点。', anchor: '.vo-svg' }, { at: '流程块', is: '①E ②对极约束 ③对极线/极点 ④分解 (R,t)。', anchor: '.vo-blk' }, { at: '读数', is: '对极约束、极点、单目尺度。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { stage: string; scenLabel: string; E: number[][]; corrs: { x1: number[]; x2: number[] }[]; epiLine: number[]; onLine: number; epipole: number[] | null; scaleC: number }; return [
       { k: '本步输入', v: st.stage === 'intro' ? `${st.scenLabel}、R=I` : st.stage === 'essential' ? '相对旋转 R、平移方向 t' : st.stage === 'constraint' ? '3 对匹配点 (x1,x2)' : st.stage === 'epiline' ? `点2 x1=[${st.corrs[1].x1}]` : '本质矩阵 E' },
@@ -1312,6 +1512,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   pnp: {
     question: '已知一个物体的 3D 点和它们在图里的 2D 像素，怎么求相机相对它的 6 自由度位姿？',
+    plain: {
+      hook: '知道物体的形状和它在照片里的样子，能算出相机在哪吗？',
+      body: '能。物体上几个点的三维坐标是已知的，它们在图里的像素位置也测得出来，剩下的未知量就是相机的位置和朝向 —— 六个自由度。\u3000每个点提供两个方程（横纵坐标各一），所以理论上三个点就够（会有多解），四个以上就能唯一确定。\u3000实际用时点会有误差，所以取更多点做最小二乘，再用 RANSAC 剔掉错误匹配。',
+      watch: '看点数怎么影响解的稳定性。故意让一个匹配点错位，不加 RANSAC 的话整个位姿都会被它带偏。',
+    },
     read: [{ at: '成像面', is: '观测像素(绿)、当前位姿的重投影(橙)、残差线。', anchor: '.pn-svg' }, { at: '误差曲线', is: '重投影误差随位姿变化、真值处最小。', anchor: '.pn-curve' }, { at: '读数', is: 'RMS 误差、当前位姿、解。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { stage: string; scenLabel: string; obs: number[][]; curLabel: string; resid: number[]; rmsCur: number; trueVal: number; unit: string; curVal: number }; return [
       { k: '本步输入', v: st.stage === 'intro' ? `4 个 3D 点 + K、偏移 ${st.scenLabel}` : st.stage === 'observe' ? '真位姿 R=I、t=[0,0,5]' : st.stage === 'reproject' ? `偏位姿 ${st.curLabel}` : st.stage === 'landscape' ? '沿该自由度扫描' : '解到真值位姿' },
@@ -1419,6 +1624,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   quickselect: {
     question: '求第 K 大，为什么不用全排序 O(n㏒n)，Quickselect 怎么做到平均 O(n)？',
+    plain: {
+      hook: '只要第 K 大，没必要把整个数组排好。',
+      body: '借快排的划分：随手挑个分界，比它小的扔左边、大的扔右边。划分完就知道这个分界排第几 —— 如果正好是 K，完事；**否则只需要往有目标的那一半继续找，另一半彻底不管了**。\u3000每次砍掉一半，平均下来总共扫的元素数大约是数组长度的两倍，比全排序的 n log n 便宜一个量级。\u3000最坏情况仍会退化，用「中位数的中位数」挑分界可以保证线性。',
+      watch: '看每次划分后目标落在哪一半、另一半怎么被整体丢弃。跟快排比，它少走的正是那些被丢弃的分支。',
+    },
     read: [{ at: '数组', is: '窗口高亮、pivot 标黄、目标下标标 ◎、丢掉的一半变灰。', anchor: '.qs-arr' }, { at: '读数', is: '窗口、pivot 落位、目标下标、决策。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { op: string; round: number; lo: number; hi: number; pivot: number; pivotIdx: number; target: number; decision: string; answer: number; phase: string }; return [
       { k: '本步输入', v: st.phase === 'done' ? '命中，返回第 K 大' : st.op === 'intro' ? `数组，找目标下标 ${st.target}` : `第 ${st.round} 轮 · 窗口 [${st.lo},${st.hi}]，pivot=${st.pivot}` },
@@ -1430,6 +1640,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   trie: {
     question: '搜索框输入几个字母就弹候选，这套自动补全是怎么做的？',
+    plain: {
+      hook: '输入两个字母就弹出候选词，怎么做到的？',
+      body: '把所有词按字母一层层挂成一棵树：共同的前缀共用同一条路径。输入「ca」就沿着 c → a 走两步，这个节点下面挂的所有词就是候选。\u3000查找的耗时只跟你输入了几个字母有关，**跟词库有多大完全无关** —— 这是它最珍贵的性质。\u3000代价是空间：每个节点要给所有可能的下一个字符留位置，稀疏时浪费严重。所以实用的实现会把单链路径压成一个节点。',
+      watch: '看每个词怎么沿着树挂进去、公共前缀怎么被共用。输入越长，候选范围收得越窄。',
+    },
     read: [{ at: '前缀树', is: '缩进树=Trie，绿色是前缀路径、✓ 是完整词。', anchor: '.tr-tree' }, { at: '搜索框', is: '输入的前缀，末步弹出 Top-K 建议。', anchor: '.tr-search' }],
     step: (s: never) => { const st = s as { op: string; prefix: string; walked: string; candidates: [string, number][]; suggestions: [string, number][]; phase: string }; return [
       { k: '本步输入', v: st.phase === 'done' ? '收集完，排序出建议' : st.op === 'intro' || st.op === 'build' ? `词表建成 Trie` : st.op === 'input' ? `输入前缀「${st.prefix}」` : st.op === 'walk' ? `沿树走到 "${st.walked}"` : '在前缀节点 DFS 收集' },
@@ -1441,6 +1656,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   lfucache: {
     question: '缓存满了淘汰谁？LFU 为什么按"用得最少"、而不是"最久没用"？',
+    plain: {
+      hook: '淘汰「最久没用的」和「用得最少的」，哪个更好？',
+      body: '看场景。「最久没用」怕的是一次全表扫描：一堆只用一次的数据涌进来，把真正的热点全挤走。「用得最少」不怕这个 —— 新来的次数少，先被淘汰。\u3000但它有另一个毛病：**对旧热点念念不忘**。某个数据前天被访问了一万次，今天没人要了，可它的计数还挂在那儿，占着位置不走。\u3000所以实用的 LFU 都要配衰减：计数随时间打折，老热点自己就退场了。',
+      watch: '对比两种策略在同一串访问下的命中率。设计一段「先热后冷」的访问序列，你会看到 LFU 明显吃亏。',
+    },
     read: [{ at: '缓存卡', is: '每项带 freq 频率徽章，最低频标红。', anchor: '.lfu-cards' }, { at: '读数', is: '本步、缓存(带freq)、结果。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { op: string; opDesc: string; entries: { k: number; v: number; freq: number }[]; result: number; hit: boolean; evicted: number | null; evictReason: string; bumped: number | null; capacity: number; phase: string }; const show = st.entries.map(e => `${e.k}:${e.v}(f${e.freq})`).join(' '); return [
       { k: '本步输入', v: st.phase === 'done' && st.op === 'intro' ? '走完一串操作' : st.opDesc || `容量 ${st.capacity} 的缓存` },
@@ -1468,6 +1688,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   happensbefore: {
     question: '一个线程写了变量，另一个线程为什么不一定马上、按顺序看得见？',
+    plain: {
+      hook: '你写了一个变量，另一个线程为什么看不见？',
+      body: '因为编译器会重排指令、CPU 会乱序执行、每个核还有自己的缓存 —— 在没有约定的情况下，「谁先谁后」在多核世界里根本不是一个确定的事。\u3000所以内存模型给了一套规则，说清什么情况下「A 的结果对 B 一定可见」。加锁、volatile、原子操作，本质都是在建立这种可见性关系。\u3000注意它保证的是**可见性**，不是时间先后 —— 没有这层关系的两个操作，互相看不到对方。',
+      watch: '看两个线程各自的操作在没有同步时可能出现的交错顺序。有些结果在「直觉上不可能」，但内存模型允许它发生。',
+    },
     read: [{ at: '两线程', is: 'Writer 的两步写、Reader 的读，活动线程高亮。', anchor: '.hb-threads' }, { at: '结果', is: 'reader 第 4 步读到 0（旧值）还是 42。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { act: string; who: string; data: number; ready: boolean; isVolatile: boolean; readerData: number; phase: string }; return [
       { k: '本步输入', v: st.phase === 'done' ? 'volatile 修复完成' : st.act === 'intro' ? '共享 data、ready' : st.who === 'writer' ? `Writer：${st.ready ? 'ready=true' : 'data=42'}` : st.who === 'reader' ? 'Reader 读 data' : '声明 ready 为 volatile' },
@@ -1575,6 +1800,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   vectorclock: {
     question: '没有全局时钟，怎么判断两个分布式事件谁先谁后、还是根本没关系（并发）？',
+    plain: {
+      hook: '没有统一的钟，怎么判断两件事谁先发生？',
+      body: '给每个节点配一个计数器，凑成一个向量，每个人都带着这个向量发消息。自己做一件事就把自己那位加一；收到消息就把对方向量里每一位跟自己取大的那个。\u3000比较两个向量：如果一个的每一位都不大于另一个，那就是先后关系；**如果互有大小，那它们是并发的** —— 谁也不知道谁，也不需要知道。\u3000这个「并发」正是单个时间戳表达不了的东西。',
+      watch: '看两个节点各自的向量怎么在通信中合并。找一对互有大小的向量 —— 那两件事没有先后可言。',
+    },
     read: [{ at: '三进程', is: '每个进程当前的向量 [P0,P1,P2]，活动进程高亮。', anchor: '.vc-procs' }, { at: '判定', is: '末步两对事件的因果/并发结论。', anchor: '.vc-cmp' }],
     step: (s: never) => { const st = s as { op: string; proc: number; label: string; clocks: number[][]; msg: number[] | null; phase: string }; const P = ['P0', 'P1', 'P2']; return [
       { k: '本步输入', v: st.phase === 'done' ? '比两对事件的向量' : st.op === 'intro' ? '三进程各从 [0,0,0] 开始' : `事件 ${st.label}（${P[st.proc]} ${st.op === 'local' ? '本地' : st.op === 'send' ? '发消息' : '收消息'}）` },
@@ -1586,6 +1816,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   snowflake: {
     question: '分布式下每台机器都要发 ID，怎么做到全局唯一、还大致按时间递增、又不互相协调？',
+    plain: {
+      hook: '每台机器各发各的 ID，怎么保证不撞？',
+      body: '把一个 64 位整数切成几段：**一段放时间戳、一段放机器编号、一段放这一毫秒内的序号**。机器编号各不相同，所以不同机器天然不会撞；同一台机器同一毫秒靠序号区分。\u3000时间戳放在最高位，所以 ID 大致按时间递增，做数据库主键时插入性能好。\u3000它最著名的坑是时钟回拨：机器时间往回跳了，就可能生成出已经发过的 ID。所以实现里要么等过去，要么直接报错。',
+      watch: '看那 64 位怎么被切成几段、各段的取值范围。序号段用完了这一毫秒就发不出更多 ID —— 那是它的吞吐上限。',
+    },
     read: [{ at: '位布局', is: '64 位切三段：时间戳 / 机器码 / 序号。', anchor: '.sf-layout' }, { at: '已发 ID', is: '同毫秒 ID 只 +1、跨毫秒跳一大截。', anchor: '.sf-hist' }],
     step: (s: never) => { const st = s as { op: string; t: number; machine: number; seq: number; id: number; phase: string }; return [
       { k: '本步输入', v: st.phase === 'done' ? '看完生成，收结论' : st.op === 'intro' ? '64 位布局：1符号+41时间戳+10机器+12序号' : `t=${st.t}ms，序号 ${st.seq}` },
@@ -1677,6 +1912,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   otpreuse: {
     question: '一次一密理论不可破，为什么密钥绝不能重复用？',
+    plain: {
+      hook: '理论上不可破的密码，为什么现实中几乎没人用？',
+      body: '一次一密要求密钥跟明文一样长、完全随机、而且**只用一次**。满足这三条，密文里确实一点信息都不泄露 —— 这是有数学证明的。\u3000问题在于第三条太贵：要安全地传输和明文一样多的密钥，那还不如直接传明文。\u3000而一旦偷懒重用，两段密文一异或，密钥当场抵消，剩下的是两条明文的异或 —— 从这儿恢复明文并不难。历史上不止一个国家栽在这上面。',
+      watch: '拿同一段密钥加密两条消息，把密文异或看看剩下什么。密钥凭空消失 —— 那就是「一次」的全部分量。',
+    },
     read: [{ at: '三行', is: '两段密文与它们的异或；红=已揭示的 m1⊕m2。', anchor: '.cx-rows' }, { at: '读数', is: '本位异或、泄露的 m1⊕m2。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { pos: number; c1: number[]; c2: number[]; xorbit: number; m1xm2: number[]; phase: string }; return [
       { k: '本步输入', v: st.phase === 'done' ? '8 位异或完' : `第 ${st.pos + 1} 位：c1=${st.c1[st.pos]}、c2=${st.c2[st.pos]}` },
@@ -4128,6 +4368,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   rmsnorm: {
     question: 'Transformer 每层前都要归一化，RMSNorm 到底做了什么，为什么比 LayerNorm 更受欢迎？',
+    plain: {
+      hook: '归一化那一步，其实可以省掉一半。',
+      body: 'LayerNorm 做两件事：减去均值（把数据挪到零附近）、除以标准差（把幅度拉到一致）。\u3000后来发现**减均值那一步几乎没起作用** —— 真正管用的是「把幅度拉到一致」。于是 RMSNorm 干脆只除以均方根，不减均值。\u3000少一次遍历、少一组中间量，效果基本相当而更快。LLaMA 之后它几乎成了默认选择。',
+      watch: '对比两者的输出：减不减均值，结果差别很小。而在几十层、每层都要做一次的规模上，省下的时间很可观。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; x: number[]; meanSq: number; rms: number; cursor: number; gain: number[]; out: (number|null)[]; outRms: number }
       return [
@@ -4384,6 +4629,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   flash: {
     question: '把注意力拆成小块一块块算，结果会变吗？为什么这样能快很多？',
+    plain: {
+      hook: '把注意力分块算，答案会变吗？',
+      body: '不会 —— 这是它最漂亮的地方。常规做法要先把 N×N 的注意力矩阵整个算出来存进显存，序列一长就爆。\u3000FlashAttention 分块在片上算，算完就丢，**从不把那个大矩阵物化出来**。难点在于 softmax 需要全局的分母，而分块时看不到全部 —— 解法是边算边修正之前的结果（在线 softmax），数学上完全等价。\u3000显存从 O(N²) 降到 O(N)，速度反而更快，因为省下的是搬运。',
+      watch: '看每一块怎么算完就丢、之前的结果怎么被修正。结果跟不分块完全一致 —— 这是精确算法，不是近似。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; block: number[]; m: number; l: number; acc: number; out: number; naive: number; err: number; blockSize: number; scores: number[] }
       return [
@@ -4743,6 +4993,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   backprop: {
     question: '网络有上亿个权重，怎么一趟就把每个权重的梯度都算出来？',
+    plain: {
+      hook: '上亿个权重，怎么一趟就把每个的梯度都算出来？',
+      body: '靠链式法则，从后往前算。先知道「最终误差对最后一层输出的敏感度」，就能推出「对倒数第二层的敏感度」，一层层往回推 —— **每一层只需要用到后一层传回来的那个数，加上自己的局部导数**。\u3000所以整趟反向传播的开销跟一次前向差不多，而不是「每个权重各算一遍」。\u3000这正是深度学习能训起来的工程前提：不然上亿个权重要算上亿趟。',
+      watch: '跟着一条路径从损失一路推回输入层，看每一层怎么把梯度乘上自己的局部导数再往前传。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; stage: string; loss: number; gLda: number | null; gLdz: number | null; gLdw: number | null }
       return [
@@ -4770,6 +5025,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   binsearch: {
     question: '数组已经排好序，怎么比一个个扫快得多地找到一个数？',
+    plain: {
+      hook: '猜数字游戏，每次猜中间，二十次能猜到一百万。',
+      body: '字典里找一个词，你不会从第一页翻起 —— 直接翻到中间，看要找的在前半还是后半，然后在那一半里再翻中间。**每猜一次，剩下的范围就砍掉一半**。\u3000一百万个数，砍二十次就只剩一个。\u3000前提是数据必须**有序** —— 无序的话「在前半还是后半」这个问题根本没意义。所以排序的成本常常是为了后面无数次的二分查找而提前付的。',
+      watch: '看每一步 lo 和 hi 怎么收拢、mid 落在哪儿。范围每次对半砍 —— 这就是 log n 的实际长相。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; target: number; lo: number; hi: number; mid: number; arr: number[]; cmp: string; compares: number; found: number }
       return [
@@ -4798,6 +5058,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   nqueens: {
     question: '要把 N 个皇后摆得互不攻击，怎么系统地试、不漏不重？',
+    plain: {
+      hook: '八个皇后互不攻击，怎么不重不漏地试？',
+      body: '一行一行放，每放一个就检查跟前面放过的有没有冲突（同列、同斜线）。冲突了就换个位置；这一行所有位置都不行，就退回上一行换个位置 —— 这就是回溯。\u3000关键在于**剪枝**：一旦发现冲突立刻回头，不必把后面几行也摆完再检查。剪得越早，省下的分支越多。\u3000这套「试 - 冲突 - 回退」的骨架，正是数独、迷宫、拼图这类问题的通用解法。',
+      watch: '看在哪些位置发生了冲突、回溯了几次。把剪枝去掉改成摆满再判，尝试次数会暴涨好几个数量级。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; act: string; row: number; col: number; skip: number[]; cols: number[]; placed: number; n: number; backtracks: number }
       const solved = st.act === 'solved' || st.phase === 'done'
@@ -4826,6 +5091,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   unionfind: {
     question: '一堆元素不断两两结盟，怎么快速回答「这俩现在是不是一伙的」？',
+    plain: {
+      hook: '怎么快速判断「这两个人是不是一伙的」？',
+      body: '每一伙人推一个代表。问两个人是不是一伙，就看他们的代表是不是同一个。两伙合并，就让一个代表认另一个当代表。\u3000但一路认下去会连成一条长链，找代表要走很久。两个小优化几乎把它变成常数时间：**合并时让小的一伙认大的**，以及**每次找代表时顺手把路上的人都直接挂到代表名下**（路径压缩）。\u3000最小生成树里判「会不会围成圈」用的就是它。',
+      watch: '看路径压缩那一下怎么把长链拍扁。压缩之后再查同一个人，一步到位。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; act: string; a: number; b: number; ra: number; rb: number; root: number; path: number[]; comps: number; depths: number[] }
       return [
@@ -4854,6 +5124,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   heap: {
     question: '怎么让「随时取出最大值」快到 O(log n)，而不是每次扫一遍？',
+    plain: {
+      hook: '只想要最大的那个，何必把全部排好？',
+      body: '堆是一棵「父亲总比孩子大」的树，所以根就是最大值 —— 取它是一瞬间的事。取走之后把最后一个元素挪到根上，再让它一路往下沉到该在的位置，树就重新合规了。\u3000妙的是它可以直接用数组存：第 i 个的孩子就是第 2i+1 和 2i+2 个，不需要任何指针。\u3000注意它只保证父子有序，**兄弟之间毫无关系** —— 所以想拿第二小的，还得比一次两个孩子。',
+      watch: '看插入时的上浮和删除时的下沉。堆不是排好序的数组 —— 从头读出来并不有序，这是最常见的误解。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; act: string; stage: string; arr: number[]; node: number; child: number; heapN: number; sortedFrom: number }
       return [
@@ -4882,6 +5157,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   quicksort: {
     question: '不用一趟趟两两交换，怎么把一个数组又快又省地排好？',
+    plain: {
+      hook: '先分家，再各自收拾。',
+      body: '随手挑一个数当分界线，比它小的全扔左边、大的全扔右边。这一刀下去，**左边的数从此再也不用跟右边的比了** —— 省下的正是这些注定不会发生的比较。然后左右两堆各自再来一刀。\u3000它快在原地交换、几乎不占额外内存。\u3000但挑分界线要小心：每次都挑到最小的那个，就退化成每次只分出一个 —— 那就是最坏情况。',
+      watch: '看每一趟划分之后，枢轴落到了哪个位置 —— 它从此定死不动。左右两段的长度差得越少，整体越快。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; act: string; arr: number[]; lo: number; hi: number; pivotVal: number; iPtr: number; jPtr: number; sortedCount: number; n: number }
       return [
@@ -4913,6 +5193,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   mergesort: {
     question: '把两个已经排好序的小段合成一个大有序段，最快怎么做？',
+    plain: {
+      hook: '两队已经排好的人，合成一队最快怎么合？',
+      body: '各派一个人站在队头，比一下谁小谁先出列，然后那一队的下一个补上来 —— 一趟走完就合并好了。\u3000整个归并排序就是反过来用这一招：先把数组一分为二各自排好，再合并。递归到底就是单个元素，本身就有序。\u3000它的稳定性是免费的：合并时遇到相等就让左边的先出列，相同的元素永远保持原来的先后。代价是需要一块额外的空间放合并结果。',
+      watch: '看合并那一步两个指针怎么各自前进。相等时取左边的 —— 这一条小规矩就是「稳定排序」的全部实现。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; act: string; arr: number[]; width: number; lo: number; hi: number; took: number; from: string; out: number[] }
       return [
@@ -4941,6 +5226,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   fastpow: {
     question: '算 a 的 n 次方，怎么不用老实乘 n 次，而是 log n 步搞定？',
+    plain: {
+      hook: '算 2 的 100 次方，要乘 100 次吗？',
+      body: '不用。先算平方，再平方就是四次方，再平方是八次方 —— **每平方一次指数就翻倍**。把 100 拆成二进制 1100100，按位挑几个乘起来就行，总共不到十次乘法。\u3000这个技巧不止用于数：矩阵也能这么快速幂，于是斐波那契数列的第一亿项可以在几十步内算出来。\u3000所有公钥密码的底层运算也是它。',
+      watch: '看指数怎么被拆成二进制、哪些位上做了乘法。乘法次数从 n 降到 log n —— 差距随 n 指数级拉大。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; act: string; a: number; n: number; k: number; bit: number; powK: number; result: number; prevResult: number; mults: number; squares: number; picked: number[] }
       return [
@@ -4968,6 +5258,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   astar: {
     question: '在有障碍的网格里找最短路，怎么比 Dijkstra 四面乱铺更聪明？',
+    plain: {
+      hook: '导航不该四面八方乱铺，该朝着终点找。',
+      body: 'Dijkstra 像水漫金山，四面均匀铺开，直到淹到终点 —— 铺过的大部分区域其实跟终点方向相反。\u3000A* 多用了一条信息：**每个点到终点大概还有多远**（比如直线距离）。优先扩展「已走的路 + 估计还剩的路」最小的那个，搜索就朝着终点偏过去了。\u3000但估计不能**高估** —— 一旦把某条路估得比实际远，它可能被永远跳过，最优解就丢了。所以直线距离是安全的：它永远不会超过真实路程。',
+      watch: '对比 A* 和 Dijkstra 各自扩展了多少个格子。把启发值故意放大，你会看到它跑得更快，但可能给出一条不是最短的路。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; act: string; cur: number[]; curG: number; curH: number; curF: number; expanded: number; open: string[]; path: string[] }
       return [
@@ -5028,6 +5323,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   pooling: {
     question: '卷积后的特征图很大，怎么缩小它、又保住关键信号？',
+    plain: {
+      hook: '特征图太大，怎么缩小又不丢关键信息？',
+      body: '把图切成一个个小方块，每块只留一个数 —— 取最大的那个（最大池化），或者取平均。\u3000取最大的直觉是：**这一小片区域里有没有出现这个特征，比它精确出现在哪里更重要**。于是图缩小了，而「有没有」的信息保住了，顺带还得到一点位置上的容忍度。\u3000代价是精确位置丢了 —— 所以需要精细定位的任务（分割、检测）会少用池化，改用带步长的卷积。',
+      watch: '看每个窗口里哪个值被保留下来。把最大池化换成平均池化，边缘这类「局部尖峰」的响应会被稀释掉。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; kindName: string; wr: number; wc: number; vals: number[]; result: number; out: (number | null)[][] }
       const filled = st.out ? st.out.flat().filter(x => x !== null).length : 0
@@ -5056,6 +5356,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   beam: {
     question: '大模型逐词生成整句，怎么不被"每步只贪当前最高"带进坑？',
+    plain: {
+      hook: '每一步都选概率最高的词，为什么反而写不好？',
+      body: '因为一句话的好坏不由单个词决定。第一步选了个当下最顺的词，可能把整句话带进死胡同。\u3000束搜索的做法是**同时保留几条候选句子**，每步各自扩展，再从所有扩展里挑总分最高的几条留下。视野宽了，就不容易被一步之差带偏。\u3000但它有个偏见：每多一个词就多乘一个小于 1 的概率，所以总分天然偏向短句 —— 得除以长度做归一化才公平。',
+      watch: '看每一步保留了哪几条候选、哪条被淘汰。束宽调大质量略升但慢好几倍，而且到一定宽度就不再变好。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; act: string; t: number; k: number; beamsIn: { seq: string; p: number }[]; cands: { seq: string; p: number }[]; kept: string[]; best: { seq: string; p: number }; greedy: { seq: string; p: number } }
       const d = (x: string) => x === '' ? '⟨起⟩' : x.replace('·', '⟨end⟩')
@@ -5114,6 +5419,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   wordvec: {
     question: '怎么让计算机"懂"词的意思——还能做「国王−男人+女人=？」这种类比？',
+    plain: {
+      hook: '怎么让计算机知道「国王」和「王后」有关系？',
+      body: '看它们出现在什么词的旁边。「国王」和「王后」周围常常是同一批词（宫廷、加冕、统治），而「国王」和「土豆」几乎不共现。\u3000把每个词训练成一个向量，让常常一起出现的词向量靠近 —— 语义就这么被几何化了。\u3000妙的是方向也有意义：从「男人」指向「女人」的那个方向，加到「国王」上，落点最近的词是「王后」。\u3000但它给每个词只有一个向量，所以分不清「苹果手机」和「苹果派」。',
+      watch: '看几个词在向量空间里的相对位置和那几条类比向量。同一个词的多个义项在这里被压成了一个点 —— 那正是它被上下文向量取代的原因。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; stage: string; dir: number[]; result: number[]; ranked: { name: string; d: number }[]; nearest: string }
       return [
@@ -5207,6 +5517,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   rag: {
     question: '大模型会过时、记不住私有资料、还爱编造，怎么让它答得有据可查？',
+    plain: {
+      hook: '大模型记不住你的私有资料，怎么办？',
+      body: '别指望它记住，**用的时候现查给它**。把资料切成小段存进向量库，提问时先检索出最相关的几段，连同问题一起塞进提示词，让它「看着材料回答」。\u3000好处是资料随时可换、答案有出处、也不容易编造。\u3000难点全在检索：切块太大混入噪声、太小切断上下文；检索不准的话，模型看着错的材料一样会自信地答错 —— 而且更难发现。',
+      watch: '看检索出来的那几段跟问题的相关度，以及答案里哪句话对应哪一段。检索错了，答案就一定错。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; stage: string; query: string; docs: { t: string; sim: number | null }[]; retrieved: number[]; answer: string; topK: number }
       return [
@@ -5235,6 +5550,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   selfconsist: {
     question: '单条推理一步错就全错，怎么让大模型的数学/推理答得更稳？',
+    plain: {
+      hook: '同一道题让模型算五遍，取多数。',
+      body: '推理题一步错就全错，而模型每次采样走的路径不同 —— 错法五花八门，**对的答案却只有一个**。所以让它多算几遍，看哪个答案出现次数最多，准确率能明显提高。\u3000前提是采样要有随机性：温度设成 0 每次都一样，投票就没意义了。\u3000代价也很直白：算五遍就是五倍成本。所以它更适合值得算五遍的难题。',
+      watch: '看几条推理链各自走到哪儿、答案怎么分布。错误答案通常很分散，正确答案则反复出现 —— 这就是投票有效的原因。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; chains: { r: string; a: number; ok: boolean }[]; n: number; tally: [number, number][]; winner: number; correct: number }
       const last = st.chains[st.chains.length - 1]
@@ -5262,6 +5582,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   bestofn: {
     question: '生成质量时好时坏，怎么稳定地拿到更好的那个输出？',
+    plain: {
+      hook: '生成十个，挑最好的一个。',
+      body: '跟投票不同：投票要求答案能对比（数学题的最终数字），而「挑最好的」适合没有标准答案的任务（写文案、写代码）。\u3000挑的活儿交给一个**打分模型**，它专门被训练来判断「哪个输出更好」。\u3000所以这条路的天花板在打分模型上：它判不准，挑出来的就不是最好的，甚至可能选出「看起来最讨喜」而不是「最正确」的那个。',
+      watch: '看几个候选各自拿了多少分、最终选了谁。故意把打分模型换成一个有偏好的，你会看到它稳定地挑错。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; cands: { e: string; r: number; reward: number }[]; n: number; bestIdx: number; target: number }
       const last = st.cands[st.cands.length - 1]
@@ -5290,6 +5615,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   tot: {
     question: '思维链错一步就没回头路，怎么让模型像下棋那样探索、试错、回溯？',
+    plain: {
+      hook: '思维链一条道走到黑，错了没法回头。',
+      body: '让模型把中间步骤写出来，准确率会提高 —— 但那仍是一条直线：第三步错了，后面全废。\u3000思维树给它加了分支和回溯：**每一步生成几个不同的下一步，评估一下哪些有希望，只沿着有希望的往下走**，走死了就退回来换一条。\u3000代价是成本成倍增长，而且需要一个能判断「中间状态好不好」的方式 —— 这在很多任务上比解题本身还难。',
+      watch: '看树上哪些分支被展开、哪些被剪掉。剪枝的依据是什么，决定了这套方法有没有用。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; stage: string; root: string; target: number; thoughts: { pruned: boolean; sure: boolean }[]; solution: string }
       const pruned = st.thoughts.filter(t => t.pruned).length
@@ -5321,6 +5651,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   mcts: {
     question: '下棋走法多到没法全搜，怎么把有限的思考花在最有希望的走法上？',
+    plain: {
+      hook: '棋局走法多到没法全搜，怎么把力气花在刀刃上？',
+      body: '不全搜，而是反复「随机试一局」：从当前局面挑一条路走到底，看输赢，把结果记回沿途每一步。试的次数多了，好走法的胜率就浮出来了。\u3000关键在于挑路时要平衡两件事：**多走胜率高的**（利用），但也**给试得少的留机会**（探索）—— 试得少的那些，胜率估计本来就不可信。\u3000AlphaGo 就是把这套搜索和神经网络的评估接在了一起。',
+      watch: '看每个节点的访问次数和胜率怎么随模拟增长。访问次数少的分支，它的胜率数字几乎没有参考价值。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; iter: number; moves: string[]; n: number[]; w: number[]; ucb: (number | null)[]; pick: number; win: number; best: number }
       return [
@@ -5347,6 +5682,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   collision: {
     question: '一堆小球乱糟糟地碰来碰去，有什么东西是始终不变的？',
+    plain: {
+      hook: '一堆小球乱撞，什么东西始终没变？',
+      body: '动量和能量。碰撞前后单个球的速度全变了，但**所有球的动量加起来是常数**，弹性碰撞时总动能也是常数。\u3000这就是物理仿真的立身之本：不去逐个推导每次碰撞的细节，而是让每一步都满足这些守恒量。\u3000数值仿真最怕的正是守恒量慢慢漂移 —— 跑上几万步之后能量凭空增长，球越弹越高，那是积分器不够好的典型症状。',
+      watch: '盯住总动量和总能量这两个数在整个过程中的变化。它们该是水平线；一旦开始漂移，仿真就不可信了。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; n: number }
       return [
@@ -5372,6 +5712,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   gcn: {
     question: '社交网络、分子这种「图」数据，神经网络怎么处理？',
+    plain: {
+      hook: '社交网络这种数据，神经网络该怎么吃？',
+      body: '图上每个点的意义，很大程度由它的邻居决定 —— 「你是谁」看「你跟谁在一起」。\u3000所以图卷积每一层做的事就是：**把每个点的特征换成它和邻居的加权平均**。叠一层看到一跳邻居，叠两层看到两跳。\u3000但层数不能多：叠到七八层，每个点都把整张图平均了一遍，所有点长得一模一样，什么也区分不出来 —— 这叫过平滑。',
+      watch: '看每一层之后各点特征怎么互相靠拢。层数加到很深，所有点的特征会收敛到几乎相同 —— 那就是过平滑的样子。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; cur: number; agg: number[]; result: number; feat: number[]; newFeat: (number | null)[] }
       return [
@@ -5654,6 +5999,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   ep: {
     question: 'MoE 的专家又多又大，一张卡放不下——怎么分到多卡、代价是什么？',
+    plain: {
+      hook: '专家太多太大，一张卡装不下。',
+      body: 'MoE 有几十上百个专家，每个都是一整个前馈网络，加起来几百 GB。\u3000专家并行的做法是把专家分散到不同的卡上，每张卡管几个。\u3000代价立刻显现：一个 token 该去哪个专家，是路由器当场决定的，所以**每一层都要把 token 按目的地跨卡分发一遍、算完再收回来** —— 这就是 all-to-all。\u3000通信量随卡数增长，而且路由不均时会有卡空等。',
+      watch: '看 token 怎么被分发到各卡、通信量有多大。让路由极度不均衡再看一遍，最忙那张卡会拖住所有人。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; gpus: number; experts: number; expertsPerGpu: number; load: number[]; maxLoad: number; minLoad: number }
       return [
@@ -5684,6 +6034,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   dpattn: {
     question: '多卡服务一批请求，注意力怎么切到各卡上、通信最省？',
+    plain: {
+      hook: '注意力铺到多卡上，为什么不用张量并行？',
+      body: '因为切不动。MLA、GQA 这类注意力的头数本来就少，按头切分很快就切完了。\u3000更要命的是 KV 缓存：**按张量并行铺的话，每张卡都得存一整份 KV**，显存不降反升 —— 而 KV 恰恰是长上下文时最占显存的东西。\u3000所以注意力那一段改用数据并行：每张卡处理不同的请求，各存各的 KV，互不重复。前馈那一段再切回张量并行。',
+      watch: '对比两种切法下每张卡的 KV 占用。头数少的注意力结构上，张量并行几乎没有省显存的效果。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; gpus: number; b: number; h: number; headsPerGpu: number; reqPerGpu: number; tpComm: number; tpWeight: string }
       return [
@@ -5713,6 +6068,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   flashdecode: {
     question: '解码每步只有 1 个 query 却要扫一长串 KV，怎么并行提速？',
+    plain: {
+      hook: '解码时只有一个词在算，几千个核闲着。',
+      body: '预填充阶段有几千个 token 一起算，GPU 吃得饱饱的。但到了逐字生成阶段，每一步只有**一个** query，要去扫一长串 KV —— 并行度突然掉到很低，大部分计算单元在发呆。\u3000Flash-Decoding 的办法是**把长长的 KV 切成几段并行扫**，每段各算一个局部结果，最后合并。并行度回来了，长上下文的解码速度明显改善。',
+      watch: '看 KV 被切成几段、各段并行计算再合并。上下文越长，这一招的收益越大。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; n: number; chunks: number; curChunk: number; output: number; fullOutput: number; seqLatency: number; parLatency: number }
       return [
@@ -5741,6 +6101,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   engram: {
     question: '注意力回头看又贵又受窗口限制——有没有便宜的旁路补上重复模式？',
+    plain: {
+      hook: '有些模式就是死记硬背更划算。',
+      body: '「北京」后面接「大学」这种固定搭配，用注意力回头搜一遍太贵了 —— 而且受窗口限制，出了窗口就看不见。\u3000所以可以旁路加一张查表式的记忆：**遇到见过的固定组合就直接查出来**，又快又准。注意力则专心处理需要泛化的关联。\u3000两者是互补不是替代：精确重复的走查表，需要理解的走注意力。',
+      watch: '看哪些位置命中了这张表、哪些落回注意力。命中率高的往往是高频的固定搭配。',
+    },
     step: (s: never) => {
       const st = s as { stage: string; ngram: number; table: unknown[]; queryKey: string; prediction: string; matchCount: number }
       const nm: Record<string, string> = { id: '看任务', build: '建 n-gram 表', lookup: 'O(1) 查表', predict: '复制预测', done: '完成' }
@@ -6445,6 +6810,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   collective: {
     question: '多张卡各算了一半，怎么高效地把结果求和、让每张卡都拿到？',
+    plain: {
+      hook: '八张卡各算了一部分，怎么高效地把结果加到一起？',
+      body: '最笨的办法是全发给一张卡加完再广播回去 —— 那张卡的带宽当场成为瓶颈，而且它忙的时候其他七张全闲着。\u3000环形 all-reduce 让每张卡只跟左右邻居通信，数据像击鼓传花一样绕环两圈：**第一圈边传边加**，第二圈把加好的结果传给所有人。\u3000妙在每张卡的收发量固定，跟卡数几乎无关 —— 所以能扩展到成千上万张卡。',
+      watch: '看数据块怎么绕环流动、两个阶段各做什么。对比中心汇聚那种做法，主卡的通信量随卡数线性增长。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; G: number; round: number; totalSteps: number; target: number[]; moves: {src:number;dst:number;chunk:number}[] }
       return [
