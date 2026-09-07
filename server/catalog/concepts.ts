@@ -27,7 +27,7 @@ type Frame = Record<string, unknown>
  * 造一条原理题。
  * `note` 是这条结论落在轨迹上的哪一步（出处会带上那一步的真实 log），`at` 是取第几帧。
  */
-function cf(id: string, label: string, ask: string, answer: string, wrong: string[], note: string, at = 0): Fact {
+export function cf(id: string, label: string, ask: string, answer: string, wrong: string[], note: string, at = 0): Fact {
   return {
     id, label, ask, kind: 'choice', genre: 'concept',
     compute: (t: Frame[]) => {

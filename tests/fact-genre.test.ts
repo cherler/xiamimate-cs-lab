@@ -20,6 +20,7 @@
  */
 import { CATALOG, traceOf, genreOf } from '../server/catalog.ts'
 import { CONCEPT_FACTS } from '../server/catalog/concepts.ts'
+import { FILL_FACTS } from '../server/catalog/concepts-fill.ts'
 import { pickBalanced, inputBrief, MAX_COUNT_QUESTIONS, buildQuizSync } from '../server/quiz.ts'
 
 let failures = 0
@@ -42,8 +43,9 @@ const LEN_DEBT_CAP = 424
 /**
  * 原理题不足三条的实验数上限。出题面板一次摆三道,这些实验只摆得出一两道。
  * 191 是「计数题不再出成题目」之后的实测值 —— 那一刀把这笔欠账露了出来。
+ * 补了 300 多条原理题(concepts.ts + concepts-fill.ts)之后降到 94。
  */
-const THIN_DEBT_CAP = 191
+const THIN_DEBT_CAP = 94
 
 /**
  * 现在有几个实验出得了「找错的」题。**下限，只许涨不许跌。**
@@ -134,12 +136,13 @@ rows.length >= 200 && rows.reduce((n, r) => n + r.concept + r.count, 0) >= 700
       而补丁包看起来"写了"。这条不设上限，一个都不许错。 */
 {
   const ids = new Set(CATALOG.map(e => e.id))
-  const typo = Object.keys(CONCEPT_FACTS).filter(id => !ids.has(id))
+  const typo = [...Object.keys(CONCEPT_FACTS), ...Object.keys(FILL_FACTS)].filter(id => !ids.has(id))
   typo.length === 0
-    ? ok(`原理题补丁包挂了 ${Object.keys(CONCEPT_FACTS).length} 个实验，每个 id 都对得上`)
+    ? ok(`两个补丁包挂了 ${new Set([...Object.keys(CONCEPT_FACTS), ...Object.keys(FILL_FACTS)]).size} 个实验，每个 id 都对得上`)
     : bad(`补丁包里有 ${typo.length} 个 id 对不上任何实验（写错了会静默失效）：${typo.join(' ')}`)
   const n = Object.values(CONCEPT_FACTS).reduce((a, v) => a + v.length, 0)
-  n >= 120 ? ok(`补丁包共 ${n} 条原理题`) : bad(`补丁包只有 ${n} 条 —— 是不是没被打进去?`)
+    + Object.values(FILL_FACTS).reduce((a, v) => a + v.length, 0)
+  n >= 200 ? ok(`两个补丁包共 ${n} 条原理题`) : bad(`补丁包只有 ${n} 条 —— 是不是没被打进去?`)
 }
 
 /* ⑥ 选项长度不许出卖答案 —— 正确项明显比三个干扰项都长的话，不用懂也能挑出来。
@@ -151,7 +154,11 @@ rows.length >= 200 && rows.reduce((n, r) => n + r.concept + r.count, 0) >= 700
       规则分两段：补丁包是这一轮写的，必须清零；存量 486 道是更早几轮留下的同一类债，
       先记账封顶、只许降不许涨。 */
 {
-  const patchIds = new Set(Object.values(CONCEPT_FACTS).flat().map(f => f.id))
+  /*  ⚠️ fact 的 id **只在实验内唯一**(binsearch/why_fast 和 lsm/why_fast 是两回事)。
+      第一版按裸 id 匹配,于是存量里同名的题被当成补丁包的、补丁包的违规被算进存量欠账 ——
+      判据报「存量涨了 7 道」,其实是我新写的那几条自己犯规。键要用 实验/事实 的组合。 */
+  const patchIds = new Set<string>()
+  for (const [expId, fs] of Object.entries({ ...CONCEPT_FACTS, ...FILL_FACTS })) for (const f of fs) patchIds.add(`${expId}/${f.id}`)
   const leakyNew: string[] = [], leakyOld: string[] = [], thin: string[] = []
   for (const e of CATALOG) {
     let t: Record<string, unknown>[] = []
@@ -165,12 +172,12 @@ rows.length >= 200 && rows.reduce((n, r) => n + r.concept + r.count, 0) >= 700
       const longest = Math.max(...ds.map(d => d.length))
       if (ans.length > longest * 1.5) {
         const line = `${e.id}/${f.id} 正确项 ${ans.length} 字 vs 最长干扰项 ${longest} 字`
-        ;(patchIds.has(f.id) ? leakyNew : leakyOld).push(line)
+        ;(patchIds.has(`${e.id}/${f.id}`) ? leakyNew : leakyOld).push(line)
       }
     }
   }
   leakyNew.length === 0
-    ? ok('原理题补丁包里，没有一道能靠长度挑出答案')
+    ? ok('两个补丁包里，没有一道能靠长度挑出答案')
     : bad(`补丁包里有 ${leakyNew.length} 道靠长度就能猜中：${leakyNew.slice(0, 5).join('；')}`)
   leakyOld.length <= LEN_DEBT_CAP
     ? ok(`存量里还有 ${leakyOld.length} 道靠长度可猜（欠账上限 ${LEN_DEBT_CAP}，只许降不许涨）`)

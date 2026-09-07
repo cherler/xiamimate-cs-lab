@@ -179,6 +179,7 @@ import { ML_ENTRIES } from './catalog/ml.ts'
 import { DL_STATS_ENTRIES } from './catalog/dl-stats.ts'
 import { SYS408_ENTRIES } from './catalog/sys408.ts'
 import { CONCEPT_FACTS } from './catalog/concepts.ts'
+import { FILL_FACTS } from './catalog/concepts-fill.ts'
 // 数值题通用干扰项：与分片共用同一份（整数 ±1/±2、小数按精度相对扰动、负答案允许负干扰项）。
 import { numDistractors } from './catalog-shared.ts'
 
@@ -4107,9 +4108,11 @@ export const CATALOG: CatalogEntry[] = [
     补丁不改原条目，只往它们的 facts 后面追加 —— 合并点就这一处，好 review 也好回退。
     ⚠️ 键写错了会静默什么都不做，所以 tests/fact-genre.test.ts 里有一条判据盯着
     「补丁包里的每个 id 都对得上一个真实验」。 */
-for (const [id, extra] of Object.entries(CONCEPT_FACTS)) {
-  const e = CATALOG.find(x => x.id === id)
-  if (e) e.facts = [...e.facts, ...extra]
+for (const src of [CONCEPT_FACTS, FILL_FACTS]) {
+  for (const [id, extra] of Object.entries(src)) {
+    const e = CATALOG.find(x => x.id === id)
+    if (e) e.facts = [...e.facts, ...extra]
+  }
 }
 
 /**
