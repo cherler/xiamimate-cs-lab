@@ -37,7 +37,7 @@ const SHORT: Record<string, string> = {
 }
 
 export function GuidedNote({
-  title, no, question, parts, tone, verdict, tasks, index, total, where,
+  title, no, question, parts, plain, tone, verdict, tasks, index, total, where,
   onClose,
 }: {
   title: string
@@ -45,6 +45,9 @@ export function GuidedNote({
   no: string
   question: string
   parts: WhyPart[]
+  /**  第 0 步那一屏的大白话开场。给了就顶掉「本步推演」那三张卡 ——
+       第 0 步还没有"本步"，而这里正是先把画面建起来的位置。 */
+  plain?: { hook: string; body: string; watch: string } | null
   tone: Tone | null
   /** 已经验证过的那句结论；null = 还没算出来 */
   verdict: Verdict | null
@@ -83,10 +86,19 @@ export function GuidedNote({
           {/*  大标题问的是**这一步**，不是这一屏。
                「这一步为什么是缺失」比「同一串地址怎么摆」近得多 ——
                读者此刻正卡在这一步上，题目要提到他鼻子底下。 */}
-          <h2 className="gnq">{tone ? `这一步，为什么是「${tone.label}」？` : question}</h2>
+          <h2 className="gnq">{plain ? plain.hook : tone ? `这一步，为什么是「${tone.label}」？` : question}</h2>
           <p className="gnwhere">{where}　·　{question}</p>
 
           {/*  三段之间的箭头挂在**后一段**前面：段数可增可减，箭头数自动对 */}
+          {plain ? (
+            /*  第 0 步：先用人话把画面建起来。
+                不套 `.gnflow` 那三张编号卡 —— 那是「本步输入→规则→结果」的骨架，
+                而这里没有"本步"，硬塞进去会让人以为已经走过一步了。 */
+            <div className="gnplain">
+              <p className="gnpb">{rich(plain.body)}</p>
+              <p className="gnpw"><b>这一屏盯着看什么</b>　{rich(plain.watch)}</p>
+            </div>
+          ) : (
           <ol className="gnflow">
             {parts.map((p, i) => (
               <li className="gncard" key={p.k}>
@@ -95,6 +107,7 @@ export function GuidedNote({
               </li>
             ))}
           </ol>
+          )}
 
           {tone && (
             <div className={`gnverdict ${tone.key}`}>

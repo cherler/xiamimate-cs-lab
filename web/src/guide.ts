@@ -114,6 +114,24 @@ export type Guide = {
    * （卡片高度封在版面里，长了就得滚，滚起来的字等于没写）。
    */
   basics?: { title: string; body: string }[]
+  /**
+   * **大白话** —— 一段不用任何术语的开场，摆在**第 0 步「还没开始」**那一屏。
+   *
+   * 用户 2026-09-07 的原话：「定点乘除逐步 -> 看不懂。。（计算机组成原理的几个实验，
+   * 好像都很难懂。cache 命中率那个还是搜 ChatGPT 才懂）」「所有实验都可以添加一些
+   * 通俗易懂的解释」。
+   *
+   * 为什么另开一个字段、不改 `basics`：`basics` 是**准确**的那一层
+   * （「内存块按块大小划分，调入调出均以块为单位」），它没写错，问题是读它之前
+   * 得先有一个整体的画面感 —— 而那个画面得用生活里的东西打比方，不能用行话解释行话。
+   * 两层各司其职：`plain` 建画面，`basics` 上术语。
+   *
+   * 写法上的三条硬规矩（写新的照着来）：
+   *   1. **一个比方到底**，不要中途换喻体 —— 换一次读者就得重建一次画面。
+   *   2. **术语最多带一个**，而且必须紧跟着一句"就是……"的解释。
+   *   3. **末尾一句说清"这屏你该盯着看什么"** —— 它要接上马上要走的第 1 步。
+   */
+  plain?: { hook: string; body: string; watch: string }
   /** 先拧什么、看什么 */
   try: TryStep[]
   /** 这一屏会用到的名词 */
@@ -319,6 +337,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   mqdesign: {
     question: '消息读走后为什么不删除？两个消费组怎么各读一遍同一条消息？offset 是谁的？',
+    plain: {
+      hook: '消息队列为什么总是「至少送一次」，而不是「正好一次」？',
+      body: '因为网络会丢、会重、会超时。发送方发完没收到确认，只能重发 —— 但对方也许其实已经收到了，只是回执丢在路上。要真正做到「正好一次」，代价高得离谱。\u3000所以工程上的答案是：**投递保证至少一次，消费端自己做幂等**。同一条消息处理两遍，结果要跟处理一遍一样（比如先查这笔订单是不是已经记过账）。\u3000把责任放在消费端，整个系统反而简单又可靠。',
+      watch: '看重复投递是怎么发生的（确认丢失后的重发），以及幂等键怎么把第二次处理挡掉。',
+    },
     read: [{ at: '分区日志', is: '两条 append-only 日志，每格带 offset；追加的高亮、被读的标记。', anchor: '.mq-parts' }, { at: '各组 offset', is: '每个分区头部显示 G1/G2 各自读到哪。', anchor: '.mq-poff' }],
     step: (s: never) => { const st = s as { phase: string; op: string; P: number; parts: { log: unknown[] }[]; produce: { key: string; part: number; offset: number; val: string } | null; poll: { group: string; part: number; offset: number; val: string } | null; groups: { name: string; offsets: number[] }[]; focus: string }; return [
       { k: '本步输入', v: st.phase === 'done' ? '生产追加+两组消费全走完' : st.produce ? `生产「${st.produce.val}」key=${st.produce.key}` : st.poll ? `${st.poll.group} poll 分区${st.poll.part}` : '准备' },
@@ -336,6 +359,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   objectstore: {
     question: '存海量图片、短视频，怎么做到便宜、不丢、还播放不卡？',
+    plain: {
+      hook: '为什么云存储里没有真正的文件夹？',
+      body: '对象存储的键就是一整个字符串，`photos/2024/a.jpg` 里的斜杠只是字符，不代表任何目录结构。界面上显示成文件夹，是控制台按前缀分组画给你看的。\u3000这么设计是为了**能水平扩展**：扁平的键空间可以随便按哈希分散到成千上万台机器上，而目录树意味着层级、意味着重命名要改一大片、意味着一致性代价。\u3000所以「重命名文件夹」在对象存储里其实是逐个复制再删除。',
+      watch: '看「列出某个前缀下的对象」是一次前缀扫描，不是打开一个目录。前缀越长，扫描的范围越小。',
+    },
     read: [{ at: '架构', is: '一步步搭起来的组件（上传→对象存储→CDN分发）。', anchor: '.sd-arch' }, { at: '读数', is: '当前阶段、关键数、组件。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { stage: string; focus: string; metric: string; components: unknown[]; phase: string }; return [
       { k: '本步输入', v: st.phase === 'done' ? '走完整套对象存储设计' : `${st.stage}` },
@@ -366,6 +394,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   fk: {
     question: '已知每个关节转了多少度、每根连杆多长，机械臂末端到底在哪、朝哪？',
+    plain: {
+      hook: '知道每个关节转了多少度，手在哪儿？',
+      body: '把机械臂想成一条折叠尺：第一节从原点朝某个方向伸出去，第二节接在它末端、再拐一个角度，第三节接着来。每一节的方向都是**前面所有角度加起来**的结果。\u3000所以只要角度全知道，末端的位置就一路确定下来，答案唯一，算起来也就是一串加法和三角函数。\u3000反过来问「手要放到那儿，各关节该转多少」就没这么好命了 —— 那是逆运动学，可能无解，也可能有无数组解。',
+      watch: '拧任意一个关节角，看末端点怎么动。注意越靠近底座的关节，转一点点，末端就甩出去很远 —— 误差也是这样被放大的。',
+    },
     read: [{ at: '连杆臂', is: '平面手臂逐关节画出来，末端(橙点)是求解目标。', anchor: '.fk-svg' }, { at: '读数', is: '已应用关节、累计朝向 cumθ、当前末端坐标。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { phase: string; links: { theta: number; L: number }[]; revealed: number; cur: number; points: { x: number; y: number }[]; cumAngle: number; endAngle: number; focus: string }; return [
       { k: '本步输入', v: st.phase === 'done' ? '三关节全部应用完' : st.revealed > 0 ? `应用关节 ${st.cur + 1}（θ=${st.links[st.cur]?.theta}°、L=${st.links[st.cur]?.L}）` : '准备：末端在基座 (0,0)' },
@@ -381,6 +414,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   ik: {
     question: '给机械臂末端一个目标点，各关节该转几度？为什么答案不止一个、有时还够不到？',
+    plain: {
+      hook: '手要伸到那个杯子，每个关节该转多少度？',
+      body: '这问题比反过来难得多。同一个位置，胳膊可以「肘朝上」也可以「肘朝下」—— **答案不止一个**；杯子放得太远，那就一个都没有。\u3000结构规整的机械臂能推出公式直接算；一般情况只能用逼近的办法：先随便猜一组角度，算出手在哪儿，看跟目标差多远，再朝着能缩小差距的方向调一点点，反复几十次。\u3000所以逆运动学的「解」经常是一个迭代过程，不是一个公式。',
+      watch: '把目标点拖到工作空间外面，看迭代怎么收敛不了。再看同一个目标点下不同初始姿态会收敛到不同的解 —— 那就是多解。',
+    },
     read: [{ at: '臂与目标', is: '目标(空心圈)、可达圆环、两支解的臂姿(肘上/肘下)。', anchor: '.fk-svg' }, { at: '读数', is: '目标距离 r 与可达范围、cosθ2、已求出的解。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { phase: string; op: string; r: number; reachLo: number; reachHi: number; reachable: boolean; cosTheta2: number; solutions: { branch: string; th1: number; th2: number; checkX: number; checkY: number }[]; curBranch: number; focus: string }; return [
       { k: '本步输入', v: st.phase === 'done' ? '两支解全求出并回代验证' : st.op === 'reach' ? `判目标可达性（r=${st.r}）` : st.op === 'cosine' ? '余弦定理求肘角 θ2' : st.op === 'branch' ? `解第 ${st.curBranch + 1} 支（${st.solutions[st.curBranch]?.branch.split(' ')[0]}）` : '准备反解' },
@@ -400,6 +438,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   jacobian: {
     question: '关节以某个角速度转，机械臂末端会以什么速度、朝哪动？手臂伸直时为什么会"卡住"？',
+    plain: {
+      hook: '关节慢慢转，手为什么突然甩得飞快？',
+      body: '雅可比矩阵就是那张换算表：**关节转的速度，换算成末端移动的速度**。它随姿态变化，胳膊伸直和弯曲时完全不同。\u3000当胳膊伸到快要笔直的那一刻，换算表会退化：末端沿某个方向几乎动不了，而要让它动一点点，关节就得转得极快 —— 这就是奇异位形，机器人在那儿会失控般抖动。\u3000它还有个反过来的用途：末端受了多大的力，各关节要出多大力矩，用的是同一张表的转置。',
+      watch: '把机械臂慢慢伸直，盯住那个行列式的值怎么趋近 0。越接近 0，同样的末端速度需要的关节速度越夸张。',
+    },
     read: [{ at: '臂+速度箭头', is: '当前构型的臂 + 末端速度向量(绿箭头)。', anchor: '.fk-svg' }, { at: 'J 矩阵', is: '2×2 雅可比与 det；奇异时标红。', anchor: '.jc-matwrap' }],
     step: (s: never) => { const st = s as { phase: string; op: string; theta1: number; theta2: number; J: number[][]; det: number; singular: boolean; dtheta: [number, number] | null; endVel: { vx: number; vy: number } | null; focus: string }; return [
       { k: '本步输入', v: st.phase === 'done' ? '把 θ2 转到 0（手臂伸直）看奇异' : st.op === 'build' ? `在 θ=[${st.theta1}°,${st.theta2}°] 求 J` : st.op === 'apply' ? `施加关节速度 θ̇=[${st.dtheta?.[0]}, ${st.dtheta?.[1]}]` : st.op === 'det' ? '算 det(J) 判可逆' : '准备' },
@@ -419,6 +462,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   quat: {
     question: '机器人的"朝向"怎么表示？为什么用四元数而不是直观的欧拉角（roll/pitch/yaw）？',
+    plain: {
+      hook: '为什么描述旋转不用「绕 x 转多少、绕 y 转多少」？',
+      body: '因为会卡死。三个角度依次转，当中间那个转到 90 度时，第一个轴和第三个轴会重合 —— 本来三个自由度，突然只剩两个，某个方向再也转不过去了。这叫万向锁，航天和动画里都栽过。\u3000四元数用四个数描述旋转，没有这个毛病，插值也平滑，还比矩阵省。\u3000代价是它不直观：那四个数你没法一眼看出转了多少度。所以人机界面上还用角度，内部一律换成四元数。',
+      watch: '把中间那个欧拉角转到 90 度，看另外两个轴怎么重合、丢掉一个自由度。四元数那一栏则一路正常。',
+    },
     read: [{ at: '向量旋转', is: 'xy 平面里向量随四元数转过去（起始虚箭头→当前实箭头）。', anchor: '.fk-svg' }, { at: '读数', is: '四元数 q=(w,x,y,z)、|q|²、累计转角。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { phase: string; op: string; q: number[]; qnorm: number; R: number[][]; vecNow: number[]; angleShown: number; eulerSets: { yaw: number; pitch: number; roll: number }[]; focus: string }; return [
       { k: '本步输入', v: st.phase === 'intro' ? '绕 z 轴转 90°，向量 (1,0,0)' : st.op === 'quat' ? '轴-角 (0,0,1)、90°' : st.op === 'matrix' ? '四元数 → 旋转矩阵' : st.op === 'rotate' ? 'R 乘向量 (1,0,0)' : st.op === 'compose' ? '再转 90°（四元数自乘）' : st.op === 'gimbal' ? 'pitch=90° 的三组欧拉角' : '收束' },
@@ -435,6 +483,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   trajectory: {
     question: '机器人关节从 0° 转到 90°，为什么不能匀速直接走？怎么生成一条平滑的时间轨迹？',
+    plain: {
+      hook: '机械臂从 A 点到 B 点，为什么不能直接冲过去？',
+      body: '匀速直冲意味着**起步瞬间从 0 跳到全速、到点瞬间从全速跳到 0** —— 这需要无穷大的加速度，实际结果是电机咔一下、整条臂在抖。\u3000所以要给它安排一条平滑的路：起步慢慢加速、中间最快、快到了提前减速，位置和速度都连续。用一个三次多项式就能满足这四个条件（起止的位置和速度）。\u3000要连加速度也平滑，就得升到五次。',
+      watch: '看位置、速度、加速度三条曲线。线性插值那一版速度是方波、加速度是无穷尖峰 —— 那正是机器抖动的来源。',
+    },
     read: [{ at: '位置/速度图', is: '三次多项式(实线)的位置 S 曲线、速度钟形；线性(虚线)的速度两端突跳。', anchor: '.traj-charts' }, { at: '读数', is: '时间、位置 θ、速度 θ̇、加速度 θ̈。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { phase: string; op: string; theta0: number; thetaF: number; T: number; a: number[]; t: number; theta: number; vel: number; accel: number; linVel: number; focus: string }; return [
       { k: '本步输入', v: st.op === 'intro' ? `关节 ${st.theta0}°→${st.thetaF}°、T=${st.T}s` : st.op === 'linear' ? '线性插值（匀速）' : st.op === 'solve' ? '解三次多项式系数' : `采样 t=${st.t}s` },
@@ -449,6 +502,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   kalman: {
     question: '里程计会漂、GPS 会跳，机器人怎么把两个都不准的信息融合成一个更准的位置估计？',
+    plain: {
+      hook: '传感器有噪声，模型不准，怎么办？两个都信一点。',
+      body: '你知道车大概怎么开（模型），也有个抖动的 GPS（观测）。只信模型，误差会一路累积漂走；只信 GPS，位置就跟着噪声乱跳。\u3000卡尔曼滤波的做法是**按各自的可靠程度加权平均**：模型这一拍先推一个位置，顺带把不确定性放大一点；观测来了就往观测那边拉一把，同时把不确定性缩小。\u3000那个决定「往观测拉多少」的权重就是卡尔曼增益 —— 传感器越准，它越大。',
+      watch: '看每一拍不确定性怎么先涨后缩，以及增益随之变化。把观测噪声调大，你会看到它更信自己的预测、更不信传感器。',
+    },
     read: [{ at: '滤波图', is: '真值(绿)、GPS观测(空心)、融合估计(橙)带 ±√P 不确定带。', anchor: '.fk-svg' }, { at: '读数', is: '本拍、估计 x vs 真值、方差 P、增益 K。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { phase: string; op: string; stepNo: number; x: number; P: number; truePos: number; z: number | null; K: number | null; innov: number | null; xPred: number; Q: number; R: number; focus: string }; return [
       { k: '本步输入', v: st.phase === 'intro' ? '初始 x=0、P=1' : st.op === 'predict' ? `步 ${st.stepNo} · Predict：里程计前进 u` : `步 ${st.stepNo} · Update：GPS 观测 z=${st.z}` },
@@ -466,6 +524,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   icp: {
     question: '激光雷达两帧点云，机器人不知道哪个点对哪个点，怎么把它们对齐、算出自己动了多少？',
+    plain: {
+      hook: '两片点云怎么对齐？先猜，再一点点拧。',
+      body: '手里两片扫描出来的点，代表同一个物体但角度不同。对齐的办法笨得可爱：**给第一片里的每个点，在第二片里找最近的那个点当搭档**，然后算一个旋转加平移，让所有搭档尽量靠近。挪完之后搭档关系变了，再找一遍，再挪一次。\u3000它对初始位置很敏感 —— 一开始差得太远，找的搭档全是错的，就会收敛到一个错误的姿态出不来。所以实际用之前总要先粗对齐一次。',
+      watch: '看每一轮的配对连线和残差怎么缩小。把初始姿态偏得远一点再跑，你会看到它稳稳地收敛到一个错误答案。',
+    },
     read: [{ at: '点云图', is: '目标点云(空心)、源点云(实心)、对应连线；源云逐轮转到目标上。', anchor: '.fk-svg' }, { at: '读数', is: '迭代轮、点对平均误差、累计旋转 vs 真值。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { phase: string; op: string; iterNo: number; iterRot: number; cumRot: number; error: number; trueRot: number; focus: string }; return [
       { k: '本步输入', v: st.op === 'intro' ? `源点云 + 目标(转 ${st.trueRot}°+平移)、初始误差 ${st.error}` : `第 ${st.iterNo} 轮：当前源点云位置` },
@@ -481,6 +544,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   slam: {
     question: '机器人走一圈回到起点，为什么里程计以为自己在别处？回环怎么把整条轨迹拉正？',
+    plain: {
+      hook: '边走边画地图，可地图还没画完你就迷路了。',
+      body: '定位需要地图，画地图又需要知道自己在哪 —— 这是个鸡生蛋的问题，所以只能两件事一起做，互相修正。\u3000轮子转了多少圈能推算走了多远，但轮子会打滑，误差一点点累积，走一圈回来能偏出几米。\u3000救命的是**回环**：某一刻认出「这地方我来过」，就等于给整条轨迹加了一条约束，把积累的误差一次性摊回去，整张图当场被拉正。',
+      watch: '看里程计的误差怎么慢慢漂开，以及回环检测触发的那一瞬间，整条轨迹和地图怎么被一起拉回来。',
+    },
     read: [{ at: '轨迹图', is: '真实回路(虚线)、里程计漂移轨迹(红,不闭合)、校正后轨迹(绿,闭合)。', anchor: '.fk-svg' }, { at: '读数', is: '进度、回环漂移、轨迹误差(校正前后)。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { phase: string; op: string; poseNo: number; odom: number[][]; drift: number[] | null; driftMag: number; errOdom: number; errCorr: number; focus: string }; return [
       { k: '本步输入', v: st.op === 'intro' ? '机器人沿八边形走一圈' : st.op === 'step' ? `走到位姿 ${st.poseNo}` : st.op === 'loopclose' ? '走完一圈，识别回环' : '位姿图优化' },
@@ -525,6 +593,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   bc: {
     question: '让机器人照专家示范学开车，为什么小误差会滚成大祸、冲出车道？',
+    plain: {
+      hook: '看人开一百遍车，就能学会开车吗？',
+      body: '能学个大概，但有个致命缺口：**你看到的全是开得好的画面**。一旦真上路稍微偏了一点，落到了示范里从没出现过的状态，你就不知道该怎么办了 —— 而这一步的错误又让你偏得更多，越滚越远。\u3000这就是复合误差：单步的模仿误差很小，一整条轨迹跑下来却面目全非。\u3000补救办法是让新手先开、专家在旁边随时纠正 —— 把「偏了怎么办」这部分数据也补上。',
+      watch: '看模仿出来的轨迹怎么一步步偏离示范。误差不是突然出现的，是每一步一点点累出来的。',
+    },
     read: [{ at: '轨迹图', is: '专家(绿,留道内) vs BC(红,漂出示范区→冲出车道)；示范区/车道边界。', anchor: '.fk-svg' }, { at: '读数', is: '滚动步、专家偏移、BC 偏移与状态。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { phase: string; op: string; shown: number; expertY: number; bcY: number; demoBound: number; roadBound: number; bcOff: boolean; bcCrashed: boolean; focus: string }; return [
       { k: '本步输入', v: st.op === 'intro' ? `车道保持，专家只在中线附近示范(|偏移|≤${st.demoBound})` : `第 ${st.shown} 步：扰动把车往外推` },
@@ -554,6 +627,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   vla: {
     question: '一个机器人怎么吃"一张图 + 一句话"就直接干活？动作是怎么从大模型里"说出来"的？',
+    plain: {
+      hook: '怎么让会聊天的大模型，去指挥一只机械手？',
+      body: '把动作也当成话来说。图像和指令进去，模型吐出来的不是文字，而是一串代表关节角度的记号 —— 对模型来说这跟生成词没有本质区别。\u3000好处是它把互联网上学来的常识带了过来：「把红色的那个拿起来」它知道红色是什么，哪怕这个物体它从没在机器人数据里见过。\u3000难处是频率：大模型每秒只推理几次，而控制回路要上百赫兹。所以它一次输出一小段动作，边执行边算下一段。',
+      watch: '看模型一次吐出几步动作、执行到哪一步时开始算下一段。这个「动作块」的长度就是流畅和响应之间的取舍。',
+    },
     read: [{ at: '流水线', is: '图像+指令→预训练VLM骨干→动作token→反解执行，逐段点亮。', anchor: '.vla-pipe' }, { at: 'token化表', is: '连续 Δpose 每维离散成格→token→反解。', anchor: '.vla-tok' }],
     step: (s: never) => { const st = s as { phase: string; op: string; instruction: string; tokens: number[]; novelObj: string; focus: string }; return [
       { k: '本步输入', v: st.op === 'intro' ? `指令「${st.instruction}」+ 场景图` : st.op === 'input' ? '图像(视觉token)+指令(文本token)' : st.op === 'backbone' ? '过预训练 VLM 骨干' : st.op === 'tokenize' ? '连续动作 Δpose' : st.op === 'execute' ? '生成的动作 token' : `换个没训过的物体「${st.novelObj}」` },
@@ -582,6 +660,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   pid: {
     question: '让机器人关节停到目标角，为什么只用比例(P)会来回震荡？加个 D 项怎么就稳了？',
+    plain: {
+      hook: '空调调温度，为什么会来回过冲？',
+      body: '只看「差多少」来出力（比例项），差得多就使劲、差得少就轻点。问题是快到目标时惯性还在，一冲就过头，然后反向再冲回来 —— 来回震荡。\u3000所以要加一项看**变化快慢**的（微分项）：眼看着靠近得太快就提前刹车。\u3000还有一项管**长期偏差**（积分项）：如果总是差一点点到不了，把这些年积累的委屈加起来，多使点劲补上。\u3000三项怎么配，就是调参的全部内容。',
+      watch: '把微分项关掉再走一遍，看震荡怎么起来的。积分项调太大又会引出另一种慢悠悠的来回摆 —— 三项互相牵制。',
+    },
     read: [{ at: '位置曲线', is: '纯 P(红,冲过头震荡) 与 PD(绿,阻尼收敛) 对目标线(虚线)。', anchor: '.fk-svg' }, { at: '读数', is: '控制器、位置 vs 目标、误差 e、控制量 u=P(+D)。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { phase: string; op: string; mode: string; k: number; target: number; e: number; uP: number; uD: number; u: number; p: number; focus: string }; return [
       { k: '本步输入', v: st.phase === 'intro' ? '目标=10、被控对象是质量块' : st.op === 'switch' ? '纯 P 震荡 → 加 D 项' : `${st.mode === 'P' ? '纯 P' : 'PD'} 步 ${st.k}：当前误差 e=${st.e}` },
@@ -599,6 +682,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   rrt: {
     question: '机器人要从起点绕开障碍走到终点，怎么在没有地图公式的情况下"探"出一条路？',
+    plain: {
+      hook: '房间里堆满家具，怎么找到一条能走的路？',
+      body: '别想着算出最优路径，先找到**一条能走通的**。办法出奇地简单：在空间里随机撒一个点，从已有的树上找最近的枝条朝它伸一小段；撞到家具就丢掉这一段，没撞到就把它接上。反复几千次，树就长满了整个可行区域，总有一根枝条会碰到终点。\u3000为了别漫无目的，每隔几次就故意朝终点撒一个点。\u3000缺点是路径七拐八弯，得再做一遍平滑。',
+      watch: '看树怎么从起点往外长、撞到障碍的枝条怎么被丢弃。多跑几次，每次的路径都不一样 —— 随机算法的结果本来就不唯一。',
+    },
     read: [{ at: '世界+树', is: '障碍(灰)、起点(绿)、终点(橙)，树逐节点长出、绕障碍，到终点高亮路径。', anchor: '.fk-svg' }, { at: '读数', is: '树节点数、丢弃次数、路径段数。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { phase: string; op: string; nodes: unknown[]; sample: { x: number; y: number } | null; nearest: number; goalward: boolean; rejected: number; reason: string; path: number[] | null; focus: string }; return [
       { k: '本步输入', v: st.phase === 'intro' ? '起点、终点、中央障碍' : `随机采样 (${st.sample?.x}, ${st.sample?.y})${st.goalward ? '（朝终点）' : ''}` },
@@ -616,6 +704,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   topk: {
     question: '内存装不下全部计数，怎么求出现最多的 K 个？哈希分片和小顶堆各解决什么？',
+    plain: {
+      hook: '要从一亿个数里挑最大的十个，非得全排序不可吗？',
+      body: '不用。准备一个只装十个数的小容器，规定**容器里最小的那个永远在顶上**。扫过来一个数，比顶上那个大就把顶上的换掉，比它小就直接扔。\u3000扫完一遍，容器里剩的就是最大的十个。全程只维护十个数，内存几乎不占，而且一亿个数只扫一遍。\u3000直觉上容易反着想成大顶堆 —— 那样堆顶是最大的，可你要淘汰的恰恰是「当前这十个里最小的」。',
+      watch: '看每个新数怎么跟堆顶比较、什么时候触发替换。堆的大小始终是 K，跟总数据量没关系 —— 这就是它能处理海量数据的原因。',
+    },
     read: [{ at: '分片表', is: '各片的词→计数；同一个词只会在一片里。', anchor: '.tk-shards' }, { at: '小顶堆', is: 'K 个槽，堆顶(门槛)高亮；新词比门槛大才挤进来。', anchor: '.tk-heap' }],
     step: (s: never) => { const st = s as { phase: string; op: string; K: number; N: number; route: { word: string; shard: number; count: number } | null; heap: { word: string; count: number }[]; consider: { word: string; count: number } | null; evicted: { word: string; count: number } | null; threshold: number; topk: { word: string; count: number }[]; focus: string }; return [
       { k: '本步输入', v: st.phase === 'done' ? '分片+堆全走完' : st.route ? `路由词「${st.route.word}」(计数 ${st.route.count})` : st.consider ? `考察词「${st.consider.word}」(计数 ${st.consider.count})` : '准备' },
@@ -633,6 +726,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   seckill: {
     question: '库存 2 件、3 个请求同时抢，为什么 naive 扣库存会卖出 3 件？原子 DECR 怎么修？',
+    plain: {
+      hook: '一万个人抢一百件货，怎么保证不超卖？',
+      body: '超卖的根源只有一个：**读库存和扣库存不是一气呵成的**。两个请求同时读到「还剩 1」，然后各自扣一次，库存就成了 -1。\u3000所有解法都在解决原子性：数据库行锁、Redis 的原子扣减、或者提前把库存拆成一百个令牌发出去。\u3000剩下的功夫都在削峰：把绝大多数注定抢不到的请求挡在外层，别让它们冲到数据库跟前。',
+      watch: '看两个并发请求怎么读到同一个库存值。把扣减换成原子操作再走一遍，超卖当场消失。',
+    },
     read: [{ at: '并发请求', is: '三个请求各自读到的库存值 + 抢到/拒绝状态。', anchor: '.sk-reqs' }, { at: '读数', is: '当前库存(可为负)、卖出/库存、扣减方式。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { mode: string; stock: number; sold: number; initStock: number; oversold: boolean; focus: string; reqs: { id: string; local: number | null }[]; phase: string }; return [
       { k: '本步输入', v: st.mode === '' ? '开场：库存 2、3 个请求同抢' : `${st.mode === 'naive' ? 'naive 读改写' : '原子 DECR'} · ${st.focus}` },
@@ -648,6 +746,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   minisearch: {
     question: '给一堆文档和一个查询，搜索引擎怎么排出"最相关"的几篇？',
+    plain: {
+      hook: '搜索引擎怎么做到几十毫秒里翻完全网？',
+      body: '它根本不翻。事先把每篇文档拆成词，反过来记一张表：**每个词后面跟着「哪些文档里有它」**。搜「苹果 手机」就是取两个词的文档列表求交集，几毫秒的事。\u3000这张倒过来的表就是倒排索引 —— 正着记是「文档→有哪些词」，倒着记是「词→在哪些文档」。\u3000剩下的工作是排序：同样包含这两个词，谁该排前面？那是另一套打分逻辑。',
+      watch: '看每个词的文档列表怎么建立、查询时怎么求交集。列表越短的词越先参与求交 —— 这是最基本的优化。',
+    },
     read: [{ at: '倒排索引', is: '词 → 出现在哪些文档(×词频)，逐篇读入后长出来。', anchor: '.ms-index' }, { at: '打分', is: '每个候选的 TF-IDF 得分条与排名。', anchor: '.ms-scores' }, { at: '读数', is: '阶段、倒排规模、候选、最相关。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { stage: string; focus: string; reading: string; index: unknown[]; query: string[]; candidates: string[]; idf: { term: string; df: number; idf: number }[]; scores: { id: string; score: number }[]; phase: string }; return [
       { k: '本步输入', v: st.phase === 'done' ? '整条检索流水跑完' : st.reading ? `读入文档 ${st.reading}` : st.scores.length ? '候选打分' : st.idf.length ? '算各词 idf' : st.candidates.length ? '查倒排取候选' : st.query.length ? `收到查询「${st.query.join(' ')}」` : '准备语料' },
@@ -659,6 +762,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   minikv: {
     question: '把学过的零件拼起来，能造一个真能跑的数据库吗？',
+    plain: {
+      hook: '一个键值数据库，最少要有哪几样东西？',
+      body: '一张能按键查值的表，一份写在磁盘上防断电的日志，以及一套把内存里的数据定期落盘的机制 —— 有这三样就能用了。\u3000真正的难点全在细节：写日志和改数据的顺序（先日志后数据，否则断电就丢）、落盘时怎么不阻塞正在进来的写、崩溃重启后怎么从日志恢复到一致状态。\u3000所有数据库的复杂度，都是从这三件小事长出来的。',
+      watch: '跟着一次写入走完全程：先追加日志、再改内存、最后异步落盘。把中间任何一步的顺序调换，想想断电会丢什么。',
+    },
     read: [{ at: '五个零件', is: 'WAL/memtable/SSTable/布隆四块 + 当前操作路径。', anchor: '.kv-grid' }, { at: '读数', is: '本步、memtable、SSTable、get 结果。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { op: string; key: string; val: number; memtable: [string, number][]; sstables: [string, number][][]; result: string; bloomHit: boolean; foundIn: string; phase: string }; return [
       { k: '本步输入', v: st.phase === 'done' ? '一条 put/更新/get/压实跑完' : st.op === 'put' ? `写 put(${st.key}, ${st.val})` : st.op === 'update' ? `更新 ${st.key}=${st.val}` : st.op === 'get' ? `读 get(${st.key})` : st.op === 'flush' ? 'memtable 满，刷盘' : st.op === 'compact' ? '后台压实' : '开始' },
@@ -670,6 +778,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   reactagent: {
     question: '想→做→看的循环好写，难在"什么时候、怎么停"——它会不会跑飞 / 烧钱 / 白跑？',
+    plain: {
+      hook: '让模型「先想一下再动手」，效果差很多。',
+      body: '直接问「北京今天几度」，模型只能凭记忆瞎猜。改成让它先写一句「我需要查天气」，再真的去调一个工具，拿到结果再回答 —— 准确率天差地别。\u3000这个「想一步、做一步、看结果、再想」的循环就是 Agent 的骨架。\u3000关键在于**每一轮都把上一轮的结果塞回提示词里**，模型才知道进展到哪儿了。所以对话越长，提示词越长，成本也越高。',
+      watch: '看每一轮的「思考 / 动作 / 观察」三段怎么串起来，以及上一轮的观察怎么进入下一轮的输入。',
+    },
     read: [{ at: '控制条', is: '步数预算 + stuck 窗口，循环拦不拦得住就看这俩。', anchor: '.ra-ctrl' }, { at: '轨迹', is: 'Thought/Action/Observation 一行行累积。', anchor: '.ra-trace' }, { at: '终止横幅', is: '停下来的原因（正常/重复/超预算/出错）。', anchor: '.ra-halt' }],
     step: (s: never) => { const st = s as { scenario: string; kind: string; round: number; text: string; tool: string; arg: string; obs: string; stepCount: number; budget: number; halt: string }; return [
       { k: '本步输入', v: st.kind === 'intro' ? `场景：${st.scenario}` : st.kind === 'thought' ? `第 ${st.round} 轮 · 想：${st.text}` : st.kind === 'action' ? `第 ${st.round} 轮 · 做：${st.tool}(${st.arg})` : st.kind === 'observation' ? `第 ${st.round} 轮 · 看：${st.obs || '（空）'}` : '终止判定' },
@@ -681,6 +794,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   ctxcompact: {
     question: 'Agent 会话越聊越长、上下文窗口迟早爆——怎么在不丢关键信息的前提下把它压回去？',
+    plain: {
+      hook: '聊得太久，上下文塞不下了怎么办？',
+      body: '最粗暴的办法是把最早的对话直接扔掉 —— 但那可能正是任务目标所在。\u3000更好的做法是压缩：把前面几十轮总结成一段话，保留结论和关键事实，细节丢掉。相当于把会议记录换成会议纪要。\u3000难点在于判断什么该留：正在进行的任务、用户明确的偏好、已确认的事实要留；试错过程、被推翻的结论可以扔。\u3000压缩本身也要花一次模型调用，所以不能太频繁。',
+      watch: '看压缩前后 token 数的变化，以及哪些内容被保留下来。压得太狠，后面的对话会出现「它忘了我说过什么」。',
+    },
     read: [{ at: '计量条', is: '累计 token vs 窗口，竖线是压缩阈值。', anchor: '.cc-gauge' }, { at: '消息列表', is: '每条按区域染色：留头/中间/留尾/已剪/摘要。', anchor: '.cc-list' }, { at: '读数', is: '累计 token、阈值、省了多少。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { stage: string; running: number; threshold: number; before: number; strategy: string; N: number; relievedByPrune: boolean; meter?: { est: number; real: number } }; return [
       { k: '本步输入', v: ({ full: `一段会话共 ${st.before} tokens、窗口 ${st.N}`, partition: '把历史切成 头/中/尾', prune: '中间的超大工具结果', compress: `压中间（${st.strategy}）`, rebuild: '头 + 压过的中间 + 尾' } as Record<string, string>)[st.stage] ?? '' },
@@ -692,6 +810,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   toolcall: {
     question: '模型发的工具调用，harness 怎么把它变成真结果，还不被一个坏调用搞崩整个循环？',
+    plain: {
+      hook: '模型自己不会查天气，但它会说「请帮我查天气」。',
+      body: '工具调用的本质是一份约定：你事先告诉模型有哪些函数、每个函数要什么参数，模型需要时就输出一段结构化的请求，**真正执行的是你的代码**，不是模型。\u3000所以模型永远不会真的碰你的数据库 —— 它只是在建议调用什么。执行、鉴权、限流全在你这边，这也是安全边界所在。\u3000最常见的翻车是参数：模型编了一个不存在的字段，或者类型不对。所以调用前必须校验。',
+      watch: '看模型输出的那段调用请求长什么样、参数从哪儿来。校验失败时把错误回传给它，它通常能自己改对。',
+    },
     read: [{ at: '流水线', is: '解析→门禁→执行→回灌，当前调用走到哪、卡在哪。', anchor: '.tc-pipe' }, { at: '历史', is: '回灌给模型的调用/结果配对，错误红色标出。', anchor: '.tc-hist' }, { at: '读数', is: '进度、本调用结局、已回灌几条。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { stage: string; cur: number; call?: { name: string; raw: string; result: string }; outcome: string; total: number }; return [
       { k: '本步输入', v: st.cur < 0 ? `模型发的 ${st.total} 个工具调用` : `调用 ${st.cur + 1}/${st.total}：${st.call?.name || '(malformed)'} — ${st.call?.raw ?? ''}` },
@@ -703,6 +826,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   permguard: {
     question: '模型想跑 rm -rf 或联网，harness 凭什么决定放不放行，又不误伤正常操作？',
+    plain: {
+      hook: '给 Agent 放开权限之前，先想清楚它能干什么。',
+      body: '一个能执行命令的 Agent，理论上能删掉你的整个目录。所以要有两道互相独立的墙：一道是**规则**（哪些命令直接拒、哪些要问一句、哪些放行），另一道是**沙箱**（就算放行了，它也只能在这个笼子里动，网络默认关着）。\u3000两道墙独立很重要：绕过审批不等于拆掉沙箱。任何一道单独都不够 —— 规则总有想不到的写法，沙箱也总有需要放行的正当操作。',
+      watch: '看同一条命令在两道墙下各自的判定。规则按「先匹配到的先生效」，所以最危险的那几条要排在最前面。',
+    },
     read: [{ at: '决议流水线', is: '定性→规则→沙箱→结局，当前操作走到哪、卡在哪。', anchor: '.pg-pipe' }, { at: '历史', is: '每个操作的判决，拒绝红/升级黄/放行绿。', anchor: '.pg-hist' }, { at: '读数', is: '模式、本操作结局、已判几个。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { stage: string; cur: number; mode: string; op?: { cmd: string; eLabel: string }; res?: { rule: string; sandbox: string; final: string; fLabel: string }; total: number }; return [
       { k: '本步输入', v: st.cur < 0 ? `模型想跑的 ${st.total} 个操作（模式 ${st.mode}）` : `操作 ${st.cur + 1}/${st.total}：${st.op?.cmd}（${st.op?.eLabel}）` },
@@ -714,6 +842,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   subagent: {
     question: '复杂任务派给子 agent，怎么既省父的上下文、又不让子生子把配额炸光？',
+    plain: {
+      hook: '一个人干不完，就派几个分身各干一块。',
+      body: '主 Agent 把大任务拆成几件互不相干的小事，各派一个子 Agent 去做，自己只收结果。\u3000最大的好处不是快，是**上下文干净**：每个子 Agent 只看到自己那一摊，不会被别人的中间过程淹没；主 Agent 也只拿到结论，不用装下所有细节。\u3000代价是子任务之间没法互相商量，拆得不好就会出现重复劳动或者互相打架。所以拆分的边界比并行度更重要。',
+      watch: '看主 Agent 怎么拆任务、子 Agent 各自的上下文有多干净，以及结果怎么汇总回来。',
+    },
     read: [{ at: 'token 账本', is: '子内部干的活 vs 回传给父，差=省下的。', anchor: '.sa-ledger' }, { at: '委派树', is: '父→子的树，按深度缩进。', anchor: '.sa-tree' }, { at: '守卫', is: '深度 / 并发上限。', anchor: '.sa-guards' }],
     step: (s: never) => { const st = s as { stage: string; cur: string; nodes: { id: string; name: string; depth: number; internalTok: number; returnTok: number }[]; parentCtx: number; internalTotal: number; returnTotal: number; depthCap: number }; const n = st.nodes.find(x => x.id === st.cur); return [
       { k: '本步输入', v: st.stage === 'intro' ? `父任务，起始上下文 ${st.parentCtx}t` : st.stage === 'blocked' ? '子想在深度上限处再派子 agent' : st.stage === 'done' ? '汇总账本' : n ? `派子 agent「${n.name}」(深度 ${n.depth})` : '派子 agent' },
@@ -725,6 +858,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   memretrieve: {
     question: '记忆一大堆、上下文塞不下，查询来了该捞哪几条进上下文？凭什么排序？',
+    plain: {
+      hook: '记忆多了，怎么在该想起来的时候想起来？',
+      body: '把每条记忆变成一个向量存着，提问时把问题也变成向量，取最接近的几条塞进提示词。\u3000难点从来不是存，是**取得准**。问「上次那个方案」，语义检索可能取回一堆相关但不相干的东西；而关键词检索又抓不住换了说法的表达。所以实际系统往往两种一起用，再排一次序。\u3000取回太多也是问题：噪声会稀释真正有用的那条，模型反而更容易答偏。',
+      watch: '看查询向量跟各条记忆的相似度排序。调整取回条数，太少会漏、太多会被噪声带偏 —— 中间那一档才对。',
+    },
     read: [{ at: '打分公式', is: '得分 = w·最近 + w·相关 + w·重要。', anchor: '.mr-formula' }, { at: '记忆表', is: '每条的三信号 + 得分，排序后 top-k 高亮捞回。', anchor: '.mr-table' }, { at: '读数', is: '权重、查询、捞回哪几条。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { stage: string; weights: string; wr: number; wl: number; wi: number; topK: number; mems: { id: string; retrieved: boolean; score: number }[] }; const top = st.mems.filter(m => m.retrieved).map(m => m.id); return [
       { k: '本步输入', v: st.stage === 'intro' ? `${st.mems.length} 条记忆 + 一个查询` : st.stage === 'signals' ? '每条记忆算三个信号' : st.stage === 'score' ? `加权求分（权重 ${st.weights}）` : st.stage === 'rank' ? `按得分排序，取 top-${st.topK}` : '捞回的记忆集' },
@@ -736,6 +874,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   mempaging: {
     question: '上下文窗口有限、装不下所有历史，MemGPT 怎么像操作系统那样管内存？',
+    plain: {
+      hook: '记忆装不下，就得决定谁留在手边、谁收进仓库。',
+      body: '这跟操作系统的页面置换是同一个问题：手边的空间有限，常用的留着，不常用的换出去，需要时再换回来。\u3000所以那套老办法直接能用：最久没用的先换出（LRU）、按访问频次换、或者按「以后还会不会用到」预测。\u3000区别在于换回的代价不同：内存换页是几微秒，而重新检索一段记忆可能要一次向量查询加一次模型调用。',
+      watch: '看哪些记忆被换出、下一次又是怎么被换回来的。换出策略选错，你会看到同一条记忆反复进出 —— 那就是抖动。',
+    },
     read: [{ at: 'RAM 水位', is: '主上下文用量，越过 70% 触发内存压力。', anchor: '.mp-bar' }, { at: 'RAM/磁盘两栏', is: '左 RAM 的槽 + 右磁盘的 recall/archival。', anchor: '.mp-cols' }, { at: '换页操作', is: '换出(驱逐)/换入(调回)。', anchor: '.mp-op' }],
     step: (s: never) => { const st = s as { stage: string; ramUsed: number; N: number; warnAt: number; recall: unknown[] }; return [
       { k: '本步输入', v: st.stage === 'intro' ? 'RAM(系统+工作记忆) + 磁盘(recall/archival)' : st.stage === 'fill' ? '消息陆续进 FIFO 队列' : st.stage === 'pressure' ? `RAM ${st.ramUsed} vs 警告线 ${st.warnAt}` : st.stage === 'evict' ? '驱逐最老的消息' : st.stage === 'pagein' ? '需要一条已驱逐的旧信息' : '汇总' },
@@ -747,6 +890,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   reflection: {
     question: '光存一堆零散观察不够——agent 怎么把它们消化成"用户是个后端工程师"这种高层理解？',
+    plain: {
+      hook: '做完之后回头看一眼，往往能发现刚才的错。',
+      body: '让模型把自己刚才的输出重新读一遍，问「这里有没有问题」，它经常能揪出自己第一遍没注意的错误 —— 因为生成时是一路往前，没有回头检查的机会。\u3000但反思不是万能的：如果它根本不知道正确答案是什么，反思只会给出一个同样自信的错误。\u3000真正有效的反思需要**外部信号**：测试跑失败了、工具报错了、检索到了矛盾的资料。',
+      watch: '对比有没有反思那一步的结果差异，以及反思依据的是模型自己的判断还是外部反馈。后者的效果稳定得多。',
+    },
     read: [{ at: '累计条', is: '最近观察的重要度之和，过阈值就反思。', anchor: '.rf-cum' }, { at: '观察流', is: '原始观察(带重要度)，被反思的高亮。', anchor: '.rf-obs' }, { at: '洞察', is: '提炼出的高层洞察 + 引用的证据。', anchor: '.rf-insight' }],
     step: (s: never) => { const st = s as { stage: string; threshold: number; cum: number; insight: { text: string; evidence: string[] } | null }; return [
       { k: '本步输入', v: st.stage === 'intro' ? '一串零散的原始观察' : st.stage === 'observe' ? '观察陆续进记忆流、重要度累积' : st.stage === 'trigger' ? `累计重要度 ${st.cum} vs 阈值 ${st.threshold}` : st.stage === 'reflect' ? '就最近观察提炼洞察' : '巩固完成' },
@@ -769,6 +917,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   planning: {
     question: 'Agent 怎么"先想后做"、又不在长任务里跑偏？计划模式是真门禁还是走过场？',
+    plain: {
+      hook: '先列个计划，再一条条做。',
+      body: '复杂任务直接开干，很容易做到一半发现方向错了。先让模型列出步骤，再逐条执行，好处是**中途可以对照计划检查进度**，也便于人在开始前就看出方向不对。\u3000但计划不能定死：执行中拿到的新信息往往会推翻原计划，所以要允许改。\u3000计划太细也是负担 —— 二十步的计划里，第三步一变，后面十七步全得重排。',
+      watch: '看计划怎么被拆成步骤、执行中又怎么被修订。计划的颗粒度是关键：太粗等于没计划，太细等于给自己上枷锁。',
+    },
     read: [{ at: '计划模式门', is: '只读锁定 / 已解锁；写被门禁挡下会标红。', anchor: '.pl-gate' }, { at: 'Todo', is: '状态机，恰好一个进行中，新插入的虚线标出。', anchor: '.pl-todos' }, { at: '复述', is: '整张 todo 贴回近端(注意力操控)。', anchor: '.pl-recite' }],
     step: (s: never) => { const st = s as { stage: string; mode: string; planMode: boolean; writeBlocked: boolean; todos: { status: string }[] }; const done = st.todos.filter(t => t.status === 'done').length; return [
       { k: '本步输入', v: st.stage === 'intro' ? `复杂任务 + 计划模式(${st.mode})` : st.stage === 'planning' ? '只读探查、拟 todo，并试图写' : st.stage === 'exit' ? '人批准了计划' : st.stage === 'exec' ? '按 todo 推进' : st.stage === 'replan' ? '执行中发现计划没料到的依赖' : '收尾' },
@@ -780,6 +933,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   promptbuild: {
     question: 'Agent 每步都重拼 prompt，怎么排能让前缀命中缓存、省 90% 的钱？',
+    plain: {
+      hook: '同样的模型，提示词写法不同，效果差一大截。',
+      body: '模型没有记忆，每次调用它看到的**只有你这一次塞进去的那些字**。所以提示词的搭建其实是一道信息组织题：系统设定放哪儿、历史对话留多少、检索到的资料怎么排、工具说明放前面还是后面。\u3000有几条经验很稳：重要的东西放开头和结尾（中间容易被忽略）；给例子比讲规则有效；明确说「不知道就说不知道」能显著减少胡编。',
+      watch: '看最终发出去的那一整段提示词是怎么拼起来的、各部分占了多少 token。改动一处再看输出的变化。',
+    },
     read: [{ at: '各段', is: '按 tools→system→messages 排，缓存断点分隔可缓存前缀(绿)与动态尾部(黄)。', anchor: '.pb-secs' }, { at: '成本', is: '第2轮：前缀命中缓存 vs 全价。', anchor: '.pb-cost' }, { at: '读数', is: '排序、前缀、省多少。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { stage: string; ordering: string; prefixTok: number; tailTok: number; turn2Cached: number; turn2Full: number }; const save = Math.round((1 - st.turn2Cached / st.turn2Full) * 100); return [
       { k: '本步输入', v: st.stage === 'intro' ? `6 段 + 排序方式(${st.ordering})` : st.stage === 'assemble' ? '按 tools→system→messages 排、定断点' : st.stage === 'turn1' ? '第 1 轮（缓存空）' : st.stage === 'turn2' ? '第 2 轮（历史涨、来新消息）' : '汇总' },
@@ -1165,6 +1323,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   queryplan: {
     question: '同一个查询有好几条路可走，数据库优化器凭什么选其中一条？',
+    plain: {
+      hook: '同一条 SQL，为什么昨天快今天慢？',
+      body: '数据库拿到 SQL 之后不会照着字面执行，而是先估算几种执行方式各要花多少代价，挑最便宜的那条。估算依赖一份统计信息：这张表大概多少行、某一列的值分布多散。\u3000**统计信息过期了，估算就会离谱** —— 它以为只有几行，实际几百万行，于是挑了嵌套循环，慢查询就这么来的。\u3000所以「同一条 SQL 突然变慢」，第一个该怀疑的往往不是 SQL 本身。',
+      watch: '看优化器给每条候选路径估的代价，以及它最后挑了哪条。把统计信息改得离谱一点，你会看到它当场选错。',
+    },
     read: [{ at: '候选路径', is: '每条访问路径的 type + 估扫描行数代价条。', anchor: '.qp-paths' }, { at: 'EXPLAIN', is: '末步选中路径的 type/key/rows。', anchor: '.qp-explain' }],
     step: (s: never) => { const st = s as { op: string; cur: number; paths: { name: string; type: string; rows: number }[]; chosen: number; phase: string }; return [
       { k: '本步输入', v: st.phase === 'done' ? '比完三条路径的代价' : st.op === 'intro' ? '一个查询、多条访问路径' : `候选：${st.paths[st.cur].name}` },
@@ -1176,6 +1339,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   regex: {
     question: '正则的 * 是"零或多个前一字符"，怎么用 DP 表把它讲清楚？',
+    plain: {
+      hook: '一个正则表达式，怎么会让服务器卡死？',
+      body: '常见的正则引擎是靠**回溯**工作的：这条路走不通就退回去换一条。碰上 `(a+)+b` 这种嵌套的重复，一段全是 a 的输入会让它把所有拆分方式都试一遍 —— 长度每加一，可能性翻一倍。三十几个字符就能算到天荒地老。\u3000另一类引擎（如 RE2）改用状态机，保证线性时间，代价是不支持反向引用这些高级功能。\u3000所以「正则跑得慢」往往不是写法丑，是踩到了指数级的坑。',
+      watch: '看匹配过程中回溯了多少次。把输入加长一点，回溯次数的增长速度就是这个问题的全部。',
+    },
     read: [{ at: 'DP 表', is: 'dp[i][j]=s前i个配p前j个；绿✓能配、·不能。', anchor: '.rx-table' }, { at: '关键格', is: '本行高亮格用的转移规则。', anchor: '.rx-note' }],
     step: (s: never) => { const st = s as { op: string; curRow: number; s: string; p: string; key: { i: number; j: number; rule: string } | null; matched: boolean; phase: string }; return [
       { k: '本步输入', v: st.phase === 'done' ? `读右下角 dp[${st.s.length}][${st.p.length}]` : st.op === 'intro' ? `s="${st.s}" p="${st.p}"，dp 表` : `填第 ${st.curRow} 行（s 前 ${st.curRow} 个）` },
@@ -1187,6 +1355,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   blockingqueue: {
     question: '生产者比消费者快，队列满了怎么办？空了消费者又怎么办？',
+    plain: {
+      hook: '流水线上，前面的人快、后面的人慢，怎么办？',
+      body: '中间放一个传送带：前面的人把零件放上去，后面的人取下来。带子满了，前面的人就得停手等；带子空了，后面的人就得停手等。\u3000实现上要两块牌子：一块管「还有空位吗」，一块管「还有东西吗」。**只用一块的话，会把不该叫醒的人也叫醒** —— 等空位的人被「有东西了」的广播吵起来，看一眼还是满的，又睡回去，白忙。',
+      watch: '看放和取分别在什么时候被挡住。把队列容量调到 1 再走一遍，两端几乎变成了严格轮流 —— 缓冲区的意义正在于此。',
+    },
     read: [{ at: '缓冲槽', is: '有界缓冲的占用/空位。', anchor: '.bq-buffer' }, { at: '两端', is: '生产者/消费者的状态（就绪/阻塞）。', anchor: '.bq-scene' }],
     step: (s: never) => { const st = s as { op: string; queue: string[]; cap: number; item: string; blockedP: boolean; blockedC: boolean; event: string; phase: string }; return [
       { k: '本步输入', v: st.phase === 'done' ? '生产者放数据后消费者被唤醒' : st.op === 'intro' ? `容量 ${st.cap} 的有界阻塞队列` : st.event },
@@ -1198,6 +1371,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   wildcard: {
     question: '通配符 * 能配任意一段，它到底该吃几个字符？怎么不用递归就搞定？',
+    plain: {
+      hook: '`*` 能匹配任意多个字符 —— 麻烦就在「任意多」这三个字。',
+      body: '匹配 `a*b*c` 的时候，第一个星到底吃掉几个字符？不知道，只能试。试错了就回退，换一个长度再试。\u3000这种回溯在最坏情况下会呈指数增长：星号一多、串一长，就能把 CPU 跑满。\u3000动态规划能救：把「模式的前 i 位能不能匹配串的前 j 位」记成一张表，填完表就有答案，每格只算一次，不再重复试。',
+      watch: '看回溯发生在哪些位置、试了多少次。换成动态规划那一版，同样的输入只填一张表，次数是长度的乘积。',
+    },
     read: [{ at: 's / p 两行', is: '双指针位置、* 覆盖的字符(绿)、锚点(黄)。', anchor: '.wc-row' }, { at: '读数', is: '本步、双指针、* 吃了什么。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { op: string; s: string; p: string; si: number; pj: number; star: number; coverFrom: number; coverTo: number; matched: boolean; phase: string }; const eaten = st.coverFrom >= 0 && st.coverTo > st.coverFrom ? st.s.slice(st.coverFrom, st.coverTo) : ''; return [
       { k: '本步输入', v: st.phase === 'done' ? `s 扫到头(si=${st.si})` : st.op === 'intro' ? `s="${st.s}" p="${st.p}"` : st.op === 'match' ? `字符匹配，si→${st.si}、pj→${st.pj}` : st.op === 'star' ? `遇 *(p=${st.star})` : `回溯，* 多吃一个` },
@@ -1209,6 +1387,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   bufferpool: {
     question: '一次全表扫描会不会把缓存里的热点页都冲掉？MySQL 怎么防？',
+    plain: {
+      hook: '数据库为什么开着开着就把内存吃光了？',
+      body: '因为它故意的。磁盘比内存慢几万倍，所以数据库把读过的数据页尽量留在内存里 —— 这块专门用来囤页的内存就是缓冲池，通常配置成机器内存的一大半。\u3000它自己管淘汰、自己管脏页什么时候写回磁盘，不完全交给操作系统。原因是数据库比操作系统更清楚哪些页马上还要用（比如索引的上层节点）。\u3000命中率是它的命门：从 99% 掉到 95%，读盘次数就是五倍。',
+      watch: '看每次访问是命中缓冲池还是要去读盘，以及淘汰时挑中了哪一页。脏页被淘汰前必须先写回 —— 那一步额外要花时间。',
+    },
     read: [{ at: 'LRU 两段', is: 'young 热区 / 中点 / old 冷区，新页从中点进。', anchor: '.bfp-lru' }, { at: '读数', is: '本步、young 热区、old 冷区、淘汰。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { op: string; young: string[]; old: string[]; loaded: string; evicted: string; scanned: string[]; phase: string }; return [
       { k: '本步输入', v: st.phase === 'done' ? '扫描结束，看热点' : st.op === 'intro' ? '普通 LRU 会被扫描污染' : st.op === 'init' ? 'young=热区、old=冷区' : `全表扫描装载 ${st.loaded}` },
@@ -1220,6 +1403,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   lockstrategy: {
     question: '两个事务同时改一行，怎么防"更新丢失"？乐观锁和悲观锁差在哪？',
+    plain: {
+      hook: '锁得越细，并发越好 —— 那为什么不干脆锁到每一行？',
+      body: '因为锁本身要花钱。每一把锁都要记账、要检测死锁、要在竞争时把线程挂起再唤醒。锁得越细，锁的数量越多，这些开销就越大，死锁的可能性也越高（要按顺序拿好几把）。\u3000锁得粗则相反：一把大锁简单又安全，代价是并发度低，大家排一条队。\u3000所以数据库从表锁到页锁到行锁，是一路在这两者之间找平衡，不是越细越好。',
+      watch: '对比不同粒度下的并发度和等待时间。粒度变细，能同时干活的事务变多，但每个事务要拿的锁也变多了。',
+    },
     read: [{ at: '数据库行', is: '库存/版本/锁状态。', anchor: '.lk-row' }, { at: '两事务', is: 'T1/T2 各自在做什么。', anchor: '.lk-txns' }],
     step: (s: never) => { const st = s as { act: string; stock: number; version: number; lockedBy: string; event: string; outcome: string; phase: string }; return [
       { k: '本步输入', v: st.phase === 'done' ? '对比两种锁' : st.act === 'intro' ? '两事务各扣 1 件库存' : st.act === 'lost' ? '无保护：两事务并发改' : st.act === 'optimistic' ? '乐观锁（版本号）' : '悲观锁（FOR UPDATE）' },
@@ -1264,6 +1452,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   lrucache: {
     question: '怎么让缓存的 get 和 put 都是 O(1)，还能淘汰"最久没用"的？',
+    plain: {
+      hook: '桌上只放得下几本书，该收哪一本回书架？',
+      body: '收那本最久没翻过的 —— 这就是 LRU。\u3000难点在于要做到「一瞬间完成」：既要能立刻找到某本书在哪（哈希表给的），又要能立刻把它从中间抽出来挪到最前面（双向链表给的）。两样缺一不可，所以标准实现是它俩合用。\u3000还有个容易忽略的点：**查一次也算「翻过」**，所以读操作也要动链表。LRU 的 get 不是只读的。',
+      watch: '看每次访问之后那本书怎么被挪到链表头部，以及容量满时从尾部淘汰了谁。命中和未命中走的是两条不同的路。',
+    },
     read: [{ at: '双向链表', is: '头=最近用、尾=最久没用；移头/淘汰尾看这里。', anchor: '.lru-list' }, { at: 'HashMap', is: '缓存里现有的 key。', anchor: '.lru-map' }],
     step: (s: never) => { const st = s as { op: string; opDesc: string; list: { k: number; v: number }[]; result: number; hit: boolean; evicted: number | null; capacity: number; phase: string }; const show = st.list.map(n => `${n.k}:${n.v}`).join('→'); return [
       { k: '本步输入', v: st.phase === 'done' && st.op === 'intro' ? '走完一串操作' : st.opDesc || '容量 ' + st.capacity + ' 的缓存' },
@@ -1286,6 +1479,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   aba: {
     question: 'CAS 检查了"值没变"，为什么还会被"变一圈又变回来"骗？',
+    plain: {
+      hook: '你出门前柜子里有 5 块钱，回来还是 5 块 —— 就一定没人动过吗？',
+      body: '可能有人拿走了 5 块，又放回来 5 块；也可能中间那 5 块已经不是原来那张了。\u3000无锁编程里这个问题很致命：比较交换只看「值还是不是原来那个」，值一样就以为期间什么都没发生，于是把已经被回收、被复用的节点又接了回去，链表当场断掉。\u3000解法是给值配一个只增不减的版本号：**值相同不算数，版本也得相同**。',
+      watch: '看那个「值变了又变回来」的时序：不带版本号时比较交换会成功，带上就失败并重试。这一次成功才是真正的错。',
+    },
     read: [{ at: '共享值 / T1 记忆', is: '当前值与 T1 读到的旧值（fixed 阶段还带版本）。', anchor: '.ab-lane' }, { at: '判定', is: 'CAS 步的期望 vs 当前，成功还是失败。', anchor: '.ab-verdict' }],
     step: (s: never) => { const st = s as { act: string; op: string; value: number; version: number; t1Read: number; t1Ver: number; casOk: boolean | null; phase: string }; return [
       { k: '本步输入', v: st.phase === 'done' ? '版本号修复完成' : st.act === 'intro' ? 'CAS 靠"值没变"判断' : st.op === 'read' ? `T1 读到 ${st.t1Read}${st.act === 'fixed' ? `/v${st.t1Ver}` : ''}` : st.op === 'change' ? `T2 改值 → ${st.value}${st.act === 'fixed' ? `/v${st.version}` : ''}` : `T1 恢复做 CAS` },
@@ -1297,6 +1495,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   rwlock: {
     question: '读操作互不干扰，为什么还要用一把锁串起来？读写锁怎么放宽？',
+    plain: {
+      hook: '阅览室里看书的人可以很多，抄书的只能有一个。',
+      body: '读不改变内容，所以多少人同时读都没关系；写会改，所以写的时候谁也不许进来。读写锁就是把这两件事分开管：读锁可以共享，写锁必须独占。\u3000读多写少的场景收益巨大。但有个陷阱：读者络绎不绝的话，**写者可能永远等不到一个没人读的瞬间** —— 活活饿死。所以实现里往往要加一条「有写者在等，新读者也得排队」。',
+      watch: '看多个读者怎么同时拿到锁、写者什么时候被挡住。把读者调多再走一遍，注意写者等待的时间怎么变。',
+    },
     read: [{ at: '锁持有区', is: '当前持读锁的读者们，或独占的写者。', anchor: '.rw-lock' }, { at: '等待队列', is: '进不来、在排队的请求。', anchor: '.rw-queue' }],
     step: (s: never) => { const st = s as { op: string; who: string; readers: string[]; writer: string | null; waitQ: { who: string; type: string }[]; event: string; phase: string }; return [
       { k: '本步输入', v: st.phase === 'done' ? '看完流转，收结论' : st.op === 'intro' ? '一串加/解锁请求' : st.event },
@@ -1308,6 +1511,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   compositeindex: {
     question: '有复合索引 idx(a,b,c)，哪些查询能用上它、哪些还要回表？',
+    plain: {
+      hook: '电话簿按姓氏排，只知道名字有什么用？',
+      body: '复合索引 (a, b, c) 的排法是：先按 a 排，a 相同的再按 b 排，b 也相同才看 c —— 跟电话簿先按姓、再按名一模一样。\u3000所以只知道名字（跳过 a 直接查 b）是用不上的：整本簿子里同名的人散落在各页。\u3000还有个更细的坑：a 用了范围条件（大于某值），那么 b 在这个范围里就是乱的，c 更别提 —— 所以建索引时把等值的列放前面、范围的放最后。',
+      watch: '看哪些查询条件真的被索引用上了（前缀连续命中的那几列），哪些只能回表逐行过滤。',
+    },
     read: [{ at: '索引三列', is: 'a/b/c，绿色是本查询能用的最左前缀。', anchor: '.ci-index' }, { at: '结果表', is: '每条查询用到的前缀 + 是否回表。', anchor: '.ci-hist' }],
     step: (s: never) => { const st = s as { op: string; qi: number; where: string[]; select: string[]; prefix: string[]; usesIndex: boolean; covering: boolean; phase: string }; return [
       { k: '本步输入', v: st.phase === 'done' ? '两条规则总结' : st.op === 'query' ? `Q${st.qi + 1}: WHERE ${st.where.map(c => `${c}=?`).join(' AND ')} · SELECT ${st.select.join(',')}` : '复合索引 idx(a,b,c)' },
@@ -1319,6 +1527,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   joins: {
     question: '同一个 JOIN，数据库为什么有时走 Hash、有时走 Nested Loop？',
+    plain: {
+      hook: '两张表拼一起，为什么有时候快、有时候要命？',
+      body: '取决于用什么办法拼。最朴素的是拿左表每一行去右表里找一遍 —— 行数一多就是灾难。\u3000快一点的办法是**先把小表做成一张哈希表**，然后扫大表时一查即中（等值连接最爱用）。\u3000还有一种是两边都先排好序，然后像拉拉链一样并排扫过去 —— 适合本来就有序、或者要做范围匹配的场合。\u3000优化器挑哪一种，取决于表有多大、内存够不够、有没有现成的顺序。',
+      watch: '看每种做法实际扫了多少行、用了多少内存。同一组数据换个连接算法，代价能差出一个数量级。',
+    },
     read: [{ at: '两表', is: 'Users.id 与 Orders.uid，当前算法怎么配对。', anchor: '.jn-tables' }, { at: '代价', is: '末步三算法的比较次数对比。', anchor: '.jn-costs' }],
     step: (s: never) => { const st = s as { algo: string; op: string; cost: number; matches: unknown[]; costs: { nlj: number; hash: number; smj: number }; phase: string }; return [
       { k: '本步输入', v: st.phase === 'done' ? '三算法代价对比' : st.algo === 'nlj' ? 'Nested Loop：外表每行×内表每行' : st.op === 'build' ? 'Hash：对小表建哈希表' : st.op === 'probe' ? 'Hash：大表逐行探测' : st.op === 'sort' ? 'Sort-Merge：两表排序' : st.op === 'merge' ? 'Sort-Merge：双指针归并' : '同一对表，三种算法' },
@@ -1330,6 +1543,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   circuitbreaker: {
     question: '下游服务挂了，怎么不让它把上游一起拖垮、还能自动探测恢复？',
+    plain: {
+      hook: '下游已经挂了，还一个劲儿地打过去，只会一起死。',
+      body: '服务 A 调服务 B，B 变慢了。A 的请求全堵在等待上，线程池耗尽，A 也跟着挂 —— 然后调 A 的 C 也挂。这叫雪崩。\u3000熔断器就是电闸：**失败率一超线就跳闸，之后的请求直接失败返回**，不再去挤那条已经堵死的路。过一会儿放几个试探请求过去，好了就合闸，还坏就继续断。\u3000快速失败听起来消极，但它保住了整条链路上其他还健康的部分。',
+      watch: '看失败率怎么触发跳闸，以及半开状态下那几个试探请求的结果决定了下一步是恢复还是继续断。',
+    },
     read: [{ at: '三态', is: 'Closed / Open / Half-Open，当前态高亮。', anchor: '.cb-states' }, { at: '读数', is: '状态、失败计数/阈值、本步结果。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { op: string; cstate: string; fails: number; threshold: number; outcome: string; phase: string }; const nm = st.cstate === 'closed' ? 'Closed' : st.cstate === 'open' ? 'Open' : 'Half-Open'; return [
       { k: '本步输入', v: st.phase === 'done' ? '探测成功，收结论' : st.op === 'intro' ? '三态机：Closed/Open/Half-Open' : st.op === 'timeout' ? 'Open 冷却超时到' : st.op === 'probe' ? 'Half-Open 放探测请求' : `[${nm}] 一个请求` },
@@ -1341,6 +1559,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   quorum: {
     question: '数据存多份副本，写几份、读几份，才能保证读到的一定是最新写的？',
+    plain: {
+      hook: '五个人保管同一份账本，问几个人才敢下结论？',
+      body: '写的时候让至少三个人记下来，读的时候至少问三个人 —— 三加三大于五，所以**问到的人里必定有一个记过最新的那笔**，拿版本号最大的那份就对了。\u3000这就是 W + R > N 的全部道理：靠集合相交，而不是靠谁特别可靠。\u3000两个数还可以调：写少读多的系统就把 W 调小（写得快）、R 调大；反过来也行。总和过半这条线不能破。',
+      watch: '调 W 和 R 再走一遍。让 W + R ≤ N 试试 —— 会出现读到旧值的情况，那不是 bug，是你亲手放宽的约束。',
+    },
     read: [{ at: '副本行', is: '5 份副本的版本；写份/读份/重叠各有标记。', anchor: '.qm-reps' }, { at: '不等式', is: 'W+R vs N，>N 才保证重叠。', anchor: '.qm-ineq' }],
     step: (s: never) => { const st = s as { op: string; N: number; W: number; R: number; overlap: number[]; readVer: number; readVal: string; phase: string }; return [
       { k: '本步输入', v: st.phase === 'done' ? '反例：R 调小到 2' : st.op === 'intro' ? `N=${st.N} 份副本，写 W=${st.W}、读 R=${st.R}` : st.op === 'init' ? '5 份都是 v1(A)' : st.op === 'write' ? `写 W=${st.W} 份 → {R0,R1,R2} 升 v2(B)` : st.op === 'read' ? `读 R=${st.R} 份 → {R2,R3,R4}` : '判定重叠' },
@@ -1374,6 +1597,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   totp: {
     question: '手机验证器那个每 30 秒变的 6 位码，是怎么和服务器对上的？',
+    plain: {
+      hook: '动态口令每 30 秒变一次，两边怎么对得上？',
+      body: '双方共享一个密钥，再各自看一眼**当前时间**（按 30 秒取整），把两者一起哈希，取几位数字出来。时间一样、密钥一样，算出来就一样。\u3000所以它不需要联网、不需要通信 —— 你的手机和服务器各算各的。\u3000唯一的麻烦是时钟：两边差个几秒很正常，所以服务器会同时接受前后一个时间窗的码。窗口放太宽，被猜中的概率就线性上升。',
+      watch: '看时间戳怎么被取整成一个计数器、再和密钥一起生成六位数。把时钟拨快一分钟，码就对不上了。',
+    },
     read: [{ at: '管线', is: '时间 → ⌊÷30⌋ 窗口 → HMAC → 截断 → 6 位码。', anchor: '.tp-pipe' }, { at: '读数', is: '当前时间、时间窗 T、6 位码。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { op: string; t: number; T: number; code: string; prevCode: string; phase: string }; return [
       { k: '本步输入', v: st.phase === 'done' ? '服务器验证' : st.op === 'intro' ? 'TOTP 目标：离线算出同一个码' : `当前时间 t=${st.t}s` },
@@ -1385,6 +1613,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   hmac: {
     question: '怎么给消息盖一个"只有持密钥者算得出、改一字节就露馅"的标签？',
+    plain: {
+      hook: '给消息盖个章，怎么防止别人续写？',
+      body: '最直觉的做法是把密钥和消息拼起来哈希一遍。但常见的哈希函数有个性质：**知道 H(密钥+消息)，就能算出 H(密钥+消息+任意内容)**，根本不需要知道密钥 —— 攻击者可以在你的消息后面续写，章还是有效的。\u3000HMAC 的办法是嵌套两层，让密钥在里外各参与一次。外面再哈希一遍，续写那条路就断了。',
+      watch: '看内外两层怎么各用一次密钥。用单层拼接那一版试试长度扩展，你会看到标签能被续写出来。',
+    },
     read: [{ at: '两条泳道', is: '内层 K⊕ipad‖m→H，外层 K⊕opad‖inner→H。', anchor: '.hm-pipe' }, { at: '读数', is: '内层 inner、HMAC 标签、篡改后。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { op: string; ki: number[]; inner: number; mac: number; tamperMac: number; phase: string }; const hx = (n: number) => n < 0 ? '—' : n.toString(16).padStart(2, '0'); return [
       { k: '本步输入', v: st.phase === 'done' ? '四步算完，做篡改验证' : st.op === 'intro' ? 'MAC 目标：带密钥的防篡改标签' : st.op === 'ipad' ? 'K ⊕ ipad(0x36)' : st.op === 'inner' ? '内层 H(K⊕ipad ‖ m)' : st.op === 'opad' ? 'K ⊕ opad(0x5c)' : '外层 H(K⊕opad ‖ inner)' },
@@ -1396,6 +1629,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   aesround: {
     question: 'AES 把明文摆成 4×4 矩阵，一轮里对它做了哪四件事？',
+    plain: {
+      hook: '一轮不够，就来十轮。',
+      body: '加密要做到「改一位明文，密文面目全非」，靠的是两件事：**混淆**（把明文和密钥的关系搅乱）和**扩散**（让一位的影响散布到所有位）。\u3000AES 每一轮做四件事：查表替换（混淆）、行内移位、列间混合（扩散）、异或轮密钥。一轮的扩散范围有限，所以要重复十轮 —— 十轮之后每一位密文都依赖了全部明文和密钥。\u3000轮数按密钥长度定：128 位十轮，256 位十四轮。',
+      watch: '跟着一位明文的影响范围走：一轮之后它影响几个字节，两轮之后又是多少。扩散的速度决定了需要几轮。',
+    },
     read: [{ at: '矩阵', is: '4×4 状态，本步改动的格子高亮。', anchor: '.aes-stage' }, { at: '四步条', is: '当前走到 Sub/Shift/Mix/AddKey 哪步。', anchor: '.aes-flow' }],
     step: (s: never) => { const st = s as { op: string; mat: number[]; phase: string }; const first = st.mat.length ? st.mat[0]!.toString(16).padStart(2, '0') : '—'; return [
       { k: '本步输入', v: st.phase === 'done' ? '四步走完' : st.op === 'intro' ? '16 字节明文摆成 4×4 矩阵' : st.op === 'addkey0' ? '轮开始：状态 ⊕ 初始密钥' : st.op === 'sub' ? 'SubBytes：逐字节查 S-盒' : st.op === 'shift' ? 'ShiftRows：每行循环左移' : st.op === 'mix' ? 'MixColumns：每列 GF 混合' : 'AddRoundKey：⊕ 本轮密钥' },
@@ -1407,6 +1645,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   birthday: {
     question: '一屋子多少人就有过半概率两人同天生日？为什么这关系到哈希安全？',
+    plain: {
+      hook: '屋里有 23 个人，就有一半概率两人同天生日。',
+      body: '反直觉是因为你在算「有人跟**我**同天」，那确实要 253 人才过半。但题目问的是「**任意两人**同天」—— 23 个人能配出 253 对组合，概率自然就上去了。\u3000这条数学事实直接决定了哈希该多长：找一个跟指定值相同的哈希（原像）要试 2ⁿ 次，而找**任意两个**相同的（碰撞）只要试 2^(n/2) 次。\u3000所以要 128 位的抗碰撞强度，哈希就得输出 256 位。',
+      watch: '看人数增加时概率怎么飙升，以及它跟总天数的平方根之间的关系。这个根号就是所有哈希长度选择的依据。',
+    },
     read: [{ at: '量表', is: '碰撞概率随人数涨，50% 是那条虚线。', anchor: '.bd-gauge' }, { at: '读数', is: '人数、可撞对数 C(k,2)、碰撞概率。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { k: number; pairs: number; pColl: number; crossed50: boolean; phase: string }; return [
       { k: '本步输入', v: st.phase === 'done' ? '看完概率飙升，收结论' : st.k === 0 ? '空屋，问要多少人' : `屋里 ${st.k} 个人` },
@@ -1418,6 +1661,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   ecbcbc: {
     question: '同样一批明文，为什么用 ECB 加密会「泄露」而 CBC 不会？',
+    plain: {
+      hook: '同一张图加密两遍，为什么还能看出轮廓？',
+      body: '最朴素的分组加密是把明文切成小块、每块**各自独立**加密。问题是相同的明文块加出来的密文块也相同 —— 大片同色的区域在密文里依然是大片相同的图案，企鹅图的轮廓就这么露了出来。\u3000解决办法是让每一块都跟前一块产生关系：加密前先跟上一块的密文异或。于是相同的明文块也会加出完全不同的密文。\u3000第一块没有前一块，所以要给一个随机的初始向量。',
+      watch: '对比两种模式下相同明文块的密文。独立加密那一版，重复的块一眼就能数出来。',
+    },
     read: [{ at: '三行', is: '明文 / ECB 密文 / CBC 密文，颜色相同=值相同。', anchor: '.ec-rows' }, { at: '读数', is: '当前模式、ECB/CBC 的重复块结论。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { mode: string; blockIdx: number; ecbC: number[]; cbcC: number[]; ecbLeak: boolean; cbcSafe: boolean; expr: string; phase: string }; const bin = (n: number) => n.toString(2).padStart(4, '0'); return [
       { k: '本步输入', v: st.phase === 'done' ? '两种模式都加密完' : st.mode === 'intro' ? '明文 P，其中 P1=P3=1010(重复块)' : st.blockIdx >= 0 ? `${st.mode.toUpperCase()} 加密第 ${st.blockIdx + 1} 块` : `${st.mode.toUpperCase()} 小结` },
@@ -1440,6 +1688,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   wal: {
     question: '已提交的写，怎么保证宕机也不丢？',
+    plain: {
+      hook: '为什么断电之后，数据库还能把没做完的事补上？',
+      body: '因为它有个死规矩：**改数据之前，先把「我要这么改」写进一个只追加的日志里**，而且要等日志真的落盘了才动真数据。\u3000这样断电后重启，照着日志重放一遍就行：已经记下的照做，没记完的当作没发生。\u3000为什么这样更快？因为日志是顺序写 —— 磁头不用乱跑，比东一块西一块地改数据页快得多。真正的数据页可以攒着，慢慢再刷。',
+      watch: '看每一步是先写日志还是先改数据。把顺序颠倒过来再想一遍：数据改了但日志没写，断电后你根本不知道它改过。',
+    },
     read: [{ at: '日志/数据', is: '左=WAL 日志(先落盘)、右=数据页。', anchor: '.wal-cols' }, { at: '读数', is: '本步、数据页、日志/已应用。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { data: number; wal: string[]; applied: number; act: string; crashed: boolean; phase: string }; return [
       { k: '本步输入', v: st.crashed ? '宕机发生' : st.act === 'log' ? '要改数据，先写日志' : st.act === 'apply' ? '日志已落盘' : st.act === 'replay' ? '重启恢复' : '完成' },
@@ -1451,6 +1704,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   lsm: {
     question: 'LevelDB/RocksDB 写为什么这么快？',
+    plain: {
+      hook: '为什么有的数据库写得飞快，读却要多花点力气？',
+      body: '因为它把「写」变成了纯粹的追加：新数据先进内存里的一张小表，满了就整张**顺序倒**到磁盘上，从不去原地修改老数据。顺序写比随机写快一两个数量级，所以写入极快。\u3000代价转移到了读上：一个键可能在内存里、也可能在磁盘上好几层里，得从新到旧一层层找。所以要靠布隆过滤器先挡掉大部分「肯定不在这一层」。\u3000后台还得不断把小文件合并成大的，这个活儿叫压实。',
+      watch: '看写入怎么先进内存表、再整批落盘，以及读一个键时要翻几层。写快读慢，是这条路子的固有交易。',
+    },
     read: [{ at: 'memtable', is: '内存里的有序缓冲(满格=容量)。', anchor: '.lsm-mem' }, { at: 'SSTable', is: '磁盘上不可变的有序文件。', anchor: '.lsm-disk' }],
     step: (s: never) => { const st = s as { cap: number; memtable: string[]; sstables: string[][]; cur: string; act: string; phase: string }; return [
       { k: '本步输入', v: st.act === 'write' ? `写入 "${st.cur}"` : st.act === 'flush' ? `memtable 满(${st.cap})` : '完成' },
@@ -1462,6 +1720,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   tokenbucket: {
     question: '既想限住平均速率、又想容忍短时突发，怎么做？',
+    plain: {
+      hook: '怎么既限速，又允许偶尔来一波？',
+      body: '想象一个漏桶上面还挂着一个装令牌的桶：**令牌按固定速度往里滴**，每来一个请求就取走一个令牌，取不到就等着或者直接拒。\u3000这样平均速率被滴的速度锁死，而桶里攒下的令牌允许你**短时间内爆发一下** —— 这正是它比「每秒最多 N 个」高明的地方：平时没人用的时候攒着，用户真需要时能一次放行一批。\u3000桶多大，决定了能容忍多大的突发。',
+      watch: '看令牌怎么攒、怎么被取走。把桶容量调大再走一遍，突发那一段就能放行更多请求，而长期平均速率一点没变。',
+    },
     read: [{ at: '桶', is: '桶里当前令牌数（满格数=容量）。', anchor: '.tb-bucket' }, { at: '读数', is: '桶中令牌、这刻放行/拒绝、累计。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { rate: number; tick: number; tokens: number; arrived: number; allowed: number; rejected: number; totalAllowed: number; totalRejected: number; phase: string }; return [
       { k: '本步输入', v: st.phase === 'done' ? '所有时刻处理完' : `t=${st.tick}：桶剩 ${st.tokens} 令牌，来了 ${st.arrived} 个请求` },
@@ -1473,6 +1736,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   consistenthash: {
     question: '扩容加一台缓存机，为什么不能用 hash(key)%N？',
+    plain: {
+      hook: '加一台服务器，为什么会导致全部缓存失效？',
+      body: '常规做法是「用键的哈希值对机器数取模」。机器从 3 台变 4 台，除数一变，**几乎每个键都换了归属** —— 全部缓存瞬间作废，请求全打到数据库上。\u3000一致性哈希换了个摆法：把哈希值围成一个圆环，机器也落在环上，每个键顺时针找到的第一台机器就是它的归属。\u3000这样加一台机器，只有它那一小段弧上的键换了主，其余全不动。',
+      watch: '看环上的键怎么顺时针归属。增删一台机器再看一遍，统计有多少键换了主 —— 那个比例就是它省下来的东西。',
+    },
     read: [{ at: '环', is: '环 0..99 上的节点(蓝点)和键(方块→归属)。', anchor: '.ch-ring' }, { at: '读数', is: '节点数、本步、键归属。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { nodes: unknown[]; keys: { id: string; node: string }[]; cur: string; act: string; remapped: string; phase: string }; return [
       { k: '本步输入', v: st.act === 'nodes' ? '布置 3 个节点' : st.act === 'assign' ? `分配键 ${st.cur}` : st.act === 'addnode' ? '新增节点 D@60' : st.act === 'remap' ? '重新归属' : '完成' },
@@ -1484,6 +1752,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   skiplist: {
     question: '有序链表查一个数要 O(n)，怎么加速到 O(log n)？',
+    plain: {
+      hook: '在一条链表上查东西，能不能也做到二分那么快？',
+      body: '链表的毛病是只能一个一个往下走。\u3000跳表的办法很朴素：**在上面再架几条快车道**。底层是完整的链表，上一层每隔几个节点才有一个，再上一层更稀疏。查找从最高层起跑，跑过头了就下一层再跑，逐层逼近。\u3000妙的是每个节点建几层不是算出来的，而是**抛硬币决定** —— 正面就再升一层。不用维护平衡，期望效果却和平衡树一样。',
+      watch: '看查找路径怎么在层与层之间下楼梯。插入时那几次抛硬币决定了新节点有多高 —— 随机在这里就是平衡的替代品。',
+    },
     read: [{ at: '层', is: '多层链表；蓝框=当前、浅色=走过的路。', anchor: '.sl-levels' }, { at: '读数', is: '目标、当前位置、比较次数。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { target: number; levels: number[][]; level: number; val: number; act: string; compares: number; phase: string }; return [
       { k: '本步输入', v: st.phase === 'done' ? `找到 ${st.target}` : `在 L${st.levels.length - 1 - st.level} 层、节点 ${st.val}，找 ${st.target}` },
@@ -1495,6 +1768,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   twopc: {
     question: '一个事务跨多个库，怎么保证要么全成、要么全败？',
+    plain: {
+      hook: '两家一起签合同，怎么保证要么都签、要么都不签？',
+      body: '找个中间人。他先分别问两家：「你准备好了吗？」两家都答应了，他再通知两家：「签。」有一家说不行，他就通知大家撤。\u3000听起来很稳，但中间人在「大家都答应了」之后、通知之前失联了，两家就都卡在准备好的状态：签也不敢签、撤也不敢撤，资源全锁着干等 —— **这是它最著名的毛病**。\u3000所以现代系统更愿意用别的路子（比如各自补偿），不轻易上两阶段提交。',
+      watch: '看两个阶段的消息来回。把某一步的失败打开再走一遍，看哪一方会被卡住、卡在哪个状态。',
+    },
     read: [{ at: '参与者', is: '3 个参与者的状态（空闲/已准备/已提交）。', anchor: '.pc-parts' }, { at: '读数', is: '协调者阶段、Yes 票、决定。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { coord: string; cur: string; yesVotes: number; decision: string; phase: string }; return [
       { k: '本步输入', v: st.phase === 'done' ? '事务提交完成' : st.coord },
@@ -1506,6 +1784,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   crt: {
     question: '除 3 余 2、除 5 余 3、除 7 余 2 的数，怎么系统地求出来？',
+    plain: {
+      hook: '知道一个数除以 3、5、7 的余数，能反推出它吗？',
+      body: '能，只要这几个除数两两互质，而且这个数不超过它们的乘积。这就是中国剩余定理，一千多年前的《孙子算经》里就有「物不知数」这道题。\u3000它的现代用途很实际：RSA 解密时把一个大数运算拆成两个小数运算，各自算完再合并，速度能快三四倍。\u3000思路是「化大为小、分别求解、再拼回去」—— 跟分治是同一种智慧。',
+      watch: '看每个余数条件怎么各自贡献一部分，再合成唯一解。除数不互质时，解可能不唯一甚至不存在。',
+    },
     read: [{ at: '条件盒', is: '几个余数条件与最终解 x。', anchor: '.cx-kv' }, { at: '读数', is: '总模、累加和、解 x。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { ns: number[]; as: number[]; N: number; idx: number; Ni: number; yi: number; term: number; acc: number; x: number; phase: string }; return [
       { k: '本步输入', v: st.idx < 0 && st.phase !== 'done' ? `${st.ns.length} 个条件、总模 N=${st.N}` : st.phase === 'done' ? '全部条件已合并' : `第 ${st.idx + 1} 条：x mod ${st.ns[st.idx]} = ${st.as[st.idx]}` },
@@ -1517,6 +1800,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   fermat: {
     question: '几百位的数怎么快速判断是不是素数？',
+    plain: {
+      hook: '怎么快速判断一个几百位的数是不是质数？',
+      body: '老老实实试除到根号，几百位的数算到天荒地老。\u3000费马给了个便宜的检验：如果 p 是质数，那么对任意 a 都有 a^(p-1) 除以 p 余 1。反过来，如果算出来不余 1，那 p 一定不是质数 —— **一票否决，绝对可靠**。\u3000麻烦在于反过来不成立：余 1 的也可能是合数（卡迈克尔数专门骗它）。所以要多换几个 a 试，或者改用更严格的检验。',
+      watch: '换不同的底数 a 试同一个数，看什么时候能否掉它。检验通过的次数越多，是质数的把握越大，但永远不是证明。',
+    },
     read: [{ at: '数值盒', is: '测试对象 n、底 a、a^(n-1) mod n。', anchor: '.cx-kv' }, { at: '读数', is: '测试对象、要算的式子、结果、判定。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { n: number; a: number; bitPos: number; bit: number; result: number; verdict: string; phase: string }; return [
       { k: '本步输入', v: st.phase === 'done' ? `算完 ${st.a}^${st.n - 1} mod ${st.n}` : st.bitPos < 0 ? `测 n=${st.n}、底 a=${st.a}` : `指数第 ${st.bitPos} 位=${st.bit}` },
@@ -1528,6 +1816,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   salt: {
     question: '密码存哈希还不够——为什么一定要「加盐」？',
+    plain: {
+      hook: '两个人密码一样，数据库里存的也一样吗？',
+      body: '不加盐的话就是一样的 —— 于是攻击者拖库之后一眼就能看出「这堆人用了同一个密码」，而且可以拿事先算好的彩虹表批量反查。\u3000加盐就是给每个人配一段随机字符串，跟密码拼在一起再哈希。同样的密码，盐不同，存下来的就完全不同，彩虹表当场作废。\u3000盐不需要保密，跟哈希值一起存就行 —— 它的作用是让攻击者**没法批量**，只能一个个来。',
+      watch: '给同一个密码换不同的盐，看存储值怎么完全不同。盐的价值不在于挡住单个破解，而在于让预计算表失效。',
+    },
     read: [{ at: '哈希盒', is: '两个用户不加盐/加盐后存的哈希。', anchor: '.cx-kv' }, { at: '读数', is: '密码、不加盐、加盐。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { pw: string; noSaltA: number; saltedA: number; saltedB: number; stage: string; phase: string }; return [
       { k: '本步输入', v: st.stage === 'pw' ? `两人同用密码 "${st.pw}"` : st.stage === 'nosalt' ? '不加盐直接哈希' : st.stage === 'salted' ? '每人配随机盐再哈希' : '完成' },
@@ -1539,6 +1832,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   extgcd: {
     question: 'RSA 求私钥 d 那一步——怎么求 e 关于模 m 的逆元？',
+    plain: {
+      hook: '求最大公约数的时候，顺手还能得到别的东西。',
+      body: '辗转相除法能算出两个数的最大公约数。扩展版本多记一笔账：**把每一步的商记下来，倒推回去，能找出一组整数 x 和 y，使得 ax + by 正好等于最大公约数**。\u3000这组系数极其有用：当 a 和 b 互质时，它直接给出 a 在模 b 下的逆元 —— 而模逆元正是 RSA 生成私钥那一步要算的东西。\u3000所以这个古老算法至今还在每一次 HTTPS 握手里跑着。',
+      watch: '看倒推的过程：每一步的商怎么被用来更新那两个系数。最后一行的 x 就是模逆元。',
+    },
     read: [{ at: '数值盒', is: '余数 r、商 q、系数 t，迭代更新。', anchor: '.cx-kv' }, { at: '读数', is: '要求什么、本步商、逆元。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { e: number; m: number; q: number; r: number; newr: number; t: number; newt: number; result: number; phase: string }; return [
       { k: '本步输入', v: st.phase === 'done' ? `辗转相除结束` : `余数 ${st.r}、${st.newr}` },
@@ -1550,6 +1848,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   signature: {
     question: '怎么证明消息没被改、且确实是你发的？',
+    plain: {
+      hook: '怎么证明这封信确实是你写的，而且一个字没改？',
+      body: '反着用非对称加密：**用只有你有的私钥去处理信的摘要**，别人用你公开的公钥一验就知道是不是你。\u3000为什么先取摘要再签？因为签整封信又慢又没必要，摘要已经能保证「改一个字就完全不同」。\u3000顺带说清一件事：签名不是加密，信的内容依然是明文，它保证的是**来源可信**和**没被篡改**这两件事，不是保密。',
+      watch: '改动原文里一个字符，看摘要怎么完全变样、验签怎么当场失败。这就是「防篡改」的实际含义。',
+    },
     read: [{ at: '数值盒', is: '哈希 h、签名 s、验证结果。', anchor: '.cx-kv' }, { at: '读数', is: '哈希、签名、验证。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { hash: number; sig: number; recvHash: number; verified: number; ok: boolean; stage: string; phase: string }; return [
       { k: '本步输入', v: st.stage === 'hash' ? '对消息算哈希' : st.stage === 'sign' ? '用私钥签名' : st.stage === 'verify' ? '接收方重算哈希' : st.stage === 'check' ? '用公钥验证' : '完成' },
@@ -1561,6 +1864,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   hashaval: {
     question: '好的哈希函数，输入改一点点，输出会怎样？',
+    plain: {
+      hook: '为什么改一个字，整个哈希值就面目全非？',
+      body: '这是设计出来的性质，叫雪崩效应：**输入变一位，输出应该有一半左右的位跟着翻**。\u3000没有这个性质的话，相似的输入会产生相似的哈希，攻击者就能顺着摸出规律、一点点凑出碰撞。\u3000实现上靠的是反复混合：位移、异或、模加、查表，做上几十轮，让每一个输入位都影响到每一个输出位，而且影响的路径互相纠缠。',
+      watch: '改动输入里的一个字符，数一数输出有多少位发生了变化。接近一半才算合格 —— 明显偏少就说明混合得不够。',
+    },
     read: [{ at: '两行', is: '两个哈希的二进制；红=翻转、绿=相同。', anchor: '.cx-rows' }, { at: '读数', is: '对比对象、两个哈希、翻转位数。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { a: string; b: string; bitsA: number[]; bitsB: number[]; pos: number; flipped: number; phase: string }; return [
       { k: '本步输入', v: st.phase === 'done' ? `16 位比较完` : `第 ${st.pos + 1} 位：${st.bitsA[st.pos]} vs ${st.bitsB[st.pos]}` },
@@ -1572,6 +1880,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   merkle: {
     question: '怎么用一个小哈希，守住一大堆数据没被改？',
+    plain: {
+      hook: '怎么证明一个文件没被改，又不用把整个文件发过去？',
+      body: '把所有数据块两两哈希、层层往上合并，最后得到一个根哈希。任何一个字节变了，都会一路传到根上。\u3000妙处在于**验证某一块只需要几个哈希**：沿着从这一块到根的那条路，每层补上兄弟节点的哈希就够了 —— 一百万个块，只要二十个哈希。\u3000区块链、Git、IPFS、备份系统的完整性校验，用的都是它。',
+      watch: '看那条从叶子到根的验证路径要哪几个兄弟哈希。块数翻倍，路径只长一层 —— 这就是对数级的含义。',
+    },
     read: [{ at: '树', is: '叶子→父→根，自底向上；亮=已算。', anchor: '.mk-tree' }, { at: '读数', is: '本步、叶子/父/根哈希。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { data: number[]; leaves: number[]; parents: number[]; root: number; act: string; focus: number; phase: string }; return [
       { k: '本步输入', v: st.act === 'leaf' ? `数据块 ${st.data[st.focus]}` : st.act === 'parent' ? `两个子哈希 L${st.focus * 2}、L${st.focus * 2 + 1}` : st.act === 'root' ? '两个父 P0、P1' : '完成' },
@@ -1583,6 +1896,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   caesar: {
     question: '每个字母后移固定几位，怎么把明文变成密文？',
+    plain: {
+      hook: '把每个字母往后挪三位，这就是最早的加密。',
+      body: '凯撒给部下写信，A 写成 D、B 写成 E，收信人往回挪三位就还原了。在那个年代这足够管用 —— 敌人连字母表都不一定认全。\u3000放到今天它一秒就被破：一共只有 25 种挪法，全试一遍就行。\u3000但它讲清了一件事：**加密就是一个可逆的变换，安全性取决于密钥空间有多大**。后来所有密码的进步，都是在把这个空间做大、把变换做得没有规律可循。',
+      watch: '把位移量逐个试过去，看哪一个能读出通顺的句子。25 次就能试完 —— 这就是「密钥空间太小」的直观含义。',
+    },
     read: [{ at: '对照', is: '明文/密文逐字母对照，绿=已加密、蓝框=当前。', anchor: '.cx-rows' }, { at: '变换', is: '当前字母 code→+k mod26→新字母。', anchor: '.cx-calc' }],
     step: (s: never) => { const st = s as { pos: number; ch: string; code: number; key: number; shifted: number; out: string; cipher: string; phase: string }; return [
       { k: '本步输入', v: st.phase === 'done' ? `明文全部加密完` : `第 ${st.pos + 1} 个字母 ${st.ch}(=${st.code})` },
@@ -1594,6 +1912,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   vigenere: {
     question: '用一个关键词而不是固定位移，能挡住频率分析吗？',
+    plain: {
+      hook: '给凯撒密码换成一串密钥，就难破了吗？',
+      body: '难一点，但还是会破。维吉尼亚用一个单词当密钥，循环着给每个字母加不同的位移，于是同一个字母在不同位置加成不同的字符 —— 简单的词频统计当场失效。\u3000但密钥是**循环**的：只要猜出它的长度，就能把密文按位置分成几组，每一组内部又退化成一个凯撒密码，各自用词频破掉。\u3000密钥长度可以从重复片段的间距猜出来。这就是它三百年不破、最后败在统计学上的原因。',
+      watch: '看密钥怎么循环对齐到明文上。把密文按密钥长度分组，每组的字母频率会重新呈现出母语的分布特征。',
+    },
     read: [{ at: '三行', is: '明文/密钥(关键词循环)/密文对照。', anchor: '.cx-rows' }, { at: '变换', is: '(明文码+关键词码)mod26。', anchor: '.cx-calc' }],
     step: (s: never) => { const st = s as { pos: number; ch: string; chCode: number; keyCh: string; keyCode: number; shifted: number; out: string; cipher: string; phase: string }; return [
       { k: '本步输入', v: st.phase === 'done' ? '全部加密完' : `第 ${st.pos + 1} 位：明文 ${st.ch}、关键词 ${st.keyCh}` },
@@ -1605,6 +1928,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   xor: {
     question: '最基础的加密原语——异或，凭什么加解密同一套？',
+    plain: {
+      hook: '同一个操作做两遍，就回到原样。',
+      body: '异或有个可爱的性质：一个数跟同一个密钥异或两次，就变回它自己。所以加密和解密是**同一段代码**，连反函数都不用写。\u3000它甚至可以做到理论上不可破 —— 前提是密钥跟明文一样长、完全随机、而且**只用一次**。\u3000一旦拿同一段密钥加密两条消息，把两段密文一异或，密钥当场抵消，剩下的是两条明文的异或 —— 从这儿反推明文并不难。历史上栽在这上面的不止一次。',
+      watch: '拿同一个密钥加密两段明文，再把两段密文异或，看密钥怎么凭空消失。这就是「一次一密」里那个「一次」的分量。',
+    },
     read: [{ at: '三行', is: '明文位/密钥位/密文位。', anchor: '.cx-rows' }, { at: '本位', is: 'm XOR k = c。', anchor: '.cx-calc' }],
     step: (s: never) => { const st = s as { pos: number; mBit: number; kBit: number; cBit: number; cBits: number[]; phase: string }; return [
       { k: '本步输入', v: st.phase === 'done' ? '全部位加密完' : `第 ${st.pos + 1} 位：明文 ${st.mBit}、密钥 ${st.kBit}` },
@@ -1616,6 +1944,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   modpow: {
     question: '指数上千位的 a^b mod n，怎么算得动？',
+    plain: {
+      hook: '算 3 的 1000 次方再取余，要乘 1000 次吗？',
+      body: '不用。先算 3 的平方，再平方就是 4 次方，再平方是 8 次方 —— **每平方一次指数就翻倍**，十几步就能到 1000 多。剩下的按二进制位拼一拼就行。\u3000还有一个关键：每一步都先取余再往下算。不然中间结果会长到几百位，算都算不动。\u3000所有公钥密码的底层运算都是它，效率直接决定了 HTTPS 握手有多快。',
+      watch: '看指数怎么按二进制位被拆开，以及每一步取余怎么把数字压回可控范围。乘法次数从上千降到十几次。',
+    },
     read: [{ at: '数值盒', is: '当前底数、结果，都对 n 取模。', anchor: '.cx-kv' }, { at: '读数', is: '要算什么、指数位、结果。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { a: number; b: number; n: number; bitPos: number; bit: number; baseNow: number; result: number; phase: string }; return [
       { k: '本步输入', v: st.phase === 'done' ? `算完 ${st.a}^${st.b} mod ${st.n}` : `指数第 ${st.bitPos} 位 = ${st.bit}` },
@@ -1627,6 +1960,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   diffiehellman: {
     question: '所有人都能偷听的信道上，怎么商量出只有你俩知道的密钥？',
+    plain: {
+      hook: '两个人在大庭广众下喊话，怎么商量出一个只有他们知道的秘密？',
+      body: '各自心里想一个数不说出口，然后把「混合结果」大声喊出来交换。回去各自再用自己那个私密数混一次 —— 两人得到的结果是同一个，而旁听者算不出来。\u3000常用的比喻是调颜料：公开一桶黄色，各自偷偷加一点自己的颜色，交换之后再加一次自己的，两边最后都是同一种颜色；旁人看着两桶混合色，却分不出各自加了什么。\u3000这就是每次上 HTTPS 时，浏览器和服务器在做的事。',
+      watch: '看双方各自的私密数怎么在两次模幂之后得到同一个结果，而中间被公开的那两个数推不出它。',
+    },
     read: [{ at: 'Alice', is: '私钥 a、公钥 A、算出的共享。', anchor: '.cx-kv' }, { at: '读数', is: '公开参数、公钥 A/B、共享密钥。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { p: number; g: number; A: number; B: number; aliceShared: number; stage: string; phase: string }; return [
       { k: '本步输入', v: st.stage === 'setup' ? `公开 p=${st.p}、g=${st.g}` : st.stage === 'pubA' ? 'Alice 公布公钥' : st.stage === 'pubB' ? 'Bob 公布公钥' : st.stage.startsWith('shared') ? '各自算共享' : '完成' },
@@ -1638,6 +1976,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   rsa: {
     question: '加密的人不知道解密的钥，公钥体制怎么做到？',
+    plain: {
+      hook: '把两个大质数乘起来容易，拆回去难 —— 就靠这个。',
+      body: '给你两个几百位的质数，相乘一秒就出结果；给你那个乘积，让你找回原来两个质数，现有的计算机要算到宇宙热寂。\u3000RSA 就把这个不对称做成了锁：公钥是乘积（谁都可以拿去加密），私钥藏着那两个质数（只有你能解开）。\u3000所以它的安全性不是「算法保密」，恰恰相反 —— 算法完全公开，安全性全部押在「大数分解很难」这一条数学事实上。',
+      watch: '看公钥私钥是怎么从那两个质数推出来的，以及加密解密那两次模幂运算怎么互相抵消。把质数取小一点，你能亲手把它分解掉。',
+    },
     read: [{ at: '密钥盒', is: 'p/q/n/φ/e/d 的生成关系。', anchor: '.cx-kv' }, { at: '读数', is: '模数、公私钥、密文、解密。', anchor: '.scdim' }],
     step: (s: never) => { const st = s as { p: number; q: number; n: number; phi: number; e: number; d: number; m: number; c: number; dec: number; stage: string; phase: string }; return [
       { k: '本步输入', v: st.stage === 'keygen' ? `选素数 p=${st.p}、q=${st.q}` : st.stage === 'pub' ? '定公钥 e' : st.stage === 'priv' ? '求私钥 d' : st.stage === 'encrypt' ? `加密明文 ${st.m}` : st.stage === 'decrypt' ? '私钥解密' : '完成' },
@@ -1649,6 +1992,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   mvcc: {
     question: '别人改了 x 并提交，先前已开始的事务为什么还读到旧值？',
+    plain: {
+      hook: '你在读一份文档，别人正在改它，你该看到哪一版？',
+      body: '最省事的办法是上锁：你读的时候别人不许改。但这样读写互相堵，人一多就卡死。\u3000更好的办法是**留底**：每次修改不是覆盖，而是另存一个新版本，旧版本先留着。你进来的时候拿到一个时间戳，之后你看到的永远是那一刻的快照 —— 别人怎么改都不影响你，你也不用等任何人。\u3000代价是旧版本得攒着，攒多了要定期清理。',
+      watch: '看每个事务拿到的版本号，以及它读到的是哪一个版本。两个事务并行时，各自看到的数据可以完全不同 —— 这不是 bug，是设计。',
+    },
     read: [
       { at: '版本链', is: 'x 的历史版本；绿=已提交、灰虚线=未提交、高亮=本次读命中的版本。', anchor: '.mvcc-chain' },
       { at: '事务', is: '两个事务各自的快照(read-view)与状态。', anchor: '.mvcc-txns' },
@@ -1670,6 +2018,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   iso: {
     question: '同一段并发调度，切隔离级别，T1 三次读到的会怎么变？',
+    plain: {
+      hook: '同一笔账，两个人同时查，看到的数不一样，算不算错？',
+      body: '取决于你要多严。数据库把「能容忍到什么程度」分成了几档。\u3000最松的一档连别人还没提交的改动都能看见（脏读）；严一点只看已提交的，但同一笔账查两次可能不一样（不可重复读）；再严一点保证两次一样，可是范围查询会多出几行来（幻读）；最严的一档干脆当作大家排队一个个来。\u3000越严越慢。选哪一档，是拿正确性换吞吐的一次明码交易。',
+      watch: '看同一组操作在不同隔离级别下读出来的数差在哪。挡住了什么、放过了什么 —— 那张对照表就是这么来的。',
+    },
     read: [
       { at: 'T1 读序列', is: 'T1 依次读到的值；红=脏读/不可重复读，绿=一致。', anchor: '.iso-reads' },
       { at: 'x 状态', is: 'x 的已提交值与未提交值。', anchor: '.iso-x' },
@@ -1691,6 +2044,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   cas: {
     question: '两个线程同时读到 0 都想 +1，为什么最后不会丢更新？',
+    plain: {
+      hook: '不上锁，怎么保证两个人不会同时改坏一个数？',
+      body: '办法是把「改」变成一句话说完的事：**我记得它原来是 5，如果现在还是 5，就换成 6；变了就当我没说**。这一整句由硬件保证中间插不进别人。\u3000失败了不要紧，重新读一遍当前值、重算、再试一次。没人被挂起，没人在等锁。\u3000但有个阴险的坑：你走开的时候别人把 5 改成 8 又改回 5，你回来一看「还是 5」就以为什么都没发生 —— 这就是 ABA。加个版本号才防得住。',
+      watch: '看每次比较交换是成功还是失败、失败后重试了几次。竞争越激烈，重试越多 —— 无锁不等于没有代价。',
+    },
     read: [
       { at: '共享 x', is: '内存里 x 的当前值。', anchor: '.cas-shared' },
       { at: '线程', is: '每个线程读到的本地值与状态；绿=写入成功、红=被抢先重试。', anchor: '.cas-threads' },
@@ -1712,6 +2070,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   mesi: {
     question: '一个核改了 x，另一个核为什么不会自动看见？',
+    plain: {
+      hook: '四个人各抄了一份通讯录，有人改了号码怎么办？',
+      body: '多核 CPU 每个核都有自己的缓存，同一份数据可能同时躺在好几个核里。一个核改了，别人手上那份就成了旧的 —— 拿旧号码打电话，出的就是并发 bug。\u3000解决办法是给每份抄本贴个状态：**独占的、共享的、改过的、作废的**。谁要改，先广播一声让别人把手上那份作废；谁要读一份别人改过的，就得先让改的人写回去。\u3000所以两个核频繁写同一个变量会奇慢 —— 缓存行在核之间来回抢，这叫伪共享。',
+      watch: '看每次读写之后各个核里那份抄本的状态怎么变。状态一旦变成「作废」，下次访问就得重新去要 —— 那一趟就是代价。',
+    },
     read: [
       { at: '缓存行', is: '每个核的状态 M/E/S/I 与值；M=红脏、E=独占、S=共享、I=虚线失效。', anchor: '.mesi-cores' },
       { at: '总线', is: '本步的总线消息(BusRd / Invalidate / 回写)。', anchor: '.mesi-bus' },
@@ -1733,6 +2096,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   deadlock: {
     question: '几个线程交叉加锁，怎么判断它们死锁了没有？',
+    plain: {
+      hook: '四辆车同时开进十字路口，谁也退不了。',
+      body: '每辆车都占了一小块路面，又都在等前面那块让出来 —— 而前面那辆在等更前面的，绕成一圈。谁都没做错，谁都动不了。\u3000这种局面要同时满足四个条件才成立：资源不能共享、占着不放、不能强抢、而且等待关系绕成了环。**打破任何一条就解开了** —— 比如规定所有人必须按同一个顺序占资源，环就绕不起来。\u3000这一屏画的就是那张「谁在等谁」的图，环一出现，死锁就成立了。',
+      watch: '看那张等待图上箭头怎么连成环。把占用顺序改成统一的再走一遍 —— 环消失了，死锁也就没了。',
+    },
     read: [
       { at: '线程', is: '各线程持有/等待的锁；红=在死锁环上。', anchor: '.dl-threads' },
       { at: '等待图', is: '边 Ti→Tj = Ti 等 Tj 攥着的锁；成环即死锁。', anchor: '.dl-graph' },
@@ -1754,6 +2122,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   raft: {
     question: 'Raft 靠什么选出唯一的主、又保证日志不丢？',
+    plain: {
+      hook: '一群人怎么在没有老板的情况下选出老板？',
+      body: '每个人手里有个随机时长的闹钟。谁的先响，谁就站出来说「我来当，投我一票」。过半数同意就当选，其他人跟着他走。\u3000随机是关键：闹钟同时响的概率很小，万一真撞上了，这一轮谁也不过半，各自重设一个新的随机时间再来 —— 迟早错开。\u3000当上之后，所有改动都由他先记下、再抄给大家，**过半数抄到了才算数**。这样即使他随后就宕机，新选的人手里也一定有这条记录。',
+      watch: '看选举那几步的票数怎么过半，以及日志条目复制到过半节点后才被标记为已提交。「过半」这个数是所有安全性的来源。',
+    },
     read: [
       { at: '节点', is: '每个节点的角色(Follower/Candidate/Leader)、任期、日志；绿✓=已提交。', anchor: '.raft-nodes' },
       { at: '读数', is: '当前任期、候选人票数、已提交日志数。', anchor: '.scdim' },
@@ -1775,6 +2148,16 @@ export const GUIDES: Record<string, Guide> = {
   },
   cache: {
     question: '同一串内存地址，Cache 怎么摆能少跑几趟内存？',
+    plain: {
+      hook: '为什么同一份数据，第二次拿总是快得多？',
+      body: '把内存想成**楼下的仓库**，把 Cache 想成**你手边的抽屉**。'
+        + '每次去仓库取一趟要几十秒，从抽屉里拿只要一瞬间 —— 差了上百倍。'
+        + '所以取货的时候不会只拿你要的那一件，而是把**它旁边那一整排**一起搬回抽屉：'
+        + '下次要的东西多半就在旁边（程序读数组、跑循环，地址几乎都是挨着的）。'
+        + '　抽屉小、仓库大，装不下就得扔掉一件旧的腾位置。'
+        + '这一屏要看的就是这件事：**每来一个地址，是抽屉里已经有（省了一趟），还是又得跑一趟仓库**。',
+      watch: '看每一步是「命中」还是「缺失」，以及缺失时**挤掉了谁**。把右边的「相联度」从 2 改成 1 再看一遍，就知道为什么有的摆法总在互相挤。',
+    },
     /*
      * 固定四段：当前输入 → 本步规则 → 状态怎么变 → 该在画面哪里看。
      * 先让人跟完一次具体的推演，「组相联」那个正式名字放到后面的名词卡里 ——
@@ -1871,6 +2254,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   scheduler: {
     question: '同一批进程，换个调度算法，谁先跑完、平均等多久？',
+    plain: {
+      hook: '银行只有一个窗口，五个人怎么排队最省时间？',
+      body: '有人办一笔转账两分钟，有人开户要半小时。让开户的排头，后面四个人都得干等 —— 总等待时间被一个人拖垮了。反过来先办短的，等待总和立刻降下来（这就是短作业优先）。\u3000但短的一直插队，那位办半小时的可能永远轮不上，这叫饿死。折中办法是**每人先办五分钟，没办完回去重排**，谁也别想独占窗口。\u3000这一屏画的就是这张排队表：每个时刻窗口在服务谁、其他人等了多久。',
+      watch: '盯住那条甘特图上谁在什么时候被打断、又什么时候回来。换个策略再走一遍，比较「平均周转时间」这个数 —— 它就是所有人从进门到办完的平均耗时。',
+    },
     step: (s: never, doc) => {
       const st = s as { t: number; running: string | null; readyQueue: string[]
                         remaining: Record<string, number>; completed: string[]; sliceLeft: number }
@@ -1912,6 +2300,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   tcp: {
     question: '一条 TCP 连接遇到丢包，发送窗口是怎么涨、怎么砍的？',
+    plain: {
+      hook: '往细管子里灌水，怎么知道该开多大龙头？',
+      body: '网络那头能吃多快，发送方**根本不知道**，也没人会告诉它。唯一的办法是试：先开一点点，没堵就加倍、再加倍（慢启动其实一点都不慢）；一旦发现丢包 —— 那就是水漫出来的信号 —— 立刻把龙头拧小，然后改成一点一点地加。\u3000于是流量永远在「小心翼翼地涨、撞了墙就退」之间来回，画出来是一条锯齿。整个互联网的拥塞控制，靠的就是每台机器都这样自觉地退让。',
+      watch: '看那条窗口曲线怎么涨：前期翻倍上冲，过了门限改成缓慢爬坡，丢包时一刀砍下来。门限（ssthresh）就是上次撞墙的位置。',
+    },
     step: (s: never, doc) => {
       const st = s as { round: number; cwnd: number; ssthresh: number
                         phase: 'slowStart' | 'congestionAvoidance' | 'fastRecovery'
@@ -1954,6 +2347,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   page: {
     question: '同一串页面引用，哪种置换算法缺页少？多给物理块一定更好吗？',
+    plain: {
+      hook: '为什么手机开一堆 App，内存却没爆？',
+      body: '内存像一张只能摆 3 个盘子的小桌子，硬盘像后厨的架子，菜有几百盘。要吃哪一盘就端上桌；桌子满了还要新的，就得撤掉一盘。撤谁？这就是所有争论的起点：撤最久没动过的那盘（LRU），还是撤最早端上来的那盘（FIFO）。\u3000撤错了很要命 —— 刚撤走的下一秒又要，等于白跑一趟后厨，而跑一趟后厨比在桌上拿慢上万倍。这一屏就是把这张桌子的每一次上菜、撤菜定格给你看。',
+      watch: '看每一步是「命中」（桌上就有）还是「缺页」（得去后厨端），以及缺页时**撤掉了哪一盘**。把策略从 LRU 换成 FIFO 再走一遍，数一数缺页次数差多少。',
+    },
     step: (s: never, doc) => {
       const st = s as { i: number; page: number; outcome: 'hit' | 'fault'
                         frameUsed: number; evictedPage: number | null
@@ -1995,6 +2393,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   disk: {
     question: '一队磁道请求，磁头按什么顺序走最省？',
+    plain: {
+      hook: '电梯不会来回横跳，磁头也一样。',
+      body: '老式硬盘上有一根机械臂，要读哪一圈就把它挪到哪一圈，挪一次要花好几毫秒 —— 在计算机的时间尺度里这是一段极其漫长的旅程。\u3000现在同时有一堆请求，分布在盘面各处。挨个按先来后到跑，机械臂就在内外圈之间来回横跳，路程白白翻几倍。\u3000电梯给出了答案：**朝一个方向走到头，顺路的全捎上，再掉头**。没人来回折腾，总路程一下子短了。这一屏量的就是这段路程。',
+      watch: '看那根手臂走过的轨迹，和右下角「累计寻道」这个数。把调度算法换掉再走一遍，看看同一批请求路程差了多少。',
+    },
     step: (s: never, doc) => {
       const st = s as { i: number; from: number; head: number; served: number
                         moved: number; total: number; pending: number[]
@@ -2039,6 +2442,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   sort: {
     question: '七种排序，每一趟之后数组长什么样？哪些位置是真定了？',
+    plain: {
+      hook: '同样是把牌理顺，为什么有的方法快得多？',
+      body: '手里一把乱牌，你会怎么理？最直觉的做法是从左往右扫，看见小的就往前挪一挪 —— 这类方法每张牌都要跟很多张比，牌一多就慢得离谱。\u3000快的方法换了个思路：**先随手挑一张当分界，把小的全扔左边、大的全扔右边**。一刀下去，左边的永远不用再跟右边的比了。然后左右各自再来一刀。\u3000省下来的正是那些「本来就不可能换位置」的比较。这一屏把每一趟的落点定格给你看。',
+      watch: '看每一趟结束后，哪些位置**已经定死不再动了**。换个算法再走一遍，数数总比较次数差多少 —— 快慢的差距全在这个数上。',
+    },
     step: (s: never, doc) => {
       const st = s as { i: number; arr: number[]; hole: number; held: number | null
                         compare: number[]; changed: number[]; pass: number; passEnd: boolean
@@ -2087,6 +2495,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   dijkstra: {
     question: '从一个点出发，到每个点的最短路是怎么一步步定下来的？',
+    plain: {
+      hook: '导航为什么不用把全城的路都算一遍？',
+      body: '从家出发找去公司的最短路，笨办法是穷举所有走法。聪明的办法是**摊开一张油纸慢慢浸**：从起点开始往外渗，每次都从「已经浸到的边界」里挑那个**离起点最近**的路口，把它敲定，再从它继续往外渗。\u3000为什么挑最近的那个就能敲定？因为其他任何路径要到它，都得先经过一个更远的路口 —— 只会更远，不会更近。所以它这辈子不会更新了。\u3000这条推理有个前提：路不能有负的长度。',
+      watch: '看每一步「敲定」了哪个顶点、又把哪些邻居的距离刷小了。已敲定的点不再变 —— 这正是它比穷举快的原因。',
+    },
     step: (s: never, doc) => {
       const st = s as { act: 'pick' | 'relax' | 'skip' | 'done'; at: string; to: string
                         dist: Record<string, number>; prev: Record<string, string | null>
@@ -2130,6 +2543,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   banker: {
     question: '现在把资源分出去，会不会走进死锁？',
+    plain: {
+      hook: '借钱之前先问一句：万一大家同时来要账，我还得起吗？',
+      body: '银行手里有一笔现金，几个客户各自说了自己最多会借多少。有人来借，银行不是看「现在够不够」，而是先在纸上推演一遍：**先满足谁、他还完之后钱变多、再满足下一个**……只要能排出一个所有人都能依次还清的顺序，这笔就敢放。排不出来，哪怕现金充足也不放。\u3000把「钱」换成打印机、内存这些资源，客户换成进程，这就是死锁避免。谨慎的代价是：得事先知道每个人最多要借多少。',
+      watch: '看那条「安全序列」是怎么一个一个推出来的：每满足一个进程，可用资源加回它手里那份，下一个才轮得上。有一步卡住推不下去，就是不安全状态。',
+    },
     step: (s: never, doc) => {
       const st = s as { act: 'init' | 'try' | 'accept' | 'reject' | 'safe' | 'unsafe'
                         pid: string; work: Record<string, number>
@@ -2191,6 +2609,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   arq: {
     question: '帧丢了之后，回退 N 和选择重传各要重发多少个？',
+    plain: {
+      hook: '寄快递没收到回执，你是重寄一件，还是把后面几件一起重寄？',
+      body: '数据发出去可能丢，所以每收到一件对方要回一张回执。回执迟迟不来，发送方只能重发 —— 问题是重发哪些。\u3000最省心的做法是**从丢的那件开始，后面全部重来一遍**（回退 N 步），代价是明明送到了的那几件也白重发一次。\u3000讲究一点的做法是把已经到的先收着，**只补那一件**（选择重传），代价是收发两边都要多记一本账。\u3000这就是可靠传输要付的钱：要么重发多，要么记账多。',
+      watch: '看时空图上哪一件丢了、发送方什么时候才察觉（超时或重复回执），以及它接着重发了几件。换个协议再走一遍，数数总传输次数差多少。',
+    },
     step: (s: never, doc) => {
       const st = s as { i: number; base: number; next: number; expected: number
                         delivered: number; transmissions: number
@@ -2235,6 +2658,17 @@ export const GUIDES: Record<string, Guide> = {
   },
   float: {
     question: '一个十进制小数，怎么变成 32 位里的那一串 0 和 1？',
+    plain: {
+      hook: '为什么计算机算 0.1 + 0.2，答案不是 0.3？',
+      body: '32 位就是**32 个格子**，要用它装下从极小到极大的所有小数。'
+        + '办法跟科学记数法一样：把数写成「几点几 × 2 的几次方」，'
+        + '一部分格子记**小数点挪了几位**（阶码），一部分记**有效数字**（尾数），再留一格记正负。'
+        + '　问题出在格子有限：十进制的 0.1 换成二进制是**无限循环小数**，'
+        + '就像十进制写不完 1/3 = 0.333… 一样。装进有限的格子只能截断，'
+        + '于是存进去的从来就不是 0.1，而是一个非常接近它的数。'
+        + '　这一屏把这个装箱过程一步步拆开给你看。',
+      watch: '看那 32 个格子怎么被切成三段（1 位符号、8 位阶码、23 位尾数），以及最后一步「实际存进去的值」跟你输入的差了多少。',
+    },
     step: (s: never, doc) => {
       const st = s as { phase: string; bits: string; detail: Record<string, string> }
       const fmt = String(doc.params.format)
@@ -2280,6 +2714,16 @@ export const GUIDES: Record<string, Guide> = {
   },
   pipeline: {
     question: '有数据冒险的时候，五段流水线要停几拍？前递能省下几拍？',
+    plain: {
+      hook: '洗衣服要洗、烘、叠三步 —— 五个人排队洗，怎么排最快？',
+      body: '一个人从头做到尾，洗衣机烘干机大部分时间都空着。'
+        + '聪明的做法是**流水**：第一件在烘的时候，第二件已经开始洗了。机器全程不闲，总时间大幅缩短。'
+        + '　CPU 执行指令也切成五段（取指令、译码、执行、访存、写回），一样地首尾叠着走。'
+        + '　但有个麻烦：**下一件事要用到上一件的结果**。'
+        + '就像第二道菜要用第一道炒出来的酱汁 —— 酱汁没出锅，第二道只能干等着。这一等，就是流水线上的「停顿」。'
+        + '　补救办法也很朴素：酱汁刚出锅就**直接递过去**，不必等它先摆上桌再端回来 —— 这就是「前递」。',
+      watch: '看那些空格（气泡）出现在哪一拍、为什么出现。把「前递」开关打开再走一遍，数一数省下了几拍。',
+    },
     step: (s: never, doc) => {
       const st = s as { cycle: number; at: Record<string, string>; stalled: string[]
                         flushed: string[]; forwards: Record<string, string>; done: number }
@@ -2315,6 +2759,17 @@ export const GUIDES: Record<string, Guide> = {
   },
   vm: {
     question: '一个虚地址，要走几步、访问几次内存，才变成物理地址？',
+    plain: {
+      hook: '每个程序都以为自己独占整台电脑的内存 —— 这个谎是怎么圆的？',
+      body: '想象一栋楼，每家门上写的都是「1 号房」。'
+        + '这当然会撞，所以楼下有一本**登记簿**：写着「三楼张家的 1 号房，实际在 507」。'
+        + '所有人报的都是自己那本册子上的门牌（虚地址），'
+        + '门口保安查一次簿子，换成楼里真正的房号（物理地址）再放行。'
+        + '　这样每个程序都能从「1 号房」开始编号，互相看不见、也踩不到对方。'
+        + '　代价是**每次访问都要多查一次簿子**，等于多跑一趟内存。'
+        + '所以保安身上还揣着一张便签，记着最近查过的几条 —— 那就是 TLB。',
+      watch: '数一数一次访问到底跑了几趟内存：TLB 上记着就只跑一趟，没记着要先查页表、再取数据。多级页表会让没命中的那次更贵。',
+    },
     step: (s: never, doc) => {
       const st = s as { vaddr: number; vpn: number; offset: number
                         outcome: 'tlbHit' | 'ptHit' | 'fault'
@@ -2353,6 +2808,16 @@ export const GUIDES: Record<string, Guide> = {
   },
   multiply: {
     question: '乘法和除法在硬件里是怎么一位一位做出来的？',
+    plain: {
+      hook: '硬件里没有「乘法」这个动作，那 13 × 11 是怎么算出来的？',
+      body: '你在纸上算乘法，是**一行行错开写、最后加起来**。硬件干的是同一件事，'
+        + '只不过它只认二进制 —— 而二进制的每一位不是 0 就是 1，'
+        + '所以每一行要么是「原样抄下来」（乘 1），要么是「一整行零」（乘 0）。'
+        + '**抄一行、往右挪一位、加进去**，重复几遍就得到答案。乘法就这样被拆成了移位和加法。'
+        + '　除法反过来：**试着减一次，减得动就商 1、减不动就商 0**，然后挪一位再试。'
+        + '　这一屏就是把这个过程一轮一轮定格给你看 —— 每一轮它到底加了、减了、还是只挪了一位。',
+      watch: '盯住「本步动作」那一行：加、减、还是只移位。它是由**乘数末尾那一位（或末两位）**决定的 —— 换个算法再看一遍，你会看到判断依据变了。',
+    },
     step: (s: never, doc) => {
       const st = s as { round: number; hi: string; lo: string; extra: string
                         act: string; judge: string; q: number | null; rem: number | null }
@@ -2394,6 +2859,16 @@ export const GUIDES: Record<string, Guide> = {
   },
   addsub: {
     question: '补码加减为什么符号位能一起算？什么时候会溢出？',
+    plain: {
+      hook: '钟表上 9 点往前拨 3 小时是 6 点 —— 计算机做减法用的就是这一招。',
+      body: '钟面只有 12 个刻度，**倒拨 3 小时**和**正拨 9 小时**落在同一个位置。'
+        + '既然如此，只要事先把「减 3」换算成「加 9」，就永远不需要真的会倒拨。'
+        + '　计算机是一样的：8 位的数字盘一共 256 个刻度，'
+        + '把负数换算成盘上对应的那个正数（这就是**补码**），'
+        + '减法当场变成加法，一套加法电路就够用了 —— 连正负号都不用单独处理。'
+        + '　代价是盘子会绕圈：两个正数加着加着**转过了头**，结果掉进负数那半边，这就是溢出。',
+      watch: '看符号位这一列。同号相加却得出异号的结果，就是转过头了 —— 判溢出看的正是这个，不是看结果大不大。',
+    },
     step: (s: never) => {
       const st = s as {
         act: string; op: 'add' | 'sub'; aVal: number; bVal: number
@@ -2451,6 +2926,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   crc: {
     question: '发过去的一串位被改了一位，CRC 能不能查出来？',
+    plain: {
+      hook: '怎么用一次除法，检查一段数据有没有被改坏？',
+      body: '给一串数除以一个约定好的数，把**余数**跟在后面一起发出去。对方拿收到的整串再除一遍，余数是 0 就说明路上没出岔子。\u3000道理跟身份证最后一位校验码一样：不是用来纠错的，是用来**发现错**的。\u3000只不过计算机里的除法更省事：没有借位，减法直接用异或代替，整个过程就是不停地对齐、异或、往右挪一位 —— 一个小电路就能跑。',
+      watch: '看那道竖式：每一步用生成多项式去对齐最高位的 1，异或一次，再挪一位。最后剩下的那几位就是校验码。',
+    },
     step: (s: never, doc) => {
       const st = s as { i: number; dividend: string; at: number; q: string
                         quotient: string; remainder: string
@@ -2503,6 +2983,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   hamming: {
     question: '海明码怎么做到"算出来的数就是出错的位号"？',
+    plain: {
+      hook: '怎么让一串数据自己说出「我第几位错了」？',
+      body: '普通校验只能告诉你「有错」，海明码更进一步：**直接指出错在第几位**。办法是安排几个校验位，每一位负责盯住一部分数据位（第 1 位盯奇数位、第 2 位盯每两个一组……）。\u3000收到之后逐组核对，把每组「对/不对」按顺序拼起来，得到的二进制数**正好就是出错的位号**。全对就拼出 0，表示没错。\u3000这不是巧合，是分组方式故意设计成这样的。',
+      watch: '看每个校验位覆盖了哪些位置（那几组是交错的，不是连着的），以及最后拼出来的那个位号怎么指向出错的那一位。',
+    },
     step: (s: never) => {
       const st = s as { bits: string; touched: number[]; p: number; covers: number[]
                         ok: boolean | null; syndrome: number
@@ -2572,6 +3057,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   subnet: {
     question: '给一个网段和掩码，能划几个子网、每个能放多少台机器？',
+    plain: {
+      hook: '同一栋楼里的人可以串门，出楼就得走大门。',
+      body: 'IP 地址被一条看不见的线切成两半：前半段是「哪栋楼」，后半段是「几号房」。线切在哪儿，由子网掩码说了算。\u3000发消息之前，机器先算一下对方跟自己是不是同一栋楼：是就直接敲门，不是就交给网关（大门保安）转出去。\u3000掩码往右挪一位，楼就大一倍、房间多一倍；往左挪一位反过来。整个路由匹配也是同一件事：拿地址去比对一串「楼号」，挑最精确的那条走。',
+      watch: '看地址和掩码按位与之后得出的网络号，以及路由表里哪几条能匹配上。命中多条时选**前缀最长**的那条 —— 越精确的越优先。',
+    },
     step: (s: never) => {
       const st = s as { prefix: number; best: string; entry: string; hit: boolean
                         detail: Record<string, string>
@@ -2615,6 +3105,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   handshake: {
     question: '建立和断开一条 TCP 连接，两端的状态各自怎么变？',
+    plain: {
+      hook: '打电话不能只说「喂」，双方都得听见对方才算接通。',
+      body: '你说「喂，听得到吗」，对方答「听得到，你呢」，你再回一句「听得到」—— 三句话之后，**两边都确认了自己说的话对方收到了**。少一句就总有一头不确定。\u3000挂电话要四句：你说「我说完了」，对方先应一声「知道了」，但他可能还有话没讲完，讲完了才说「我也说完了」，你再应一声。所以挂比接多一句。\u3000挂完还要在原地等一会儿，怕最后那声「知道了」路上丢了，对方还在重问。',
+      watch: '看那张时序图上每条报文带的序号和标志位，以及两端的状态怎么一步步迁移。最后那个 TIME_WAIT 就是「挂完再等一会儿」。',
+    },
     step: (s: never) => {
       const st = s as { client: string; server: string; history: unknown[]
                         /*  ⚠️ 照 `src/kernels/handshake.ts` 的 `Seg` 抄，别按印象写：
@@ -2667,6 +3162,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   avl: {
     question: '往二叉搜索树里插入，什么时候会失衡？该怎么转？',
+    plain: {
+      hook: '一棵树长歪了，查东西就跟查链表一样慢。',
+      body: '二叉查找树的好处是每比一次砍掉一半。但要是数据本来就有序地插进来，树就长成了一根竹竿 —— 每一层只有一个节点，查找退化成从头挨个看。\u3000补救办法是**长歪了就当场掰回来**：只要某个节点的左右两边高度差超过 1，就做一次旋转，把中间那个提上去当根，两边各挂一支。树的形状变了，但左小右大的顺序一点没变。\u3000代价是插入删除时要多做几次旋转。',
+      watch: '看每次插入之后哪个节点先失衡、又是靠哪种旋转救回来的。四种旋转其实只有两类：一边倒的转一次，拐弯的先掰直再转。',
+    },
     step: (s: never, doc) => {
       const st = s as { key: number; act: string; rotation: string; pivot: number
                         inserted: number; rotations: number; root: number
@@ -2710,6 +3210,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   btree: {
     question: '前中后序只差"根什么时候输出"？中序遍历 BST 为什么是有序的？',
+    plain: {
+      hook: '给你两串遍历结果，能反推出原来那棵树吗？',
+      body: '先序遍历告诉你**谁是根**（第一个就是），中序遍历告诉你**根的左边有哪些、右边有哪些**（根把序列切成两段）。两条信息一合，左右子树各是哪几个节点就定下来了，然后对每一段再来一次。\u3000少了中序就不行：先序加后序都只能告诉你根是谁，切不出左右的分界，所以会有好几棵不同的树给出同样的结果。\u3000这就是「两种遍历还原一棵树，中序必须在其中」的由来。',
+      watch: '看每一步是怎么用根把中序序列切成左右两段的。切完之后左右两段各自重复同样的动作 —— 递归的形状就是这么来的。',
+    },
     step: (s: never) => {
       const st = s as {
         order: 'pre' | 'in' | 'post' | 'level'
@@ -2761,6 +3266,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   hash: {
     question: '冲突了怎么办？四种处理方式的平均查找长度差多少？',
+    plain: {
+      hook: '怎么不翻目录，直接算出东西放在第几格？',
+      body: '把书名交给一个固定的算式，算出一个数，就去那一格放 —— 找的时候再算一次，直接到位，不用挨个翻。\u3000麻烦在于两本不同的书可能算出同一格（这叫冲突），而且必然会有：格子有限，书没上限。\u3000解决办法就两条路：那一格挂一根链子，都串上去；或者往后顺延，找到空格为止。\u3000格子占得越满，冲突越频繁 —— 所以装到七八成就该扩容了，这个比例叫装填因子。',
+      watch: '看每次冲突之后它落到了哪儿。把装填因子调高再走一遍，平均要找几次会明显变多 —— 散列表的快是有条件的。',
+    },
     step: (s: never, doc) => {
       const st = s as { key: number; home: number; probes: number[]; slot: number
                         compares: number; totalCompares: number; count: number; collided: boolean
@@ -2799,6 +3309,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   huffman: {
     question: '给一组权值，怎么合并才能让总编码最短？',
+    plain: {
+      hook: '为什么摩尔斯电码里，E 只用一个点？',
+      body: '因为 E 最常用。常用的字给短码、罕见的字给长码，整篇电报就短了。\u3000哈夫曼把这件事做到了最优：**每次挑出出现次数最少的两个，合并成一个新节点**，反复合并直到只剩一棵树。越晚被合并的字，离树根越近，码就越短。\u3000还有一条隐含的好处：这样生成的码，没有哪一个是另一个的前缀，所以解码时不需要分隔符，读到哪儿算哪儿，不会歧义。',
+      watch: '看每一步合并的是哪两个节点、频次怎么相加。最后从根往下走，左 0 右 1，读出来就是每个字符的编码。',
+    },
     step: (s: never, doc) => {
       const st = s as { forest: number[]; picked: number[]; merged: number; wpl: number
                         codes: Record<string, string>; act: string
@@ -2843,6 +3358,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   kmp: {
     question: 'next 数组是怎么求的？失配时模式串到底滑多远？',
+    plain: {
+      hook: '查找失败时，为什么不用整个退回去重来？',
+      body: '在一长串字里找一个短串，笨办法是对不上就把短串整体往后挪一格、从头再比。\u3000但仔细想：**刚才已经比对上的那一段，你是知道内容的**。如果这一段的开头和结尾有一截是一样的，那么下一次比较可以直接从那一截后面接着比，前面根本不用重比。长串上的指针，一步都不用退回去。\u3000那张记着「每个位置能接着往哪儿跳」的表，就是 next 数组。',
+      watch: '盯住长串上的指针：它自始至终**只往前走**。失配时移动的是短串的指针，跳到 next 指的位置接着比。',
+    },
     step: (s: never, doc) => {
       const st = s as { phase: 'next' | 'match' | 'found' | 'done'
                         next: number[]; j: number; k: number; ti: number; pj: number
@@ -2890,6 +3410,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   expr: {
     question: '为什么先把中缀式转成后缀，就能用一个栈一遍算出来？',
+    plain: {
+      hook: '为什么计算器要先把算式改写一遍才算？',
+      body: '`3 + 5 × 2` 这种写法，人一眼知道先乘后加，机器却得**往回看**才知道 —— 看到 `+` 的时候还不能算，得先瞄一眼后面是不是有优先级更高的。往回看，就得留一堆中间状态。\u3000把它改写成 `3 5 2 × +` 就清爽了：从左往右扫，遇到数字就堆着，遇到符号就取最近的两个来算 —— **全程不用回头**。\u3000这个「堆着」的地方就是栈：后放进去的先拿出来，正好对应「最近的两个数」。',
+      watch: '看栈里的东西怎么进怎么出：数字进栈，运算符一来就弹出两个、算完再压回去。转换那一步则是在按优先级决定符号什么时候出栈。',
+    },
     step: (s: never) => {
       const st = s as {
         phase: 'toRPN' | 'eval'; act: string; infix: string[]; at: number
@@ -2937,6 +3462,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   mst: {
     question: 'Prim 和 Kruskal 挑边的顺序不同，最后的树一样吗？',
+    plain: {
+      hook: '要给几个村子拉电线，怎么拉最省？',
+      body: '所有村子都得通电，线可以借道别的村子，问题是总长度最短。\u3000有两种朴素得出奇的做法，而且都对：一种是**从一个村子开始，每次挑一条通向新村子的最短线**；另一种是**把全部线按长短排好，从短到长挨个拿，只要不围成圈就要**。\u3000为什么贪心在这里就对？因为把村子分成两堆，横跨两堆的那些线里最短的那条，一定在某个最优方案里 —— 不选它反而会更长。',
+      watch: '看每一步选了哪条边、为什么另一条更短的没被选（多半是会围成圈）。换个算法再走一遍，总长度是一样的，选的顺序不一样。',
+    },
     step: (s: never, doc) => {
       const st = s as { chosen: string[]; inTree: string[]; edge: string
                         act: 'consider' | 'take' | 'skip' | 'done'; weight: number }
@@ -2976,6 +3506,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   topo: {
     question: '这个工程最短要多久？哪些环节拖不得？',
+    plain: {
+      hook: '先穿袜子还是先穿鞋？有些事就是有先后。',
+      body: '一堆任务，有的必须等另一件做完才能开始。把「A 必须在 B 之前」画成箭头，问题就变成：给所有任务排一个不违反箭头的顺序。\u3000办法很直白：**先做那些没有任何前置条件的**，做完把它的箭头去掉，这时又会有新的任务变成「没有前置」，接着做。\u3000要是做到一半没有任何任务是空闲的了，说明箭头绕成了圈 —— A 等 B、B 等 A，谁也开不了工。这也是拓扑排序最重要的用途：**检测有没有环**。',
+      watch: '看每一步哪些顶点的入度降到 0、被拿了出来。顺序常常不止一种 —— 互不依赖的任务谁先谁后都行。',
+    },
     step: (s: never, doc) => {
       const st = s as { phase: 'topo' | 've' | 'vl' | 'activity' | 'done'
                         indeg: Record<string, number>; order: string[]; at: string
@@ -3029,6 +3564,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   partition: {
     question: '同一串内存请求，四种放置策略会分到哪儿？谁更碎？',
+    plain: {
+      hook: '行李箱塞满了，可就是塞不进那件外套。',
+      body: '内存像一条长架子，程序来了就切一段给它，走了就把那段还回来。来来去去几轮之后，架子上剩下的是**一堆零碎的空隙** —— 加起来足够放下新程序，可没有哪一段是连着的，于是放不进去。这就是外部碎片。\u3000还有一种浪费在另一头：给的那段比要的稍大一点，多出来的边角谁也用不上，这叫内部碎片。\u3000怎么切，决定了架子多快变成筛子。',
+      watch: '看每次分配挑中了哪一段空闲区（首次适应挑第一个够大的、最佳适应挑最接近的），以及走到后面剩下的空隙变得多零碎。',
+    },
     step: (s: never, doc) => {
       const st = s as { act: 'alloc' | 'free' | 'fail'; job: string; size: number
                         at: number; scanned: number[]; merged: number
@@ -3077,6 +3617,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   inode: {
     question: '读文件某个字节，要先访问几次磁盘？',
+    plain: {
+      hook: '一本书的目录，为什么要分章、节、页三层？',
+      body: '文件本体散落在磁盘各处，得有一张单子记着「第 1 块在哪、第 2 块在哪」。小文件几行就记完了，可要是有个几 G 的大文件，这张单子本身就大得离谱。\u3000办法跟书的目录一样：**前几项直接写页码，后面几项写「详见附录 A」，附录里再写页码**。小文件一步到位，大文件多绕一两跳。绕的次数越多，找一块数据要多读几次磁盘 —— 这就是代价。',
+      watch: '数一数取某一块数据到底走了几跳：直接块 0 跳、一级间接 1 跳、二级间接 2 跳。文件越大，落到后面的块就越贵。',
+    },
     step: (s: never, doc) => {
       const st = s as { lbn: number; level: 'direct' | 'single' | 'double' | 'triple' | 'oob'
                         path: string[]; reads: number
@@ -3119,6 +3664,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   bplus: {
     question: '往 B+ 树里插入，什么时候分裂？提上去的是哪个键？',
+    plain: {
+      hook: '图书馆的书目卡片，为什么一张卡上要写好几本书？',
+      body: '数据库的索引存在磁盘上，而读磁盘一次的代价，够在内存里比较上万次。所以真正要省的不是比较次数，是**读盘次数** —— 也就是树的高度。\u3000办法是把树压扁：一个节点不再只存一个键，而是存上百个，于是一层就能岔出上百个方向。三四层就能覆盖上亿条记录，找一条记录只读三四次盘。\u3000还有个讲究：数据全挂在最底下一层，而且底层用链子串起来 —— 范围查询顺着链子扫过去就行。',
+      watch: '看节点塞满时怎么分裂：中间那个键往上顶一层，两边各成一个新节点。树是**从底往上长高**的，所以永远保持平衡。',
+    },
     step: (s: never, doc) => {
       const st = s as { key: number; act: 'descend' | 'insert' | 'split' | 'grow' | 'done'
                         upKey: number; splitLeaf: boolean; height: number; splits: number
@@ -3157,6 +3707,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   traverse: {
     question: 'DFS 和 BFS 的访问顺序为什么不同？辅助结构装着什么？',
+    plain: {
+      hook: '走迷宫，是一条路走到黑，还是一圈圈往外摸？',
+      body: '一条路走到黑（深搜）：认准一个方向死走，撞墙了才退回上一个岔口换条路。适合「有没有一条路能到」这类问题，用递归写起来极短。\u3000一圈圈往外摸（广搜）：先把身边一步能到的地方全走一遍，再走两步能到的。好处是**第一次碰到终点时，走过的步数一定最少** —— 免费得到最短路。\u3000两者的差别只在一个地方：待办的地方是堆成一摞（后进先出）还是排成一队（先进先出）。',
+      watch: '看访问顺序和那个「已访问」标记。没有标记的话，遇到环会绕回来无限打转 —— 图跟树的根本差别就在这儿。',
+    },
     step: (s: never, doc) => {
       const st = s as { order: string[]; pending: string[]; at: string
                         act: 'visit' | 'push' | 'skip' | 'done'; treeEdges: string[] }
@@ -3200,6 +3755,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   semaphore: {
     question: 'P 操作的顺序写反了，到底会怎么死？',
+    plain: {
+      hook: '餐厅只有 5 张桌子，怎么让排队的人别打起来？',
+      body: '门口挂一块牌子写着空桌数。来一个人减一，走一个人加一；牌子归零时后面的人就在门口等着，有人离席才放一个进去。\u3000关键在于**改牌子这个动作必须一气呵成**：两个人同时看到「剩 1」、同时进去，就坐同一张桌了。\u3000生产者和消费者也是这样的一对：一个往缓冲区放、一个从里面取，放的人要等「还有空位」，取的人要等「还有东西」，两块牌子各管一头。',
+      watch: '盯住那两个计数器怎么一增一减，以及谁在什么时候被挡在门外。把两次 P 操作的顺序对调再走一遍 —— 顺序错了会直接死锁，谁也动不了。',
+    },
     step: (s: never, doc) => {
       const st = s as { i: number; empty: number; full: number; mutex: number; buffer: number[]
                         pc: Record<string, number>; blocked: Record<string, string>
@@ -3270,6 +3830,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   bitmap: {
     question: '位示图里第几个字第几位，对应哪个盘块？',
+    plain: {
+      hook: '一整面墙的储物柜，怎么快速知道哪个还空着？',
+      body: '最笨的办法是挨个拉一遍柜门。聪明的办法是门口挂一串灯：**一个柜子一盏，亮着表示占用**。找空位就是找第一盏没亮的灯，租出去就把灯点亮，退租就熄掉。\u3000计算机把这串灯压缩到极致：一个柜子只用**一个二进制位**，一万个柜子也就一千多字节，整串可以直接放在内存里翻。代价是它只告诉你空没空，别的什么都不知道。\u3000剩下的活儿就是算术：第 n 位对应第几个柜子。',
+      watch: '看那串 0/1 和柜号之间的换算：位号 ÷ 每字节位数 = 在第几个字节，余数 = 在字节里的第几位。分配和回收就是把某一位置 1 或清 0。',
+    },
     step: (s: never, doc) => {
       const st = s as { act: 'alloc' | 'free' | 'fail'; blocks: number[]
                         word: number; bit: number; freeCount: number
@@ -3309,6 +3874,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   csma: {
     question: '两台机器同时发，冲突之后各自等多久？',
+    plain: {
+      hook: '会议室里大家抢着说话，撞了怎么办？',
+      body: '规矩很朴素：**先听，没人说话再开口**。但两个人可能同时听到安静、同时开口 —— 撞上了。\u3000撞上之后如果都立刻重说，那必然再撞一次，然后永远撞下去。所以要**各自随机等一小会儿**再试，等的时间还随撞的次数翻倍拉长。随机是关键：它把两个人错开了。\u3000顺带一个反直觉的结论：帧太短的话，话还没说完人就走了，撞了自己都不知道 —— 所以帧长有下限。',
+      watch: '看每个时隙里谁在发、哪一格撞了，以及撞后各站抽到的退避时间。撞的次数越多，抽签的范围越大。',
+    },
     step: (s: never, doc) => {
       const st = s as { slot: number; sending: string[]; collision: boolean
                         attempts: Record<string, number>; backoff: Record<string, number>
@@ -3349,6 +3919,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   rip: {
     question: '路由器只跟邻居聊天，怎么就都算出了全网最短路？断了一条链又会怎样？',
+    plain: {
+      hook: '每个路口只问邻居「你到那儿要几步」，能拼出全城地图吗？',
+      body: '能，但会犯傻。每台路由器只跟邻居交换一张表：「我到 A 要 3 跳、到 B 要 5 跳」。听完邻居的，自己加一跳、取最小，表就更新好了 —— 谁也不需要看全局。\u3000问题出在链路断掉的时候：A 断了，它的邻居却听见另一个邻居说「我能到 A，4 跳」，殊不知那条路正是绕经自己。于是两人互相加一跳、越算越远，慢慢爬到无穷 —— 这就是著名的「计数到无穷」。',
+      watch: '看每一轮各路由器的表怎么被邻居的表更新。链路一断，盯住那个距离值怎么一跳一跳往上爬（16 跳即视为不可达，就是给这个毛病兜的底）。',
+    },
     step: (s: never) => {
       const st = s as {
         act: string; round: number; changed: string[]; broken: string
@@ -3398,6 +3973,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   radix: {
     question: '多个请求共享前缀，KV 缓存怎么复用、能省下多少 prefill？',
+    plain: {
+      hook: '十个人问同一个问题的不同后半段，前半段要算十遍吗？',
+      body: '不用。大模型处理一段提示词时，前缀相同的部分算出来的中间结果是**一模一样**的。\u3000所以把所有请求的前缀组织成一棵树：走过的路就把结果挂在树枝上，新请求进来先顺着树往下走，走得动的部分直接复用，只算分岔之后那一小截。\u3000系统提示词往往几百上千 token，且人人都带 —— 省掉它的重复计算，效果立竿见影。',
+      watch: '看新请求怎么在树上匹配到最长的公共前缀，以及省掉了多少 token 的预填充。前缀越长、共享的人越多，省得越狠。',
+    },
     step: (s: never) => {
       const st = s as {
         act: string; req: number; pos: number; reqTokens: string[]
@@ -3456,6 +4036,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   paged: {
     question: 'KV 缓存为什么要分页？物理块不连续，怎么还能对得上？',
+    plain: {
+      hook: '显存也会像内存一样，被切成一块块碎片。',
+      body: '每个对话的缓存长度事先不知道，按最长情况预留就浪费，按需连续分配就会把显存切成零碎的洞。\u3000操作系统几十年前就解决过这个问题：**别要求连续，切成固定大小的页，用一张表记着哪一页在哪儿**。\u3000搬到显存上一样管用：外部碎片彻底消失，只剩每个对话最后那一页没填满。顺带还白捡一个好处：几个请求共享同一段前缀时，那几页可以只存一份。',
+      watch: '看每个请求的缓存怎么被切成页、页表怎么指过去。对比连续分配那种摆法，同样的显存能多塞下几个并发请求。',
+    },
     step: (s: never) => {
       const st = s as {
         act: string; req: string; focus: number; freeCount: number
@@ -3503,6 +4088,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   forward: {
     question: '前面学的嵌入、注意力、FFN、归一化、采样，合起来一次推理到底怎么流动？',
+    plain: {
+      hook: '一句话进去，一个字出来，中间到底走了几道工序？',
+      body: '先把每个词换成一串数（嵌入），加上位置信息；然后进入几十层完全一样的结构，每层做两件事：**先互相看一眼（注意力），再各自想一想（前馈网络）**；每做完一件事都把原来的加回来（残差），再归一化一下。\u3000几十层过完，最后一个位置的那串数乘上词表矩阵，得到每个词的分数，抽一个出来，就是下一个字。\u3000然后把这个字接到句尾，整套再来一遍。',
+      watch: '跟着一个位置的向量走完全程，看它在每一层之后变成什么。残差那条捷径很关键 —— 没有它，几十层的梯度传不回去。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; stageIdx: number; stageName: string; stageLink: string; vec: number[]; attn: number[] | null; predicted: string | null; seq: string[]; probs: number[] | null; detail: string }
       return [
@@ -3573,6 +4163,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   rope: {
     question: '注意力对词序无感，RoPE 怎么用"旋转"把位置塞进去，还能泛化到更长文本？',
+    plain: {
+      hook: '模型怎么知道哪个词在前、哪个词在后？',
+      body: '注意力本身是不管顺序的 —— 把句子打乱，它算出来一模一样。所以位置信息得另外喂进去。\u3000旋转位置编码的做法很巧：**按位置把向量转一个角度**，位置 1 转一点、位置 2 转两点。两个词做点积时，各自的绝对角度抵消掉，只剩下**角度差** —— 也就是它们相隔多远。\u3000顺带一个好处：想让模型读比训练时更长的文本，把角度按比例缩一缩就行。',
+      watch: '看同一对词在不同距离下的注意力分数怎么变。绝对位置整体平移，分数不变 —— 这正是「只依赖相对位置」的意思。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; pos: number; thetaDeg: number; angleDeg: number; x: number; y: number; norm: number; dotWith0: number }
       return [
@@ -3604,6 +4199,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   moe: {
     question: '听说 MoE 模型总参数几百 B，为什么推理起来反而比稠密模型省算力？',
+    plain: {
+      hook: '一个问题，用不着把全公司的人都叫来开会。',
+      body: '传统模型每算一个词，全部参数都要参与一遍。混合专家换了个思路：**养一屋子专家，每次只叫其中两三个**。门口有个调度员看一眼这个词，决定派给谁。\u3000于是总参数量可以做得极大（知识多），而每次实际算的量很小（跑得快）。\u3000代价有两个：专家分散在不同显卡上，token 要跨卡送来送去；而且调度员容易偏心，几个热门专家挤破头、其余闲着 —— 训练时要专门加一项损失来治它。',
+      watch: '看每个 token 被派给了哪几个专家、各占多少权重。统计一下各专家接到的 token 数，就能看出负载均不均。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; experts: number; topk: number; tokens: string[]; cursor: number; chosen: number[]; chosenGates: number[]; load: number[]; activeFrac: number }
       return [
@@ -3635,6 +4235,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   quant: {
     question: '7B 模型 fp16 要十几 G，换成 int8 / int4 怎么就塞进小显存了？会差多少？',
+    plain: {
+      hook: '把每个数从 16 位压到 4 位，模型为什么还能用？',
+      body: '因为神经网络的权重本来就不需要那么精确 —— 它们描述的是「大概往这边偏一点」，不是银行账目。把取值范围切成 16 档，多数情况下够用了。\u3000压缩的好处是实打实的：显存降到四分之一，而推理速度的瓶颈恰恰是**把权重从显存搬到计算单元**，搬得少了，自然快。\u3000代价是少数「特别大的那几个数」（离群值）压坏了会明显掉点，所以要单独处理它们。',
+      watch: '看同一个权重在不同位宽下变成了什么值，以及还原之后跟原值差多少。误差最大的往往是分布尾巴上那几个。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; bits: number; qmax: number; scale: number; cursor: number; weights: number[]; ints: (number|null)[]; deq: (number|null)[]; errs: (number|null)[]; maxErr: number; bytesFp32: number; bytesQ: number }
       return [
@@ -3671,6 +4276,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   specdec: {
     question: '大模型逐字吐太慢，怎么用一个小模型帮它一次多吐几个字还不掉质量？',
+    plain: {
+      hook: '让实习生先写草稿，专家只负责挑错。',
+      body: '大模型一次只吐一个字，每吐一个字都要把几百亿参数搬一遍显存 —— 慢在搬，不在算。\u3000投机解码的办法是：**先让一个小模型飞快地猜出接下来五个字**，然后大模型一次性验证这五个字（一次搬运，验五个）。猜对的部分直接采纳，第一个猜错的地方截断，从那儿继续。\u3000小模型猜得越准，省得越多；猜得离谱也不会出错，只是白忙一场。',
+      watch: '看小模型草拟了几个字、大模型接受了几个。接受率就是加速比的来源 —— 全被否掉的话反而比不用还慢一点。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; proposals: string[]; matchLen: number; bonus: boolean; gotThisRound: number; targetPasses: number; tokensOut: number; speedup: number; K: number }
       return [
@@ -3702,6 +4312,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   scaledmask: {
     question: '注意力打完分，为什么还要除 √d、还要盖一层掩码？',
+    plain: {
+      hook: '生成第五个字的时候，不能偷看第六个字。',
+      body: '训练时整句话是一起送进去的，效率高，但必须保证每个位置**只能看到它左边的内容** —— 否则模型就是在抄答案，一到真正生成时就露馅。\u3000做法是在算完注意力分数之后，把「右边那些位置」的分数设成负无穷。取指数之后它们变成 0，权重也就归零。\u3000为什么不直接填 0？因为在 softmax 之前填 0，取指数得到的是 1 —— 反而给了它们权重。',
+      watch: '看那张分数矩阵的上三角怎么被遮住。把负无穷换成 0 再看一遍，被遮的位置反而拿到了不小的权重。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; row: number; tokens: string[]; d: number; scale: number; causal: boolean; peak: number; peakUnscaled: number; raw: number[] }
       return [
@@ -3733,6 +4348,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   roofline: {
     question: '为什么大模型解码那么慢，GPU 却没跑满？加大 batch 为什么就快了？',
+    plain: {
+      hook: '车再快，堵在路上也没用。',
+      body: '衡量一段程序在 GPU 上跑得好不好，看两件事：算力够不够，和**数据搬得够不够快**。把这两条画成一张图，就是一个屋顶的形状：斜坡那段说明你被带宽卡住（数据喂不上），平顶那段说明你把算力用满了。\u3000大模型推理的解码阶段几乎永远在斜坡上 —— 每算一个字都要把整个模型搬一遍，算的却没几下。所以量化、批处理这些手段本质都在往右挪。',
+      watch: '看当前配置落在屋顶的哪一段。落在斜坡上就别再堆算力了，该想办法减少搬运（提高每次搬运对应的计算量）。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; batch: number; ai: number; ridge: number; bound: string; attainTFLOPs: number; util: number; peakTFLOPs: number }
       return [
@@ -3796,6 +4416,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   kvcache: {
     question: '每生成一个 token 都要重看前文，为什么不会越来越慢到不可用？',
+    plain: {
+      hook: '聊天越聊越长，为什么显存吃得越来越多？',
+      body: '模型每生成一个字，都要回头看前面所有字。如果每次都重算一遍前文，第 100 个字就要重算 99 次 —— 平方级的浪费。\u3000办法是把每个字算出来的那两份中间结果（键和值）**存着不扔**，下一个字直接拿来用。计算量从平方降回线性。\u3000代价是这份缓存随对话长度线性增长，而且每个并发用户各存一份 —— 所以长上下文的服务贵在显存，不在算力。',
+      watch: '看缓存怎么随着每步生成往后追加一格。把它关掉再走一遍，重复计算的量立刻暴涨 —— 那就是它省下来的东西。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; seq: string[]; computed: number; recomputed: number; cacheSize: number; cumCached: number; cumNaive: number; savedPct: number }
       return [
@@ -3830,6 +4455,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   mha: {
     question: 'MHA / MQA / GQA 差在哪？为什么大模型都改用 GQA？',
+    plain: {
+      hook: '一句话里有好几层关系，一副眼镜看得过来吗？',
+      body: '「小明把书给了小红，因为她想看」—— 这句话里既有动作关系（谁给谁），也有指代关系（她是谁），还有因果关系。一组注意力权重只能表达一种「谁该看谁」。\u3000所以干脆配好几副眼镜：把向量切成若干组，**每组各算各的注意力**，最后拼回来。有的头专管指代，有的头专管相邻词，分工是训练中自己长出来的。\u3000总计算量几乎没变 —— 切开算再拼回，和整个算一遍差不多。',
+      watch: '看不同的头各自把注意力放在哪儿：有的盯着前一个词，有的跨很远去找那个名词。分工就是这么显现出来的。',
+    },
     step: (s: never) => {
       const st = s as { act: string; variant: string; heads: number; kvHeads: number; focus: number; map: number[]; kvRatio: number }
       return [
@@ -3853,6 +4483,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   chunkprefill: {
     question: '一个用户发来超长 prompt，为什么会让别的用户"卡住"？怎么解决？',
+    plain: {
+      hook: '一个人交了一篇长文，后面排队的人全被卡住了。',
+      body: '处理一篇长提示词（预填充）要占满 GPU 好一会儿，这期间正在逐字生成的请求全得等着 —— 他们的体验就是「说着说着卡住了」。\u3000办法是把长预填充**切成小块**，一块一块地插在生成任务的缝隙里做。长文处理得稍慢一点，但所有人的输出都保持流畅。\u3000这是典型的「牺牲一点吞吐换全局延迟」，而用户能感知到的恰恰是后者。',
+      watch: '看长请求被切成几块、怎么和解码任务交错。块越小交错越平滑，但切换本身也有开销 —— 块太小反而不划算。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; chunk: number; timeline: {kind:string;cost:number;label:string}[]; cursor: number; clock: number; firstDecodeAt: number; prefillLen: number; totalTime: number }
       const op = st.timeline[st.cursor]
@@ -3882,6 +4517,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   knn: {
     question: '不训练模型，怎么给一个新点分类？看它的邻居就行？',
+    plain: {
+      hook: '判断一个人的口味，问问他最近的几个邻居。',
+      body: '不训练、不建模，来了新样本就在已有数据里找最近的 K 个，看它们大多数属于哪一类，就判成哪一类。\u3000K 太小容易被一个噪声点带偏；K 太大又会把远处不相干的样本也算进来。\u3000它最大的代价在预测阶段：每来一个新样本都要跟全部历史数据比一遍距离 —— 训练快得像没训练，预测慢得像在查全表。',
+      watch: '调 K 看决策边界怎么从锯齿状变平滑。K 等于全部样本数时，它退化成「永远预测最多的那一类」。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; k: number; seen: number; voteA: number; voteB: number; predict: number }
       return [
@@ -3908,6 +4548,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   kmeans: {
     question: '一堆没有标签的点，怎么自己分成几堆？',
+    plain: {
+      hook: '没人告诉你有几类，怎么把数据分堆？',
+      body: '先随手撒 K 个中心点，然后反复做两件事：**每个点归到最近的中心**，**每个中心挪到自己那堆点的平均位置**。挪着挪着就不动了，分堆完成。\u3000它一定会收敛，但不保证收敛到最好的分法 —— 初始点撒得不好，可能陷在一个糟糕的划分里。所以实际用时会换几组初始点各跑一遍，挑最好的。\u3000还有个前提常被忽略：它假设每一堆大致是圆的，遇到长条形的簇就分不好。',
+      watch: '换个初始中心再跑一遍，看结果是否不同。把数据换成两条平行的长带，你会看到它拦腰切开而不是按带子分。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; iter: number; k: number; inertia: number; converged: boolean }
       return [
@@ -3935,6 +4580,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   pca: {
     question: '高维数据里维度那么多，怎么找出真正"有用"的几个方向？',
+    plain: {
+      hook: '一堆特征互相重复，怎么压成几个关键方向？',
+      body: '身高和体重高度相关，两个数其实说的是同一件事的大半。主成分分析做的是**换一套坐标轴**：新的第一根轴指向数据变化最大的方向，第二根跟它垂直、指向剩下变化最大的方向，依此类推。\u3000排在后面的轴上数据几乎不变，扔掉也损失不了多少信息 —— 降维就是这么来的。\u3000注意它只认线性关系，而且降维之后的新坐标没有直观含义。',
+      watch: '看那几根主轴指向哪儿、各自解释了多少比例的方差。前两三根往往就能覆盖八九成 —— 那就是压缩的空间。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; angle: number; var1: number }
       return [
@@ -3963,6 +4613,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   svm: {
     question: '能分开两类的线有无数条，哪一条最好？',
+    plain: {
+      hook: '能分开两类的线有无数条，挑哪一条？',
+      body: '挑离两边都最远的那一条 —— 中间那条「街」修得越宽，来了新样本越不容易越界。\u3000真正决定这条线的，只有紧贴街边的那几个样本（支持向量）。其余样本挪一挪，线纹丝不动。\u3000碰上直线分不开的数据，还有一招：把数据映射到更高维再切一刀。妙的是不必真的算出高维坐标，只要能算出「两点在高维里有多近」就够了 —— 这就是核技巧。',
+      watch: '看哪几个样本贴在间隔边界上。拖动一个非支持向量的点，决策边界不动；拖动支持向量，整条线立刻跟着变。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; margin: number; supportVectors: number[]; isMax: boolean }
       return [
@@ -3991,6 +4646,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   gbdt: {
     question: '单棵树不够准，怎么让一串小树接力、越拟合越好？',
+    plain: {
+      hook: '一棵树学不好，那就让下一棵专门补它的错。',
+      body: '先长一棵很浅的树，它必然有很多地方判得不准。接着**让第二棵树专门去拟合第一棵剩下的误差**，第三棵再补第二棵的，如此叠加几百棵。\u3000每棵树都很弱（可能只有三五层），但一层层纠错下来，整体极其强大 —— 表格类数据上它至今仍是最能打的方法之一。\u3000关键在于每次只补一点点（学习率），补太猛就会把噪声也学进去。',
+      watch: '看残差怎么一轮轮变小，以及每棵新树在拟合什么。调大学习率，收敛更快但也更容易过拟合。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; round: number; mse: number; splitT: number }
       return [
@@ -4018,6 +4678,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   dtree: {
     question: '不用直线，怎么靠"问是非题"一步步把类别分开？',
+    plain: {
+      hook: '像玩「二十个问题」一样做判断。',
+      body: '每次挑一个最能区分数据的问题问下去：「年龄大于 30 吗」「收入高于多少吗」，一路问到能确定答案为止。整棵树就是一串嵌套的 if-else，人能看懂每一步为什么。\u3000「最能区分」怎么衡量？看问完之后**两边各自变得多纯** —— 一边全是正例、一边全是负例最理想。\u3000缺点是它太容易把训练数据背下来：树长得足够深，每个叶子只剩一个样本，训练准确率 100%，一到新数据就崩。所以要剪枝。',
+      watch: '看每一次划分挑了哪个特征、纯度提升了多少。把树的深度放开，训练误差会一路降到 0 —— 那正是过拟合的样子。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; splits: unknown[]; curGini: number; nCands: number; best: { feat: string; t: number; gain: number } | null; leaves: unknown[] }
       return [
@@ -4047,6 +4712,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   logreg: {
     question: '把"拟合一条线"改一改，怎么变成"分两类"？',
+    plain: {
+      hook: '要预测的不是数值，而是「是」或「否」，怎么办？',
+      body: '直线的输出可以是任意数，而概率必须落在 0 到 1 之间。所以在直线外面套一个 S 形的函数，把整条实数轴压进 (0,1) 区间 —— 这就是逻辑回归。\u3000它的输出是「有多大把握是正类」，不是硬邦邦的是非。阈值定在哪儿是另一个决策：宁可错杀（阈值低）还是宁可漏过（阈值高），取决于业务代价，不取决于模型。\u3000名字里有「回归」，干的却是分类的活儿。',
+      watch: '看那条 S 曲线怎么把分数压成概率，以及移动阈值时准确率和召回率此消彼长。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; gdStep: number; loss: number; acc: number; w1: number; w2: number }
       return [
@@ -4325,6 +4995,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   perceptron: {
     question: '一个神经元怎么"学会"在平面上画一条线，把两类点分开？',
+    plain: {
+      hook: '最早的神经网络，只有一个神经元。',
+      body: '输入各自乘一个权重加起来，超过门槛就输出 1，否则输出 0。训练更朴素：判错了就把权重朝着「下次别错」的方向挪一点。\u3000它能学会与、或这些线性可分的逻辑，但**学不会异或** —— 因为异或的正负例在平面上没法用一条直线分开。这个发现一度让神经网络研究停滞多年。\u3000破局的办法是多堆一层：两层就能表示异或。深度学习的起点就在这里。',
+      watch: '看权重怎么随每次判错而更新、决策直线怎么转动。换成异或的数据再跑，你会看到它永远收敛不了。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; act: string; pts: { x: number[]; y: number }[]; w: number[]; b: number; pass: number; ptIdx: number; score: number; ok: boolean; updated: boolean; updates: number }
       const p = st.ptIdx >= 0 ? st.pts[st.ptIdx] : null
@@ -4408,6 +5083,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   rnn: {
     question: '一句话有长有短，网络怎么"记住"前面读过的、处理变长序列？',
+    plain: {
+      hook: '读一句话，怎么让模型记住前面说了什么？',
+      body: '循环网络的做法是**边读边攒一个状态**：读一个词，把它和当前状态揉一揉，得到新状态，再读下一个。状态就是它的「记忆」。\u3000问题是这个记忆会衰减：信息每经过一步都要乘一次权重，几十步之后，开头那句话的影响已经小到看不见了。要么消失，要么反过来爆炸。\u3000这也是它为什么打不过注意力 —— 后者可以直接回头看任意一个位置，不用一路传话。',
+      watch: '看状态向量怎么随每个词更新。序列拉长再看回传的梯度，前几步几乎收不到信号 —— 那就是长程依赖学不会的原因。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; t: number; xt: number; hPrev: number; pre: number; ht: number; wx: number; wh: number; b: number; xs: number[] }
       return [
@@ -4462,6 +5142,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   lstm: {
     question: '普通 RNN 长序列就"忘"了，怎么让记忆稳稳传很远？',
+    plain: {
+      hook: '给记忆装三道闸门，就不容易忘了。',
+      body: '普通循环网络每一步都把整个状态重写一遍，旧信息很快被冲掉。LSTM 加了一条**几乎原样往下传的主线**，再配三道闸门决定：这一步该忘掉多少旧的、该写进多少新的、该输出多少。\u3000闸门的开合是学出来的，所以模型可以自己决定「这条信息我要一直记着」。\u3000主线上的传递接近恒等，梯度就不会一路衰减 —— 跟残差连接是同一个思路。',
+      watch: '看三道闸门的开合值随输入怎么变，以及主线上的信息怎么被保住。把遗忘门强行设成 0，记忆立刻断片。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; t: number; role: string; f: number; ig: number; o: number; ctil: number; cPrev: number; c: number; h: number }
       return [
@@ -4490,6 +5175,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   norm: {
     question: 'BatchNorm 和 LayerNorm 都在做归一化，到底差在哪？',
+    plain: {
+      hook: '一堆量纲不同的数据放在一起，谁的嗓门大谁说了算。',
+      body: '一个特征取值在 0~1，另一个在 0~10000，网络会被后者带着走 —— 不是因为它更重要，只是因为它数大。\u3000归一化就是把每一批数据拉回到「均值 0、方差 1」的尺度上，谁也不许靠数值大小压人。\u3000放在哪个方向上统计，决定了它叫什么：按一批样本的同一个特征统计是 BatchNorm，按同一个样本的所有特征统计是 LayerNorm。\u3000文本长度不齐、批次里样本差异大，所以 Transformer 用后者。',
+      watch: '看归一化前后数据分布的变化。把它关掉再训一遍，收敛会明显变慢甚至发散 —— 它换来的是可以放心用大一点的学习率。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; kindName: string; axis: string; slice: number; vals: number[]; mu: number; sigma: number }
       const isB = st.axis === 'col'
@@ -4708,6 +5398,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   pagerank: {
     question: '网页那么多，怎么判断哪个更重要、该排在前面？',
+    plain: {
+      hook: '一个网页重不重要，看有多少重要的网页指向它。',
+      body: '这句话是循环定义的 —— 要知道甲重不重要，得先知道指向甲的乙重不重要。\u3000解法是不管三七二十一先给所有人打相同的分，然后**让每个页面把自己的分数平分给它指向的人**，收一轮、再分一轮，反复几十次，分数会自己稳定下来。\u3000还要加一点「随机跳走」的概率，否则分数会全被几个互相指来指去的页面吸干。\u3000这一招后来被用在推荐、反欺诈、论文影响力上，早已不只是搜索排序。',
+      watch: '看每一轮分数怎么流动、几轮之后稳定下来。改一条链接的指向再走一遍，影响会顺着图扩散出去。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; iter: number; rank: number[]; nodes: string[]; ranked: { name: string; r: number }[]; d: number }
       return [
@@ -4734,6 +5429,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   qlearn: {
     question: '走迷宫(还带一堵墙)只有终点才有奖励，怎么倒推出中间每一步该往哪走？',
+    plain: {
+      hook: '不知道规则，靠一次次试错也能学会玩游戏。',
+      body: '给每个「在什么状态下做什么动作」记一个分，表示这么干长远看有多划算。一开始全是瞎猜，做完一个动作看到回报，就把这个分往「即时回报 + 未来最好的那个分」的方向挪一点。\u3000关键在于**未来的分也算数**，而且要打个折 —— 眼前的糖比明年的糖值钱。\u3000还得留一点随机：总是选当前分最高的动作，就永远发现不了更好的路。这就是探索与利用的取舍。',
+      watch: '看那张状态-动作表的分数怎么一轮轮被更新、最优路径怎么慢慢浮现。把随机探索的比例调成 0，它很容易困在一条次优路线上。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; sweep: number; changed: number; converged: boolean; gamma: number; path: string[]; value: (number | null)[]; start: [number, number]; w: number }
       const [sc, sr] = st.start
@@ -4762,6 +5462,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   recsys: {
     question: '你只看过几部电影，平台怎么猜你对没看过的会打几分？',
+    plain: {
+      hook: '网站怎么知道我可能喜欢什么？',
+      body: '最经典的思路是**找口味相近的人**：跟你评分习惯相似的那批人喜欢的东西，你多半也喜欢。反过来也成立：跟你喜欢的东西相似的东西，你多半也喜欢。\u3000都不需要理解内容是什么，只看「谁和谁一起被喜欢」这张表。\u3000难处在冷启动：新用户没有历史、新物品没人评过，这两种情况下相似度无从算起，只能先靠内容特征或者热门榜顶一阵子。',
+      watch: '看相似度是怎么从共同评分算出来的，以及预测分怎么由邻居的评分加权得出。共同评分越少，这个估计越不可靠。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; stage: string; users: { n: string; v: number[] }[]; movies: { n: string; v: number[] }[]; rating: (number | null)[][]; pr: number; pc: number }
       return [
@@ -4790,6 +5495,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   diffusion: {
     question: '怎么让 AI 从一团随机噪声里，"画"出一张全新的图？',
+    plain: {
+      hook: '先把图片糊成雪花，再学着一步步还原。',
+      body: '训练时反过来做：给清晰图片一点点加噪，直到变成纯噪声 —— 这一步不用学，是确定的。然后训练一个网络**预测每一步加进去的噪声是什么**。\u3000生成时从纯噪声出发，一步步把预测出来的噪声减掉，图像就浮现出来了。\u3000为什么比一步到位好？因为「从噪声直接生成图」太难，而「猜这一点点噪声」很简单 —— 难题被拆成了几十个简单题。',
+      watch: '看去噪的每一步图像怎么变清晰。步数减少会更快但更糊 —— 这就是采样步数与质量的取舍。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; dir: string; t: number; sqrtA: number; sqrtN: number }
       return [
@@ -4816,6 +5526,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   gan: {
     question: '不预设分布，怎么让 AI 生成以假乱真的数据？',
+    plain: {
+      hook: '造假的和验假的互相较劲，最后假的以假乱真。',
+      body: '一个网络负责造图，另一个负责判断真假。造的越来越像，判的越来越挑剔，双方水涨船高。\u3000理想的终局是判别器完全分不出来 —— 准确率掉到 50%，等于瞎猜。**这不是训练失败，恰恰是训练成功**。\u3000难点在于这场博弈很不稳定：一方太强，另一方就学不到东西；还可能出现「模式坍塌」—— 生成器发现只造一种图就能骗过去，于是再也不产出别的。',
+      watch: '看判别器准确率怎么从很高慢慢掉向 50%。掉得太快说明生成器崩了，一直不掉说明它学不动。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; round: number; acc: number; fooled: boolean[] }
       const nf = (st.fooled ?? []).filter(Boolean).length
@@ -4843,6 +5558,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   conv: {
     question: '不用给整张图接一大堆权重，怎么让网络"看见"边缘、纹理？',
+    plain: {
+      hook: '同一个特征在图片哪个角落，都应该被认出来。',
+      body: '全连接网络会把「左上角的猫」和「右下角的猫」当成完全不同的东西，参数量还大得离谱。\u3000卷积换了个做法：拿一个小窗口在整张图上滑，**同一套权重在每个位置重复使用**。于是「找边缘」这件事学一次就到处都能用，参数量降了几个数量级。\u3000多个窗口负责不同的花样（横边、竖边、色块），层层叠上去，浅层认边缘、深层认部件、再深认整体。',
+      watch: '看那个小窗口怎么滑、每个位置的乘加怎么得出一个数。同一套权重反复使用 —— 这就是「参数共享」的实际含义。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; kernelName: string; ci: number; cj: number; curVal: number; out: (number | null)[][] }
       const done = st.out ? st.out.flat().filter(x => x !== null).length : 0
@@ -4870,6 +5590,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   linreg: {
     question: '先从拟合一条线看起：机器"学习"到底在学什么？',
+    plain: {
+      hook: '一堆散点里画一条直线，什么叫「最合适」？',
+      body: '把每个点到直线的竖直距离量出来，平方之后加起来，最小的那条就是最合适的。\u3000为什么平方而不是取绝对值？一是正负不会互相抵消，二是平方之后求最小值可以直接求导解出来，有现成的公式，不用迭代。\u3000代价是**平方会放大离群点的影响**：一个远远偏离的点，能把整条线拽歪。所以拟合之前先看看数据里有没有异常值，往往比换模型更有用。',
+      watch: '手动挪动一个点，看直线怎么跟着转。把它挪得特别远，整条线会被它一个人带走 —— 那就是平方项的代价。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; gdStep: number; w: number; b: number; mse: number; wOls: number; bOls: number }
       return [
@@ -4896,6 +5621,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   pp: {
     question: '按层把模型切到多卡，为什么会有"气泡"？怎么填掉？',
+    plain: {
+      hook: '把模型按层切开，像工厂流水线一样传下去。',
+      body: '第一台机器算前十层，算完把中间结果传给第二台算接下来十层。跟张量并行不同，它是**竖着切**的，通信量小得多（只传一层的输出）。\u3000但有个尴尬：第一台干活时后面全闲着，最后一台干活时前面全闲着 —— 这段空转叫气泡。\u3000办法是把一批数据切成很多小份塞进流水线，让每台机器手里始终有活儿。小份越多，气泡占比越小。',
+      watch: '看那张流水图上哪些格子是空的（气泡）。把微批数量调大，空格比例明显下降 —— 这就是它的主要调参方向。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; stages: number; micro: number; t: number; totalTime: number; busy: number[]; util: number; bubblePct: number }
       const active = st.busy ? st.busy.filter(m => m >= 0).length : 0
@@ -5042,6 +5772,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   linattn: {
     question: '上下文越长，注意力算量和 KV 缓存就越顶不住——线性注意力怎么解？',
+    plain: {
+      hook: '注意力的开销为什么随长度平方增长？能不能改掉？',
+      body: '每个词都要跟前面所有词算一次分数，n 个词就是 n² 次 —— 文章长十倍，开销涨一百倍。\u3000线性注意力换了个算法：先把「所有键和值」压成一个固定大小的状态，每个新词只跟这个状态打交道。开销变成线性，显存也不再随长度增长。\u3000代价是那个固定大小的状态**记不下所有细节** —— 需要精确回忆某个远处词的任务上，它明显不如标准注意力。',
+      watch: '对比同样序列长度下两者的计算量和显存。长度拉到几万时差距是几十倍 —— 但要看清它在精确检索类任务上丢了什么。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; n: number; d: number; ratio: number; kvMem: number; stateMem: number; crossoverN: number }
       const f = (x: number) => x >= 1e9 ? (x/1e9).toFixed(1)+'G' : x >= 1e6 ? (x/1e6).toFixed(1)+'M' : x >= 1e3 ? (x/1e3).toFixed(0)+'K' : `${x}`
@@ -5070,6 +5805,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   condnum: {
     question: '同一套梯度下降,为什么有的问题一步到位、有的却要爬几百步?',
+    plain: {
+      hook: '输入动一点点，答案就面目全非。',
+      body: '解方程组的时候，如果两条直线几乎平行，那么交点会对系数极其敏感 —— 数据里一点点测量误差，解就差出十万八千里。\u3000条件数就是量这个敏感程度的：条件数大，说明问题本身就「病态」，**跟你用什么算法无关**，再精确的浮点也救不回来。\u3000实践中的对策通常不是换求解器，而是换问题：加正则项、去掉冗余特征、改变量纲。',
+      watch: '把两个方程调得越来越接近平行，看条件数怎么飙升，以及解怎么在微小扰动下剧烈跳动。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; kappa: number; steps: number; rate: number }
       return [
@@ -5096,6 +5836,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   maxent: {
     question: 'softmax 到处都是——它凭什么"天生合理",不是随手挑的?',
+    plain: {
+      hook: '在什么都不知道的时候，该假设什么分布？',
+      body: '假设最「摊平」的那个 —— 因为任何比它更集中的假设，都等于你偷偷加了自己没有的信息。\u3000什么都不知道时，最摊平的是均匀分布；只知道平均值时，最摊平的是指数分布；知道平均值和方差时，就是正态分布。\u3000所以正态分布之所以到处都是，一部分原因是：在只知道均值和方差的情况下，它是最「诚实」的选择。',
+      watch: '加一条约束再看分布怎么变形。每加一个已知条件，分布就从摊平往那个方向收一点 —— 收的幅度正好是这条信息的分量。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; mu: number; ent: number; naiveEnt: number; maxEnt: number }
       return [
@@ -5123,6 +5868,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   jl: {
     question: '几百上千维的向量,凭什么能压到几十维还不丢"谁离谁近"?',
+    plain: {
+      hook: '高维数据压到低维，距离还能保住吗？',
+      body: '能，而且不需要精挑细选 —— **随便找个随机方向投影下去就行**。这个结论相当反直觉：把一万维压到几百维，只要维数够，点与点之间的距离几乎不变。\u3000更妙的是所需的维数只跟「有多少个点」和「能容忍多大误差」有关，跟原来有多少维完全无关。\u3000向量检索、近似最近邻这些系统，底下都靠它把维度打下来。',
+      watch: '看投影前后各点距离的比值。维数越高，比值越集中在 1 附近 —— 那就是「距离几乎保住了」的实际含义。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; d: number; k: number; avgRatio: number; maxDev: number }
       return [
@@ -5149,6 +5899,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   greedy: {
     question: '"每一步都拿当下最好的"——这个又快又直觉的策略,什么时候会栽?',
+    plain: {
+      hook: '每一步都拿眼前最划算的，最后一定最划算吗？',
+      body: '找零钱的时候你会先拿最大面额，通常这就是最优解。但换一套面额（比如只有 1、3、4 元，要凑 6 元），先拿 4 就得再拿两个 1，共三枚；而拿两个 3 只要两枚 —— 贪心当场翻车。\u3000所以贪心不是一种通用方法，它是一个**需要证明**的性质：得说清「先拿眼前最好的，不会堵死后面的路」。证不出来，就得老老实实把各种可能都记下来（那就是动态规划）。',
+      watch: '看每一步选了什么、依据是什么。换一组数据再走一遍 —— 有些数据下贪心的结果就不是最优了，那正是它的边界。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; rem: number; pick: number; picked: number[]; greedyCount: number; optimal: number; target: number }
       return [
@@ -5176,6 +5931,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   dotsim: {
     question: '注意力用 Q·K 打分——一个乘加为什么就能量出"相关不相关"?',
+    plain: {
+      hook: '怎么用一个数说清「这两句话有多像」？',
+      body: '把句子变成向量之后，最直接的比较是点积 —— 但它会被向量长度带偏：一个又长又平庸的向量，跟谁点积都很大。\u3000所以通常先归一化再比，也就是只看方向不看长度，这就是余弦相似度。\u3000这一步在检索里至关重要：向量库存的往往是归一化之后的向量，这样点积和余弦等价，能用最快的矩阵乘法一次算完几百万个比较。',
+      watch: '对比归一化前后的排序结果。不归一化时，长向量会无理由地排在前面 —— 那正是检索质量下降的常见原因。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; angleDeg: number; dot: number; cosSim: number; proj: number; magA: number; magB: number }
       return [
@@ -5203,6 +5963,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   lowrank: {
     question: '为什么微调大模型能只训一小撮参数(LoRA)、还不太掉效果?',
+    plain: {
+      hook: '一张一千乘一千的表，也许只有几行是真正独立的。',
+      body: '很多矩阵看着庞大，实际信息量很小 —— 大部分行都能由少数几行组合出来。这样的矩阵可以拆成两个瘦长的矩阵相乘，存储和计算都大幅缩水。\u3000微调大模型的 LoRA 就是这个道理：不改原来那个巨大的权重矩阵，只在旁边加一对瘦矩阵学「要改动多少」。参数量降到千分之一，效果却接近全量微调。\u3000前提是那个「改动量」本身确实是低秩的 —— 经验上它确实是。',
+      watch: '看奇异值从大到小掉得多快。只保留前几个就能还原大部分信息，那就是这个矩阵「真实的维度」。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; rank: number; error: number; energyPct: number; fullParams: number; lowrankParams: number }
       return [
@@ -5230,6 +5995,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   editdist: {
     question: '把一个词改成另一个最少几步?为什么"填张表"就不用指数级重算?',
+    plain: {
+      hook: '两个词有多像？看把一个改成另一个要动几刀。',
+      body: '「kitten」改成「sitting」，改一个字母、再改一个、末尾加一个 —— 三刀。这个 3 就是编辑距离。\u3000直接搜索所有改法会爆炸，但有个关键发现：**要把前 i 个字改成前 j 个字，只取决于三个更小的问题**（改、删、增各对应一个）。于是可以填一张表，从左上角往右下角推，每一格只看它左边、上边、左上角那三格。\u3000拼写纠错、DNA 比对、代码 diff，底子都是这张表。',
+      watch: '看表格是怎么一格一格填出来的，以及每一格的值来自左、上、左上哪一个。最后右下角那个数就是答案。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; a: string; b: string; ci: number; cj: number; match: boolean; val: number }
       return [
@@ -5256,6 +6026,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   induction: {
     question: '大模型没训过这句话,凭什么能"照着上文的样式接着写"?',
+    plain: {
+      hook: '模型是怎么学会「照葫芦画瓢」的？',
+      body: '给它看 「A B ... A」，它能接着输出 B —— 哪怕 A B 是刚编出来的乱码。这个能力靠的是两层注意力配合：**第一层把「前一个是什么」的信息搬到每个位置上，第二层去找「前一个跟当前相同」的位置，然后抄它后面那个**。\u3000这被认为是上下文学习最基础的电路 —— 你在提示词里给几个例子，模型能照着办，很大程度上就是它在起作用。',
+      watch: '看第二层的注意力落在哪个位置：它盯着的正是上一次出现同样 token 的地方的下一个。这就是「照抄」的机制。',
+    },
     step: (s: never) => {
       const st = s as { stage: string; cur: string; matches: number[]; prediction: string }
       const nm: Record<string, string> = { id: '认当前 token', scan: '扫匹配位置', attend: '注意力落点', copy: '复制预测', done: '完成' }
@@ -5286,6 +6061,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   residual: {
     question: '几十上百层的深网络,梯度传到最底下不就没了吗?为什么还能训?',
+    plain: {
+      hook: '楼太高，一楼喊话到顶楼就听不清了。',
+      body: '网络堆到几十层之后，训练信号从最后一层往回传，每经过一层就被缩放一次，传到前几层已经衰减得几乎为零 —— 那几层根本学不动。\u3000残差连接的做法简单到不可思议：**每一层的输出，都把输入原样加回来**。于是信号有了一条直通的高速路，可以一路传回去不衰减。\u3000换个角度看更妙：每一层只需要学「在原来基础上改点什么」，而不是从头造一个新表示。',
+      watch: '把残差连接关掉再走一遍，看回传到前几层的梯度掉到多小。这一条几乎是所有深层网络能训起来的前提。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; layer: number; depth: number; gradPlain: number; gradRes: number; resFactor: number }
       return [
@@ -5312,6 +6092,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   graddesc: {
     question: '模型"训练"到底在干嘛？凭什么损失会一直降？',
+    plain: {
+      hook: '在浓雾里下山，你只能感觉脚下哪边更陡。',
+      body: '看不见山谷在哪，但能摸出脚下的坡度，于是朝最陡的下坡方向迈一步，再摸一次，再迈一步。\u3000步子太小走得慢，太大会从这面山坡直接迈到对面 —— 来回震荡下不去。这个步长就是学习率，几乎是训练里最要紧的一个数。\u3000还有个麻烦：脚下最陡的方向未必指向谷底（尤其山谷是狭长的），所以要加动量 —— 像滚下山的球，保留一点惯性，少走冤枉路。',
+      watch: '调学习率再走一遍：太小时步数多得离谱，太大时轨迹在山谷两壁之间来回弹。中间那一档才收敛得又快又稳。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; step: number; x: number; y: number; loss: number; gx: number; gy: number; lr: number }
       return [
@@ -5338,6 +6123,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   bloom: {
     question: '怎么用一点点空间，就几乎不出错地判断"这个元素见过没"？',
+    plain: {
+      hook: '门卫说「没见过这个人」，一定可信；说「见过」，可能记错。',
+      body: '想知道某个东西在不在一个巨大的集合里，又不想把集合整个存下来。\u3000办法是准备一长排开关，每来一个东西就用几个不同的算式算出几个位置，把那几个开关**扳开**。查的时候再算一遍：只要有一个开关是关的，那它**一定没来过**（来过就会被扳开）。\u3000但全都开着也可能是别人扳的 —— 所以「在」这个结论有可能是误判。\u3000这笔交易很划算：几十亿条数据压进几兆内存，代价是偶尔多查一次。',
+      watch: '看每次插入扳开了哪几个位置，以及查询时是哪一个「关着的开关」当场否掉了它。开关扳得越满，误判率越高。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; op: string; word: string; idx: number[]; verdict: string; falsePositive: boolean }
       return [
@@ -5365,6 +6155,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   bayes: {
     question: '检测阳性了，你到底有多可能患病？为什么不是 90%？',
+    plain: {
+      hook: '看到症状猜病因，和看到病因猜症状，是两回事。',
+      body: '医生知道「得了流感有九成会发烧」，但你想问的是「我发烧了，有几成是流感」。这两个数完全不同 —— 差别在于**流感本身有多常见**。\u3000贝叶斯公式就是把这两者换算过来：先有一个「事先觉得有多可能」（先验），再拿新证据去修正它，得到「现在觉得有多可能」（后验）。\u3000罕见病的检测最能说明问题：哪怕试剂准确率 99%，阳性结果里也可能大多数是虚惊 —— 因为得病的人本来就极少。',
+      watch: '调那个「先验」再看一遍后验怎么变。同一份证据，在不同的先验下能得出截然不同的结论 —— 这不是诡辩，是算出来的。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; nTests: number; prior: number; num: number; denFalse: number; posterior: number }
       const pf = (x: number) => (x * 100).toFixed(x < 0.1 ? 2 : 1) + '%'
@@ -5393,6 +6188,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   xent: {
     question: '语言模型的"训练损失"和"困惑度"，到底在量什么？',
+    plain: {
+      hook: '怎么衡量「模型有多意外」？',
+      body: '模型对每个可能的下一个字给出一个概率。如果真正出现的那个字，模型只给了 1% 的概率，那它就很意外 —— 损失很大；给了 90%，那就几乎不意外 —— 损失很小。\u3000交叉熵就是在量这份意外程度。\u3000困惑度是它的指数形式，可以理解成「模型平均在多少个候选之间犹豫」。困惑度 10，大致相当于每一步都在十个词里蒙。',
+      watch: '改一改模型给正确答案的概率，看损失怎么变。概率趋近 0 时损失趋于无穷 —— 所以模型极少给出 0 概率。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; trueWord: string; pTrue: number; surprise: number; ce: number; perplexity: number; ppUniform: number }
       return [
@@ -5420,6 +6220,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   clt: {
     question: '为什么高斯分布到处都是——凭什么"多个一平均"就变钟形？',
+    plain: {
+      hook: '为什么什么东西一平均，就变成了钟形曲线？',
+      body: '掷一颗骰子，六个点数机会均等，画出来是平的。但掷十颗取平均，结果就会挤在 3.5 附近 —— 因为要全是 1 太难，要全是 6 也太难，中间的组合方式远远更多。\u3000这就是中心极限定理：不管原来那个分布长什么样，**只要独立地取足够多个求平均，结果就会趋近正态分布**。\u3000整个统计学的抽样、置信区间、A/B 测试，底子都在这一条上。',
+      watch: '把每次平均的样本数调大，看直方图怎么从原来的形状慢慢收成钟形，而且越来越窄。窄的速度是根号 n —— 想精确一倍要多采四倍的样。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; m: number; trials: number; std: number; theoStd: number; exKurt: number }
       return [
@@ -5446,6 +6251,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   lln: {
     question: '为什么“多采样就准”——大数定理凭什么让蒙特卡洛能算 π？',
+    plain: {
+      hook: '抛硬币抛得够多，正面比例一定接近一半吗？',
+      body: '接近，但要小心它到底说了什么。大数定律说的是**比例**会收敛到 0.5，**不是**说正反面的次数差会变小 —— 实际上那个差值反而会越来越大。\u3000所以「输了很多把，接下来该赢了」是错的：过去的结果不影响将来，只是被越来越多的新数据稀释掉了。\u3000赌徒谬误就死在把这两件事搞混上。',
+      watch: '看比例怎么慢慢贴近 0.5，同时看正反次数之差怎么继续变大。这两条曲线同时成立，正是最容易误解的地方。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; n: number; trials: number; meanEst: number; rmsError: number; rmsErrSqrtN: number }
       return [
@@ -5472,6 +6282,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   ortho: {
     question: '几百维的嵌入，为什么能装下十几万个词还不打架？',
+    plain: {
+      hook: '深层网络里，信号为什么会越传越弱或越传越炸？',
+      body: '每一层都要乘一次权重矩阵。矩阵把向量整体放大 1.1 倍的话，五十层之后就是 117 倍；缩小 0.9 倍的话，五十层之后只剩万分之五。\u3000正交矩阵的特殊之处是**它不改变向量的长度** —— 只旋转，不缩放。用它来初始化，信号在几十层之间传递时既不炸也不消失。\u3000这正是深层网络能训起来的前提之一，另一个是残差连接。',
+      watch: '看信号经过多层之后的范数变化。换成随机初始化再看一遍，范数会指数级地跑掉。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; d: number; std: number; theoStd: number; maxAbs: number; mean: number }
       return [
@@ -5499,6 +6314,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   hopfield: {
     question: '注意力凭什么能“回忆”——从上下文里检索出相关信息？',
+    plain: {
+      hook: '网络也能像人一样，看到一角就想起全貌。',
+      body: '给它存进几个模式，之后喂一个残缺或带噪的版本，它会顺着能量下降的方向一步步演化，最后落回最接近的那个完整模式 —— 像滚珠落进最近的坑。\u3000它的容量很有限：坑挖多了会互相干扰，甚至出现从没存过的假坑（伪吸引子），回忆时落进去就想起了一个不存在的东西。\u3000经验值大概是每个神经元只能撑起 0.14 个模式。',
+      watch: '存进几个模式后喂一个带噪版本，看状态怎么一步步收敛。存得越多，收敛到错误模式的概率越大。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; step: number; weights: number[]; best: number; matchBits: number; converged: boolean }
       return [
@@ -5526,6 +6346,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   scale: {
     question: '注意力为什么要除以 \u221ad_k？',
+    plain: {
+      hook: '模型做大，能力是平滑变强还是突然开窍？',
+      body: '从损失曲线看是平滑的：参数、数据、算力一起放大，误差按幂律稳稳下降，而且可以外推 —— 这就是缩放定律，它让「花多少钱能得到多强的模型」变成可预算的事。\u3000但某些任务的准确率看起来是**突然跳起来**的。一部分原因是指标太粗：多步推理题「全对才算对」，能力平滑增长时，正确率会显得突然起飞。换成连续指标，曲线又平滑了。',
+      watch: '看损失随规模的下降曲线（对数坐标下接近直线），再对比某个任务准确率的跳变。两条曲线说的是同一件事的不同侧面。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; d: number; sqrtd: number; variance: number; entU: number; entS: number; maxU: number }
       return [
@@ -5553,6 +6378,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   engine: {
     question: '一堆长短不一的请求，怎么高效地一起服务？',
+    plain: {
+      hook: '从一句话到一串输出，推理引擎到底在忙什么？',
+      body: '先把话切成 token、排队，再把提示词整段算一遍（预填充），然后一个字一个字往外吐（解码），每吐一个都要读一遍整个模型的权重。\u3000引擎的全部功夫在于让 GPU 别闲着：谁的缓存放哪儿、几个请求凑一批、谁该被抢占、长提示怎么切。\u3000所以推理引擎的性能差距不在数学，在**调度**。同一张卡，好引擎和差引擎能差三五倍。',
+      watch: '跟着一个请求走完全程：排队、预填充、逐字解码、释放缓存。看它在每个阶段跟别的请求怎么共享 GPU。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; step: number; free: number; pool: number; running: unknown[]; waiting: string[]; gen: number; admitted: string[]; finished: string[]; event: string }
       return [
@@ -5580,6 +6410,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   kvoffload: {
     question: 'GPU 显存装不下这么多 KV 缓存，怎么办？',
+    plain: {
+      hook: '显存不够，就把暂时用不上的搬去内存。',
+      body: '对话的缓存越堆越大，显存装不下。但仔细想：**正在生成的那几个请求才需要缓存在手边**，其他排队等着的可以先挪到主机内存甚至硬盘上。\u3000搬运是要花时间的，所以关键在于预判：在真正需要之前提前搬回来，跟计算重叠起来，就几乎感觉不到延迟。预判失败，那一次就得干等着。\u3000这是拿带宽换容量的典型交易。',
+      watch: '看缓存什么时候被换出、什么时候换回，以及换回的时机有没有赶上计算。搬运和计算重叠得越好，代价越接近于零。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; slots: number; req: number; result: string; evicted: number|null; reloaded: boolean; gpu: number[]; hits: number; offloads: number; reloads: number }
       return [
@@ -5645,6 +6480,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   tensorpar: {
     question: '一个矩阵乘大到单卡装不下，怎么切到多张 GPU 上算、还保证结果不变？',
+    plain: {
+      hook: '一张显卡装不下这个模型，那就横着切开。',
+      body: '把一层的权重矩阵按列切成几份，每张卡各算一份，算完把结果拼起来。下一层按行切，正好省掉一次拼接。\u3000这样每张卡只存整个模型的几分之一，几百 GB 的模型才跑得起来。\u3000代价是**每一层算完都要跨卡通信一次** —— 所以张量并行几乎只在同一台机器内部用，卡间要有高速互联；跨机器拉网线做张量并行，通信会把收益吃干净。',
+      watch: '看权重怎么按列/按行切开、每层结束时那次通信搬了多少数据。卡越多，单卡算得越少，通信占比却越高。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; gpu: number; G: number; cols: [number,number]; shard: number[]; full: number[]; fraction: number }
       return [
@@ -5678,6 +6518,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   layout: {
     question: '二维矩阵在内存里其实是一条直线 —— 它到底怎么排？为什么排法会影响速度？',
+    plain: {
+      hook: '同一份数据，摆放方式不同，速度差好几倍。',
+      body: '内存不是随机取用的：读一个数，硬件会顺手把它旁边的一整条也搬进缓存。所以**按顺序访问**几乎免费，**跳着访问**每次都要重新搬。\u3000二维数组按行存还是按列存，决定了你的循环是顺着读还是跳着读。写反了，同样的计算能慢上五到十倍 —— 一行代码没改，只是循环顺序换了。\u3000GPU 上这件事更极端，叫合并访问。',
+      watch: '对比按行遍历和按列遍历实际搬了多少条缓存行。数据没变、算法没变，差的全是访问顺序。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; layout: string; rows: number; cols: number; cur: {addr:number;i:number;j:number;v:number}|null; rowStride: number; colStride: number; mem: ({v:number}|null)[] }
       return [
@@ -5711,6 +6556,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   matmul: {
     question: '神经网络里说的"矩阵乘"到底怎么算？为什么它是一切的地基？',
+    plain: {
+      hook: '为什么显卡是算 AI 的，不是 CPU？',
+      body: '神经网络里绝大部分运算就一件事：**一大堆乘法加起来**。这些乘法互相独立，谁先算都行 —— 而这正是显卡的强项：几千个小核同时开工。\u3000但真正决定快慢的往往不是算力，是**数据从显存搬到核心的速度**。所以矩阵乘法的实现要讲究分块：把小块搬进片上高速缓存，反复用够了再换下一块。\u3000同一个乘法，分块方式不同，速度能差好几倍。',
+      watch: '看每一格结果是由哪一行和哪一列点乘出来的，以及分块之后同一块数据被复用了几次。复用率就是性能的关键。',
+    },
     step: (s: never) => {
       const st = s as { phase: string; row: number; col: number; terms: {a:number;b:number;prod:number}[]; value: number; M:number;K:number;N:number; flops:number; totalFlops:number }
       return [
@@ -5743,6 +6593,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   softmax: {
     question: 'softmax 怎么把一串打分变成概率？温度到底调的是什么？',
+    plain: {
+      hook: '怎么把一堆分数，变成加起来正好是 1 的概率？',
+      body: '先给每个分数取指数（拉开差距，而且全变成正数），再各自除以总和。\u3000为什么要先取指数？因为分数可能是负的，而且要让高分**明显地**更占优势 —— 指数把差距放大了。\u3000温度这个旋钮就是在调放大的力度：温度低，最高分几乎独吞；温度高，各选项被拉平，抽到冷门的机会变大。大模型说话有多「跳」，就由它决定。',
+      watch: '调温度那个旋钮，看分布怎么从「几乎全押一个」摊平成「大家差不多」。注意实现里会先减去最大值 —— 那是为了防止指数算爆，不影响结果。',
+    },
     step: (s: never) => {
       const st = s as {
         phase: string; T: number; tokens: string[]; probs: number[]; entropy: number; sumExp: number
@@ -5794,6 +6649,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   attention: {
     question: '自注意力怎么让每个词"看"全句？Q、K、V 各是干嘛的？',
+    plain: {
+      hook: '读到「它」的时候，你怎么知道指的是谁？',
+      body: '你会回头扫一眼前文，在几个候选里挑出最搭的那个。注意力干的就是这件事，只不过它把「搭不搭」变成了可以计算的数：**每个词发出一个「我在找什么」，每个词也挂出一块「我是什么」的牌子**，两者一对，分数高的就多看几眼。\u3000然后按分数加权，把前文的信息揉成一份新的表示交给下一层。\u3000整个 Transformer 就是这个动作叠很多遍。',
+      watch: '看那张分数表：每一行是一个词在看谁，颜色越深看得越重。注意力权重加起来永远是 1 —— 它分配的是有限的注意力。',
+    },
     step: (s: never) => {
       const st = s as {
         phase: string; qi: number; tokens: string[]; scores: number[]; attn: number[][]; out: number[]
@@ -5846,6 +6706,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   llmsize: {
     question: '7B 为什么要十几 G 显存？参数都堆在哪、KV 缓存又吃多少？',
+    plain: {
+      hook: '同样的算力，是把模型做大，还是多喂点数据？',
+      body: '早期的模型普遍**训练不足**：参数堆得很大，数据却没喂够。后来的实验给出了更好的配比：参数和数据大致等比例放大，同样算力下，小一点但训得更久的模型反而更强。\u3000这个结论直接改变了行业做法 —— 于是有了参数不大却极能打的一批模型。\u3000对使用者的意义是：参数量不再是能力的可靠指标。',
+      watch: '调参数量和数据量的配比，看同样算力预算下的最终损失。最优点不在两端，在中间某个比例上。',
+    },
     step: (s: never) => {
       const st = s as {
         phase: string; L: number; d: number; total: number; embed: number
@@ -5894,6 +6759,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   sampling: {
     question: '吐字前 top-k / top-p 在砍什么？它们和温度怎么配合？',
+    plain: {
+      hook: '同一个问题问两遍，为什么答案不一样？',
+      body: '模型每一步给出的不是一个字，而是**整张词表上的一个概率分布**。永远挑概率最高的那个（贪心），答案就固定了，但读起来干巴、容易绕圈重复。\u3000所以实际是抽签：温度决定分布陡不陡，top-p 决定只在概率累计到多少的那几个候选里抽。\u3000这两个旋钮一起决定了模型是「稳重但无聊」还是「有灵气但会胡说」。',
+      watch: '看每一步的候选和它们的概率，以及截断线画在哪儿。把温度调到接近 0，输出就变回确定的了。',
+    },
     step: (s: never) => {
       const st = s as {
         phase: string; T: number; k: number; p: number; tokens: string[]
@@ -5947,6 +6817,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   bpe: {
     question: 'BPE 怎么把文本切成 token？中文为什么就更贵？',
+    plain: {
+      hook: '模型眼里的一个「词」，其实是什么？',
+      body: '英文按空格切、中文按字切，都不好：词表要么大得离谱，要么切得太碎。\u3000实际做法是**让数据自己决定**：从单个字符出发，统计哪两个相邻单元最常一起出现，就把它们合并成一个新单元，反复几万次。\u3000结果是常用词整个成为一个单元，罕见词被拆成几块，从没见过的词也总能拆成认识的碎片 —— 不会出现「不认识这个词」的死角。\u3000所以一个汉字常常不止一个 token，计费按 token 算的原因也在这儿。',
+      watch: '看合并是按什么顺序发生的：越早合并的组合越常见。同一句话在不同合并轮次下被切成几块，差别一目了然。',
+    },
     step: (s: never) => {
       const st = s as { act: string; toks: string[]; pair: [string, string] | null; merged: string; start: number; ruleLeft: number }
       return [
@@ -5990,6 +6865,11 @@ export const GUIDES: Record<string, Guide> = {
   },
   batching: {
     question: '推理引擎怎么把长短不一的请求凑成 batch？连续批处理省在哪？',
+    plain: {
+      hook: '餐厅上菜，是做完一桌再做下一桌，还是几桌一起炒？',
+      body: 'GPU 的特点是「一次算一份」和「一次算一百份」花的时间差不多 —— 瓶颈在搬数据，不在算。所以把多个请求凑成一批一起算，吞吐能翻好几倍。\u3000麻烦在于每个人的话长短不一：先来的还没说完，后来的已经在等。**等凑够一批再开火**，先到的人就干等；**来一个算一个**，GPU 大部分时间闲着。\u3000连续批处理的做法是：谁说完了就让谁下桌，空位马上补新人进来，锅一直是满的。',
+      watch: '看每一步锅里有几个请求、谁完成了、谁补了进来。批越大吞吐越高，但每个人等的时间也越长 —— 这是延迟和吞吐的直接交易。',
+    },
     step: (s: never) => {
       const st = s as { act: string; mode: string; active: string[]; done: string[]; admitted: string[]; waiting: string[]; util: number; slots: number; step: number }
       return [

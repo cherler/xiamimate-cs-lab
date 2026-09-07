@@ -701,6 +701,13 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{
     构建产物里按选择器捞回来的。改成一行布局后动了三处：
     去掉 margin-bottom（不再有下一行）、flex:1（吃掉走带余宽）、
     高度 30（原 34，一行制里它就是走带的身高）。 */
+/*  ⚠️ `position:relative` 不是为了定位，是为了**画在舞台之上**。
+    `.stagerow` 是定位元素，按 CSS 的绘制顺序，定位元素的整棵子树盖在非定位元素上面 ——
+    跟谁在 DOM 里靠后无关。而 720px 高的屏上，舞台那一格的盒子本来就往下压到走带头上
+    （实测重叠 23px）。以前那儿是透明的没人发觉；第 0 步摆上一张不透明的起点卡之后，
+    ▶ 按钮当场点不着（冒烟报「.startframe 拦截了指针事件」）。
+    走带自己也变成定位元素，同为 z-index:auto 时后出现的赢 —— 它在 DOM 里本来就在后面。 */
+.axis{position:relative}
 .ticks{touch-action:none;cursor:ew-resize;align-items:flex-end;gap:2px;
   padding-top:21px;display:flex;position:relative;flex:1 1 auto;min-width:0}
 .tick{min-width:6px;height:30px;cursor:inherit;background:var(--sunk-2);border:0;
@@ -722,6 +729,60 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{
 .tick .no{text-align:center;font-family:var(--mono);font-size:var(--t-meta);color:var(--faint);
   pointer-events:none;position:absolute;top:-19px;left:0;right:0}
 .tick.cur .no{color:var(--now);font-weight:700}
+
+/*  ── 大白话（第 0 步）──
+    导览主体里那两段。字号比四段推演大半档、行距放宽 —— 它是**读**的，不是查的。
+    中文一个字≈2ch，想一行 40 字就写 84ch。 */
+.gnplain{max-width:84ch;margin:2px 0 0}
+.gnplain .gnpb{margin:0;font-size:var(--t-ui);line-height:2;color:var(--ink)}
+.gnplain .gnpw{margin:14px 0 0;padding:11px 14px;border-radius:8px;line-height:1.9;
+  background:var(--panel-2);border-left:3px solid var(--now);font-size:var(--t-meta);color:var(--dim)}
+.gnplain .gnpw b{color:var(--now);margin-right:2px}
+
+/*  ── 第 0 步的起点卡 ──
+    舞台位置上的那一屏（见 shell/StartFrame.tsx）。刻意做得**安静** ——
+    它要传达的是「这里什么都还没发生」，任何色块和数字都会让人以为已经跑过了。 */
+/*  ⚠️ 不能有 `min-height` —— 舞台位是 flex 里 `flex:1 1 auto` 的一格，
+    卡片比它高就会**溢出去压住下面的走带**：冒烟当场报「▶ 按钮点不着，
+    被 .startframe 拦截了指针事件」，等了 30 秒抛出来。
+    改成撑满容器、内容多了在卡片内部滚。 */
+.startframe{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
+  height:100%;box-sizing:border-box;overflow:auto;
+  padding:28px 26px;text-align:center;
+  border:1px dashed var(--line);border-radius:10px;background:var(--panel-2)}
+.startframe .sfmark{font-family:var(--mono);font-size:44px;line-height:1;color:var(--line);
+  border:2px dashed var(--line);border-radius:50%;width:74px;height:74px;
+  display:flex;align-items:center;justify-content:center}
+.startframe h2{margin:2px 0 0;font-size:var(--t-h2,18px);color:var(--dim);font-weight:700}
+.startframe .sfsub{margin:0;max-width:52ch;color:var(--faint);font-size:var(--t-ui);line-height:1.7}
+.startframe .sfplain{max-width:76ch;color:var(--ink);line-height:2;text-align:left}
+.startframe .sfmeta{font-size:var(--t-meta)}
+.startframe .sfrow{display:flex;gap:10px;align-items:baseline;max-width:74ch;
+  font-size:var(--t-meta);line-height:1.7}
+.startframe .sfk{color:var(--faint);white-space:nowrap}
+.startframe .sfv{color:var(--dim);text-align:left}
+.startframe .sfv.mono{font-family:var(--mono)}
+.startframe .sfgo{margin-top:8px;padding:9px 20px;border-radius:7px;cursor:pointer;
+  border:1px solid var(--now);background:#0000;color:var(--now);font-size:var(--t-ui);font-weight:600}
+.startframe .sfgo:hover{background:color-mix(in srgb, var(--now) 12%, transparent)}
+.startframe .sfhint{margin:0;color:var(--faint);font-size:var(--t-meta)}
+
+/*  ── 第 0 步「还没开始」──
+    走带最左边那一格。它不是轨迹的一帧（内核的 initial() 明写「本身不进轨迹」），
+    所以不参与柱高/色调那套编码 —— 画成一道竖起的**起跑线**：窄、空心、只有一个 0。
+
+    类名特意不叫 `.tick`：好几个 smoke 脚本按 `.tick >> nth=k` 把第 k 格当轨迹第 k 帧，
+    混进去会让它们静默错位一步。样式这里就重写必要的那几条（不复用 .tick 的选择器）。 */
+.tick0{flex:0 0 auto;width:10px;height:30px;cursor:pointer;padding:0;overflow:visible;
+  background:#0000;border:1px dashed var(--line);border-right-width:2px;border-radius:2px;
+  position:relative;margin-right:2px}
+.tick0:hover{border-color:var(--dim)}
+.tick0 .no{text-align:center;font-family:var(--mono);font-size:var(--t-meta);color:var(--faint);
+  pointer-events:none;position:absolute;top:-19px;left:0;right:0}
+.tick0.cur{border-color:var(--now);z-index:2}
+.tick0.cur .no{color:var(--now);font-weight:700}
+.tick0.cur:after{content:"";border-left:5px solid #0000;border-right:5px solid #0000;
+  border-top:6px solid var(--now);margin-left:-5px;position:absolute;top:-12px;left:50%}
 
 /*  ── 写字格：柱高换成"这一步的输入" ──
     只有声明了 `tickChip` 的实验会走这一档（见 AxisBand / types.ts）。

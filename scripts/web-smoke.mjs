@@ -100,6 +100,36 @@ const nav = async name => {
    */
   const bf = await p.$('.gnote .gnx')
   if (bf) { await bf.click(); await p.waitForTimeout(90) }
+  /*
+   * ⚠️ 切完实验**先走一步**，落在第 1 步再量。
+   *
+   * 2026-09-07 起时间轴前面多了一格**第 0 步「还没开始」**，而且它是进页面的默认落点
+   * （用户问的：「所有实验，第一步是默认已经走完了的吗?」—— 之前确实是）。第 0 步的舞台位置上
+   * 摆的是一张起点卡（`.startframe`），各实验自己的舞台**根本不在 DOM 里** ——
+   * 拿初始态硬画会把占位零值当结论印出来（「当前地址 0x0 → 缺失」、命中率 NaN%）。
+   *
+   * 这套冒烟两百来处判据全是「切过去、就地量」，落点一变就整片红，
+   * 而红的原因跟它们各自要测的东西毫无关系。所以在**共用的 nav() 里**统一走这一步：
+   * 每条判据看到的仍是改动前那一帧，一处改完，两百处不用动。
+   *
+   * 第 0 步本身有专门的一套：scripts/step-zero-smoke.mjs（251 个实验全量）。
+   */
+  await stepOne()
+}
+
+/**
+ * 走到第 1 步。库层参考页没有走带（走带整个不渲染），跳过。
+ *
+ * ⚠️ 用 **▶ 按钮**，不要点走带上的格子。
+ * 讲解浮层有「点哪讲哪」：点页面上任何一块，它就跳到讲那一块的卡。
+ * 走带上的格子锚着「轴是什么」那张**参考层**的卡 —— 于是每切一个实验、
+ * 每点一次格子，浮层就被弹到参考层，页码显示「参考」而不是「1 / N」，
+ * 判据当场报「没有讲解浮层」，49 个实验全红。
+ * 而 `.ctl`（那排播放控件）本来就被浮层划成中立区：按它是在推进轨迹，不是在问问题。
+ */
+const stepOne = async () => {
+  const next = await p.$('.axis .ctl .step:not([disabled]) >> nth=-1')
+  if (next) { await next.click(); await p.waitForTimeout(150) }
 }
 /**
  * 日志 / 真题 / 边界现在收在底部坞里，同一时刻只露一块（为了「一屏装下一个实验」）。
@@ -183,6 +213,15 @@ console.log(`\n【1】${EXPS.length} 个实验都能起来，且各自的舞台�
 for (const [i, e] of EXPS.entries()) {
   await p.click(`.nav button >> nth=${i}`)
   await p.waitForTimeout(200)
+  /*  ⚠️ 先走一步再量。
+      2026-09-07 起，进页面默认停在**第 0 步「还没开始」**（初始态：空缓存、原始数组），
+      那一帧的逐步日志按设计就是**一行都不列** —— 列了才是剧透。
+      而这条判据是拿「日志至少一行」当"实验起得来"的活体信号的，不走这一步会整片判红
+      （实测 30 个实验同时红，红的却不是它们的毛病）。
+      点第一格 = 走到第 1 步，量的东西跟改动前完全一致。
+
+      这个循环不走 nav()（它按序号点目录），所以自己调一次。 */
+  await stepOne()
   const s = await snap()
   s.title === e.label && s.ticks > 0 && s.logRows > 0 && s.bounds
     ? ok(`${e.label.padEnd(16)} ${String(s.ticks).padStart(3)} 步 · tab[${s.tabs.join('/')}] · 有边界栏`)
@@ -193,6 +232,7 @@ for (const [i, e] of EXPS.entries()) {
 const stageSigs = []
 for (let i = 0; i < EXPS.length; i++) {
   await p.click(`.nav button >> nth=${i}`); await p.waitForTimeout(180)
+  await stepOne()   //  第 0 步摆的是同一张起点卡,不走这一步会判成"所有舞台长得一样"
   stageSigs.push(await p.evaluate(() => {
     //  认舞台自己的容器，不靠"中列第几张卡片"猜 ——
     //  之前每加一个编辑器（序列 / 实体）这条就会误报一次
@@ -981,14 +1021,19 @@ const pageToEnd = async () => {
 // ═══ 13 · 讲解浮层：锚点要落得下，点哪讲哪 ═══
 console.log('\n【13】讲解浮层：30 个实验的锚点都落得下，点哪讲哪')
 {
-  //  第 1 组把它收起来了，这里请回来
-  await p.click('.guide-fab').catch(() => {})
-  await p.waitForTimeout(250)
+  /*  第 1 组把它收起来了，这里请回来。
+      ⚠️ **展开动作要放在切实验之后**，不能只在循环外做一次：
+      讲解浮层在第 0 步整个不挂载（它的锚点是打在活舞台上的，第 0 步那儿摆的是起点卡）。
+      循环外那一下如果正好赶上第 0 步，`.guide-fab` 根本不存在，点击被 catch 吞掉，
+      于是**后面 49 个实验全部报「没有讲解浮层」** —— 红的是判据自己的时序，不是浮层坏了。 */
   const names = await p.$$eval('.nav button', bs => bs.map(b => b.textContent.trim()))
   const broken = []
   let cardTotal = 0
   for (const name of names) {
     await nav(name)
+    //  收起状态下才有这颗药丸；已经展开时点不着，忽略即可
+    const fab = await p.$('.guide-fab')
+    if (fab) { await fab.click(); await p.waitForTimeout(200) }
     /**
      * **每张卡的锚点必须在这一屏上找得到。**
      *

@@ -16,11 +16,11 @@ const PHASE_COLOR: Record<string, string> = {
 
 export function TcpStage({ trace, index, state, tab }: StageProps<TcpState>) {
   if (tab === 'phase') return <Phase state={state} />
-  return <Curve trace={trace} index={index} />
+  return <Curve trace={trace} index={index} state={state} />
 }
 
 // ═══ 锯齿曲线 ══════════════════════════════════════════
-function Curve({ trace, index }: { trace: TcpState[]; index: number }) {
+function Curve({ trace, index, state }: { trace: TcpState[]; index: number; state: TcpState }) {
   const W = 100, H = 46, PAD = 3
   /*  ⚠️ 纵轴上限 / 横轴跨度**故意用整条 trace 算**，不跟着当前步变：
       跟着变的话每走一步坐标系就重新缩放，已经画出来的曲线会整体跳动，
@@ -38,7 +38,8 @@ function Curve({ trace, index }: { trace: TcpState[]; index: number }) {
   const ssPath = upto.map((s, i) => `${i === 0 ? 'M' : 'L'} ${x(i)} ${y(s.ssthresh)}`).join(' ')
   //  面积填充:cwnd 曲线下方灌一层渐变,让"窗口涨落"有体积感(不再是一根线)
   const areaPath = `${cwndPath} L ${x(index)} ${H - PAD} L ${x(0)} ${H - PAD} Z`
-  const cur = trace[index]
+  //  第 0 步「还没开始」时 index 是 −1，轨迹里取不到 —— 用初始态兜底(App 传的就是它)
+  const cur = trace[index] ?? state
 
   return (
     <div className="card">
@@ -79,7 +80,7 @@ function Curve({ trace, index }: { trace: TcpState[]; index: number }) {
         {/* 当前点用 HTML 定位，不放进 SVG —— viewBox 被非等比拉伸，圆会变椭圆 */}
         <div className="curvedot" style={{
           left: `${(x(index) / W) * 100}%`,
-          top: `${(y(trace[index].cwnd) / H) * 100}%`,
+          top: `${(y(cur.cwnd) / H) * 100}%`,
         }} />
 
         <div className="curvelegend">

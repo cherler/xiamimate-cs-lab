@@ -11,6 +11,7 @@ import { validateDocument } from '@engine/ai/schema.ts'
 import type { SimDocument, Entity } from '@engine/core/document.ts'
 import { EXPERIMENTS, BASED_ON, USED_BY, DISCIPLINES, SOFT_LINKS, DISCIPLINE_OF_GROUP } from './registry.ts'
 import { AxisBand } from './shell/AxisBand.tsx'
+import { StartFrame } from './shell/StartFrame.tsx'
 import { WhyBand, WhyRail } from './shell/WhyBand.tsx'
 import { rich } from './shell/rich.tsx'
 import { StepLog, ParamPanel, Readouts, Violations, Bounds } from './shell/Panels.tsx'
@@ -50,10 +51,40 @@ const VIZ_OF_DISC: Record<string, { icon: string; label: string; href?: string; 
   base: { icon: '🕹️', label: '探索游戏', href: '/lab/world', tip: '在游戏里吃透 408 四门（xiami-world）' },
 }
 
+/**
+ * 时间轴的起点 —— **第 0 步「还没开始」**，它在轨迹下标里的位置是 −1。
+ *
+ * 起因（用户 2026-09-07）：「虾米课堂的所有实验，第一步是默认已经走完了的吗？」
+ * 是的，之前一进页面就是 `trace[0]`，而 `trace[0]` 是**引擎走完第一步之后**的状态 ——
+ * 缓存已经装进第一块、页表已经缺过一次页、数组已经比过一次。「装进去之前长什么样」
+ * 这一帧从来没露过面，而它恰恰是最该先看一眼的：空的缓存、原始的数组、lo/hi 的初值。
+ *
+ * 这一帧**不进轨迹**。往 trace 里插一帧的代价是所有下标全体挪一位：fact 的
+ * `compute(t)[0]`、进度键、分享链接、判据里逐帧比对的那些，一处都跑不掉。
+ * 内核契约里 `initial()` 的注释写得很清楚：「零号状态。step(null) 时的兜底基准，
+ * **本身不进轨迹**」。所以这是纯渲染层的一帧：状态取 `model.initial()`，下标取 −1。
+ *
+ * −1 这个值不是随便选的 —— 内核给的初始态里 `i` 本来就是 −1，而各 stage 里
+ * 「哪些已经发生」的写法清一色是 `s.i <= index` / `slice(0, index + 1)` / `第 {index+1} 步`，
+ * 喂 −1 进去，它们自己就全渲染成「还没发生」。实测 286 个实验的 initial() 都拿得到、
+ * 285 个的字段集和 trace[0] 完全一致，且**没有一个实验的 initial() 等于 trace[0]**
+ * （所以这一帧到哪儿都不是多余的重复）。
+ */
+const ZERO_STEP = -1
+/*
+ * ⚠️ **只有「进 / 换实验」落在第 0 步**，改配置一律回第 1 步。
+ *
+ * 第一版是所有 `setIndex(0)` 全改成 ZERO_STEP —— 拧一次旋钮就弹回「还没开始」，
+ * 想看效果还得再按一次 ▶。第 0 步是**进实验时的开场**（先用人话说清这屏在干什么），
+ * 不是每次调参都要重看一遍的东西；你已经读过了，此刻在迭代。
+ * 冒烟当场也照出来了：「删掉通往 G 的边 → G 必须不可达」那条判据，
+ * 点完预置就退回第 0 步，图上一条边都没有，判据报的却是「G 居然可达」。
+ */
+
 export default function App() {
   const [expId, setExpId] = useState(EXPERIMENTS[0].id)
   const [overrides, setOverrides] = useState<Record<string, Record<string, number | string>>>({})
-  const [index, setIndex] = useState(0)
+  const [index, setIndex] = useState(ZERO_STEP)
   const [tab, setTab] = useState(EXPERIMENTS[0].tabs[0].id)
   const [playing, setPlaying] = useState(false)
   const [problemId, setProblemId] = useState<string | null>(null)
@@ -386,8 +417,18 @@ export default function App() {
     catch { return null }
   }, [brief, doc, trace, runDoc])
 
-  const clamped = Math.min(index, Math.max(0, trace.length - 1))
-  const state = trace[clamped]
+  /**
+   * 第 0 步那一帧的状态。拿不到就退回老行为（时间轴从第 1 步起），不让整页塌掉。
+   * 配置违规时 trace 也是空的，这里一并给 null —— 两条路走同一个兜底。
+   */
+  const zero = useMemo(() => {
+    if (violations.length > 0) return null
+    try { return exp.kernel.compile(doc).initial() as never } catch { return null }
+  }, [exp, doc, violations])
+
+  const clamped = Math.min(Math.max(index, zero ? ZERO_STEP : 0), Math.max(0, trace.length - 1))
+  const started = clamped >= 0
+  const state = started ? trace[clamped] : zero
 
   /**
    * 走完过的配置 —— **一样的配置再看一遍，那是重播，不是第一次**。
@@ -436,7 +477,9 @@ export default function App() {
    */
   const whyParts = useMemo(() => {
     const f = GUIDES[exp.id]?.step
-    if (!f || !state) return []
+    /*  第 0 步没有「本步推演」—— 还没走任何一步，推演谁?
+        不拦的话 `step()` 会去读初始态里那些还没填的字段，算出一串「命中率 0%」式的废话。 */
+    if (!f || !state || !started) return []
     try { return f(state as never, doc) } catch (e) {
       /*  ⚠️ 不要静默。讲解层出错不该把实验台带下去，但**悄悄少一条带子**
           比报错更糟：屏幕上只是"这一步没有解释"，看不出是坏了还是本来就没写。
@@ -445,7 +488,7 @@ export default function App() {
       console.error(`[讲解] ${exp.id} 的「本步推演」算不出来：`, e)
       return []
     }
-  }, [exp.id, state, doc])
+  }, [exp.id, state, doc, started])
 
   /** 关键步多留一拍；平时快一点，4 秒里塞得下更多变化 */
   const stepMs = show.tour ? (keySteps.has(clamped) ? 1500 : 560) : 800
@@ -460,7 +503,7 @@ export default function App() {
 
   function selectExp(id: string) {
     const e = EXPERIMENTS.find(x => x.id === id)!
-    setExpId(id); setTab(e.tabs[0].id); setIndex(0); setPlaying(false); setProblemId(null)
+    setExpId(id); setTab(e.tabs[0].id); setIndex(ZERO_STEP); setPlaying(false); setProblemId(null)
     setSeqText(t => ({ ...t, [id]: undefined })); setSeqValues(v => ({ ...v, [id]: undefined }))
     setEntities(e => ({ ...e, [id]: undefined }))
   }
@@ -962,12 +1005,18 @@ export default function App() {
               no={expNo}
               question={GUIDES[exp.id]?.question ?? exp.subtitle}
               parts={whyParts}
-              tone={state ? exp.tone(state) : null}
+              /*  第 0 步：导览主体换成大白话开场（用户 2026-09-07:「所有实验都可以添加
+                  一些通俗易懂的解释」）。没写 plain 的实验退回原样，不会空着一块。 */
+              plain={!started ? GUIDES[exp.id]?.plain ?? null : null}
+              tone={state && started ? exp.tone(state) : null}
               verdict={briefRec.tried ? verdict : null}
               tasks={brief.tasks}
               index={clamped}
               total={Math.max(1, trace.length)}
-              where={exp.tickLabel && state ? exp.tickLabel(state, clamped) : `第 ${clamped + 1} 步`}
+              /*  第 0 步不走 tickLabel —— 那个回调是照着轨迹帧写的（「0x10 · 命中」这类），
+                  拿初始态去问它，答出来的是一句似是而非的读数。这一帧只该说「还没开始」。 */
+              where={!started ? '第 0 步 · 还没开始'
+                : exp.tickLabel && state ? exp.tickLabel(state, clamped) : `第 ${clamped + 1} 步`}
               stage={state
                 ? <FitBox min={0.5} max={1.2}>
                     <exp.Stage doc={doc} trace={trace} index={clamped} state={state} tab={exp.tabs[0].id} onNavExp={navToExpById} />
@@ -985,7 +1034,7 @@ export default function App() {
                   </button>
                 )
               })}
-              onPrev={() => seek(Math.max(0, clamped - 1))}
+              onPrev={() => seek(Math.max(zero ? ZERO_STEP : 0, clamped - 1))}
               onNext={() => seek(Math.min(trace.length - 1, clamped + 1))}
               onClose={() => { saveBrief({ tried: true }); setBriefOpen(false) }}
             />
@@ -1043,8 +1092,15 @@ export default function App() {
                     {!exp.whyInRail && dockNode}
                     {/*  库层是参考页(文字为主、天然很高):不套 FitBox —— FitBox 会把整页缩到取景框里
                          导致字变得极小。让它按自然字号排版、主列自己滚(.col.main 本就 overflow-y:auto)。 */}
-                    <div className={`stagewrap${exp.defaultDoc.kind === 'library' ? ' stagewrap-doc' : ''}`}>
-                      {exp.defaultDoc.kind === 'library'
+                    {/*  第 0 步给舞台位加一个修饰类：起点卡按容器**绝对填满**、内容多了自己滚。
+                         不这么做的话卡片会比这一格高，溢出去**压住下面的走带** ——
+                         ▶ 按钮点不着（冒烟报「.startframe 拦截了指针事件」，等满 30 秒才抛）。 */}
+                    <div className={`stagewrap${exp.defaultDoc.kind === 'library' ? ' stagewrap-doc' : ''}${!started && trace.length > 1 ? ' stagewrap-zero' : ''}`}>
+                      {/*  第 0 步不画舞台 —— 舞台是照着轨迹帧写的，喂初始态会把占位零值
+                           当结论画出来（「当前地址 0x0 → 缺失」、命中率 NaN%）。见 StartFrame。 */}
+                      {!started && trace.length > 1
+                        ? <StartFrame exp={exp} doc={doc} total={trace.length} onStart={() => seek(0)} />
+                        : exp.defaultDoc.kind === 'library'
                         ? <exp.Stage doc={doc} trace={trace} index={clamped} state={state} tab={tab} onNavExp={navToExpById} />
                         : <FitBox>
                             <exp.Stage doc={doc} trace={trace} index={clamped} state={state} tab={tab} onNavExp={navToExpById} />
@@ -1114,7 +1170,9 @@ export default function App() {
                       emptyNote={exp.paramsNote}
                       dirty={Object.keys(overrides[exp.id] ?? {}).length > 0}
                       onReset={() => setOverrides(o => ({ ...o, [exp.id]: {} }))} />}
-          {state && <Readouts items={exp.readouts(state, doc, clamped)} />}
+          {/*  第 0 步一个数都还没产生：Cache 的命中率此刻是 0/0 = NaN%。
+               摆一栏 NaN 比空着糟得多，直接不渲染读数栏。 */}
+          {state && started && <Readouts items={exp.readouts(state, doc, clamped)} />}
         </div>
       </div>}
 
@@ -1167,13 +1225,20 @@ export default function App() {
         </div>
       </div>
     )}
-    <GuideOverlay
+    {/*  第 0 步整个不挂讲解浮层。这些卡是往**活舞台**上打锚点的（`.bitrow`、`.gantt` 这类选择器），
+         而第 0 步舞台位置上摆的是起点卡 —— 锚点会整套落空，表现是"翻到那一页屏幕上没反应"，
+         不报错、不红字，光看看不出来。第 0 步该读的是导览里那段大白话。
+
+         ⚠️ 第一版是传 `cards={[]}` 让它自己 return null。看着一样，其实不同：
+         组件还挂着，内部的「当前第几页」不会重置，卡片列表一空一满之间它就乱了
+         （冒烟当场报「浮层停在 参考，应回到第 1 页」）。整个卸载才干净。 */}
+    {started && <GuideOverlay
       cards={guideCards}
       title={exp.title}
       closedRef={guideOff}
       onRequestClose={() => setGuideOff(true)}
       onReopen={() => setGuideOff(false)}
-    />
+    />}
     <TipLayer />
     <ChromeFooter />
     </>

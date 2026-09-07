@@ -93,6 +93,7 @@ function Passes({ trace, index, input, word }: {
   trace: SortState[]; index: number; input: number[]; word: PassWord
 }) {
   const ends = trace.filter(s => s.passEnd)
+  //  第 0 步「还没开始」时取不到（下面用的是 `cur?.i`，未定义即全判成 future，正是想要的）
   const cur = trace[index]
   return (
     <div className="card">

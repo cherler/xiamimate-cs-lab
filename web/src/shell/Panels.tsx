@@ -17,8 +17,10 @@ export function StepLog({
    * 但**走完一整遍之后就全列** —— 那时是重播，结果你已经看过，
    * 再藏起来只会让"点日志跳到那一步"变成只能往回跳。
    */
-  const [seen, setSeen] = useState(0)
-  useEffect(() => { setSeen(0) }, [trace])
+  /*  初值是 −1 而不是 0：第 0 步「还没开始」时，日志一行都不该列
+      （列出第 1 步就等于把还没走的那一步的结果先抄出来了）。 */
+  const [seen, setSeen] = useState(-1)
+  useEffect(() => { setSeen(-1) }, [trace])
   useEffect(() => { setSeen(v => Math.max(v, index)) }, [index])
   const upto = replay ? trace.length - 1 : seen
   const ref = useRef<HTMLLIElement | null>(null)

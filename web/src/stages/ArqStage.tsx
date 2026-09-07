@@ -6,7 +6,7 @@ export function ArqStage({ doc, trace, index, state, tab }: StageProps<ArqState>
   const total = doc.params.totalFrames as number
   const W = doc.params.protocol === 'SW' ? 1 : (doc.params.windowSize as number)
   if (tab === 'window') return <Window state={state} total={total} W={W} proto={String(doc.params.protocol)} />
-  return <Spacetime trace={trace} index={index} delay={doc.params.delay as number} total={total} proto={String(doc.params.protocol)} />
+  return <Spacetime trace={trace} index={index} state={state} delay={doc.params.delay as number} total={total} proto={String(doc.params.protocol)} />
 }
 
 /**
@@ -14,10 +14,11 @@ export function ArqStage({ doc, trace, index, state, tab }: StageProps<ArqState>
  * 左边一条发送方时间线，右边一条接收方时间线，中间是斜的报文箭头。
  * 丢失的报文画成半路断掉的虚线。
  */
-function Spacetime({ trace, index, delay, total, proto }: { trace: ArqState[]; index: number; delay: number; total: number; proto: string }) {
+function Spacetime({ trace, index, state, delay, total, proto }: { trace: ArqState[]; index: number; state: ArqState; delay: number; total: number; proto: string }) {
   const rows = trace.length
   const yOf = (t: number) => (t / Math.max(1, rows)) * 100
-  const cur = trace[index]
+  //  第 0 步「还没开始」时 index 是 −1，轨迹里取不到 —— 用初始态兜底(App 传的就是它)
+  const cur = trace[index] ?? state
   const retx = Math.max(0, cur.transmissions - total)
 
   /** 从轨迹里还原每一次传输：发出时隙 → 到达（或丢失）时隙 */

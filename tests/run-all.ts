@@ -29,6 +29,7 @@ const SUITES = [
   ['图标一致性(同名同图标)', 'icons.test.ts'],
   ['「看懂这一屏」覆盖率(欠账不许变多)', 'guide-coverage.test.ts'],
   ['AI 学伴题型纪律(不许全是计数题)', 'fact-genre.test.ts'],
+  ['导览大白话纪律(通俗解释的写法)', 'plain-language.test.ts'],
   ['AI 学伴提示词纪律(出题工艺规则还在)', 'prompt-rules.test.ts'],
   ['实验单的内容规则', 'brief-content.test.ts'],
   ['实物渲染层的边界', 'render-only.test.ts'],

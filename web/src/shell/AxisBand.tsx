@@ -34,9 +34,9 @@ export function AxisBand({ exp, trace, index, doc, replay, playing, stepMs = 800
    *
    * 记的是**最远**不是当前：看过一眼再藏回去是耍人，而且拖轴时整条带子会闪。
    */
-  const [seen, setSeen] = useState(0)
+  const [seen, setSeen] = useState(-1)
   //  换配置 = 另一条轨迹，结果全变了，重新藏起来
-  useEffect(() => { setSeen(0) }, [trace])
+  useEffect(() => { setSeen(-1) }, [trace])
   useEffect(() => { setSeen(v => Math.max(v, index)) }, [index])
   const strip = useRef<HTMLDivElement>(null)
   const down = useRef<{ x: number; id: number; drag: boolean } | null>(null)
@@ -46,7 +46,8 @@ export function AxisBand({ exp, trace, index, doc, replay, playing, stepMs = 800
     if (!el || N < 2) return
     const r = el.getBoundingClientRect()
     const f = (clientX - r.left) / Math.max(1, r.width)
-    onSeek(Math.max(0, Math.min(N - 1, Math.round(f * (N - 1)))))
+    //  带子上现在是 N+1 格（最左那格是第 0 步「还没开始」），所以按 N 等分、再减一
+    onSeek(Math.max(-1, Math.min(N - 1, Math.round(f * N) - 1)))
   }
 
   useEffect(() => {
@@ -67,7 +68,7 @@ export function AxisBand({ exp, trace, index, doc, replay, playing, stepMs = 800
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement) return
-      if (e.key === 'ArrowLeft') onSeek(Math.max(0, index - 1))
+      if (e.key === 'ArrowLeft') onSeek(Math.max(-1, index - 1))
       if (e.key === 'ArrowRight') onSeek(Math.min(N - 1, index + 1))
     }
     window.addEventListener('keydown', h)
@@ -88,8 +89,8 @@ export function AxisBand({ exp, trace, index, doc, replay, playing, stepMs = 800
      */
     <div className="axis">
       <div className="ctl">
-        <button className="step" onClick={() => onSeek(Math.max(0, index - 1))}
-                disabled={index === 0} aria-label="上一步">◀</button>
+        <button className="step" onClick={() => onSeek(Math.max(-1, index - 1))}
+                disabled={index <= -1} aria-label="上一步">◀</button>
         <button className="play" onClick={onTogglePlay}>{playing ? '❚❚ 暂停' : '▶ 播放'}</button>
         <button className="step" onClick={() => onSeek(Math.min(N - 1, index + 1))}
                 disabled={index === N - 1} aria-label="下一步">▶</button>
@@ -118,6 +119,24 @@ export function AxisBand({ exp, trace, index, doc, replay, playing, stepMs = 800
            }}
            onPointerUp={() => { down.current = null }}
            onPointerCancel={() => { down.current = null }}>
+        {/*
+          最左边这一格是**第 0 步「还没开始」** —— 引擎还没走任何一步，
+          舞台上是初始态：空的缓存、原始的数组、lo/hi 的初值。
+          它不进轨迹（内核契约里 `initial()` 明写「本身不进轨迹」），
+          所以这里是单独一格，不参与 `trace.map`，也没有色调和柱高可画。
+
+          ⚠️ 类名是 `tick0` 而**不是** `tick` —— 多个 smoke 脚本按
+          `.tick >> nth=k` 把第 k 格当轨迹第 k 帧用（还有 `querySelectorAll('.tick').length`
+          当步数）。让这一格也叫 `.tick`，那些下标会**静默错位一步**：脚本照样绿，
+          量的却是另一步。这类「不报错的错值」在这个仓库里栽过好几次了。
+        */}
+        <button
+          className={`tick0 ${index <= -1 ? 'cur' : ''}`}
+          onClick={() => onSeek(-1)}
+          title="第 0 步 · 还没开始 —— 引擎还没走第 1 步，这是初始状态"
+          aria-label="跳到第 0 步（还没开始）"
+          aria-current={index <= -1}
+        ><span className="no">0</span></button>
         {trace.map((s, i) => {
           const tone = exp.tone(s)
           const walked = replay || i <= seen
@@ -154,11 +173,11 @@ export function AxisBand({ exp, trace, index, doc, replay, playing, stepMs = 800
 
       {/*  `.head` 这个名字留着：两处判据从它里面读「第 x 步」 */}
       <div className="head">
-        <span className="cur">第 {index + 1} 步 / 共 {N} 步</span>
+        <span className="cur">{index < 0 ? `第 0 步 · 还没开始 / 共 ${N} 步` : `第 ${index + 1} 步 / 共 ${N} 步`}</span>
         {/*  一条细进度线（概念图上格子底下就有一条）。
              格子已经说清"走到第几格"，这条线说的是**整条走完了多大一截** ——
              12 格时两者差不多，40 格时格子太密，线才读得出来。 */}
-        <i className="prog" aria-hidden><b style={{ width: `${((index + 1) / N) * 100}%` }} /></i>
+        <i className="prog" aria-hidden><b style={{ width: `${(Math.max(0, index + 1) / N) * 100}%` }} /></i>
       </div>
     </div>
   )
