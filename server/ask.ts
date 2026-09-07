@@ -8,7 +8,8 @@
  * 与 NotebookLM 的「闭卷 RAG」同形：只答给定源。差别是我们的「源」不是用户上传的文档，
  * 而是**引擎当场算出的运行轨迹** —— 比任何文档都更硬。
  */
-import { getEntry, traceOf, type CatalogEntry } from './catalog.ts'
+import { getEntry, traceOf, genreOf, type CatalogEntry } from './catalog.ts'
+import { servableFacts, askWithData } from './quiz.ts'
 import { generate, type Principal } from './llm.ts'
 
 export type AskResult = {
@@ -19,10 +20,17 @@ export type AskResult = {
   billing: { metered: boolean; credits: number; tokens: number; note: string }
 }
 
-// 常见疑问:直接用每个 fact 自带的"这在考什么"当可点问题——用户不用打字,点一个就问。
+/*  常见疑问:直接用每个 fact 自带的"这在考什么"当可点问题——用户不用打字,点一个就问。
+    ⚠️ 走 servableFacts 过一道:和出题用同一条纪律。以前这里直接铺 entry.facts,于是
+    「把这个数组快速排序完成,一共比较了多少次?」也会被端上来当可点问题 —— 面板里根本没有
+    那个数组,点了也是白点。原理题优先排在前面。 */
 export function suggestQuestions(expId: string): { factId: string; ask: string }[] {
   const entry = getEntry(expId)
-  return entry ? entry.facts.map(f => ({ factId: f.id, ask: f.ask })) : []
+  if (!entry) return []
+  const t = traceOf(entry) as Record<string, unknown>[]
+  const fs = servableFacts(entry, t)
+  return [...fs.filter(f => genreOf(f, t) === 'concept'), ...fs.filter(f => genreOf(f, t) !== 'concept')]
+    .map(f => ({ factId: f.id, ask: askWithData(entry, f, t) }))
 }
 
 // 把 trace 摊成「第i步：log」文本。给了 step 就聚焦它附近 ±3 帧，否则给全程（本仓 trace 都很短）。

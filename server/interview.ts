@@ -10,6 +10,7 @@
  */
 import { getEntry, traceOf, type CatalogEntry } from './catalog.ts'
 import { generate, type Principal } from './llm.ts'
+import { servableFacts } from './quiz.ts'
 
 export type Turn = { role: 'interviewer' | 'candidate'; text: string }
 
@@ -25,7 +26,7 @@ const MAX_ROUNDS = 3     // 学生答满 3 轮后进入总评
 
 function keyPoints(entry: CatalogEntry): string {
   const t = traceOf(entry)
-  return entry.facts.map(f => {
+  return servableFacts(entry, traceOf(entry) as Record<string, unknown>[]).map(f => {
     try { return `- ${f.label}：${f.compute(t as never).answer}` } catch { return `- ${f.label}` }
   }).join('\n')
 }

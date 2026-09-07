@@ -26,6 +26,9 @@ function trackTitleOf(expId: string): string {
 
 type Question = {
   factId: string; question: string; options: string[]; correctIndex: number
+  /** 原理题还是计数题 —— 标出来,读的人一眼知道这道题在考理解还是在考跟着跑一遍。
+   *  服务端旧版本没有这个字段,所以是可选的。 */
+  genre?: 'concept' | 'count'
   explanation: string; provenance: { engineAnswer: string; phrasedBy: 'llm' | 'fallback'; sourceStep?: number; evidence?: string }
 }
 type Card = { front: string; back: string; source: 'engine' | 'llm' }
@@ -171,7 +174,10 @@ function QuizView({ expId, onCite, onFactAnswer, drillFactId, onDrillConsumed }:
         const answered = chosen != null
         return (
           <div key={qi} className="aic-q">
-            <p className="aic-qtext">{qi + 1}. {q.question}</p>
+            <p className="aic-qtext">
+              {qi + 1}. {q.question}
+              {q.genre && <span className="aic-genre">{q.genre === 'concept' ? '原理' : '算一遍'}</span>}
+            </p>
             <div className="aic-opts">
               {q.options.map((opt, oi) => {
                 let cls = 'aic-opt'

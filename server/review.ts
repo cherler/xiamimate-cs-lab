@@ -9,6 +9,7 @@
  * 事实卡是我们独有的：闪卡的答案本身由验题机钉死，背错了都能当场对峙。
  */
 import { getEntry, traceOf, type CatalogEntry } from './catalog.ts'
+import { servableFacts, askWithData } from './quiz.ts'
 import { generate, type Principal } from './llm.ts'
 
 export type Card = { front: string; back: string; source: 'engine' | 'llm' }
@@ -26,12 +27,14 @@ function traceText(entry: CatalogEntry): string {
   return t.map((f, i) => `第${i}步：${String(f.log ?? '')}`).join('\n')
 }
 
-// 钉死事实卡：正面=fact.ask，背面=引擎答案 + 出处。
+/*  钉死事实卡：正面=fact.ask，背面=引擎答案 + 出处。
+    和出题走同一条纪律(servableFacts)：摘不出数据的计数题不做成卡片 ——
+    「这个数组一共比较了多少次」印在卡片正面，翻过来看到一个数字，背了也没用。 */
 function factCards(entry: CatalogEntry): Card[] {
   const t = traceOf(entry) as Record<string, unknown>[]
-  return entry.facts.map(f => {
+  return servableFacts(entry, t).map(f => {
     const { answer, evidence } = f.compute(t)
-    return { front: f.ask, back: `${answer}\n\n（引擎依据：${evidence.slice(0, 120)}）`, source: 'engine' as const }
+    return { front: askWithData(entry, f, t), back: `${answer}\n\n（引擎依据：${evidence.slice(0, 120)}）`, source: 'engine' as const }
   })
 }
 

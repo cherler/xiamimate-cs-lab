@@ -178,11 +178,33 @@ import { DS_CLASSIC_ENTRIES } from './catalog/ds-classic.ts'
 import { ML_ENTRIES } from './catalog/ml.ts'
 import { DL_STATS_ENTRIES } from './catalog/dl-stats.ts'
 import { SYS408_ENTRIES } from './catalog/sys408.ts'
+import { CONCEPT_FACTS } from './catalog/concepts.ts'
 // 数值题通用干扰项：与分片共用同一份（整数 ±1/±2、小数按精度相对扰动、负答案允许负干扰项）。
 import { numDistractors } from './catalog-shared.ts'
 
 // trace 的一帧就是内核的可见状态；出题只读字段，用宽松类型即可。
 type Frame = Record<string, unknown>
+
+/**
+ * 一条事实是「计数」还是「原理」。
+ *
+ * ⚠️ 这个字段是被用户骂出来的,起因值得写在这儿:
+ * 最早那批实验的 fact 全是 `compute: t => last(t).comparisons` 这种 —— 从**这一次运行**的
+ * trace 上读一个计数器。于是四个功能(出题/答疑/复习/面试)全都在问「比了几次、移动了几次」,
+ * 而它们又都吃同一份 facts,所以一起烂。用户的原话:「这种肤浅的实操问题有什么意义?肯定是问
+ * 理论知识啊……AI 学伴的底层逻辑就错了。」
+ *
+ * 根因不是「焊死引擎」这个机制错了 —— 引擎钉答案、大模型只改写,这条挡住了模型胡编,要留。
+ * 错的是**「可核算事实」被实现成了「trace 上的一个计数器」**:口径一窄,题目就只能问计数。
+ * 引擎能钉死的远不止计数:一条原理、一个不变量、一个「换成别的会怎样」,引擎照样能给出处、
+ * 照样能验证。所以现在把两类分开,并且立一条纪律(见 tests/fact-genre.test.ts):
+ *   **没有哪个实验可以全是计数题。**
+ */
+export type FactGenre =
+  /** 原理 / 不变量 / 权衡 / 适用条件 —— 答案是一句话,脱离这一次运行也成立。 */
+  | 'concept'
+  /** 这一次运行里的某个数(比较次数、下标、某步的值)。⚠️ 题面必须自带那组数据,否则无从答起。 */
+  | 'count'
 
 export type Fact = {
   id: string
@@ -191,10 +213,21 @@ export type Fact = {
   /** 保底题面：大模型不可用时直接用它，保证功能不依赖模型也能出题。 */
   ask: string
   kind: 'number' | 'choice'
+  /**
+   * 这条事实属于哪一类。不写的话按答案长短推断(短 = 计数),推断只是为了兼容存量,
+   * 新写的 fact 一律显式声明。
+   */
+  genre?: FactGenre
   /** 从引擎 trace 算出钉死答案 + 出处（第几帧 + 该帧证据文字）。 */
   compute: (trace: Frame[]) => { answer: string; step: number; evidence: string }
   /** 生成干扰项（错误选项）。数值题按扰动，选择题按同类其它取值。 */
   distractors: (answer: string, trace: Frame[]) => string[]
+}
+
+/** 一条 fact 到底是哪一类:优先看声明,没声明就按答案长短兜底(存量有 800 多条,不可能全标一遍)。 */
+export function genreOf(f: Fact, trace: Frame[]): FactGenre {
+  if (f.genre) return f.genre
+  try { return f.compute(trace).answer.length <= 12 ? 'count' : 'concept' } catch { return 'count' }
 }
 
 export type CatalogEntry = {
@@ -4068,6 +4101,16 @@ export const CATALOG: CatalogEntry[] = [
   ...DL_STATS_ENTRIES,
   ...SYS408_ENTRIES,
 ]
+
+/*  把原理题补丁包挂上去（server/catalog/concepts.ts）。
+    那 75 个最早的实验只有计数题，用户看到的就是连着三道「比了几次 / 移了几次」。
+    补丁不改原条目，只往它们的 facts 后面追加 —— 合并点就这一处，好 review 也好回退。
+    ⚠️ 键写错了会静默什么都不做，所以 tests/fact-genre.test.ts 里有一条判据盯着
+    「补丁包里的每个 id 都对得上一个真实验」。 */
+for (const [id, extra] of Object.entries(CONCEPT_FACTS)) {
+  const e = CATALOG.find(x => x.id === id)
+  if (e) e.facts = [...e.facts, ...extra]
+}
 
 const BY_ID = new Map(CATALOG.map(e => [e.id, e]))
 

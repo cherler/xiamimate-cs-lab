@@ -28,6 +28,7 @@ const SUITES = [
   ['讲解层的内容规则', 'guide-content.test.ts'],
   ['图标一致性(同名同图标)', 'icons.test.ts'],
   ['「看懂这一屏」覆盖率(欠账不许变多)', 'guide-coverage.test.ts'],
+  ['AI 学伴题型纪律(不许全是计数题)', 'fact-genre.test.ts'],
   ['实验单的内容规则', 'brief-content.test.ts'],
   ['实物渲染层的边界', 'render-only.test.ts'],
   ['CSS 令牌都有定义', 'css-tokens.test.ts'],

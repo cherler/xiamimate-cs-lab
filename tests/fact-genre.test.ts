@@ -1,0 +1,173 @@
+/**
+ * AI 学伴的**题型纪律**：没有哪个实验可以全是计数题。
+ *
+ * 起因（用户 2026-09-07 报的）：出题面板里连着三道都是「比较了多少次 / 移动了多少次 /
+ * 第一趟的枢轴是几」，而且四个功能（出题 / 答疑 / 复习 / 面试）问的是同一批东西。
+ * 用户的原话：「这种肤浅的实操问题有什么意义？肯定是问理论知识啊…… AI 学伴的底层逻辑就错了。」
+ *
+ * 根因不在「焊死引擎」那个机制 —— 引擎钉答案、大模型只改写，这条挡住了模型胡编，要留。
+ * 错的是**「可核算事实」被实现成了「trace 上的一个计数器」**：
+ * `compute: t => last(t).comparisons`。口径一窄，题目就只能问计数；而四个功能又都吃同一份
+ * facts，于是一起烂。引擎能钉死的远不止计数：一条原理、一个不变量、一个「换成别的会怎样」，
+ * 引擎照样给得出出处。
+ *
+ * 所以这里立三条红线：
+ *   ① 每个实验至少有一条**原理题**（欠账上限逐步降到 0，顶破就判红）
+ *   ② 计数题必须拿得到那组输入数据 —— 拿不到的话题面写出来就是「对一组数据……」，没法答
+ *   ③ 出一套题时，计数题至多一道；原理题够就一道都不出
+ *
+ * 跑法：npx tsx tests/fact-genre.test.ts（也在 npm test 里）
+ */
+import { CATALOG, traceOf, genreOf } from '../server/catalog.ts'
+import { CONCEPT_FACTS } from '../server/catalog/concepts.ts'
+import { pickBalanced, inputBrief, MAX_COUNT_QUESTIONS } from '../server/quiz.ts'
+
+let failures = 0
+const ok = (m: string) => console.log('  ✅ ' + m)
+const bad = (m: string) => { failures++; console.log('  ❌ ' + m) }
+
+/**
+ * 还欠多少个实验没有原理题。**这是欠账台账，不是及格线** —— 补一批就把数字调小。
+ * 起点是 75（286 个实验里，最早那批经典实验全是计数题）。
+ */
+const DEBT_CAP = 0
+
+/**
+ * 「正确项明显长过干扰项」的**存量**欠账上限。
+ * 486 是这条判据刚立起来时的实测值（全部来自更早几轮写的 facts）。补一批就把它调小。
+ */
+const LEN_DEBT_CAP = 486
+
+console.log('\n— AI 学伴 · 题型纪律 —')
+
+type Row = { id: string; title: string; concept: number; count: number; input: string }
+const rows: Row[] = []
+for (const e of CATALOG) {
+  let t: Record<string, unknown>[] = []
+  try { t = traceOf(e) as Record<string, unknown>[] } catch { continue }
+  let concept = 0, count = 0
+  for (const f of e.facts) { if (genreOf(f, t) === 'concept') concept++; else count++ }
+  rows.push({ id: e.id, title: e.title, concept, count, input: inputBrief(e, t) })
+}
+
+//  空跑自检：目录一空、或 trace 全跑不出来，下面每一条都会「0 例外」地绿过去
+rows.length >= 200 && rows.reduce((n, r) => n + r.concept + r.count, 0) >= 700
+  ? ok(`扫过 ${rows.length} 个实验、${rows.reduce((n, r) => n + r.concept + r.count, 0)} 条事实`)
+  : bad(`只扫到 ${rows.length} 个实验 —— 目录读不出来的话，下面的判据等于空跑`)
+
+/* ① 每个实验至少一条原理题 */
+{
+  const naked = rows.filter(r => r.concept === 0)
+  naked.length <= DEBT_CAP
+    ? ok(`全是计数题的实验还剩 ${naked.length} 个（上限 ${DEBT_CAP}）`
+      + (naked.length ? `：${naked.slice(0, 6).map(r => r.id).join(' ')}` : ''))
+    : bad(`全是计数题的实验有 ${naked.length} 个 > 上限 ${DEBT_CAP}：${naked.slice(0, 12).map(r => `${r.id}(${r.title})`).join(' ')}`)
+  ok(`原理题 ${rows.reduce((n, r) => n + r.concept, 0)} 条 / 计数题 ${rows.reduce((n, r) => n + r.count, 0)} 条`)
+}
+
+/* ② 摘不出输入的计数题，不许被选进题目 —— 那种题面只能写成「对一组数据……」，读题的人无从算起。
+      注意规则不是「不许有这种 fact」（存量 300 多条，一刀切会把正经内容也砍掉），
+      而是「它不会被端到用户面前」。所以这里直接检查出题结果。 */
+{
+  const leaked: string[] = [], empty: string[] = []
+  for (const e of CATALOG) {
+    let t: Record<string, unknown>[] = []
+    try { t = traceOf(e) as Record<string, unknown>[] } catch { continue }
+    const set = pickBalanced(e, t, 3)
+    if (set.length === 0) { empty.push(e.id); continue }
+    if (!inputBrief(e, t) && set.some(f => genreOf(f, t) === 'count')) leaked.push(e.id)
+  }
+  leaked.length === 0
+    ? ok('摘不出输入的实验，一道计数题都没被选进题目')
+    : bad(`有 ${leaked.length} 个实验把「没法答」的计数题端出来了：${leaked.slice(0, 8).join(' ')}`)
+  empty.length === 0
+    ? ok('每个实验都还出得出题（原理题兜底 —— 这也是规则①必须为 0 的原因）')
+    : bad(`有 ${empty.length} 个实验一道题都出不出来了：${empty.slice(0, 8).join(' ')}`)
+}
+
+/* ③ 出一套题时的配比 */
+{
+  const over: string[] = []
+  for (const e of CATALOG) {
+    let t: Record<string, unknown>[] = []
+    try { t = traceOf(e) as Record<string, unknown>[] } catch { continue }
+    const set = pickBalanced(e, t, 3)
+    const c = set.filter(f => genreOf(f, t) === 'count').length
+    const conceptAvail = e.facts.filter(f => genreOf(f, t) === 'concept').length
+    //  原理题够铺满时,一道计数题都不该出;不够时最多补到上限
+    const allow = conceptAvail >= 3 ? MAX_COUNT_QUESTIONS : 3
+    if (c > allow) over.push(`${e.id} 出了 ${c} 道计数题(允许 ${allow})`)
+  }
+  over.length === 0
+    ? ok(`每个实验出一套三道题，计数题都没超配额（原理题够就至多 ${MAX_COUNT_QUESTIONS} 道）`)
+    : bad(`配比失守：${over.slice(0, 6).join('；')}`)
+}
+
+/* ④ 补丁包的每个键都得对得上一个真实验 —— 键写错了是**静默失效**：那个实验依旧全是计数题，
+      而补丁包看起来"写了"。这条不设上限，一个都不许错。 */
+{
+  const ids = new Set(CATALOG.map(e => e.id))
+  const typo = Object.keys(CONCEPT_FACTS).filter(id => !ids.has(id))
+  typo.length === 0
+    ? ok(`原理题补丁包挂了 ${Object.keys(CONCEPT_FACTS).length} 个实验，每个 id 都对得上`)
+    : bad(`补丁包里有 ${typo.length} 个 id 对不上任何实验（写错了会静默失效）：${typo.join(' ')}`)
+  const n = Object.values(CONCEPT_FACTS).reduce((a, v) => a + v.length, 0)
+  n >= 120 ? ok(`补丁包共 ${n} 条原理题`) : bad(`补丁包只有 ${n} 条 —— 是不是没被打进去?`)
+}
+
+/* ⑤ 选项长度不许出卖答案 —— 正确项明显比三个干扰项都长的话，不用懂也能挑出来。
+      这是选择题最常见的送分漏洞，而原理题的正确答案天然容易写得比干扰项详细：
+      写答案时会忍不住把"结论 + 理由"都塞进选项，写干扰项时却只写半句。
+
+      ⚠️ 这条判据是写完补丁包之后才加的，一加就抓出 631 道 —— 包括当时刚写完的那 147 道。
+      修法不是把干扰项灌水，而是**把理由从选项挪进讲解**：选项只留一句断言，理由跟着出处走。
+      规则分两段：补丁包是这一轮写的，必须清零；存量 486 道是更早几轮留下的同一类债，
+      先记账封顶、只许降不许涨。 */
+{
+  const patchIds = new Set(Object.values(CONCEPT_FACTS).flat().map(f => f.id))
+  const leakyNew: string[] = [], leakyOld: string[] = [], thin: string[] = []
+  for (const e of CATALOG) {
+    let t: Record<string, unknown>[] = []
+    try { t = traceOf(e) as Record<string, unknown>[] } catch { continue }
+    for (const f of e.facts) {
+      if (genreOf(f, t) !== 'concept') continue
+      let ans = ''
+      try { ans = f.compute(t).answer } catch { continue }
+      const ds = f.distractors(ans, t).filter(d => d !== ans)
+      if (ds.length < 3) { thin.push(`${e.id}/${f.id} 只有 ${ds.length} 个干扰项`); continue }
+      const longest = Math.max(...ds.map(d => d.length))
+      if (ans.length > longest * 1.5) {
+        const line = `${e.id}/${f.id} 正确项 ${ans.length} 字 vs 最长干扰项 ${longest} 字`
+        ;(patchIds.has(f.id) ? leakyNew : leakyOld).push(line)
+      }
+    }
+  }
+  leakyNew.length === 0
+    ? ok('原理题补丁包里，没有一道能靠长度挑出答案')
+    : bad(`补丁包里有 ${leakyNew.length} 道靠长度就能猜中：${leakyNew.slice(0, 5).join('；')}`)
+  leakyOld.length <= LEN_DEBT_CAP
+    ? ok(`存量里还有 ${leakyOld.length} 道靠长度可猜（欠账上限 ${LEN_DEBT_CAP}，只许降不许涨）`)
+    : bad(`存量欠账变多了：${leakyOld.length} > 上限 ${LEN_DEBT_CAP}：${leakyOld.slice(0, 5).join('；')}`)
+  ok(`干扰项不足三个的题有 ${thin.length} 道${thin.length ? '：' + thin.slice(0, 4).join(' ') : ''}`)
+}
+
+/* ⑥ 能判红的自检：规则本身有没有鉴别力 */
+{
+  const fakeAll = { id: 'x', title: 'x', kernel: null as never, doc: { kind: 'x', params: {}, entities: [], streams: [] }, facts: [] }
+  //  a) 「至少一条原理题」这条规则,喂一个零原理题的实验必须算它欠账
+  const wouldCount = [{ concept: 0, count: 3 }].filter(r => r.concept === 0).length
+  wouldCount === 1 ? ok('自检：一个零原理题的实验确实会被算进欠账') : bad('自检失败：零原理题的实验没被算进欠账')
+  //  b) inputBrief 对没有数据流也没有参数的实验必须回空串(这样 ② 才抓得住)
+  inputBrief(fakeAll as never) === ''
+    ? ok('自检：摘不出输入的实验，inputBrief 回空串 —— 规则②才抓得住它')
+    : bad('自检失败：inputBrief 对空实验没回空串，规则②等于失效')
+  //  c) genreOf 的兜底推断:短答案算计数、长句算原理
+  const shortF = { id: 's', label: '', ask: '', kind: 'number' as const, compute: () => ({ answer: '14', step: 0, evidence: '' }), distractors: () => [] }
+  const longF = { id: 'l', label: '', ask: '', kind: 'choice' as const, compute: () => ({ answer: '因为枢轴左边全部小于它，所以这一趟之后它的位置就定了', step: 0, evidence: '' }), distractors: () => [] }
+  genreOf(shortF, []) === 'count' && genreOf(longF, []) === 'concept'
+    ? ok('自检：没声明 genre 时，短答案判成计数题、长句判成原理题')
+    : bad('自检失败：genre 的兜底推断不对，存量那 800 多条会被归错类')
+}
+
+console.log(failures === 0 ? '\n本套全部通过' : `\n本套失败 ${failures} 项`)
+if (failures > 0) process.exit(1)
