@@ -43,9 +43,10 @@ const LEN_DEBT_CAP = 424
 /**
  * 原理题不足三条的实验数上限。出题面板一次摆三道,这些实验只摆得出一两道。
  * 191 是「计数题不再出成题目」之后的实测值 —— 那一刀把这笔欠账露了出来。
- * 补了 300 多条原理题(concepts.ts + concepts-fill.ts)之后降到 94。
+ * 补完 397 条原理题(concepts.ts + concepts-fill.ts)之后**清零**:286 个实验每一个都摆得满三道。
+ * 这条从此是及格线,不是欠账台账 —— 新增实验时必须自带三条原理题。
  */
-const THIN_DEBT_CAP = 94
+const THIN_DEBT_CAP = 0
 
 /**
  * 现在有几个实验出得了「找错的」题。**下限，只许涨不许跌。**
@@ -143,6 +144,72 @@ rows.length >= 200 && rows.reduce((n, r) => n + r.concept + r.count, 0) >= 700
   const n = Object.values(CONCEPT_FACTS).reduce((a, v) => a + v.length, 0)
     + Object.values(FILL_FACTS).reduce((a, v) => a + v.length, 0)
   n >= 200 ? ok(`两个补丁包共 ${n} 条原理题`) : bad(`补丁包只有 ${n} 条 —— 是不是没被打进去?`)
+
+  /*  ⑤b 补丁包的 fact id 不许和同实验里已有的 id 重名。
+      合并是**追加**（`e.facts = [...e.facts, ...extra]`），重名不会报错，后果是两条同 id 的
+      fact 并排躺在一个实验里，而 ask.ts / quiz 的讲解都按 `facts.find(f => f.id === factId)`
+      取第一条 —— 用户点的是我写的原理题，答疑却拿旧那条（往往是计数题）去找出处。
+
+      这条是第二轮补 facts 时撞出来的，一抓六处：其中四处（hmac/why_nested、
+      compositeindex/leftmost、feed/push_pull、rmsnorm/vs_layernorm）连**题目都是重复的** ——
+      我没读旧 fact 就动手写，等于给同一个知识点出了两遍题。另两处（traverse/visited、
+      xent/perplexity）题不同但 id 撞了，是上一批就混进来的。全部改掉了。
+      根因写在这儿：**动手补题之前先把该实验已有的 fact 列出来看一遍**。 */
+  const dup: string[] = []
+  for (const src of [CONCEPT_FACTS, FILL_FACTS]) {
+    for (const [expId, fs] of Object.entries(src)) {
+      const e = CATALOG.find(x => x.id === expId)
+      if (!e) continue
+      const count = new Map<string, number>()
+      for (const f of e.facts) count.set(f.id, (count.get(f.id) ?? 0) + 1)
+      for (const f of fs) if ((count.get(f.id) ?? 0) > 1) dup.push(`${expId}/${f.id}`)
+    }
+  }
+  dup.length === 0
+    ? ok('补丁包没有和存量重名的 fact id（重名会让答疑取错那一条）')
+    : bad(`补丁包有 ${dup.length} 个 id 和同实验已有的重名：${dup.join('、')} —— 先读旧 fact 再写新题`)
+
+  /*  ⑤c 换个 id 只躲过了上一条，**内容重复**照样是同一道题出两遍。
+      改完重名之后我又扫了一遍答案的字面相似度，还剩六处：merkle/why_tree 和旧 verify_cost、
+      birthday/why_double 和旧 sqrt_n、lrucache/why_doubly 和旧 two_structs、rope/why_relative
+      和旧 relative_position、ep/ep_cost 和旧 ep-tradeoff、btree 那条和旧 rebuild ——
+      答案几乎逐字相同。用户抽到这个实验，三道题里有两道是一个意思。全部换成了别的知识点。
+
+      判法：同实验内两条原理题的**答案**按字符二元组算重合度（除以较短那个的长度，
+      所以「短答案被长答案包住」也算命中），≥0.4 记一对。
+      17 是清完补丁包之后的实测值，全部来自存量（大半是库层那批「这个库是干什么的」
+      和「它覆盖哪些实验」，本来就讲同一件事）。记账封顶、只许降不许涨。
+
+      ⚠️ 试过把**题面**也纳入比较，结果从 17 涨到 181 —— 同一个实验里的题面天然共享主语
+      （「Dijkstra 为什么不能有负权」和「Dijkstra 为什么用堆」），几乎全是假阳性，退回只比答案。
+      代价要说清楚：这条判据抓的是**字面雷同**，抓不住换一套词的同义改写。birthday 那条
+      （「比的是任意一对」写成两句不同的话）就是它漏掉、我照着真实出题结果读出来的 ——
+      判据封的是回归，新写的题还是得自己读一遍。 */
+  const SIM_DEBT_CAP = 17
+  const bigrams = (x: string) => new Set([...x.replace(/[^一-龥A-Za-z0-9]/g, '')].map((c, i, a) => c + (a[i + 1] ?? '')).slice(0, -1))
+  const sim = (x: string, y: string) => {
+    const A = bigrams(x), B = bigrams(y)
+    if (!A.size || !B.size) return 0
+    let hit = 0; for (const g of A) if (B.has(g)) hit++
+    return hit / Math.min(A.size, B.size)
+  }
+  const twinTopics: string[] = []
+  for (const e of CATALOG) {
+    let t: Record<string, unknown>[] = []
+    try { t = traceOf(e) as Record<string, unknown>[] } catch { continue }
+    const cs = e.facts.filter(f => genreOf(f, t) === 'concept')
+      .map(f => { let a = ''; try { a = f.compute(t as never).answer } catch { /* ignore */ } return { id: f.id, a, ask: f.ask } })
+    for (let i = 0; i < cs.length; i++) for (let j = i + 1; j < cs.length; j++)
+      if (sim(cs[i]!.a, cs[j]!.a) >= 0.4) twinTopics.push(`${e.id}: ${cs[i]!.id} ⇄ ${cs[j]!.id}`)
+  }
+  twinTopics.length <= SIM_DEBT_CAP
+    ? ok(`同一实验里答案雷同的原理题还有 ${twinTopics.length} 对（上限 ${SIM_DEBT_CAP}）—— 抽到就等于同一道题问两遍`)
+    : bad(`答案雷同的原理题涨到 ${twinTopics.length} 对 > 上限 ${SIM_DEBT_CAP}：${twinTopics.slice(0, 6).join('；')}`)
+  //  空跑自检：这条判据靠 sim() 有鉴别力，两句同义的话必须判到 0.4 以上、两句无关的话必须判到之下
+  sim('读也算最近使用，得把这个节点挪到头部', '读也算最近使用，要把该节点移到头部') >= 0.4
+    && sim('读也算最近使用，得把这个节点挪到头部', '训练时加负载均衡损失，推理时设容量上限') < 0.4
+    ? ok('自检：相似度判据分得开「同义改写」和「两个知识点」')
+    : bad('自检失败：sim() 没有鉴别力，规则⑤c 等于空跑')
 }
 
 /* ⑥ 选项长度不许出卖答案 —— 正确项明显比三个干扰项都长的话，不用懂也能挑出来。
@@ -294,6 +361,13 @@ rows.length >= 200 && rows.reduce((n, r) => n + r.concept + r.count, 0) >= 700
   genreOf(shortF, []) === 'count' && genreOf(longF, []) === 'concept'
     ? ok('自检：没声明 genre 时，短答案判成计数题、长句判成原理题')
     : bad('自检失败：genre 的兜底推断不对，存量那 800 多条会被归错类')
+  //  d) 重名 id 那条规则:拿一个人为造的「同实验里两条 why_fast」喂进去,必须判红
+  const twins = [{ id: 'why_fast' }, { id: 'why_fast' }, { id: 'other' }]
+  const cnt = new Map<string, number>()
+  for (const f of twins) cnt.set(f.id, (cnt.get(f.id) ?? 0) + 1)
+  ;(cnt.get('why_fast') ?? 0) > 1 && (cnt.get('other') ?? 0) === 1
+    ? ok('自检：同实验里两条同 id 的 fact 确实会被规则⑤b 抓住')
+    : bad('自检失败：规则⑤b 抓不住人为造的重名，等于空跑')
 }
 
 console.log(failures === 0 ? '\n本套全部通过' : `\n本套失败 ${failures} 项`)
