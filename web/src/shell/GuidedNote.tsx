@@ -47,7 +47,7 @@ export function GuidedNote({
   parts: WhyPart[]
   /**  第 0 步那一屏的大白话开场。给了就顶掉「本步推演」那三张卡 ——
        第 0 步还没有"本步"，而这里正是先把画面建起来的位置。 */
-  plain?: { hook: string; body: string; watch: string } | null
+  plain?: { hook: string; body: string; what?: string; terms?: string; watch: string } | null
   tone: Tone | null
   /** 已经验证过的那句结论；null = 还没算出来 */
   verdict: Verdict | null
@@ -66,7 +66,11 @@ export function GuidedNote({
   onClose: () => void
 }) {
   return (
-    <section className="gnote" aria-label="引导式实验笔记">
+    /*  第 0 步（有大白话时）把浮层撑到允许的最大高度。
+        平时浮层的高度是被**右栏**「实验操作」撑出来的，左边那列读的内容只能自己滚 ——
+        大白话 + 机制段加起来三四百字，一进来就被裁掉小半截，而滚动条不显眼，
+        看着就像「解释只有这么点」。撑满之后常见屏幕上一次读得完。 */
+    <section className={`gnote${plain ? ' gnote-read' : ''}`} aria-label="引导式实验笔记">
       <header className="gnbar">
         <span className="gnexp">实验 <b>{no}</b> / {title}</span>
         <span className="gnstep">
@@ -96,6 +100,15 @@ export function GuidedNote({
                 而这里没有"本步"，硬塞进去会让人以为已经走过一步了。 */
             <div className="gnplain">
               <p className="gnpb">{rich(plain.body)}</p>
+              {/*  百科段接在大白话后面 —— 打完比方才轮到「这件事本身是怎么回事」。
+                   用户原话：「第 0 步的实验解释，说的内容是不是有点太少了」
+                   「是指这件事（实验）的百科内容」。 */}
+              {plain.what && (
+                <p className="gnph"><b className="gnphk">这一屏讲的是什么</b>{rich(plain.what)}</p>
+              )}
+              {plain.terms && (
+                <p className="gnph"><b className="gnphk">你会看到的这些名词</b>{rich(plain.terms)}</p>
+              )}
               <p className="gnpw"><b>这一屏盯着看什么</b>　{rich(plain.watch)}</p>
             </div>
           ) : (

@@ -1009,7 +1009,10 @@ export default function App() {
                   一些通俗易懂的解释」）。没写 plain 的实验退回原样，不会空着一块。 */
               plain={!started ? GUIDES[exp.id]?.plain ?? null : null}
               tone={state && started ? exp.tone(state) : null}
-              verdict={briefRec.tried ? verdict : null}
+              /*  第 0 步不摆「本次发现」。那条横幅写的是整条轨迹跑完的结论
+                  （「快排比较 13 次、冒泡 27 次」），而这一屏的标题是「还没开始」——
+                  两句话自相矛盾，而且把结论先剧透了。走到第 1 步它自然回来。 */
+              verdict={started && briefRec.tried ? verdict : null}
               tasks={brief.tasks}
               index={clamped}
               total={Math.max(1, trace.length)}

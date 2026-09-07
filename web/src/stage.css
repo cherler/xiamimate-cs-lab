@@ -1765,8 +1765,19 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
   color:var(--dim);font-family:inherit;font-size:var(--t-ui);padding:4px 10px}
 .gnx:hover{color:var(--ink);border-color:var(--faint)}
 
+/*  第 0 步那一屏是**用来读的**。
+    平时浮层高度由右栏「实验操作」撑出来，左边读的那列只能自己滚 —— 三四百字一进来就被裁掉
+    小半截，滚动条又不显眼，看着就像「解释只有这么点」。
+    ⚠️ 光写 `height:44vh` 没用：`.gnote` 是外层 flex 的子项，会被 flex-shrink 压回去
+    （720px 高的屏上实测被压到只剩 72px，比不改还糟）。要连 `flex-shrink:0` 一起写死，
+    并给一个不吃掉整个舞台的下限。 */
+.gnote.gnote-read{height:min(44vh,420px);flex:0 0 auto}
 .gnbody{flex:1 1 auto;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 232px;
-  gap:0;overflow:hidden}
+  gap:0;overflow:hidden;position:relative}
+/*  底部一道渐隐:告诉人「下面还有」。第 0 步那一屏有三段(大白话/讲的是什么/名词),
+    一屏装不下是常态,而 macOS 的滚动条不滚不出现 —— 没有这道渐隐,看着就像话说到一半断了。 */
+.gnote-read .gnbody:after{content:"";position:absolute;left:0;right:232px;bottom:0;height:26px;
+  background:linear-gradient(to bottom,#0000,var(--panel));pointer-events:none}
 /*  纵向排成一列，让「当前状态」吃掉剩余高度 ——
     定高 290px 的那版，笔记下半会空出一大片，而舞台反而缩到看不清。 */
 .gnmain{min-width:0;overflow-y:auto;padding:16px 18px 18px;

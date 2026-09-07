@@ -19,6 +19,7 @@
 import type { SimDocument } from '@engine/core/document.ts'
 import type { AnyExperiment } from '../types.ts'
 import { GUIDES } from '../guide.ts'
+import { rich } from './rich.tsx'
 
 type Props = {
   exp: AnyExperiment
@@ -49,35 +50,57 @@ export function StartFrame({ exp, doc, total, onStart }: Props) {
   const items = stream?.values ?? []
 
   return (
+    /*
+     * ⚠️ 三段式：**头和尾固定，只有中间滚**。
+     *
+     * 第一版是一个 `justify-content:center` 的 flex 列，内容一长就撞上那个经典的坑：
+     * **居中 + 溢出会把两端一起挤出可视区** —— 顶上的标题和底下的「走第 1 步」按钮
+     * 同时消失，而且滚不回来（溢出方向上的那一半在滚动区之外）。
+     * 百科段一进来这张卡就长了两三百字，当场复现。
+     * 所以标题和按钮各自钉死，中间那段自己滚。
+     */
     <div className="startframe">
-      <div className="sfmark" aria-hidden>0</div>
-      {/*  写了大白话的实验，标题就用它那句钩子（一个问题），比「还没开始」更有抓手。
-           **正文不在这儿** —— 大白话正文放在导览里（第 0 步那一屏）。
-           两边都印一遍的话，同一段话上下贴着出现两次，谁都不会读第二遍。 */}
-      <h2>{plain ? plain.hook : '还没开始'}</h2>
-      <p className="sfsub">
-        引擎还没走第 1 步 —— 屏幕上还没有任何结果。这条推演一共 <b>{total}</b> 步（轴：{axis}）。
-        {plain && '　上面的导览里有一段大白话，先读它。'}
-      </p>
+      <div className="sfhead">
+        <div className="sfmark" aria-hidden>0</div>
+        {/*  写了大白话的实验，标题就用它那句钩子（一个问题），比「还没开始」更有抓手。 */}
+        <h2>{plain ? plain.hook : '还没开始'}</h2>
+      </div>
 
-      {items.length > 0 && (
-        <div className="sfrow">
-          <span className="sfk">{stream?.name ?? '输入序列'}</span>
-          <span className="sfv mono">
-            {items.slice(0, 12).map(String).join(' · ')}{items.length > 12 ? ` … 共 ${items.length} 项` : ''}
-          </span>
-        </div>
-      )}
+      <div className="sfscroll">
+        {/*  ⚠️ 这里摆的是**「这一屏讲的是什么」**（`what`），不是大白话正文。
+             第一版只写了一句「上面的导览里有一段大白话，先读它」—— 用户看了说
+             「（这块）也可以把解释说明的原理给加上去」。他说得对：导览是可以关掉的浮层，
+             关掉之后这张卡就是唯一还在场的解释，指望它去引用另一个可能已经不在的东西，
+             等于什么都没说。
+             大白话正文不放这儿是因为它也有两三百字，两段摞起来这张卡就只剩滚动条了。 */}
+        {plain?.what
+          ? <p className="sfsub sfhow">{rich(plain.what)}</p>
+          : <p className="sfsub">引擎还没走第 1 步 —— 屏幕上还没有任何结果。</p>}
+        <p className="sfsub sfmeta">
+          这条推演一共 <b>{total}</b> 步（轴：{axis}）。{plain && '　完整的大白话在上面的导览里。'}
+        </p>
 
-      {params.length > 0 && (
-        <div className="sfrow">
-          <span className="sfk">这次的设置</span>
-          <span className="sfv">{params.map(p => `${p.k} ${p.v}`).join(' · ')}</span>
-        </div>
-      )}
+        {items.length > 0 && (
+          <div className="sfrow">
+            <span className="sfk">{stream?.name ?? '输入序列'}</span>
+            <span className="sfv mono">
+              {items.slice(0, 12).map(String).join(' · ')}{items.length > 12 ? ` … 共 ${items.length} 项` : ''}
+            </span>
+          </div>
+        )}
 
-      <button className="sfgo" onClick={onStart}>▶ 走第 1 步</button>
-      <p className="sfhint">也可以直接拖时间轴，或按 → 键</p>
+        {params.length > 0 && (
+          <div className="sfrow">
+            <span className="sfk">这次的设置</span>
+            <span className="sfv">{params.map(p => `${p.k} ${p.v}`).join(' · ')}</span>
+          </div>
+        )}
+      </div>
+
+      <div className="sffoot">
+        <button className="sfgo" onClick={onStart}>▶ 走第 1 步</button>
+        <p className="sfhint">也可以直接拖时间轴，或按 → 键</p>
+      </div>
     </div>
   )
 }
