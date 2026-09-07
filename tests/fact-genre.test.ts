@@ -39,6 +39,12 @@ const DEBT_CAP = 0
  */
 const LEN_DEBT_CAP = 424
 
+/**
+ * 原理题不足三条的实验数上限。出题面板一次摆三道,这些实验只摆得出一两道。
+ * 191 是「计数题不再出成题目」之后的实测值 —— 那一刀把这笔欠账露了出来。
+ */
+const THIN_DEBT_CAP = 191
+
 console.log('\n— AI 学伴 · 题型纪律 —')
 
 type Row = { id: string; title: string; concept: number; count: number; input: string }
@@ -66,9 +72,10 @@ rows.length >= 200 && rows.reduce((n, r) => n + r.concept + r.count, 0) >= 700
   ok(`原理题 ${rows.reduce((n, r) => n + r.concept, 0)} 条 / 计数题 ${rows.reduce((n, r) => n + r.count, 0)} 条`)
 }
 
-/* ② 摘不出输入的计数题，不许被选进题目 —— 那种题面只能写成「对一组数据……」，读题的人无从算起。
-      注意规则不是「不许有这种 fact」（存量 300 多条，一刀切会把正经内容也砍掉），
-      而是「它不会被端到用户面前」。所以这里直接检查出题结果。 */
+/* ② 计数题不许被端到用户面前。
+      第一版的规则是「摘不出输入数据的计数题不许出」——治标：就算把数组印在题面上，
+      要在 12/13/14/15 里挑一个也得把整趟快排手推一遍，考的是耐心不是理解。
+      现在的规则是**一道都不出**（计数事实留着当答疑/面试的地面真值，只是不做成题目）。 */
 {
   const leaked: string[] = [], empty: string[] = []
   for (const e of CATALOG) {
@@ -95,16 +102,29 @@ rows.length >= 200 && rows.reduce((n, r) => n + r.concept + r.count, 0) >= 700
     const set = pickBalanced(e, t, 3)
     const c = set.filter(f => genreOf(f, t) === 'count').length
     const conceptAvail = e.facts.filter(f => genreOf(f, t) === 'concept').length
-    //  原理题够铺满时,一道计数题都不该出;不够时最多补到上限
-    const allow = conceptAvail >= 3 ? MAX_COUNT_QUESTIONS : 3
+    /*  现在是**一道都不出** —— MAX_COUNT_QUESTIONS = 0。
+        只有「一条原理题都没有」的实验才退回计数题兜底,而规则①卡死了那种实验不存在。 */
+    const allow = conceptAvail > 0 ? MAX_COUNT_QUESTIONS : 3
     if (c > allow) over.push(`${e.id} 出了 ${c} 道计数题(允许 ${allow})`)
   }
   over.length === 0
-    ? ok(`每个实验出一套三道题，计数题都没超配额（原理题够就至多 ${MAX_COUNT_QUESTIONS} 道）`)
+    ? ok(`每个实验出一套三道题，一道计数题都没出（配额 ${MAX_COUNT_QUESTIONS}）`)
     : bad(`配比失守：${over.slice(0, 6).join('；')}`)
 }
 
-/* ④ 补丁包的每个键都得对得上一个真实验 —— 键写错了是**静默失效**：那个实验依旧全是计数题，
+/* ④ 出一套题能出满三道吗 —— 计数题不出之后,这是新露出来的欠账。
+      191 个实验只有一两条原理题,出题面板就只能摆一两道。这不是 bug(总比出一道没法答的强),
+      但确实是内容欠账,记账封顶、只许降不许涨。 */
+{
+  const thin = rows.filter(r => r.concept < 3)
+  thin.length <= THIN_DEBT_CAP
+    ? ok(`原理题不足三条的实验还有 ${thin.length} 个（上限 ${THIN_DEBT_CAP}）—— 它们的出题面板只摆得出一两道`)
+    : bad(`原理题不足三条的实验涨到 ${thin.length} 个 > 上限 ${THIN_DEBT_CAP}：${thin.slice(0, 8).map(r => r.id).join(' ')}`)
+  const one = rows.filter(r => r.concept === 1).length
+  ok(`其中只有一条原理题的 ${one} 个、两条的 ${thin.length - one} 个`)
+}
+
+/* ⑤ 补丁包的每个键都得对得上一个真实验 —— 键写错了是**静默失效**：那个实验依旧全是计数题，
       而补丁包看起来"写了"。这条不设上限，一个都不许错。 */
 {
   const ids = new Set(CATALOG.map(e => e.id))
@@ -116,7 +136,7 @@ rows.length >= 200 && rows.reduce((n, r) => n + r.concept + r.count, 0) >= 700
   n >= 120 ? ok(`补丁包共 ${n} 条原理题`) : bad(`补丁包只有 ${n} 条 —— 是不是没被打进去?`)
 }
 
-/* ⑤ 选项长度不许出卖答案 —— 正确项明显比三个干扰项都长的话，不用懂也能挑出来。
+/* ⑥ 选项长度不许出卖答案 —— 正确项明显比三个干扰项都长的话，不用懂也能挑出来。
       这是选择题最常见的送分漏洞，而原理题的正确答案天然容易写得比干扰项详细：
       写答案时会忍不住把"结论 + 理由"都塞进选项，写干扰项时却只写半句。
 
@@ -152,7 +172,7 @@ rows.length >= 200 && rows.reduce((n, r) => n + r.concept + r.count, 0) >= 700
   ok(`干扰项不足三个的题有 ${thin.length} 道${thin.length ? '：' + thin.slice(0, 4).join(' ') : ''}`)
 }
 
-/* ⑥ 库层那批题的形状 —— 选项不许再是一段说明书。
+/* ⑦ 库层那批题的形状 —— 选项不许再是一段说明书。
       原来「Hugging Face Transformers 是干什么的?」的正确项是 142 字的说明书、干扰项是 7 字标签，
       挑最长的就中、读完也没学到东西。现在短结论上来当选项、说明书下去当出处。 */
 {
@@ -205,7 +225,7 @@ rows.length >= 200 && rows.reduce((n, r) => n + r.concept + r.count, 0) >= 700
     : bad(`有 ${notRole.length} 道的干扰项既不是跨库角色、也不该保留：${notRole.slice(0, 5).join(' ')}`)
 }
 
-/* ⑦ 能判红的自检：规则本身有没有鉴别力 */
+/* ⑧ 能判红的自检：规则本身有没有鉴别力 */
 {
   const fakeAll = { id: 'x', title: 'x', kernel: null as never, doc: { kind: 'x', params: {}, entities: [], streams: [] }, facts: [] }
   //  a) 「至少一条原理题」这条规则,喂一个零原理题的实验必须算它欠账

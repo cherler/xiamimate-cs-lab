@@ -140,13 +140,14 @@ export function askWithData(entry: CatalogEntry, fact: Fact, trace: Record<strin
 export type BuildOptions = { count?: number; useLLM?: boolean; principal?: Principal; factId?: string }
 
 /**
- * 一套题里最多放几道计数题。
+ * 一套题里最多放几道计数题 —— **零**。
  *
- * 不是零 —— 408 真题确实会问「写出第一趟划分结果」「比较了多少次」,那是正经题型。
- * 但它**不该是全部**:一套三道题全在数「比了几次、移了几次」,考的是耐心不是理解。
- * 所以原理题优先,计数题至多一道压阵。
+ * 一开始定的是 1（「408 真题也会问比较次数,留一道压阵」）。看完真实界面才明白这个类比不成立:
+ * 真题给的是完整的数组和一趟一趟的过程,问的是「写出第一趟划分后的序列」这种**看得见过程**的东西;
+ * 我们这儿是四个相邻整数让人在里面挑,不手推一遍根本不可能答。
+ * 保留计数事实做地面真值,但不出成题目。
  */
-export const MAX_COUNT_QUESTIONS = 1
+export const MAX_COUNT_QUESTIONS = 0
 
 export async function buildQuiz(expId: string, opts: BuildOptions = {}): Promise<Question[]> {
   const entry = getEntry(expId)
@@ -178,26 +179,40 @@ export async function buildQuiz(expId: string, opts: BuildOptions = {}): Promise
 }
 
 /**
- * 端给用户的事实(出题 / 答疑的可点问题 / 复习闪卡 / 面试题都走这一关)。
- * 摘不出输入数据的计数题一律滤掉 —— 那种题面写出来就是「对一组数据比较了多少次」,没法答。
+ * 端给用户看的事实(出题 / 答疑的可点问题 / 复习闪卡)。
+ *
+ * **计数题一律不端出去。**
+ *
+ * 这一条是被同一个投诉逼到第二次才改对的,过程值得写下来:
+ * 用户第一次说「这种肤浅的实操问题有什么意义?肯定是问理论知识啊」,我只做到「至多出一道、
+ * 题面必须自带那组数据」—— 治标。第二次他看着题问:「谁特么知道一个数组是啥、怎么划分、
+ * 怎么比较」。他是对的:就算把 [49,38,65,97,76,13,27,49] 印在题面上,要在 12/13/14/15
+ * 里挑一个,你也得拿笔把整趟快排手推一遍。**那考的是耐心,不是理解。**
+ * 四个相邻整数当选项,既推不出来也蒙不对 —— 这种题没有出的价值。
+ *
+ * 计数事实本身**留着**:它们是引擎能重算验证的地面真值,答疑和面试判卷都靠它们
+ * (那两处走 entry.facts 全量,不走这里)。只是不再当题目端给人做。
+ *
+ * 兜底:万一某个实验一条原理题都没有,还是让计数题顶上 —— 总比出不了题强。
+ * 不过 tests/fact-genre.test.ts 卡死了「没有实验可以全是计数题」,所以这条兜底走不到。
  */
 export function servableFacts(entry: CatalogEntry, trace: Record<string, unknown>[]): Fact[] {
-  const statable = inputBrief(entry, trace) !== ''
-  return entry.facts.filter(f => statable || genreOf(f, trace) === 'concept')
+  const concept = entry.facts.filter(f => genreOf(f, trace) === 'concept')
+  if (concept.length > 0) return concept
+  //  没有原理题的实验(判据保证不存在)才退回计数题,而且仍要求题面写得出那组数据
+  return inputBrief(entry, trace) !== '' ? entry.facts : []
 }
 
 /**
- * 挑题:原理题优先铺满,计数题至多留一道压阵。
- * **摘不出输入数据的计数题直接不选** —— 那种题写出来就是「对一组数据比较了多少次」,没法答。
+ * 挑题。**只从 servableFacts 里取** —— 那一关已经把计数题挡在外面了。
+ *
+ * ⚠️ 这里原来是从 entry.facts 直接筛的,还留了一句「概念题不够铺满时拿计数题补位」。
+ * 把上限调成 0 之后判据当场抓到:dijkstra / mergesort / knn 这些只有两条原理题的实验,
+ * 照样从后门漏出一道计数题。补位这条路本身就是错的 —— **三道题里有一道没法答,
+ * 不如只出两道。** 现在取料口只有一个,漏不了。
  */
 export function pickBalanced(entry: CatalogEntry, trace: Record<string, unknown>[], want?: number): Fact[] {
-  const n = want && want > 0 ? want : entry.facts.length
-  const statable = inputBrief(entry, trace) !== ''
-  const concept = shuffle(entry.facts.filter(f => genreOf(f, trace) === 'concept'))
-  const counting = statable ? shuffle(entry.facts.filter(f => genreOf(f, trace) === 'count')) : []
-  const keepCount = Math.min(counting.length, MAX_COUNT_QUESTIONS, Math.max(0, n - Math.min(concept.length, n - 1)))
-  const out = [...concept.slice(0, n - keepCount), ...counting.slice(0, keepCount)]
-  //  概念题不够铺满时才拿计数题补位 —— 补位是退路,不是常态(判据会盯着「不许全是计数题」)
-  if (out.length < n) out.push(...counting.slice(keepCount, keepCount + (n - out.length)))
-  return shuffle(out).slice(0, n)
+  const pool = shuffle(servableFacts(entry, trace))
+  const n = want && want > 0 ? want : pool.length
+  return pool.slice(0, n)
 }
