@@ -10,6 +10,7 @@
  */
 import { getEntry, traceOf, genreOf, type CatalogEntry, type Fact, type FactGenre } from './catalog.ts'
 import { generate, type Principal } from './llm.ts'
+import { prompt } from './prompts/loader.ts'
 
 export type Question = {
   expId: string
@@ -47,26 +48,14 @@ function extractJSON(text: string): { question?: string; explanation?: string } 
   try { return JSON.parse(m[0]) } catch { return null }
 }
 
-const SYSTEM_BASE =
-  '你是考研 408 与算法面试的出题助手。系统会给你一条「已知事实」和它的正确答案，' +
-  '你的唯一任务是把这条事实改写成一道选择题的**题面**（一句话，不要包含答案、不要出现选项字母），' +
-  '再写一句**讲解**说明为什么这个答案对。' +
-  '严禁自己计算或编造任何数字——答案和选项都由系统提供，你只负责把它说成人话。' +
-  '只输出 JSON：{"question":"…","explanation":"…"}，不要任何多余文字。'
-
-/*  ⚠️ 这两句以前是同一句,而且自相矛盾:一边让模型「不要罗列整个数组」,一边又出「这组数据比较了几次」
-    的题 —— 结果题面写成「在快速排序对一组数据的完整排序过程中……」,哪组数据?没人答得上来。
-    用户截图里那道题就是这么来的。现在按题型分开:
-      · 原理题：不许把中间状态抄进题面(那是给答案)
-      · 计数题：**必须**把那组数据写进题面,否则这道题根本不成立 */
-const SYSTEM_CONCEPT = SYSTEM_BASE +
-  '这是一道**原理题**：题面只描述要问的概念/权衡/不变量，不要罗列完整的中间状态（如整张距离表、整个数组）。'
-const SYSTEM_COUNT = SYSTEM_BASE +
-  '这是一道**计数题**：题面里**必须原样写出系统给你的那组输入数据**，' +
-  '否则读题的人无从算起。除这组输入外，不要罗列其它中间状态。'
+/*  提示词搬去了 server/prompts/*.md(见那边的 README)。
+    搬家的理由和它们的内容一样重要:提示词以前是这里的字符串拼接,改一个字要动 TS、
+    review 时混在逻辑中间看不清、也没法让判据去检查「那几条规矩还在不在」。
+    现在 tests/prompt-rules.test.ts 逐条盯着它们。 */
+const systemFor = (genre: FactGenre) => prompt(genre === 'count' ? 'quiz-count' : 'quiz-concept')
 
 async function phrase(
-  entry: CatalogEntry, fact: Fact, genre: FactGenre, answer: string, evidence: string,
+  entry: CatalogEntry, fact: Fact, genre: FactGenre, answer: string, distractors: string[], evidence: string,
   trace: Record<string, unknown>[], principal: Principal, useLLM: boolean,
 ): Promise<{ question: string; explanation: string; by: 'llm' | 'fallback' }> {
   //  计数题的保底题面也得带上数据 —— 「这个数组」在出题面板里是指不到任何东西的
@@ -78,15 +67,19 @@ async function phrase(
   }
   if (!useLLM) return fallback
   try {
-    const prompt =
+    const userPrompt =
       `实验：${entry.title}\n` +
       `已知事实（考点）：${fact.label}\n` +
       `正确答案：${answer}\n` +
+      /*  ⚠️ 干扰项以前没传给模型 —— 于是「讲解要说清楚别的为什么错」这件事在结构上就做不到,
+          模型根本不知道别的选项是什么。这一条是照 OpenMAIC 的 analysis 字段
+          （"why A is correct and why other options are wrong"）补上的。 */
+      `三个干扰项（都是错的，讲解里要逐个驳倒）：\n${distractors.map(d => `  · ${d}`).join('\n')}\n` +
       `引擎给出的出处/证据：${evidence}\n` +
       (data ? `这道题问的是这组输入上的具体数字，题面里必须写出它：${data}\n` : '') +
       `请据此写题面与讲解。`
     const r = await generate({
-      module: 'lab_ai', task: 'quiz', system: genre === 'count' ? SYSTEM_COUNT : SYSTEM_CONCEPT, prompt,
+      module: 'lab_ai', task: 'quiz', system: systemFor(genre), prompt: userPrompt,
       maxTokens: 400, provider: 'minimax', principal,
     })
     const j = extractJSON(r.text)
@@ -174,7 +167,7 @@ export async function buildQuiz(expId: string, opts: BuildOptions = {}): Promise
     const distractors = fact.distractors(answer, trace).filter(d => d !== answer)
     const options = shuffle([answer, ...distractors])
     const correctIndex = options.indexOf(answer)                // ← 我们设定，模型碰不到
-    const { question, explanation, by } = await phrase(entry, fact, genre, answer, evidence, trace, opts.principal ?? null, useLLM)
+    const { question, explanation, by } = await phrase(entry, fact, genre, answer, distractors, evidence, trace, opts.principal ?? null, useLLM)
     return {
       expId, title: entry.title, factId: fact.id, genre,
       question, options, correctIndex, explanation,
