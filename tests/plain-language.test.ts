@@ -50,10 +50,14 @@ const PLAIN_MIN = 240
  * 里面的人名年份**必须查证过**（见 guide.ts 里 `wiki` 的注释）—— 读者拿它当靠谱背景在读，
  * 错一个年份整段就废了。0 是起点，一批批补到 240。
  */
-const WHAT_MIN = 0
+const WHAT_MIN = 240
 
-/** 写了**名词段**的实验数下限。跟 WHAT_MIN 一起从 0 补到 240。 */
-const TERMS_MIN = 0
+/**
+ * 写了**名词段**的实验数下限。
+ * 跟 WHAT_MIN 一起从 0 一批批补到 **240 —— 全覆盖**。
+ * 所以这两条从台账变成了及格线：新增实验必须自带这两段，少一条就判红。
+ */
+const TERMS_MIN = 240
 
 const all = Object.entries(GUIDES)
 const withPlain = all.filter(([, g]) => g.plain)
