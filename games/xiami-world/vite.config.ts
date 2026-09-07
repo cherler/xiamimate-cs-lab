@@ -37,6 +37,6 @@ export default defineConfig(({ mode, command }) => {
        地址走,一并打进来,免得「本地 /build.html 好好的、上了线只有首页」。
        cpu.html(第二台设备)现在从房子剖面图里点书房那台电脑就能进,所以一并列上;
        cache.html(第三台)同理 —— **每加一个入口都要回来加一行**,不然只有本地跑得起来。 */
-    build: { target: 'es2022', rollupOptions: { input: { index: 'index.html', build: 'build.html', cpu: 'cpu.html', cache: 'cache.html', infer: 'infer.html', ssd: 'ssd.html' } } },
+    build: { target: 'es2022', rollupOptions: { input: { index: 'index.html', build: 'build.html', cpu: 'cpu.html', cache: 'cache.html', infer: 'infer.html', ssd: 'ssd.html', dram: 'dram.html' } } },
   }
 })
