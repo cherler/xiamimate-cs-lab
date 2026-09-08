@@ -1238,10 +1238,12 @@ console.log('\n【「这一步为什么」真的在跟着走】')
            ratioCurve: [[50, 1.72], [12800, 1.67]] },
     },
     ortho: {
-      doc: { kind: 'ortho', params: {}, entities: [], streams: [] },
-      //  A d=2 可能同向（max|cos|≈1） · B d=512 几乎正交 —— 结论必须换一套说法
-      a: { phase: 'run', d: 2, std: 0.789, theoStd: 0.707, maxAbs: 0.999, mean: 0.058 },
-      b: { phase: 'done', d: 512, std: 0.043, theoStd: 0.044, maxAbs: 0.094, mean: -0.002 },
+      doc: { kind: 'ortho', params: { tol: 0.2 }, entities: [], streams: [] },
+      //  A d=8（只塞得下 7 个） · B d=768（容量 7899）—— 结论必须换一套说法
+      a: { phase: 'run', d: 8, std: 0.3, theoStd: 0.354, maxAbs: 0.674, mean: -0.029,
+        tol: 0.2, packed: 7, packCap: 120, capacity: 1.65, pTheory: 0.6059, pMeasured: 0.613, pErr: 0.0154 },
+      b: { phase: 'done', d: 768, std: 0.035, theoStd: 0.036, maxAbs: 0.087, mean: -0.001,
+        tol: 0.2, packed: 120, packCap: 120, capacity: 45004500, pTheory: 2.22e-8, pMeasured: 0, pErr: 0.0005 },
     },
     hopfield: {
       doc: { kind: 'hopfield', params: {}, entities: [], streams: [] },

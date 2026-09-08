@@ -38,6 +38,7 @@ import { rnnKernel, type RNNState } from '../src/kernels/rnn.ts'
 import { lstmKernel, type LSTMState } from '../src/kernels/lstm.ts'
 import { inductionKernel, type InductionState } from '../src/kernels/induction.ts'
 import { scaleKernel, type ScaleState } from '../src/kernels/scale.ts'
+import { orthoKernel, type OrthoState } from '../src/kernels/ortho.ts'
 
 let failures = 0
 const ok = (m: string) => console.log(`  ✅ ${m}`)
@@ -348,6 +349,57 @@ console.log('\n【逻辑回归：正则真的在压权重，异或真的分不�
   !xor.separable && xor.acc < sep.acc - 0.15
     ? ok(`异或准确率 ${(xor.acc * 100).toFixed(0)}%，可分档 ${(sep.acc * 100).toFixed(0)}% —— 一条直线切不开异或`)
     : bad(`异或 ${(xor.acc * 100).toFixed(0)}% vs 可分 ${(sep.acc * 100).toFixed(0)}% —— 差距不足以说明"线性不可分"`)
+}
+
+// ═══ 高维近正交：容量是能算出位数的数 ═══════════════════
+console.log('\n【高维近正交：不是"余弦小"，是"能塞下多少个互不干扰的方向"】')
+{
+  const all = (p: P) => (run(orthoKernel.compile(doc('ortho', p)), 20) as OrthoState[]).filter(s => s.d > 0 && s.phase === 'run')
+
+  //  ① 老口径守住：余弦标准差贴着理论 1/√d
+  const base = all({ tol: 0.2 })
+  const off = base.filter(s => s.d >= 8).map(s => Math.abs(s.std / s.theoStd - 1))
+  Math.max(...off) < 0.2
+    ? ok(`余弦标准差贴着 1/√d：${base.map(s => `d=${s.d} ${s.std}/${s.theoStd}`).join('、')}`)
+    : bad(`标准差跟 1/√d 对不上：最大偏差 ${(Math.max(...off) * 100).toFixed(0)}%`)
+
+  /*  ② 撞线概率必须用**精确公式**而不是高斯近似。
+      ⚠️ 这条钉的是"能数的那几档要跟算出来的对上"：只在实测有分辨率（撞了 ≥30 次）的格子上比，
+      并且用实测自己的 2σ 误差当门槛 —— 不拿一个拍脑袋的容差。 */
+  const cmp = [0.1, 0.2, 0.4].flatMap(tol => all({ tol }))
+    .filter(s => s.pMeasured * s.pSamples >= 30)
+  const bad2 = cmp.filter(s => Math.abs(s.pMeasured - s.pTheory) > 3 * s.pErr)
+  bad2.length === 0
+    ? ok(`${cmp.length} 个能数得出来的格子：实测撞线频率都落在精确值的 3σ 以内`)
+    : bad(bad2.map(s => `d=${s.d}/ε=${s.tol}：实测 ${s.pMeasured} vs 精确 ${s.pTheory.toFixed(4)}（±${s.pErr}）`).join(' / '))
+
+  //  ③ 容量必须随 d **暴涨**（这才是"指数级多"的实际含义）
+  const caps = all({ tol: 0.4 }).map(s => s.capacity)
+  caps.every((v, k) => k === 0 || v >= caps[k - 1]) && last(caps) / caps[1] > 1e20
+    ? ok(`ε=0.4：容量下界 ${caps.map(c => (c >= 1e5 ? c.toExponential(1) : c.toFixed(0))).join(' → ')}，d 从 8 到 768 涨了 ${(last(caps) / caps[1]).toExponential(1)} 倍`)
+    : bad(`容量没暴涨：${caps.join(' / ')}`)
+
+  //  ④ 容量对 ε 极其敏感（ε 在尾巴的指数里）：同一个 d，ε 放宽一倍容量涨很多个数量级
+  const at768 = [0.1, 0.2, 0.4].map(tol => last(all({ tol })).capacity)
+  at768[2] / at768[0] > 1e20
+    ? ok(`d=768：ε=0.1/0.2/0.4 的容量下界 ${at768.map(c => (c >= 1e5 ? c.toExponential(1) : c.toFixed(0))).join(' / ')} —— ε 放宽一倍就涨二十多个数量级`)
+    : bad(`容量对 ε 不敏感：${at768.join(' / ')}`)
+
+  /*  ⑤ 容量公式必须是 **1/p**（Gilbert–Varshamov），不是生日估计 √(2ln2/p)。
+      这条钉住的是一次真实的自相矛盾：生日式在 ε=0.1、d=768 那格给 16，
+      而贪心**实际装进去** 120+ 个 —— 公式比现实还小，说明它回答的根本不是这个问题。 */
+  //  容量存的是 toPrecision(4) 的显示值，所以按**相对**误差比，不按绝对
+  const bad5 = [0.1, 0.2, 0.4].flatMap(tol => all({ tol }))
+    .filter(s => Math.abs(s.capacity / (1 / s.pTheory) - 1) > 1e-3)
+  bad5.length === 0 ? ok('容量用的是 1/p（GV 下界），不是生日估计 —— 逐格核对无误')
+    : bad(`容量公式不是 1/p：${bad5.slice(0, 2).map(s => `d=${s.d} 容量 ${s.capacity} vs 1/p ${(1 / s.pTheory).toFixed(2)}`).join(' / ')}`)
+
+  //  ⑥ 自检：生日式在那一格确实会跟贪心打架（证明⑤换公式是必要的，不是洁癖）
+  const cell = all({ tol: 0.1 }).find(s => s.d === 768)!
+  const birthday = Math.sqrt(2 * Math.LN2 / cell.pTheory)
+  birthday < cell.packed && 1 / cell.pTheory > cell.packed
+    ? ok(`自检：ε=0.1、d=768 那格，生日式给 ${birthday.toFixed(0)} 个 < 贪心实际装进的 ${cell.packed} 个（自相矛盾），而 1/p 给 ${(1 / cell.pTheory).toFixed(0)} 个 —— 换公式是必要的`)
+    : bad(`自检没成立：生日 ${birthday.toFixed(1)}、贪心 ${cell.packed}、1/p ${(1 / cell.pTheory).toFixed(1)}`)
 }
 
 // ═══ √d 缩放：方差是量出来的，梯度是画出来的 ═══════════

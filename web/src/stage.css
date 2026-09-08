@@ -3434,6 +3434,16 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
     linear-gradient(180deg, var(--panel), color-mix(in srgb,var(--ink) 3%,var(--panel)));
   box-shadow: inset 0 1px 4px rgba(20,32,42,.06), inset 0 0 0 1px rgba(255,255,255,.5); }
 .mlaxis { stroke:var(--dim); stroke-width:0.7; }
+/*  ── 高维近正交补厚（2026-09-08）：容量三行（直接装 / 算容量 / 撞线概率）── */
+.orcap2 { display:flex; flex-direction:column; gap:6px; width:min(640px,96%); margin:12px auto 0;
+  padding:10px 13px; border:1px solid var(--plate-edge); border-radius:8px; background:var(--panel) }
+.orcline { display:grid; grid-template-columns:11em 1fr; gap:10px; align-items:baseline;
+  font-size:var(--t-meta); color:var(--dim); line-height:1.75 }
+.orck { color:var(--faint); text-align:right }
+.orcv b { color:var(--ink) }
+.orcnote { color:var(--faint) }
+.orcnote.warn { color:var(--wan) }
+
 /*  ── 归纳头补厚（2026-09-08）：预测分布 + 无先例横幅 ── */
 .idcWarn { margin:10px auto 0; width:min(600px,94%); padding:9px 13px; border-radius:6px;
   border:1px solid color-mix(in srgb,var(--miss) 42%,var(--plate-edge));
