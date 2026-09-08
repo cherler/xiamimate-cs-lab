@@ -7093,21 +7093,35 @@ export const GUIDES: Record<string, Guide> = {
       hook: '怎么衡量「模型有多意外」？',
       what: '这一屏讲的是**交叉熵损失**和**困惑度**：训练语言模型时用来打分的那两个数。模型每一步都会给出「下一个词是什么」的概率分布。如果真正出现的那个词，模型给了 90% 的概率，说明它猜得准、损失小；只给了 1%，说明它很意外、损失大。**交叉熵量的就是这份「意外程度」**，取的是概率的负对数。而困惑度是它的指数形式，读起来更直观：**它大致等于「模型平均在多少个词之间犹豫」**。',
       terms: '**预测分布**：模型对整个词表给出的概率，屏幕上那排柱子。\u3000**真词的概率**：真正出现的那个词，模型给了多少概率。这是唯一进入损失计算的数。\u3000**惊讶度（−log p）**：单个位置的损失。p 越接近 1 越接近 0（毫不意外），p 越接近 0 就越大（趋于无穷）。**正因为它会趋于无穷，模型极少给出 0 概率** —— 那会让损失爆炸。\u3000**交叉熵**：把所有位置的惊讶度平均一下。训练就是在最小化它。\u3000**困惑度（perplexity）**：2 的交叉熵次方（或以 e 为底）。困惑度 10 大致相当于「每一步都在 10 个词里蒙」。**它的下限是 1（每次都笃定答对），上限是词表大小（完全瞎猜）**。屏幕上那把尺子标的就是这两端。\u3000**为什么用交叉熵而不是平方误差**：平方误差在概率接近 0 或 1 时梯度会消失，训不动；交叉熵配 softmax 之后，梯度正好等于「预测概率 − 真实标签」，形式极简单、也不会消失。\u3000**标签平滑**：不把正确答案的目标设成 1 而是 0.9，防止模型把概率往 1 推到过度自信。',
-      watch: '改一改模型给正确答案的概率，看损失怎么变。概率趋近 0 时损失趋于无穷 —— 所以模型极少给出 0 概率。',
+      watch: '两个坑轮流试。① 把「词表大小」从 8 换到 50257：同一个模型 PPL **一动不动**（都是 1.60），可"比瞎猜强"从 5 倍跳到 31432 倍 —— **PPL 不能跨词表比，要比就比这个倍数**。② 把「有没有被判死刑的词」拧到 p=1e-9：一个词贡献 30 bit，整句困惑度从 1.60 涨到 40（×25）。**"绝不可能"这个判断的代价是无穷大。**',
     },
     step: (s: never) => {
-      const st = s as { phase: string; trueWord: string; pTrue: number; surprise: number; ce: number; perplexity: number; ppUniform: number }
+      const st = s as { phase: string; trueWord: string; pTrue: number; surprise: number; ce: number
+        perplexity: number; ppUniform: number; step?: number
+        betterThanChance?: number; quality?: string; doomAt?: number; doomBits?: number; pplNoDoom?: number }
+      //  ⚠️ 补厚字段可选读：老快照没有 betterThanChance/doomAt，读不到就按老口径讲。
+      const pStr = st.pTrue >= 0.01 ? `${(st.pTrue * 100).toFixed(0)}%` : st.pTrue.toExponential(0)
+      const isDoom = st.step !== undefined && st.step === st.doomAt
       return [
-        { k: '本步输入', v: st.phase === 'done' ? '整句逐词预测完' : `预测「${st.trueWord}」，模型给它 ${(st.pTrue * 100).toFixed(0)}%` },
-        { k: '判定规则', v: `真词只有一个→这步交叉熵=**−log₂p(真词)**(惊讶度)；平均交叉熵=训练损失；**困惑度=2^交叉熵**(有效分叉数)。` },
+        { k: '本步输入', v: st.phase === 'done' ? '整句逐词预测完' : `预测「${st.trueWord}」，模型给它 ${pStr}` },
+        { k: '判定规则', v: `真词只有一个→这步交叉熵 = **−log₂p(真词)**（惊讶度）；平均交叉熵 = 训练损失；**困惑度 = 2^交叉熵**（有效分叉数）。`
+            + `　注意 −log 在 p→0 时**无界** —— 一个"绝不可能"的判断，代价是无穷大。` },
         { k: '本步结果', v: st.phase === 'done'
-            ? `平均交叉熵 **${st.ce}** bit/词(=训练损失)，困惑度 **${st.perplexity}**——只在约 ${st.perplexity.toFixed(1)} 个词间犹豫(完美=1、瞎猜=${st.ppUniform})。`
-            : `惊讶度 −log₂${st.pTrue} = **${st.surprise}** bit，到此平均交叉熵 **${st.ce}**、困惑度 **${st.perplexity}**。` },
+            ? `平均交叉熵 **${st.ce}** bit/词（=训练损失），困惑度 **${st.perplexity}**`
+              + (st.betterThanChance !== undefined
+                ? `；瞎猜是 ${st.ppUniform}，所以**比瞎猜强 ${st.betterThanChance} 倍** —— 这个倍数才是跨词表可比的量。`
+                : `——只在约 ${st.perplexity.toFixed(1)} 个词间犹豫（完美=1、瞎猜=${st.ppUniform}）。`)
+              + (st.doomAt !== undefined && st.doomAt >= 0 && st.pplNoDoom
+                ? `　⚠️ 而且这个数被**一个词绑架了**：它贡献 ${st.doomBits} bit，把困惑度从 ${st.pplNoDoom} 抬到 ${st.perplexity}。` : '')
+            : `惊讶度 −log₂${pStr} = **${st.surprise}** bit，到此平均交叉熵 **${st.ce}**、困惑度 **${st.perplexity}**。`
+              + (isDoom ? `　⚠️ **这一步就是那个被判"几乎不可能"的词**，它一个人就顶掉了前面几步攒下的全部优势。` : '') },
       ]
     },
     verdict: (s: never) => {
-      const st = s as { phase: string; perplexity: number; ce: number }
-      return st.phase === 'done' ? `困惑度 ${st.perplexity}` : `CE ${st.ce}·PP ${st.perplexity}`
+      const st = s as { phase: string; perplexity: number; ce: number; betterThanChance?: number }
+      if (st.phase !== 'done') return `CE ${st.ce}·PP ${st.perplexity}`
+      return st.betterThanChance !== undefined
+        ? (st.betterThanChance <= 1 ? '不如瞎猜' : `强 ${st.betterThanChance}×`) : `困惑度 ${st.perplexity}`
     },
     read: [
       { at: '读数', is: '给真词的概率、惊讶度、平均交叉熵、困惑度。', anchor: '.scdim' },
@@ -7115,8 +7129,11 @@ export const GUIDES: Record<string, Guide> = {
       { at: '困惑度尺', is: '▲ 在「1(笃定)…V(瞎猜)」之间的位置。', anchor: '.xepptrack' },
     ],
     try: [
-      { act: '按「下一步」逐词预测', watch: '真词概率高的词惊讶度低；「on」拿不准(25%)那步惊讶度飙到 2 bit。' },
-      { act: '盯困惑度 ▲', watch: '它在 1(毫不犹豫)到 8(瞎猜)之间；平均交叉熵越小，困惑度越贴近 1。' },
+      { act: '按「下一步」逐词预测', watch: '真词概率高的词惊讶度低;「on」拿不准(25%)那步惊讶度飙到 2 bit。每一步都能拿计算器核。' },
+      { act: '把「模型质量」拨到「瞎猜（均匀）」', watch: '困惑度**正好等于词表大小**(8/64/50257 都对得上)。这就是困惑度的**天花板**——它永远落在 1 和 V 之间。' },
+      //  下面两条是补厚后的主菜
+      { act: '模型留在「一般」，把「词表大小」从 8 换到 50257', watch: '**PPL 一动不动**(都是 1.60),可"比瞎猜强"从 **5 倍**跳到 **31432 倍**。同一个模型、同一个 PPL,在两个词表下的含义天差地别——**PPL 不能跨词表比,要比就比这个倍数**。(换分词器同理。)' },
+      { act: '把「有没有被判死刑的词」拧到「有一个 p=1e-9」', watch: '六个词里只有一个变了,困惑度从 1.60 涨到 **40.13**(×25)——那一个词贡献了 **29.9 bit**。交叉熵是 −log p 的**平均**,而 −log 在 p→0 时**无界**。**这就是模型极少给 0 概率、以及要做标签平滑的原因**:给每个词留一点点概率,是在给自己买保险。' },
     ],
     terms: [],
   },

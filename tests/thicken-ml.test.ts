@@ -39,6 +39,7 @@ import { lstmKernel, type LSTMState } from '../src/kernels/lstm.ts'
 import { inductionKernel, type InductionState } from '../src/kernels/induction.ts'
 import { scaleKernel, type ScaleState } from '../src/kernels/scale.ts'
 import { orthoKernel, type OrthoState } from '../src/kernels/ortho.ts'
+import { xentKernel, type XentState } from '../src/kernels/xent.ts'
 
 let failures = 0
 const ok = (m: string) => console.log(`  ✅ ${m}`)
@@ -349,6 +350,55 @@ console.log('\n【逻辑回归：正则真的在压权重，异或真的分不�
   !xor.separable && xor.acc < sep.acc - 0.15
     ? ok(`异或准确率 ${(xor.acc * 100).toFixed(0)}%，可分档 ${(sep.acc * 100).toFixed(0)}% —— 一条直线切不开异或`)
     : bad(`异或 ${(xor.acc * 100).toFixed(0)}% vs 可分 ${(sep.acc * 100).toFixed(0)}% —— 差距不足以说明"线性不可分"`)
+}
+
+// ═══ 交叉熵·困惑度：PPL 不能跨词表比；一个词能绑架整句 ═══
+console.log('\n【交叉熵：困惑度的天花板是词表大小；−log 在 p→0 时无界】')
+{
+  const go = (p: P) => last(run(xentKernel.compile(doc('xent', p)), 20) as XentState[])
+  const VS = [8, 64, 50257]
+
+  //  ① 瞎猜时困惑度必须**正好等于词表大小** —— 这是天花板，也是全实验的锚
+  const chance = VS.map(vocab => go({ model: '瞎猜（均匀）', vocab, doom: '没有' }))
+  chance.every((s, k) => Math.abs(s.perplexity - VS[k]) < 0.01)
+    ? ok(`瞎猜档的困惑度正好等于词表大小：${chance.map((s, k) => `V=${VS[k]}→${s.perplexity}`).join('、')}`)
+    : bad(`瞎猜档对不上 V：${chance.map(s => s.perplexity).join(' / ')}`)
+
+  /*  ② 这一屏最该带走的一条：**同一个模型换词表，PPL 一动不动，而"比瞎猜强"差好几个数量级**。
+      所以 PPL 不能跨词表比，要比就比那个倍数。 */
+  const same = VS.map(vocab => go({ model: '一般', vocab, doom: '没有' }))
+  const ppls = same.map(s => s.perplexity), ratios = same.map(s => s.betterThanChance)
+  new Set(ppls).size === 1 && last(ratios) / ratios[0] > 1000
+    ? ok(`同一个模型换词表：PPL 全是 ${ppls[0]}（一动不动），而"比瞎猜强" ${ratios.join(' → ')} 倍 —— PPL 不可跨词表比`)
+    : bad(`跨词表那条没演出来：PPL ${ppls.join('/')}、倍数 ${ratios.join('/')}`)
+
+  //  ③ 困惑度必须恒在 [1, V] 之间（没有被判死刑的词时）
+  const bad3: string[] = []
+  for (const model of ['瞎猜（均匀）', '一般', '很好']) for (const vocab of VS) {
+    const s = go({ model, vocab, doom: '没有' })
+    if (s.perplexity < 1 - 1e-9 || s.perplexity > vocab + 1e-6) bad3.push(`${model}/V=${vocab}：PPL ${s.perplexity}`)
+  }
+  bad3.length === 0 ? ok('9 种组合的困惑度都落在 [1, V] 之间 —— 完美=1、瞎猜=V 这两个端点是真的')
+    : bad(bad3.join(' / '))
+
+  /*  ④ 一个词绑架整句：六个词里改一个，困惑度涨一个数量级。
+      而且**只有那一个词变了** —— 判据顺便钉住这一点，免得被当成"整体变差"。 */
+  const clean = go({ model: '一般', vocab: 8, doom: '没有' })
+  const doomed = go({ model: '一般', vocab: 8, doom: '有一个 p=1e-9' })
+  doomed.perplexity / clean.perplexity > 20 && Math.abs(doomed.pplNoDoom - clean.perplexity) < 0.01
+    ? ok(`一个 p=1e-9 的词：困惑度 ${clean.perplexity} → ${doomed.perplexity}（×${(doomed.perplexity / clean.perplexity).toFixed(0)}），它一个人贡献 ${doomed.doomBits} bit`)
+    : bad(`绑架那条没演出来：${clean.perplexity} → ${doomed.perplexity}，pplNoDoom=${doomed.pplNoDoom}`)
+
+  //  ⑤ 绑架的程度必须随那个词的概率**单调**（1e-3 比 1e-9 轻）
+  const mild = go({ model: '一般', vocab: 8, doom: '有一个 p=0.001' })
+  clean.perplexity < mild.perplexity && mild.perplexity < doomed.perplexity
+    ? ok(`p=正常 / 0.001 / 1e-9 → 困惑度 ${clean.perplexity} / ${mild.perplexity} / ${doomed.perplexity}，越"绝对"代价越大`)
+    : bad(`三档没单调：${clean.perplexity} / ${mild.perplexity} / ${doomed.perplexity}`)
+
+  //  ⑥ 自检：被绑架之后，V=8 那档会**比瞎猜还差**（倍数 <1）—— 这才叫"代价无穷大"
+  doomed.betterThanChance < 1
+    ? ok(`自检：V=8 时被绑架的模型"比瞎猜强 ${doomed.betterThanChance} 倍"——**不到 1，即不如瞎猜**`)
+    : bad(`被绑架后居然还强过瞎猜 ${doomed.betterThanChance} 倍`)
 }
 
 // ═══ 高维近正交：容量是能算出位数的数 ═══════════════════

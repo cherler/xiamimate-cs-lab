@@ -5855,33 +5855,47 @@ const xent: Experiment<XentState> = {
   title: '交叉熵·困惑度',
   subtitle: '训练损失和评测指标到底在量什么',
   kernel: xentKernel,
-  defaultDoc: { kind: 'xent', params: {}, entities: [], streams: [] },
-  params: [],
+  defaultDoc: { kind: 'xent', params: { model: '一般', vocab: 8, doom: '没有' }, entities: [], streams: [] },
+  /*  2026-09-08 补厚：老版本一句话、一组写死的 p、一个词表大小。定义讲清楚了，
+      但两条**实践里最容易踩的坑**都没碰到：困惑度不能跨词表比；一个词能绑架整句。 */
+  params: [
+    { key: 'model', label: '模型质量', kind: 'enum', options: ['瞎猜（均匀）', '一般', '很好'] },
+    { key: 'vocab', label: '词表大小 V', kind: 'number', options: [8, 64, 50257] },
+    { key: 'doom', label: '有没有被判死刑的词', kind: 'enum', options: ['没有', '有一个 p=0.001', '有一个 p=1e-9'] },
+  ],
   paramsNote: `**语言模型每步吐出"下一个词"的概率分布 p,交叉熵就是模型对真相的"惊讶度"(bit,用 log2)**。
 
 - **退化成 −log p(真词)**:真词只有一个(one-hot),这步交叉熵退化成 −log p(真词);整句平均交叉熵=各词惊讶度的平均,正是语言模型的训练损失。
 - **困惑度=2^交叉熵**:是"有效分叉数",模型平均在多少个等概率词之间犹豫。完美预测 p=1→交叉熵0→困惑度1;瞎猜 p=1/V→交叉熵 log2(V)→困惑度 V;真实模型落在 1 与 V 之间,越低越好。
 - **同一件事**:"降交叉熵损失"和"降困惑度"是同一件事。
-- **本实验**:逐词预测 "the cat sat on the mat"(V=8),算惊讶度、累计交叉熵、换算困惑度。`,
+- **坑一:困惑度不能跨词表比。** 它的天花板就是 V(瞎猜那档实测 PPL **正好等于** 8/64/50257)。所以"我的模型 PPL=20"单独拿出来**没有意义**:V=8 时 20 比瞎猜还差,V=50257 时却是比瞎猜强 2500 倍。实测:同一个"一般"模型在三种词表下 PPL 都是 **1.60**,而"比瞎猜强"是 **5 倍 / 40 倍 / 31432 倍**——**后者才是跨模型可比的那个数**。
+- **坑二:一个词能绑架整句。** 交叉熵是 −log p 的**平均**,而 −log 在 p→0 时**无界**。六个词里有一个 p=1e-9,它一个人贡献 **29.9 bit**,把平均抬高 4.65 bit——困惑度从 1.60 涨到 **40.13**(×25)。**"绝不可能"这个判断的代价是无穷大**——这就是模型极少给 0 概率、以及要做**标签平滑**的原因。`,
   bounds: [
-    '词表 V=8，目标句 "the cat sat on the mat" 逐词预测',
-    '每步给真词概率 p→惊讶度 −log₂p、累计平均交叉熵、困惑度=2^CE',
-    '困惑度恒在 [1, V] 之间：完美=1、瞎猜=V(均可核)',
-    '模型对真词的概率是给定的示意值；未真跑一个 LM',
+    '目标句 "the cat sat on the mat" 逐词预测；词表大小 V 可切（8 / 64 / 50257，最后一个是 GPT-2 的量级）',
+    '每步：惊讶度 −log₂p → 累计平均交叉熵 → 困惑度 = 2^CE，每一步都能拿计算器核',
+    '"瞎猜"那档的 p 由词表定（p=1/V），所以它的困惑度**正好等于 V** —— 这就是天花板',
+    /*  ⚠️ 这条是这一屏最该带走的东西，别当成注解删掉。 */
+    '"比瞎猜强几倍"（V ÷ PPL）才是跨词表可比的量；**PPL 本身不可跨词表比较**',
+    '模型对真词的概率是**给定的示意值**（三档质量），不是真跑一个 LM 出来的',
+    '只算 next-token 交叉熵：不含标签平滑、不含 BPE 分词对 PPL 的影响（换分词器同样会让 PPL 不可比）',
   ],
   tabs: [{ id: 'pred', label: '逐词预测' }],
   Stage: XentStage,
-  tone: s => (s.phase === 'done' ? { key: 'good', label: `困惑度 ${s.perplexity}` }
-    : s.trueIdx >= 0 ? { key: 'idle', label: `${s.surprise}bit` } : { key: 'idle', label: '' }),
+  tone: s => (s.phase !== 'done' ? (s.trueIdx >= 0 ? { key: s.step === s.doomAt ? 'bad' : 'idle', label: `${s.surprise}bit` } : { key: 'idle', label: '' })
+    : s.betterThanChance <= 1 ? { key: 'bad', label: '不如瞎猜' }
+      : { key: 'good', label: `强 ${s.betterThanChance}×` }),
   metric: s => (s.trueIdx >= 0 ? Math.max(0, Math.min(1, 1 - (s.perplexity - 1) / (s.ppUniform - 1))) : 0),
   tickLabel: s => (s.phase === 'done' ? '毕' : s.trueWord || '0'),
   whyInRail: true,
   readouts: s => [
-    { label: '预测词', value: s.trueIdx >= 0 ? `${s.trueWord}（${(s.pTrue * 100).toFixed(0)}%）` : '—' },
-    { label: '惊讶度', value: s.trueIdx >= 0 ? `${s.surprise} bit` : '—' },
+    { label: '预测词', value: s.trueIdx >= 0 ? `${s.trueWord}（${s.pTrue >= 0.01 ? `${(s.pTrue * 100).toFixed(0)}%` : s.pTrue.toExponential(0)}）` : '—',
+      tone: s.step === s.doomAt ? 'bad' : undefined },
+    { label: '惊讶度', value: s.trueIdx >= 0 ? `${s.surprise} bit` : '—', tone: s.step === s.doomAt ? 'bad' : undefined },
     { label: '平均交叉熵', value: s.trueIdx >= 0 ? `${s.ce} bit/词` : '—' },
-    { label: '困惑度', value: s.trueIdx >= 0 ? `${s.perplexity}` : '—', tone: s.phase === 'done' ? 'good' : undefined },
-    { label: '瞎猜困惑度', value: `${s.ppUniform}` },
+    { label: '困惑度 / 瞎猜', value: s.trueIdx >= 0 ? `${s.perplexity} / ${s.ppUniform}` : `— / ${s.ppUniform}` },
+    /*  这一栏才是跨词表可比的那个数 —— PPL 本身不可比 */
+    { label: '比瞎猜强', value: s.trueIdx >= 0 ? `${s.betterThanChance} 倍` : '—',
+      tone: s.trueIdx < 0 ? undefined : s.betterThanChance <= 1 ? 'bad' : 'good' },
   ],
 }
 

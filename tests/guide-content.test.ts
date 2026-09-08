@@ -1215,10 +1215,14 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       b: { phase: 'done', nTests: 4, prior: 0.9099, sens: 0.9, fpr: 0.09, num: 0.8189, denFalse: 0.0081, posterior: 0.9902 },
     },
     xent: {
-      doc: { kind: 'xent', params: {}, entities: [], streams: [] },
-      //  A 拿不准的「on」(25%、惊讶 2bit) · B 整句跑完(困惑度 1.6) —— 结论必须换一套说法
-      a: { phase: 'run', trueIdx: 4, trueWord: 'on', pTrue: 0.25, surprise: 2, ce: 0.868, perplexity: 1.826, ppUniform: 8 },
-      b: { phase: 'done', trueIdx: 5, trueWord: 'mat', pTrue: 0.95, surprise: 0.074, ce: 0.677, perplexity: 1.599, ppUniform: 8 },
+      doc: { kind: 'xent', params: { model: '一般', vocab: 8, doom: '有一个 p=1e-9' }, entities: [], streams: [] },
+      //  A 撞上被判死刑那个词 · B 整句完（困惑度被它一个人抬到 40）—— 结论必须换一套说法
+      a: { phase: 'run', step: 3, trueWord: 'on', pTrue: 1e-9, surprise: 29.897, ce: 7.843,
+        perplexity: 229.575, ppUniform: 8, betterThanChance: 0.03, quality: '一般',
+        doomAt: 3, doomBits: 29.9, pplNoDoom: 1.599 },
+      b: { phase: 'done', step: 5, trueWord: 'mat', pTrue: 0.95, surprise: 0.074, ce: 5.327,
+        perplexity: 40.131, ppUniform: 8, betterThanChance: 0.2, quality: '一般',
+        doomAt: 3, doomBits: 29.9, pplNoDoom: 1.599 },
     },
     clt: {
       doc: { kind: 'clt', params: { dist: '均匀 U[0,1]', trials: 20000 }, entities: [], streams: [] },
