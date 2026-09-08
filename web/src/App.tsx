@@ -12,7 +12,7 @@ import type { SimDocument, Entity } from '@engine/core/document.ts'
 import { EXPERIMENTS, BASED_ON, USED_BY, DISCIPLINES, SOFT_LINKS, DISCIPLINE_OF_GROUP } from './registry.ts'
 import { AxisBand } from './shell/AxisBand.tsx'
 import { StartFrame } from './shell/StartFrame.tsx'
-import { WhyBand, WhyRail } from './shell/WhyBand.tsx'
+import { WhyBand } from './shell/WhyBand.tsx'
 import { rich } from './shell/rich.tsx'
 import { StepLog, ParamPanel, Readouts, Violations, Bounds } from './shell/Panels.tsx'
 import { ProblemPanel } from './shell/ProblemPanel.tsx'
@@ -1110,6 +1110,24 @@ export default function App() {
                           </FitBox>}
                     </div>
                   </div>
+                  {/*
+                    * **步骤说明就摆在舞台底下** —— 舞台与走带之间那条带子。
+                    *
+                    * 用户 2026-09-08：「在每一步实验仿真时，关闭导览后同一界面的下部
+                    * 添加步数说明吧（好难啊，我看了跟没看一样）」「右侧『本步为什么这样做』
+                    * 有写，但是还是不够直观」「很多实验关闭导览后实验区的下面部分很空」。
+                    *
+                    * 这三句是同一件事：讲解和它讲的那张图**离得太远**。
+                    * 右栏只有 300px 宽，一行装 26 个汉字，一百多字要竖着堆七八行；
+                    * 而舞台底下有一整列的宽度（1440 屏上约 1300px），四段横着摊开两行就说完。
+                    * `WhyBand` 本来就是照这个位置写的（见它的文件头），只是后来被搬进了右栏。
+                    * 现在搬回来：**同一份 parts，只是换了个住处**，右栏那份同时撤掉，不重复摆。
+                    */}
+                  {started && whyParts.length > 0 && (
+                    <WhyBand parts={whyParts}
+                      tone={state ? exp.tone(state) : undefined}
+                      verdict={state ? GUIDES[exp.id]?.verdict?.(state as never, doc) : undefined} />
+                  )}
                   {/*  单帧轨迹(如库层参考页)没有"步"可走 —— 藏掉走带,否则留一个点不动的播放条。 */}
                   {trace.length > 1 && (
                   <AxisBand
@@ -1163,9 +1181,8 @@ export default function App() {
           * 读数放最下面，是因为它是**跨步累计**，看它的时候人已经不盯着这一步了。
           */}
         <div className="col side" data-rail={exp.whyInRail ? 'cards' : undefined}>
-          {exp.whyInRail && whyParts.length > 0 &&
-            <WhyRail parts={whyParts} tone={state ? exp.tone(state) : undefined}
-                     verdict={state ? GUIDES[exp.id]?.verdict?.(state as never, doc) : undefined} />}
+          {/*  推演已经搬到舞台底下那条带子里（见中列那段说明），右栏不再摆第二份。
+               `whyInRail` 这个开关留着，但它现在只管一件事：**坞挂在底部还是舞台左边**。 */}
           {/*  库层是参考页,没有可调参数、也没有"自由度"要解释 —— 藏掉实验控制盒,
                否则右侧只剩一段堆在一起的 paramsNote。读数(库/许可/语言/覆盖)照常显示。 */}
           {exp.defaultDoc.kind !== 'library' &&

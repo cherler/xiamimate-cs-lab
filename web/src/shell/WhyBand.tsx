@@ -21,7 +21,13 @@ import type { WhyPart, } from '../guide.ts'
 import type { Tone } from '../types.ts'
 import { rich } from './rich.tsx'
 
-export function WhyBand({ parts }: { parts: WhyPart[] }) {
+export function WhyBand({ parts, tone, verdict }: {
+  parts: WhyPart[]
+  /** 这一步的判定（命中/缺失…）—— 带子末尾那枚记号 */
+  tone?: Tone
+  /** 结论那一句；不给就退回 tone 的两个字 */
+  verdict?: string
+}) {
   if (parts.length === 0) return null
   return (
     <section className="whyband" aria-label="这一步为什么是这样">
@@ -31,6 +37,22 @@ export function WhyBand({ parts }: { parts: WhyPart[] }) {
           <p className="wv">{rich(p.v)}</p>
         </div>
       ))}
+      {/*  ⊗ / ✓ 那个圈不是装饰：这是整条带子唯一"只靠颜色说话"的地方，
+           只靠颜色说话的东西必须再给一个不依赖颜色的记号。 */}
+      {/*  ⚠️ 类名**不能带 `wseg`**：冒烟第 16c 组按 `.wseg` 数「骨架有没有四段」，
+           而这枚判定记号不是骨架的一段 —— 挂上 wseg 会被数成多出来的一段、
+           而且它的正文不在 `.wv` 里，会被判成"某一段是空的"。 */}
+      {tone && (
+        <div className="wsegv">
+          {/*  ⚠️ 占位格**不能叫 `wk`**：冒烟第 12 组按 `.wk` 的 top 数「几段各占一行」，
+               多一个 wk 就多一行，当场判「3 段落在 4 行上」。名字换掉，样式照旧。 */}
+          <b className="wkpad" aria-hidden />
+          <p className={`wvd ${tone.key}`}>
+            <i aria-hidden>{tone.key === 'good' ? '✓' : tone.key === 'bad' ? '✕' : '·'}</i>
+            {verdict ?? tone.label}
+          </p>
+        </div>
+      )}
     </section>
   )
 }

@@ -19,6 +19,35 @@ import type { Kernel, CompiledModel } from '../core/kernel.ts'
 const A = 'horse'
 const B = 'ros'
 
+/**
+ * 把最后那条**回溯路径**走出来：右下角往回走，看这一格的值是从哪个邻居来的，
+ * 沿途就是**真正要做的那几步编辑**。
+ *
+ * 用户 2026-09-08：「解决从 horse 到 rose 的理论逻辑好像没看懂」。
+ * 表填完只给出一个数字 3 —— 「3 步」是多少步，但**是哪三步**没人说。
+ * 而"看懂"这件事就卡在这儿：填表规则是抽象的，具体的三步是能对着字念出来的。
+ * 所以补上这条链：删 h、把 e 改成 s、删 e……逐条写清。
+ */
+export type EditOp = { kind: '相同' | '替换' | '删除' | '插入'; text: string; i: number; j: number }
+function backtrack(table: (number | null)[][], a: string, b: string): EditOp[] {
+  const ops: EditOp[] = []
+  let i = a.length, j = b.length
+  let guard = 0
+  while ((i > 0 || j > 0) && guard++ < 500) {
+    const cur = table[i][j]!
+    if (i > 0 && j > 0 && a[i - 1] === b[j - 1] && table[i - 1][j - 1] === cur) {
+      ops.push({ kind: '相同', text: `'${a[i - 1]}' 不用动`, i, j }); i--; j--
+    } else if (i > 0 && j > 0 && table[i - 1][j - 1] === cur - 1) {
+      ops.push({ kind: '替换', text: `把 '${a[i - 1]}' 换成 '${b[j - 1]}'`, i, j }); i--; j--
+    } else if (i > 0 && table[i - 1][j] === cur - 1) {
+      ops.push({ kind: '删除', text: `删掉 '${a[i - 1]}'`, i, j }); i--
+    } else {
+      ops.push({ kind: '插入', text: `插入 '${b[j - 1]}'`, i, j }); j--
+    }
+  }
+  return ops.reverse()
+}
+
 export type EditDistState = {
   i: number
   step: number
@@ -32,13 +61,15 @@ export type EditDistState = {
   left: number
   match: boolean
   val: number
+  /** 表填完之后回溯出来的**具体编辑步骤**（填表途中为空） */
+  ops: EditOp[]
   done: boolean                  // 全表填完
   phase: 'run' | 'done'
   log: string
 }
 
 export const EDITDIST_VISIBLE = [
-  'step', 'a', 'b', 'table', 'ci', 'cj', 'diag', 'up', 'left', 'match', 'val', 'done', 'phase', 'log',
+  'step', 'a', 'b', 'table', 'ci', 'cj', 'diag', 'up', 'left', 'match', 'val', 'ops', 'done', 'phase', 'log',
 ] as const
 
 type Frame = Omit<EditDistState, 'i'>
@@ -66,7 +97,7 @@ export const editdistKernel: Kernel<EditDistState> = {
         const isLast = i === na && j === nb
         frames.push({
           step: step++, a: A, b: B, table: snap(), ci: i, cj: j, diag, up, left, match, val,
-          done: isLast, phase: 'run',
+          ops: [], done: isLast, phase: 'run',
           log: `格 (${i},${j})：比 a[${i}]='${A[i - 1]}' 与 b[${j}]='${B[j - 1]}' → ` +
             (match ? `**相同**，直接抄左上 dp=${diag}。` : `**不同**，dp = 1 + min(左上 ${diag}替换, 上 ${up}删除, 左 ${left}插入) = **${val}**。`) +
             (isLast ? ` 右下角=**${val}**,就是编辑距离。` : ``),
@@ -75,16 +106,19 @@ export const editdistKernel: Kernel<EditDistState> = {
     }
 
     const lf = frames[frames.length - 1]
+    const ops = backtrack(table, A, B)
+    const real = ops.filter(o => o.kind !== '相同')
     frames.push({
-      ...lf, phase: 'done', done: true,
+      ...lf, phase: 'done', done: true, ops,
       log: `整张 ${na + 1}×${nb + 1} 表填完:把 **${A}** 改成 **${B}** 最少 **${lf.val}** 步(右下角)。` +
+        `具体就这 ${real.length} 步:${real.map(o => o.text).join('；')}。` +
         `每格只看三个已算好的邻居就 O(1) 推出,${na * nb} 格 O(n·m) 填完——这就是动态规划:` +
         `**记住每个子问题的答案**,把朴素递归的指数级重复计算压成多项式。序列比对、最短路、背包、DNA 对齐都靠它。`,
     })
 
     const base0: Frame = {
       step: -1, a: A, b: B, table: snap(), ci: 0, cj: 0, diag: 0, up: 0, left: 0, match: false, val: 0,
-      done: false, phase: 'run', log: '',
+      ops: [], done: false, phase: 'run', log: '',
     }
 
     return {

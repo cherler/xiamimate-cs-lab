@@ -26,6 +26,16 @@ export type MulState = {
   act: 'init' | 'add' | 'sub' | 'none' | 'shift' | 'correct' | 'done'
   /** 本步依据的判断位 */
   judge: string
+  /**
+   * 本步**加进去的那个数**（位串），不加不减时为空。
+   *
+   * 用户 2026-09-08：「把移位动作、加减动作在实验图示的寄存器上可视化体现出来」。
+   * 原来屏幕上只有"部分积"一个寄存器和一句"加"——**加的是什么、从哪来，一个字没有**。
+   * 加数（[X]补 / −[X]补 / |X| / 除数）是这一步的另一半，得摆出来才谈得上"看见加法"。
+   */
+  addend: string
+  /** 加之前的部分积/余数 —— 摆成竖式：上一行 + 加数 = 这一行 */
+  hiBefore: string
   /** 除法专用：当前商与余数的十进制值（乘法时为 null）。
    *  显式吐出来，免得靠位串反解还要猜是补码还是原码。 */
   q: number | null
@@ -34,7 +44,7 @@ export type MulState = {
 }
 
 export const MUL_VISIBLE =
-  ['i', 'round', 'hi', 'lo', 'extra', 'act', 'judge', 'q', 'rem', 'log'] as const
+  ['i', 'round', 'hi', 'lo', 'extra', 'act', 'judge', 'addend', 'hiBefore', 'q', 'rem', 'log'] as const
 
 type Frame = Omit<MulState, 'i'>
 
@@ -76,7 +86,7 @@ export const multiplyKernel: Kernel<MulState> = {
       hi: frames.at(-1)?.hi ?? '0'.repeat(bits),
       lo: frames.at(-1)?.lo ?? '0'.repeat(bits),
       extra: frames.at(-1)?.extra ?? '',
-      judge: '', q: null, rem: null, ...f,
+      judge: '', addend: '', hiBefore: '', q: null, rem: null, ...f,
     })
 
     const X = toComp(x, bits)
@@ -94,10 +104,12 @@ export const multiplyKernel: Kernel<MulState> = {
         const pair = lo[bits - 1] + extra
         let act: Frame['act'] = 'none'
         let why: string
-        if (pair === '01') { hi = addC(hi, X); act = 'add'; why = `01 → 部分积 + [X]补（+${x}）` }
-        else if (pair === '10') { hi = addC(hi, negX); act = 'sub'; why = `10 → 部分积 − [X]补（−${x}）` }
+        const before = hi
+        let addend = ''
+        if (pair === '01') { addend = X; hi = addC(hi, X); act = 'add'; why = `01 → 部分积 + [X]补（+${x}）` }
+        else if (pair === '10') { addend = negX; hi = addC(hi, negX); act = 'sub'; why = `10 → 部分积 − [X]补（−${x}）` }
         else why = `${pair} → 不加不减`
-        put({ act, round: r, hi, lo, extra, judge: pair,
+        put({ act, round: r, hi, lo, extra, judge: pair, addend, hiBefore: before,
           log: `第 ${r} 轮 · 判断位 ${lo[bits - 1]}${extra} = ${pair}：${why}` })
 
         //  算术右移一位：hi 的符号位保持，hi 的最低位挤进 lo，lo 的最低位成为新附加位
@@ -125,8 +137,10 @@ export const multiplyKernel: Kernel<MulState> = {
 
       for (let r = 1; r <= bits; r++) {
         const b = lo[bits - 1]
+        const before = hi
         if (b === '1') hi = addC(hi, ax)
         put({ act: b === '1' ? 'add' : 'none', round: r, hi, lo, judge: b,
+          addend: b === '1' ? ax : '', hiBefore: before,
           log: `第 ${r} 轮 · 乘数末位 = ${b}：${b === '1' ? `部分积 + |X|（+${Math.abs(x)}）` : '不加'}` })
         //  逻辑右移（原码没有符号扩展）
         lo = hi[bits - 1] + lo.slice(0, bits - 1)
@@ -163,11 +177,14 @@ export const multiplyKernel: Kernel<MulState> = {
         const inBit = Number(xb[r - 1])
         const wasNeg = R < 0
         //  余数为正就减除数，为负就加除数 —— 不必先把上一步减错的加回来
-        R = 2 * R + inBit + (wasNeg ? AY : -AY)
+        const shifted = 2 * R + inBit          // 左移一位、落下被除数的一位（加减之前）
+        R = shifted + (wasNeg ? AY : -AY)
         const bit = R >= 0 ? 1 : 0
         qbits += String(bit)
         put({
           act: wasNeg ? 'add' : 'sub', round: r, judge: String(bit),
+          //  竖式的两行：左移落位之后的余数 + （±除数）
+          hiBefore: showR(shifted), addend: showR(wasNeg ? AY : -AY),
           hi: showR(R), lo: qbits.padStart(bits, '0'),
           q: parseInt(qbits, 2), rem: R,
           log: `第 ${r} 轮 · 余数左移一位并落下被除数第 ${r} 位（${inBit}），`
@@ -198,7 +215,7 @@ export const multiplyKernel: Kernel<MulState> = {
       axis: { kind: 'step', label: '步骤' },
       initial: () => ({
         i: -1, round: 0, hi: '0'.repeat(bits), lo: '0'.repeat(bits),
-        extra: '', act: 'init', judge: '', q: null, rem: null, log: '',
+        extra: '', act: 'init', judge: '', addend: '', hiBefore: '', q: null, rem: null, log: '',
       }),
       describe: s => s.log,
       step(prev) {

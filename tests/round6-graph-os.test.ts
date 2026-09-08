@@ -170,6 +170,39 @@ const topoRun = (op: string, edges = AOE) => run(topoKernel.compile(topoDoc(op, 
     : bad(`这些顶点 ve > vl：${wrong.join('、')}`)
 }
 
+/* ── 6. critical 必须是 topo 的**超集**（讲解里那句话得是真的）──────
+ *
+ * 用户 2026-09-08：「实验控制（topo, critical）的含义和区别，应该在讲解里。
+ * 花了时间都跑一遍，才发现 topo 应该是找拓扑顺序，critical 是拓扑顺序 + 关键路径」。
+ * 于是按钮上、导览里、第 0 步的名词段里都写上了这句话，**还带着步数**（9 步 / 35 步）。
+ *
+ * 一写死数字就有账要还：默认那张 AOE 网一改，那几句话立刻变成假的，而且不会有人发现
+ * —— 界面上没有任何东西会因此变红。所以这条判据把话钉在引擎上：
+ * ① critical 的前 N 帧必须跟 topo 的排序阶段**逐帧一致**（真超集，不是"另跑一遍"）；
+ * ② 两边的步数就是文案里印的那两个数。
+ */
+{
+  const t = topoRun('topo'), c = topoRun('critical')
+  const tTopo = t.filter(s => s.phase === 'topo')
+  const cTopo = c.filter(s => s.phase === 'topo')
+  const same = tTopo.length === cTopo.length
+    && tTopo.every((s, k) => s.log === cTopo[k].log && s.order.join() === cTopo[k].order.join())
+  same
+    ? ok(`critical 的前 ${cTopo.length} 帧跟 topo 的排序阶段逐帧一致 —— 它确实是 topo 的超集`)
+    : bad(`critical 的排序阶段跟 topo 对不上（${cTopo.length} vs ${tTopo.length} 帧）`)
+  //  文案里印的两个数（web/src/registry.ts 的 optionLabel 注释、guide.ts 的 terms/try、brief.ts 的 tasks）
+  const WROTE = { topo: 9, critical: 35 }
+  t.length === WROTE.topo && c.length === WROTE.critical
+    ? ok(`步数跟讲解里印的一致：topo ${t.length} 步、critical ${c.length} 步`)
+    : bad(`步数变了：topo ${t.length}（文案写 ${WROTE.topo}）、critical ${c.length}（文案写 ${WROTE.critical}）`
+      + ' —— 改了默认 AOE 网就得同步改这四处文案')
+  //  自检：把 critical 的排序阶段挖掉一帧，上面第一条必须红
+  const faked = cTopo.slice(1)
+  faked.length === tTopo.length
+    ? bad('自检没成立：少一帧居然还等长，超集那条判据抓不住变化')
+    : ok('自检：从 critical 的排序阶段里抽掉一帧就不再逐帧一致 —— 这条判据能红')
+}
+
 // ═══ 动态分区分配 ══════════════════════════════════════
 console.log('\n【动态分区分配】')
 

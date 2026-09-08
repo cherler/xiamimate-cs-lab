@@ -677,6 +677,21 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{
 .whyband .wv{font-size:var(--t-ui);line-height:1.65;color:var(--dim);margin:0;
   min-width:0;max-width:46em}
 .whyband .wv b{color:var(--ink)}
+/*  判定记号那一行也要参与网格（跟 .wseg 一样 display:contents），
+    但**故意不叫 wseg** —— 它不是"四段骨架"的一段，见 WhyBand.tsx 里那段说明。 */
+.whyband .wsegv{display:contents}
+/*  判定那一行的左列占位：跟 .wk 占同样的宽，但**不叫 wk**（判据按 wk 数行数） */
+.whyband .wkpad{display:block}
+/*  带子末尾那枚判定记号（原来在右栏那张卡的底部横幅上）。
+    跟正文同一列，缩成一行小胶囊 —— 它只需要回答"这一步成没成"。 */
+.whyband .wvd{margin:2px 0 0;display:inline-flex;align-items:center;gap:6px;
+  font-size:var(--t-ui);font-weight:700;padding:2px 10px;border-radius:11px;
+  border:1px solid var(--line);background:var(--panel);color:var(--dim);width:fit-content}
+.whyband .wvd i{font-style:normal;font-size:11px;line-height:1}
+.whyband .wvd.good{color:var(--hit);border-color:color-mix(in srgb,var(--hit) 45%,var(--line));
+  background:color-mix(in srgb,var(--hit) 9%,var(--panel))}
+.whyband .wvd.bad{color:var(--miss);border-color:color-mix(in srgb,var(--miss) 45%,var(--line));
+  background:color-mix(in srgb,var(--miss) 9%,var(--panel))}
 /*  ── 走带 ──
  *  控制键 ─ 刻度带 ─ 步数，一行排完（原来三行 133px；它是每步都碰的控件，
  *  越厚舞台越薄）。刻度带 flex:1 吃掉全部余宽 —— 它是这一屏的签名元素。 */

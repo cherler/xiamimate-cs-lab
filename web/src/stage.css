@@ -814,6 +814,27 @@
   border:1px solid var(--line)}
 .mb.judge{border-color:var(--now);background:#F0B42920;color:var(--now);font-weight:700}
 
+/*  ── 本步动作的可视化（2026-09-08 加，见 MultiplyStage 顶上）──
+    加减摆成竖式、移位把两帧上下摆开。两块共用一套行式布局。 */
+.mwork{margin:0 0 13px;padding:10px 12px;border:1px solid var(--line);border-radius:6px;
+  background:var(--sunk-1)}
+.mwt{font-size:var(--t-meta);letter-spacing:.1em;color:var(--faint);margin-bottom:7px}
+.msum,.mshift{display:flex;align-items:center;gap:9px;margin-bottom:4px}
+.msum .mbits,.mshift .mbits{flex:0 1 auto}
+.msl{flex:0 0 52px;text-align:right;font-size:var(--t-ui);color:var(--faint);white-space:nowrap}
+.msr{flex:1 1 auto;font-size:var(--t-ui);color:var(--faint);white-space:normal;min-width:0}
+/*  竖式那条横线：加数下面、结果上面 */
+.msum.sumline{border-top:1px solid var(--line);padding-top:6px;margin-top:2px}
+.mbits.dim .mb{opacity:.55}
+.mbits.addend .mb{border-color:color-mix(in srgb,var(--f-tag) 45%,var(--line));
+  background:color-mix(in srgb,var(--f-tag) 10%,transparent);color:var(--f-tag)}
+.mbits.res .mb{border-color:color-mix(in srgb,var(--hit) 45%,var(--line));
+  background:color-mix(in srgb,var(--hit) 10%,transparent);color:var(--hit);font-weight:700}
+.mshift.arrowrow{margin:1px 0 3px}
+.mparrow{font-size:var(--t-ui);color:var(--now)}
+.mshiftwhy{margin:6px 0 0;font-size:var(--t-ui);color:var(--dim);line-height:1.7}
+.mshiftwhy b{font-family:var(--mono);color:var(--now)}
+
 /* ═══ CRC 长除法竖式 ═══ */
 .crcdiv{font-family:var(--mono);font-size:var(--t-body);min-width:min-content}
 .crow{display:flex;align-items:center;gap:8px;height:20px}
@@ -3171,6 +3192,25 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .idcwfill { width:100%; background:var(--now); }
 
 /* 动态规划 / 编辑距离 */
+/*  三条路各是哪种操作 + 回溯出来的具体步骤（2026-09-08 加，见 EditDistStage 顶上） */
+.edops { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; margin-top:8px; max-width:760px }
+.edop { display:inline-flex; align-items:baseline; gap:6px; padding:3px 9px; border-radius:11px;
+  border:1px solid var(--line); background:var(--panel); font-size:var(--t-ui); color:var(--faint) }
+.edop b { font-family:var(--mono); color:var(--dim); font-weight:700 }
+.edop.on { border-color:color-mix(in srgb,var(--now) 50%,var(--line));
+  background:color-mix(in srgb,var(--now) 10%,var(--panel)); color:var(--ink) }
+.edop.on b { color:var(--now) }
+.edplan { margin-top:10px; padding:9px 12px; border:1px solid var(--line); border-radius:6px;
+  background:var(--sunk-1); max-width:620px }
+.edplant { font-size:var(--t-ui); color:var(--dim); margin-bottom:5px }
+.edplant b { font-family:var(--mono); color:var(--ink) }
+.edplanl { margin:0; padding-left:20px; font-size:var(--t-ui); color:var(--ink); line-height:1.9 }
+.edplanl li.keep { color:var(--faint) }
+.edk { display:inline-block; min-width:30px; margin-right:7px; padding:0 6px; border-radius:8px;
+  font-size:var(--t-meta); background:var(--sunk-3); color:var(--faint) }
+.edplanl li:not(.keep) .edk { background:color-mix(in srgb,var(--now) 16%,transparent); color:var(--now) }
+.edplanw { margin:6px 0 0; font-size:var(--t-meta); color:var(--faint); line-height:1.7 }
+
 .edwrap { display:flex; flex-direction:column; align-items:center; gap:8px; margin:10px 0; }
 .edtable { border-collapse:collapse; font-variant-numeric:tabular-nums; }
 .edhead { font-size:12px; color:var(--dim); font-weight:600; padding:2px 6px; }
@@ -3467,6 +3507,32 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .nqx { font-size:13px; color:var(--miss); opacity:.7; }
 
 /* 并查集 Union-Find */
+/*  并查集：一棵树一个盒子（2026-09-08 从"一排方块"改成森林，见 UnionFindStage 顶上）
+    虚线框 = 一个集合；框里是这棵树，边是父指针（孩子指向父） */
+.ufforest { display:flex; flex-wrap:wrap; gap:14px; justify-content:center; align-items:flex-start; margin:14px 0 10px; }
+.uftree { border:1px dashed color-mix(in srgb,hsl(var(--hue) 55% 45%) 55%,transparent);
+  border-radius:8px; padding:4px 6px 6px; background:color-mix(in srgb,hsl(var(--hue) 55% 45%) 5%,transparent);
+  transition:box-shadow var(--anim),border-color var(--anim) }
+.uftree.hot { border-style:solid; box-shadow:0 0 0 2px color-mix(in srgb,var(--now) 45%,transparent) }
+.ufhead { font-size:var(--t-meta); color:hsl(var(--hue) 55% 38%); text-align:center; margin-bottom:2px; white-space:nowrap }
+.ufhead b { font-family:var(--mono); font-size:var(--t-ui) }
+.ufbox { position:relative }
+.ufbox svg { position:absolute; inset:0 }
+.ufedge { stroke:color-mix(in srgb,hsl(var(--hue) 55% 45%) 55%,transparent); stroke-width:1.4 }
+.ufedge.lit { stroke:var(--now); stroke-width:2.4 }
+.ufn { position:absolute; display:flex; flex-direction:column; align-items:center; justify-content:center;
+  border-radius:50%; background:var(--panel); border:1px solid color-mix(in srgb,hsl(var(--hue) 55% 45%) 45%,var(--line));
+  transition:background var(--anim),border-color var(--anim),box-shadow var(--anim) }
+.ufn.root { background:color-mix(in srgb,hsl(var(--hue) 55% 45%) 16%,var(--panel));
+  border-color:hsl(var(--hue) 55% 45%); border-width:2px }
+.ufn.walk { box-shadow:0 0 0 2px color-mix(in srgb,var(--now) 60%,transparent) }
+.ufn.squash { box-shadow:0 0 0 2px var(--hit); background:color-mix(in srgb,var(--hit) 16%,var(--panel)) }
+.ufn.goal { box-shadow:0 0 0 3px color-mix(in srgb,var(--now) 45%,transparent) }
+.ufn.movesrc { box-shadow:0 0 0 2px var(--now) }
+.ufn.movedst { box-shadow:0 0 0 2px var(--hit) }
+.ufn .ufid { font-size:14px; font-weight:700; color:var(--ink); font-variant-numeric:tabular-nums; line-height:1 }
+.ufn .ufdep { font-size:8px; color:var(--faint); line-height:1; margin-top:1px }
+
 .ufwrap { display:flex; flex-direction:column; align-items:center; gap:10px; margin:14px 0; }
 .ufrow { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; }
 .ufnode { position:relative; width:52px; padding:8px 4px 6px; display:flex; flex-direction:column; align-items:center; gap:2px;
