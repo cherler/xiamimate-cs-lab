@@ -3676,31 +3676,54 @@ const pca: Experiment<PCAState> = {
   title: '主成分分析 PCA',
   subtitle: '找数据"最铺开"的方向，把高维压成低维',
   kernel: pcaKernel,
-  defaultDoc: { kind: 'pca', params: {}, entities: [], streams: [] },
-  params: [],
+  defaultDoc: { kind: 'pca', params: { data: '拉长的云', unit: 'x、y 同单位', prep: '直接做' }, entities: [], streams: [] },
+  /*  2026-09-08 补厚：老版本只有一团写死的点云，**只演了 PCA 成功的样子**。
+      可 PCA 用起来的坑几乎全在"它什么时候不该用"上，一个都没演。
+      三个旋钮各通向一个具体的坑：类别方向≠主方向、没有主方向、协方差带量纲。 */
+  params: [
+    { key: 'data', label: '数据形状', kind: 'enum', options: ['拉长的云', '两团（类别方向≠主方向）', '各向同性（没有主方向）'] },
+    { key: 'unit', label: '单位', kind: 'enum', options: ['x、y 同单位', 'x 换单位（×10）'] },
+    { key: 'prep', label: '预处理', kind: 'enum', options: ['直接做', '先标准化（z-score）'] },
+  ],
   paramsNote: `**PCA 找方差最大的方向来降维**。高维数据各维往往相关、有效维度没那么多。
 
 - **怎么找**:方差最大方向=主成分 PC1(沿它点铺得最开、信息最多),再找正交、次大方差的 PC2……把点投影到前几个主成分,用更少维度保住大部分信息。
 - **数学**:主成分=协方差矩阵的特征向量,特征值=该方向方差,越大越该留。
 - **意义**:去冗余、抓主轴,是高维可视化/压缩/去噪的底,和 LoRA/低秩"抓主方向"一家。
-- **本实验**:14 个沿对角线拉长的 2D 点,算协方差、取最大特征向量当 PC1(约 33°)、投影上去,PC1 保留 96% 方差,2D→1D 只丢 4%。`,
+- **丢掉一个主成分的代价 = 它的特征值**:重构误差(每点到主轴的垂距平方均值)**正好等于 λ2**,屏幕上两个数并排,可逐位核对。
+- **三个坑**(旋钮各通一个):
+  - **类别方向≠主方向**:两类分开的方向方差小、云拉长的方向方差大,PC1 就把两类**压成一堆**。PCA 是**无监督**的,它不知道有类别这回事——这就是 LDA 存在的理由。
+  - **没有主方向**:各向同性数据的样本 λ1/λ2 照样不等于 1。屏幕上现算一条**噪声地板**(同样点数的纯噪声能给出多大的 λ1/λ2),观测值没超过它,那个"保留 63%"就是抽样噪声。
+  - **协方差带量纲**:x 轴换个单位(×10),**数据一点没动**,PC1 却掉头去追 x 轴。z-score 是解药——但注意标准化**本身也会转动 PC1**,它给的是"跟单位无关"的方向,不是"真方向"。`,
   bounds: [
-    '14 个沿对角线拉长的 2D 相关点',
-    'PC1=协方差矩阵最大特征向量(2×2 闭式,可核)',
-    'PC1≈33°,保留方差 96%;投影到 PC1 即 2D→1D',
-    '演示 2D→1D;高维/白化/核 PCA 未展开',
+    '28 个 2D 点，三种形状可切；单位、要不要标准化各一个开关',
+    'PC1 = 协方差矩阵的最大特征向量（2×2 闭式解，可手核）；投影到 PC1 即 2D→1D',
+    '重构误差 = 每点到主轴的垂距平方均值，理论上**等于 λ2** —— 两个数并排印着，逐位可核',
+    /*  这条是本实验补厚的核心判据：光看"保留百分之多少"判断不了该不该降维。 */
+    '"有没有主方向"跟**噪声地板**比：现场跑 200 次同样点数的各向同性数据，取 λ1/λ2 的中位数（平行分析 / Horn 法）',
+    '只做 2D→1D：高维 scree 图、白化、核 PCA、增量 PCA 都不在范围内',
+    '两类的可分性用"中心差几个标准差"衡量（Fisher 判别比的一维版），不做完整的 LDA',
   ],
   tabs: [{ id: 'project', label: '主轴+投影' }],
   Stage: PCAStage,
-  tone: s => (s.phase === 'done' ? { key: 'good', label: `保 ${s.var1}%` } : { key: 'idle', label: ({ cloud: '点云', axis: '找主轴', project: '投影' } as Record<string, string>)[s.phase] ?? '' }),
+  tone: s => (s.phase !== 'done' ? { key: 'idle', label: ({ cloud: '点云', axis: '找主轴', project: '投影' } as Record<string, string>)[s.phase] ?? '' }
+    : !s.real ? { key: 'bad', label: '没有主方向' }
+      : s.scaled && !s.stdized ? { key: 'bad', label: '被单位带跑' }
+        : s.hasClass && s.sep2 > s.sep1 ? { key: 'bad', label: '两类被压扁' }
+          : { key: 'good', label: `保 ${s.var1}%` }),
   metric: s => (s.phase === 'cloud' ? 0.2 : s.var1 / 100),
   tickLabel: s => (s.phase === 'done' ? '毕' : ({ cloud: '云', axis: '轴', project: '投' } as Record<string, string>)[s.phase] ?? '0'),
   whyInRail: true,
   readouts: s => [
-    { label: '主轴 PC1', value: s.phase === 'cloud' ? '?' : `${s.angle}°` },
-    { label: '保留方差', value: `${s.var1}%`, tone: s.phase === 'done' ? 'good' : undefined },
-    { label: '压维', value: '2D → 1D' },
-    { label: '丢失', value: `${(100 - s.var1).toFixed(1)}%` },
+    { label: '主轴 PC1', value: s.phase === 'cloud' ? '?' : `${s.angle}°`,
+      tone: s.scaled && !s.stdized ? 'bad' : undefined },
+    { label: '保留方差', value: `${s.var1}%`, tone: s.phase === 'done' && s.real ? 'good' : undefined },
+    /*  λ1/λ2 跟噪声地板并排 —— "保留了 96%"到底算不算多，只有跟它比才知道 */
+    { label: 'λ1/λ2 vs 噪声地板', value: `${s.ratio} vs ${s.nullRatio}`, tone: s.real ? 'good' : 'bad' },
+    /*  这两个数理论上相等，摆一起就是现场核对 */
+    { label: '重构误差 / λ2', value: `${s.recErr} / ${s.lam2}` },
+    ...(s.hasClass ? [{ label: '两类分开（PC1 / PC2）', value: `${s.sep1}σ / ${s.sep2}σ`,
+      tone: (s.sep2 > s.sep1 ? 'bad' : 'good') as 'bad' | 'good' }] : []),
   ],
 }
 

@@ -854,10 +854,12 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       b: { phase: 'done', iter: 1, k: 3, inertia: 4.05, bestInertia: 4.05, gapPct: 0, converged: true },
     },
     pca: {
-      doc: { kind: 'pca', params: {}, entities: [], streams: [] },
-      //  A 点云(还没找轴) · B 完成(投影、保 96%) —— 结论必须换一套说法
-      a: { phase: 'cloud', angle: 33, var1: 96 },
-      b: { phase: 'done', angle: 33, var1: 96 },
+      doc: { kind: 'pca', params: { data: '拉长的云', unit: 'x、y 同单位', prep: '直接做' }, entities: [], streams: [] },
+      //  A 点云(还没找轴) · B 完成(投影、保 96.1%) —— 结论必须换一套说法
+      a: { phase: 'cloud', angle: 30, var1: 96.1, ratio: 24.91, nullRatio: 1.57, real: true,
+        recErr: 0.196, lam2: 0.1961, sep1: 0, sep2: 0, hasClass: false, scaled: false, stdized: false },
+      b: { phase: 'done', angle: 30, var1: 96.1, ratio: 24.91, nullRatio: 1.57, real: true,
+        recErr: 0.196, lam2: 0.1961, sep1: 0, sep2: 0, hasClass: false, scaled: false, stdized: false },
     },
     svm: {
       doc: { kind: 'svm', params: {}, entities: [], streams: [] },

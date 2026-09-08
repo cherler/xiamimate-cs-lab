@@ -27,6 +27,7 @@ import { jlKernel, type JLState } from '../src/kernels/jl.ts'
 import { logregKernel, type LogRegState } from '../src/kernels/logreg.ts'
 import { binsearchKernel, type BinSearchState } from '../src/kernels/binsearch.ts'
 import { graddescKernel, type GradDescState } from '../src/kernels/graddesc.ts'
+import { pcaKernel, type PCAState } from '../src/kernels/pca.ts'
 
 let failures = 0
 const ok = (m: string) => console.log(`  ✅ ${m}`)
@@ -337,6 +338,61 @@ console.log('\n【逻辑回归：正则真的在压权重，异或真的分不�
   !xor.separable && xor.acc < sep.acc - 0.15
     ? ok(`异或准确率 ${(xor.acc * 100).toFixed(0)}%，可分档 ${(sep.acc * 100).toFixed(0)}% —— 一条直线切不开异或`)
     : bad(`异或 ${(xor.acc * 100).toFixed(0)}% vs 可分 ${(sep.acc * 100).toFixed(0)}% —— 差距不足以说明"线性不可分"`)
+}
+
+// ═══ PCA：三个坑，外加一个能逐位核对的恒等式 ═══════════════
+console.log('\n【PCA：丢掉一个主成分的代价 = 它的特征值；以及三种它会骗人的情形】')
+{
+  const go = (p: P) => last(run(pcaKernel.compile(doc('pca', p)), 60) as PCAState[])
+  const SHAPES = ['拉长的云', '两团（类别方向≠主方向）', '各向同性（没有主方向）']
+  const UNITS = ['x、y 同单位', 'x 换单位（×10）']
+  const PREPS = ['直接做', '先标准化（z-score）']
+
+  //  ① 恒等式：重构误差 == λ2。十二种组合一个都不能差 —— 这是屏幕上并排印着的两个数
+  const bad1: string[] = []
+  for (const data of SHAPES) for (const unit of UNITS) for (const prep of PREPS) {
+    const s = go({ data, unit, prep })
+    if (Math.abs(s.recErr - s.lam2) > 5e-4) bad1.push(`${data}/${unit}/${prep}：${s.recErr} vs ${s.lam2}`)
+  }
+  bad1.length === 0 ? ok('12 种组合：重构误差全部等于 λ2 —— "丢掉一个主成分的代价就是它的特征值"')
+    : bad(bad1.slice(0, 3).join(' / '))
+
+  //  ② 两团那档：PC1 必须**把两类压扁**，而被丢掉的 PC2 才是判别方向
+  const two = go({ data: '两团（类别方向≠主方向）', unit: 'x、y 同单位', prep: '直接做' })
+  two.hasClass && two.sep2 > two.sep1 * 3
+    ? ok(`两团档：投到 PC1 两类只差 ${two.sep1}σ，投到被丢掉的 PC2 差 ${two.sep2}σ —— 差 ${(two.sep2 / two.sep1).toFixed(1)} 倍`)
+    : bad(`两团档没演出 PCA 的失手：sep1=${two.sep1} sep2=${two.sep2}`)
+
+  //  ③ 各向同性：观测比值必须**落在噪声地板以内**（"没有主方向"是有判据的，不是嘴上说）
+  const iso = go({ data: '各向同性（没有主方向）', unit: 'x、y 同单位', prep: '直接做' })
+  const cloud = go({ data: '拉长的云', unit: 'x、y 同单位', prep: '直接做' })
+  !iso.real && cloud.real
+    ? ok(`各向同性 λ1/λ2=${iso.ratio} 没超噪声地板 ${iso.nullRatio}（判为"没有主方向"，尽管它照样报了 ${iso.var1}%）；拉长的云 ${cloud.ratio} 远超`)
+    : bad(`噪声地板没起作用：各向同性 real=${iso.real}（比 ${iso.ratio}/地板 ${iso.nullRatio}）、拉长 real=${cloud.real}`)
+
+  /*  ④ 单位陷阱：**数据一个点没动**，只换记法，PC1 就该掉头。
+      判据钉的是"角度变了很多"，不钉具体几度。 */
+  const scaled = go({ data: '拉长的云', unit: 'x 换单位（×10）', prep: '直接做' })
+  Math.abs(scaled.angle - cloud.angle) > 20 && scaled.ratio > cloud.ratio * 10
+    ? ok(`x 轴 ×10：PC1 从 ${cloud.angle}° 掉到 ${scaled.angle}°，λ1/λ2 从 ${cloud.ratio} 被抬到 ${scaled.ratio} —— 协方差带量纲`)
+    : bad(`换单位没把 PC1 带跑（${cloud.angle}° → ${scaled.angle}°）—— 那这个坑就没演出来`)
+
+  //  ⑤ 解药：标准化之后，换不换单位结果必须**分毫不差**
+  const bad5: string[] = []
+  for (const data of SHAPES) {
+    const a = go({ data, unit: 'x、y 同单位', prep: '先标准化（z-score）' })
+    const b = go({ data, unit: 'x 换单位（×10）', prep: '先标准化（z-score）' })
+    if (a.angle !== b.angle || Math.abs(a.var1 - b.var1) > 1e-9) bad5.push(`${data}：${a.angle}°/${a.var1}% vs ${b.angle}°/${b.var1}%`)
+  }
+  bad5.length === 0 ? ok('z-score 之后，三种数据换不换单位的结果分毫不差 —— 标准化是那个坑的解药')
+    : bad(bad5.join(' / '))
+
+  /*  ⑥ 但标准化**不是"恢复真方向"**：它把两轴尺度拉平，等于换了个问题来解。
+      这条钉住的是措辞 —— 我第一版写的是"PC1 就回来了"，实测它去了 45°，不是造数据时的 33°。 */
+  const std = go({ data: '拉长的云', unit: 'x、y 同单位', prep: '先标准化（z-score）' })
+  std.angle !== std.angleTrue
+    ? ok(`标准化本身也转动了 PC1（造数据时是 ${std.angleTrue}°，标准化后是 ${std.angle}°）—— 它给的是"跟单位无关"，不是"真方向"`)
+    : bad('标准化后的 PC1 恰好等于造数据的方向 —— 那"它不是恢复真值"这句话就没凭据了')
 }
 
 // ═══ 梯度下降：上限是算出来的，动量要成对调 ═══════════════
