@@ -5280,15 +5280,24 @@ export const GUIDES: Record<string, Guide> = {
       watch: '看每一步 lo 和 hi 怎么收拢、mid 落在哪儿。范围每次对半砍 —— 这就是 log n 的实际长相。',
     },
     step: (s: never) => {
-      const st = s as { phase: string; target: number; lo: number; hi: number; mid: number; arr: number[]; cmp: string; compares: number; found: number }
+      const st = s as { phase: string; target: number; lo: number; hi: number; mid: number; arr: number[]; cmp: string; compares: number; found: number; sorted?: boolean; reallyThere?: number; bound?: number }
+      //  ⚠️ sorted/reallyThere 是 2026-09-08 补厚加的。老快照没有这两个字段,
+      //     所以这里一律走可选读法:读不到就按"有序"讲(老口径),读得到才讲前提被破坏那一支。
+      const bad = st.sorted === false
       return [
         { k: '本步输入', v: st.phase === 'done' ? `在 ${st.arr.length} 个数里找 ${st.target}` : `区间 [${st.lo},${st.hi}]，看中点` },
-        { k: '判定规则', v: `看正中间 arr[mid]:等于就命中;目标比它大只在右半、小只在左半——一次比较**砍掉一半**。区间反复对折。` },
+        { k: '判定规则', v: bad
+            ? `照样看正中间 arr[mid],按"大就往右、小就往左"砍半——**但这份数组没排序**,这句推断此刻没有依据:目标完全可能就在被砍掉的那半边。`
+            : `看正中间 arr[mid]:等于就命中;目标比它大只在右半、小只在左半——一次比较**砍掉一半**。区间反复对折。` },
         { k: '本步结果', v: st.phase === 'done'
-            ? `**${st.compares}** 次比较命中(下标 ${st.found})——log₂n,百万个也才 ~20 步。`
+            ? (st.found >= 0
+              ? `**${st.compares}** 次比较命中(下标 ${st.found})——log₂n,百万个也才 ~20 步。`
+              : (st.reallyThere !== undefined && st.reallyThere >= 0)
+                ? `报"不存在"——**可 ${st.target} 就在下标 ${st.reallyThere}**。没报错、没崩、也没慢,${st.compares} 次比较干净利落地给了个错答案:**二分失败得很安静**。`
+                : `区间缩空,**${st.target} 确实不在**(用了 ${st.compares} 次);停下时的 lo=${st.lo} 就是它该插进去的位置。`)
             : st.cmp === 'hit' ? `arr[${st.mid}]=${st.arr[st.mid]}=${st.target},**命中**!`
-            : st.cmp === 'go-right' ? `arr[${st.mid}]=${st.arr[st.mid]}<${st.target},砍左半、看右边。`
-            : `arr[${st.mid}]=${st.arr[st.mid]}>${st.target},砍右半、看左边。` },
+            : st.cmp === 'go-right' ? `arr[${st.mid}]=${st.arr[st.mid]}<${st.target},砍左半、看右边${bad ? '(而左半里可能正藏着它)' : ''}。`
+            : `arr[${st.mid}]=${st.arr[st.mid]}>${st.target},砍右半、看左边${bad ? '(而右半里可能正藏着它)' : ''}。` },
       ]
     },
     verdict: (s: never) => {
@@ -5298,10 +5307,14 @@ export const GUIDES: Record<string, Guide> = {
     read: [
       { at: '读数', is: '要找的数、当前区间、比较次数、结果。', anchor: '.scdim' },
       { at: '数组', is: '有序数;灰=已排除、蓝框=中点 mid、绿=命中;lo/hi 标在下面。', anchor: '.bsrow' },
+      { at: '前提横幅', is: '只在数组**没排序**时出现:提醒你算法照跑,但每一步的推断已经没有依据。', anchor: '.bsWarn' },
     ],
     try: [
       { act: '按「下一步」二分', watch: '每步看中点、砍掉一半灰掉;区间越缩越小。' },
-      { act: '数比较次数', watch: '13 个数只要 4 次——log₂n,不是一个个扫的 n 次。' },
+      { act: '数比较次数', watch: '13 个数只要 4 次、41 个 5 次——都不超过读数条上那个 ⌈log₂(n+1)⌉ 上界。' },
+      //  这一档是这个实验补厚后的主菜:同一批数、只换顺序,结论就错了,而且错得毫无动静。
+      { act: '把「数组」换成「乱序（前提被破坏）」、还找 63', watch: '**3 次比较就报"不存在",可 63 就在下标 0**。不报错、不崩、也不慢——读数条上"二分的结论"和"实际在不在"这两栏并排打架。用二分前先确认有序不是形式主义。' },
+      { act: '「找哪个数」选 60(不在数组里)', watch: '区间缩到 lo>hi、正确报不存在;此时的 lo 就是 60 该插进去的位置——lower_bound 就是这么来的。' },
     ],
     terms: [],
   },

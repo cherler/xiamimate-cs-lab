@@ -1,0 +1,395 @@
+/**
+ * 补厚这一轮的判据：**"讲解里印的那个数"必须真是仿真跑出来的**
+ *
+ * 起因（用户 2026-09-08）：「好多实验目录都好大、好难理解，但我们的实验仿真有点偏简陋
+ * （算法、大模型职业的实验）这个还是要深深打磨才行。」
+ *
+ * 补厚的做法是：给每个实验加旋钮，再补上**"少了它就看不见那条结论"的那个量**。
+ * 于是就有了新的风险 —— 结语里那些具体的数（"第 6 轮触底""60% 收敛 70% 发散"
+ * "44%+集中 → 23%"）如果只是我按印象写的，屏幕上的仿真跟旁边的文字就会各说各话。
+ * 这一套把这些数**逐条钉在仿真上**：不是钉字面，是钉**性质**（谁大于谁、拐点在哪、
+ * 换个档结论翻不翻）。这样以后动内核，说错话会当场红。
+ *
+ * 纪律（memory: never-fill-data-from-memory / measure-before-tuning）：
+ * 这里没有一个"记忆里的数"，全部由本文件现场跑出来再比。
+ */
+import { run } from '../src/core/kernel.ts'
+import type { SimDocument } from '../src/core/document.ts'
+import { gbdtKernel, type GBDTState } from '../src/kernels/gbdt.ts'
+import { linregKernel, type LinRegState } from '../src/kernels/linreg.ts'
+import { kmeansKernel, type KMeansState } from '../src/kernels/kmeans.ts'
+import { diffusionKernel, type DiffusionState } from '../src/kernels/diffusion.ts'
+import { selfconsistKernel, type SelfConsistState } from '../src/kernels/selfconsist.ts'
+import { ppKernel, type PPState } from '../src/kernels/pp.ts'
+import { llnKernel, type LlnState } from '../src/kernels/lln.ts'
+import { cltKernel, type CltState } from '../src/kernels/clt.ts'
+import { jlKernel, type JLState } from '../src/kernels/jl.ts'
+import { logregKernel, type LogRegState } from '../src/kernels/logreg.ts'
+import { binsearchKernel, type BinSearchState } from '../src/kernels/binsearch.ts'
+
+let failures = 0
+const ok = (m: string) => console.log(`  ✅ ${m}`)
+const bad = (m: string) => { failures++; console.log(`  ❌ ${m}`) }
+
+type P = Record<string, string | number>
+const doc = (kind: string, params: P): SimDocument => ({ kind, params, entities: [], streams: [] })
+const last = <T>(a: T[]) => a[a.length - 1]
+
+// ═══ GBDT：留出集是"过拟合看得见"的唯一凭据 ═══════════════
+console.log('\n【GBDT：训练误差单调降，留出误差会掉头】')
+{
+  const go = (p: P) => run(gbdtKernel.compile(doc('gbdt', p)), 400) as GBDTState[]
+  const f = last(go({ lr: 50, rounds: 16, shape: '阶梯' }))
+  const tr = f.mseHist, te = f.testHist
+
+  //  ① 训练误差必须**单调不增** —— 每棵树都在拟合残差，它没有掉头的道理
+  const up = tr.map((v, k) => k > 0 && v > tr[k - 1] + 1e-9 ? k : -1).filter(k => k >= 0)
+  up.length === 0 ? ok(`训练 MSE 全程不升（${tr.length} 轮，${tr[0].toFixed(3)} → ${last(tr).toFixed(3)}）`)
+    : bad(`训练 MSE 在第 ${up.join('、')} 轮反弹了 —— 拟合残差不该越拟合越差`)
+
+  //  ② 留出误差必须在**中途**触底 ——「过拟合」这句话全靠它
+  //     只钉"拐点不在最后一轮"，不钉具体第几轮：轮数是数据的事，改了数据不该红。
+  /*  ⚠️ 判据不能写成 indexOf(最小值) 落在中间：曲线末尾走平时，indexOf 会
+      指到平台的**第一个**点，于是单调下降的训练曲线也能"通过"。
+      要钉的性质其实是**末端明显高于谷底**（掉头回升），直接这么写。 */
+  const rebound = (c: number[]) => last(c) / Math.min(...c) - 1
+  const lowest = te.indexOf(Math.min(...te))
+  rebound(te) > 0.02
+    ? ok(`留出 MSE 在第 ${lowest} 轮触底、之后回升（末轮比谷底高 ${(rebound(te) * 100).toFixed(1)}%）—— 过拟合看得见`)
+    : bad(`留出 MSE 末端只比谷底高 ${(rebound(te) * 100).toFixed(2)}% —— 掉头没发生，"过拟合"就成了空话`)
+
+  //  ③ 自检：如果留出集其实是训练集（判据写错的典型），②就该红
+  rebound(tr) > 0.02
+    ? bad('自检失败：把训练曲线塞进②居然也过 —— ②没在真正区分两条曲线')
+    : ok(`自检：拿训练曲线冒充留出曲线，②会红（它末端不回升，只高 ${(rebound(tr) * 100).toFixed(2)}%）`)
+
+  //  ④ 学习率越小，同样轮数走得越"欠"—— 这是"lr 是刹车"那句话的凭据
+  const slow = last(go({ lr: 10, rounds: 16, shape: '阶梯' })).mseHist
+  last(slow) > last(tr)
+    ? ok(`lr=10% 走 16 轮仍欠拟合（MSE ${last(slow).toFixed(3)} > lr=50% 的 ${last(tr).toFixed(3)}）`)
+    : bad('lr 调小反而训练误差更低 —— 跟"学习率是刹车"矛盾')
+}
+
+// ═══ 线性回归：稳定上界是**算出来**的，不是试出来的 ══════════
+console.log('\n【线性回归：lrMax=2/λmax 真的分开了收敛与发散】')
+{
+  const go = (p: P) => last(run(linregKernel.compile(doc('linreg', p)), 400) as LinRegState[])
+  const f = go({ lr: 6, steps: 48, start: '原点 (0,0)' })
+  const cap = f.lrMax
+
+  //  ① 界两侧的档位，行为必须相反 —— 从 registry 的选项里现挑，不写死数字
+  const OPTS = [1, 6, 30, 60, 90]
+  const wrong = OPTS.map(lr => {
+    const s = go({ lr, steps: 48, start: '原点 (0,0)' })
+    const shouldDiverge = lr / 100 > cap
+    return s.diverged === shouldDiverge ? '' : `lr=${lr}% 界=${(cap * 100).toFixed(1)}% 预期${shouldDiverge ? '发散' : '收敛'}、实际${s.diverged ? '发散' : '收敛'}`
+  }).filter(Boolean)
+  wrong.length === 0
+    ? ok(`界 ${(cap * 100).toFixed(1)}% 把 ${OPTS.join('/')}% 五档全分对了（界下全收敛、界上全发散）`)
+    : bad(wrong.join(' / '))
+
+  //  ② 收敛档必须**真的落到最小二乘解**上（闭式解是独立于梯度下降的第二个来源）
+  const conv = go({ lr: 30, steps: 48, start: '原点 (0,0)' })
+  const err = Math.hypot(conv.w - conv.wOls, conv.b - conv.bOls)
+  err < 0.05 ? ok(`lr=30% 走 48 步后落在 OLS 闭式解上（偏差 ${err.toFixed(4)}）`)
+    : bad(`收敛档离闭式解还差 ${err.toFixed(3)} —— 右图那个十字就白画了`)
+
+  //  ③ 起点换到偏远处，终点必须还是同一个 OLS —— 凸问题的标志
+  const far = go({ lr: 30, steps: 48, start: '偏远处 (-3,6)' })
+  Math.hypot(far.w - conv.w, far.b - conv.b) < 0.05
+    ? ok('换起点走到同一个解 —— MSE 是凸的，没有第二个谷底')
+    : bad('两个起点收敛到了不同的地方 —— 那右图的等高线就不是一个碗')
+}
+
+// ═══ k-means：坏初值是"多跑几次"这条建议的唯一凭据 ═══════
+console.log('\n【k-means：局部最优真的会发生】')
+{
+  const go = (p: P) => last(run(kmeansKernel.compile(doc('kmeans', p)), 400) as KMeansState[])
+  const best = go({ k: 3, init: 'k-means++', shape: '三团' })
+
+  //  ① bestInertia 是 20 次随机重启里的最好值，任何一次跑都不该比它更好
+  const worst = go({ k: 3, init: '一角扎堆', shape: '三团' })
+  const all = [best, worst]
+  all.every(s => s.inertia >= s.bestInertia - 1e-6)
+    ? ok(`没有哪一档跑得比"最好的重启"更好（++ ${best.inertia.toFixed(1)} / 扎堆 ${worst.inertia.toFixed(1)} / 最好 ${best.bestInertia.toFixed(1)}）`)
+    : bad('某一档的 inertia 低于 bestInertia —— best-of-restarts 没算对')
+
+  //  ② 坏初值必须**明显更差** —— 不然"初值决定成败"这句话没根据
+  worst.gapPct > 5
+    ? ok(`"一角扎堆"比最好解差 ${worst.gapPct.toFixed(0)}%，"k-means++"差 ${best.gapPct.toFixed(0)}% —— 初值决定成败看得见`)
+    : bad(`坏初值只差 ${worst.gapPct.toFixed(1)}%，看不出局部最优`)
+
+  //  ③ 一定要收敛（分配不再变），否则"迭代到不动为止"是空话
+  all.every(s => s.converged) ? ok('两档都收敛到分配不再变化')
+    : bad('有档位跑完仍未收敛 —— 步数不够或收敛判据坏了')
+}
+
+// ═══ 扩散：反向必须是**真采样**，不是把前向倒放 ═══════════
+console.log('\n【扩散：换种子会磨出另一张图】')
+{
+  const go = (p: P) => run(diffusionKernel.compile(doc('diffusion', p)), 400) as DiffusionState[]
+  const seeds = [1, 2, 3, 5]
+  const landed = seeds.map(seed => last(go({ seed, steps: 16, schedule: '线性' })).landed)
+
+  //  ① 不同种子必须能磨出**不止一种**结果 —— 老版本倒放录像时这里永远只有一种
+  new Set(landed).size > 1
+    ? ok(`四个种子磨出 ${new Set(landed).size} 种图案（${seeds.map((s, k) => `种子${s}→${landed[k]}`).join('、')}）`)
+    : bad(`四个种子都磨出同一个 ${landed[0]} —— 反向若是倒放录像，正是这个样子`)
+
+  //  ② 反向途中的后验权重必须是**分布**（和为 1），且末步比首步更笃定
+  const t = go({ seed: 1, steps: 16, schedule: '线性' })
+  const rev = t.filter(s => s.dir === 'reverse' && s.x0hat)
+  //  ⚠️ weights 存的是 +toFixed(3) 的显示值（屏幕上要印百分比），
+  //     所以和只能到 1±0.001 —— 容差按这个来，不是按浮点误差。
+  const sumBad = rev.filter(s => Math.abs(s.weights.reduce((a, b) => a + b, 0) - 1) > 2e-3)
+  sumBad.length === 0 ? ok(`反向 ${rev.length} 帧的后验权重都是合法分布（和=1）`)
+    : bad(`${sumBad.length} 帧的权重和不为 1`)
+  const conf = (s: DiffusionState) => Math.max(...s.weights)
+  rev.length > 1 && conf(last(rev)) > conf(rev[0])
+    ? ok(`把握从 ${(conf(rev[0]) * 100).toFixed(0)}% 涨到 ${(conf(last(rev)) * 100).toFixed(0)}% —— "一步步磨出来"有具体所指`)
+    : bad('反向过程中把握没有变高 —— 那就不是在收敛到一张图')
+
+  //  ③ 前向必须是**加噪**：√ᾱ 单调降到接近 0
+  const fwd = t.filter(s => s.dir === 'forward')
+  const mono = fwd.every((s, k) => k === 0 || s.sqrtA <= fwd[k - 1].sqrtA + 1e-9)
+  mono && last(fwd).sqrtA < 0.2
+    ? ok(`前向 √ᾱ 单调降到 ${last(fwd).sqrtA}（几乎纯噪声）`)
+    : bad(`前向 √ᾱ 不单调或没降到底（末值 ${last(fwd).sqrtA}）`)
+}
+
+// ═══ 自洽：错法"集中"时多数投票会**反过来伤人** ═══════════
+console.log('\n【思维链自洽：多数投票不是白吃的午餐】')
+{
+  const go = (p: P) => last(run(selfconsistKernel.compile(doc('selfconsist', p)), 400) as SelfConsistState[])
+  const spread = go({ p: 44, spread: '分散', seed: 7 })
+  const focus = go({ p: 44, spread: '集中', seed: 7 })
+
+  //  ① 同样的正解占比，错法集中时可靠度必须**明显更低**
+  //     （只钉方向和差距，不钉"40%→100% / 40%→23%"那两个具体数）
+  spread.pWin > focus.pWin + 0.2
+    ? ok(`正解占比同为 44%：错法分散 → ${(spread.pWin * 100).toFixed(0)}%，集中 → ${(focus.pWin * 100).toFixed(0)}% —— 差 ${((spread.pWin - focus.pWin) * 100).toFixed(0)} 个点`)
+    : bad(`分散 ${(spread.pWin * 100).toFixed(0)}% vs 集中 ${(focus.pWin * 100).toFixed(0)}% —— 拉不开差距，"错法分布决定成败"就没凭据`)
+
+  //  ② 错法集中时，多采几条**不该**把可靠度救回来（这才是反直觉的那一半）
+  const curve = focus.curve
+  Math.max(...curve.map(c => c[1])) < 0.6
+    ? ok(`错法集中：链数从 1 加到 ${last(curve)[0]}，可靠度峰值也只有 ${(Math.max(...curve.map(c => c[1])) * 100).toFixed(0)}% —— 加采样救不回来`)
+    : bad('错法集中时可靠度居然被采样数救回来了 —— 跟结语相反')
+
+  //  ③ 正解占比过半时，多数投票必须**越采越稳**（curve 末端高于首端）
+  const good = go({ p: 60, spread: '分散', seed: 7 }).curve
+  last(good)[1] > good[0][1]
+    ? ok(`正解占比 60%：链数 1→${last(good)[0]}，可靠度 ${(good[0][1] * 100).toFixed(0)}% → ${(last(good)[1] * 100).toFixed(0)}%`)
+    : bad('正解过半时加采样没变稳 —— 大数定律该在这儿出现')
+}
+
+// ═══ 流水线并行：甜点 M* 必须是**求导算出来的那个** ═════════
+console.log('\n【PP：微批数有甜点，不是越多越好】')
+{
+  const go = (p: P) => last(run(ppKernel.compile(doc('pp', p)), 400) as PPState[])
+  const f = go({ micro: 8, stages: 4, overhead: 20 })
+
+  //  ① mCurve 必须真是 U 形：谷底不在两端
+  const ys = f.mCurve.map(c => c[1])
+  const at = ys.indexOf(Math.min(...ys))
+  at > 0 && at < ys.length - 1
+    ? ok(`时长-M 曲线是 U 形，谷底在 M=${f.mCurve[at][0]}（两端分别高 ${((ys[0] / ys[at] - 1) * 100).toFixed(0)}% / ${((last(ys) / ys[at] - 1) * 100).toFixed(0)}%）`)
+    : bad(`谷底落在端点（第 ${at} 个）—— 甜点不存在，"M 越大越好"又回来了`)
+
+  //  ② 曲线量出来的 bestM 必须跟闭式解 √((G−1)/c) **对得上**（相邻档以内）
+  const idx = f.mCurve.findIndex(c => c[0] === f.bestM)
+  const near = Math.abs(f.bestM - f.bestMTheory) <= Math.abs(f.mCurve[Math.min(idx + 1, f.mCurve.length - 1)][0] - f.bestM) + 1e-9
+  near ? ok(`量出来的 M*=${f.bestM} 与闭式解 √((G−1)/c)=${f.bestMTheory.toFixed(2)} 相符`)
+    : bad(`量出来 ${f.bestM}、公式说 ${f.bestMTheory.toFixed(2)} —— 两个来源打架`)
+
+  //  ③ 开销越大，甜点越靠左（M* 随 c 单调不增）—— 公式里的 1/√c
+  const ms = [5, 20, 50].map(c => go({ micro: 8, stages: 4, overhead: c }).bestMTheory)
+  ms.every((v, k) => k === 0 || v <= ms[k - 1] + 1e-9)
+    ? ok(`每微批开销 5/20/50‰ → M* = ${ms.map(v => v.toFixed(1)).join(' / ')}，开销越大甜点越靠左`)
+    : bad(`M* 随开销的走向不对：${ms.join(' / ')}`)
+
+  //  ④ 气泡率必须随 M 变小 —— 这是这个实验最老的那条结论，别改坏了
+  const b1 = go({ micro: 1, stages: 4, overhead: 20 }).bubblePct
+  const b16 = go({ micro: 16, stages: 4, overhead: 20 }).bubblePct
+  b16 < b1 ? ok(`气泡率 M=1 时 ${b1.toFixed(0)}% → M=16 时 ${b16.toFixed(0)}%`)
+    : bad('微批越多气泡越大 —— 跟流水线的基本盘矛盾')
+}
+
+// ═══ 大数定律：误差×√n 恒定，柯西没有期望 ════════════════
+console.log('\n【大数定律：1/√n 与"没有期望"那一档】')
+{
+  const go = (p: P) => last(run(llnKernel.compile(doc('lln', p)), 600) as LlnState[])
+
+  //  ① 蒙特卡洛估 π：误差×√n 必须**大致恒定**（这才是 1/√n 的可检验形式）
+  const pi = go({ target: '蒙特卡洛估 π', trials: 200 })
+  const cur = pi.ratioCurve.map(c => c[1])
+  const spread = Math.max(...cur) / Math.min(...cur)
+  spread < 2.2
+    ? ok(`误差×√n 在 ${cur.length} 个 n 上只在 ${Math.min(...cur).toFixed(2)}~${Math.max(...cur).toFixed(2)} 之间（比值 ${spread.toFixed(2)}）—— 抵消掉了 1/√n`)
+    : bad(`误差×√n 波动 ${spread.toFixed(1)} 倍 —— 这条曲线撑不起"误差按 1/√n 缩"`)
+
+  //  ② 柯西那一档必须自报"没有期望"，而且**估计不收敛**
+  const cauchy = go({ target: '柯西均值（没有期望）', trials: 200 })
+  !cauchy.hasMean ? ok('柯西档 hasMean=false —— 大数定律的前提在这儿不成立')
+    : bad('柯西居然被标成有期望')
+  const cc = cauchy.ratioCurve.map(c => c[1])
+  Math.max(...cc) / Math.min(...cc) > spread
+    ? ok(`柯西的误差×√n 抖动（${(Math.max(...cc) / Math.min(...cc)).toFixed(1)} 倍）远大于 π 档（${spread.toFixed(2)} 倍）—— 它不收敛`)
+    : bad('柯西的曲线跟正常分布一样平 —— 反例没起到反例的作用')
+
+  //  ③ 正态档必须收敛到真值
+  const nor = go({ target: '正态均值', trials: 200 })
+  Math.abs(nor.meanEst - nor.truth) < 0.2 * Math.max(1, Math.abs(nor.truth))
+    ? ok(`正态档 T 次估计的均值 ${nor.meanEst.toFixed(3)} 贴着真值 ${nor.truth}`)
+    : bad(`正态档估计 ${nor.meanEst} 离真值 ${nor.truth} 太远`)
+}
+
+// ═══ 中心极限：越偏的分布越慢，柯西根本不去 ═══════════════
+console.log('\n【中心极限：峰度→0 才叫"变成正态"】')
+{
+  const go = (p: P) => last(run(cltKernel.compile(doc('clt', p)), 600) as CltState[])
+
+  //  ① 有限方差的分布：样本均值的标准差必须贴着 σ/√m
+  for (const d of ['均匀 U[0,1]', '指数（偏）', '伯努利 p=0.05（极偏）']) {
+    const s = go({ dist: d, trials: 20000 })
+    const rel = Math.abs(s.std - s.theoStd) / s.theoStd
+    rel < 0.06 ? ok(`${d}：实测 σ/√m=${s.std.toFixed(4)}，理论 ${s.theoStd.toFixed(4)}（差 ${(rel * 100).toFixed(1)}%）`)
+      : bad(`${d}：实测 ${s.std} vs 理论 ${s.theoStd}，差 ${(rel * 100).toFixed(0)}%`)
+  }
+
+  //  ② 峰度曲线必须随 m 往 0 走 —— "变成正态"这句话的可检验形式
+  const exp = go({ dist: '指数（偏）', trials: 20000 })
+  const k0 = Math.abs(exp.kurtCurve[0][1]), kN = Math.abs(last(exp.kurtCurve)[1])
+  kN < k0 ? ok(`指数分布：m=${exp.kurtCurve[0][0]} 时超额峰度 ${exp.kurtCurve[0][1].toFixed(2)} → m=${last(exp.kurtCurve)[0]} 时 ${last(exp.kurtCurve)[1].toFixed(2)}`)
+    : bad('峰度没有随 m 变小 —— 那就没在"变成正态"')
+
+  //  ③ 柯西必须**不去** —— 方差不存在，CLT 前提破了
+  const cau = go({ dist: '柯西（方差发散）', trials: 20000 })
+  !cau.finiteVar ? ok('柯西档 finiteVar=false —— 屏幕上会说明前提不成立')
+    : bad('柯西被当成有限方差')
+  const ck = last(cau.kurtCurve)[1]
+  Math.abs(ck) > Math.abs(last(exp.kurtCurve)[1]) * 3
+    ? ok(`柯西在同样的 m 下峰度仍达 ${ck.toFixed(1)}（指数只剩 ${last(exp.kurtCurve)[1].toFixed(2)}）—— 它不往正态去`)
+    : bad('柯西的峰度也降下去了 —— 反例失效')
+}
+
+// ═══ JL：k 只跟 N 有关，跟原始维度 D 无关 ════════════════
+console.log('\n【JL：降到多少维只由点数决定】')
+{
+  const go = (p: P) => last(run(jlKernel.compile(doc('jl', p)), 600) as JLState[])
+
+  /*  ⚠️ 别拿 kNeeded 钉"与 D 无关"：它算的是 8·lnN/ε²，而这里的 ε 是**当次量出来的**
+      maxDev —— 随机投影的抽样噪声会整个搬进去（实测 533~871 之间跳）。
+      "与 D 无关"该钉在**偏差曲线**上：同样点数、不同原始维度，maxDev-k 曲线几乎重合。 */
+  //  ① 同样点数、不同原始维度，偏差曲线必须几乎重合
+  const curves = [64, 256, 1024].map(d => go({ dim: d, points: 50 }).devCurve)
+  const ksAt = curves[0].map(c => c[0])
+  const off = ksAt.map((k, i) => {
+    const vs = curves.map(c => c[i][1])
+    return Math.max(...vs) / Math.min(...vs)
+  })
+  Math.max(...off) < 1.5
+    ? ok(`D=64/256/1024（N=50）：各 k 上的最大偏差彼此只差 ${((Math.max(...off) - 1) * 100).toFixed(0)}% 以内 —— "与 D 无关"是真的`)
+    : bad(`偏差曲线随 D 变了 ${Math.max(...off).toFixed(2)} 倍：${curves.map((c, i) => `D=${[64, 256, 1024][i]} ${JSON.stringify(c.map(x => x[1]))}`).join(' / ')}`)
+
+  //  ② 点数变多（要保的点对数暴涨），同一个 k 上的最大偏差必须**变差**
+  const devs = [6, 50, 200].map(n => go({ dim: 256, points: n }))
+  const kk = last(devs[0].devCurve)[0]
+  const at = devs.map(s => last(s.devCurve)[1])
+  at.every((v, i) => i === 0 || v >= at[i - 1]) && last(at) > at[0]
+    ? ok(`k=${kk} 固定，N=6/50/200 → 最大偏差 ${at.join(' / ')}（要保的点对从 ${devs[0].pairs} 涨到 ${devs[2].pairs} 对）`)
+    : bad(`点数变多、最坏偏差没变差：${at.join(' / ')}`)
+
+  //  ③ JL 那个理论界是**很松**的：真跑通的 k 远小于 8·lnN/ε² 要的维数
+  const f50 = devs[1]
+  f50.kNeeded > f50.k * 3
+    ? ok(`当前 k=${f50.k} 已把偏差压到 ${f50.maxDev}，而定理要求这个精度得 k≈${f50.kNeeded} —— 理论界很松，实际早就够用`)
+    : bad(`理论界 ${f50.kNeeded} 跟实际 k=${f50.k} 差不出量级 —— "界很松"这句话没凭据`)
+
+  //  ④ 对数必须真是 C(N,2)
+  const s = go({ dim: 256, points: 50 })
+  s.pairs === 50 * 49 / 2 ? ok(`N=50 量了 ${s.pairs} 对距离（=C(50,2)）`)
+    : bad(`对数 ${s.pairs} ≠ C(50,2)=1225`)
+}
+
+// ═══ 逻辑回归：L2 压 ‖w‖，异或压根分不开 ════════════════
+console.log('\n【逻辑回归：正则真的在压权重，异或真的分不开】')
+{
+  const go = (p: P) => last(run(logregKernel.compile(doc('logreg', p)), 600) as LogRegState[])
+
+  //  ① λ 越大 ‖w‖ 越小 —— "正则=给权重上缰绳"的唯一凭据
+  const norms = [0, 10, 50, 200].map(l2 => go({ data: '线性可分', lr: 30, l2 }).wNorm)
+  norms.every((v, k) => k === 0 || v <= norms[k - 1] + 1e-6) && last(norms) < norms[0]
+    ? ok(`λ=0/10/50/200‰ → ‖w‖ = ${norms.map(v => v.toFixed(2)).join(' / ')}，单调被压小`)
+    : bad(`‖w‖ 随 λ 的走向不对：${norms.map(v => v.toFixed(2)).join(' / ')}`)
+
+  //  ② 可分数据 λ=0 时 ‖w‖ 会一路长 —— 这是"可分数据没有最优解"的样子
+  const free = go({ data: '线性可分', lr: 30, l2: 0 })
+  const nc = free.normCurve.map(c => c[1])
+  last(nc) > nc[0] && free.separable
+    ? ok(`可分 + λ=0：‖w‖ 从 ${nc[0].toFixed(2)} 长到 ${last(nc).toFixed(2)}，没有停下来的意思`)
+    : bad('可分数据 λ=0 时 ‖w‖ 没有持续增长 —— 那条结论就没根据')
+
+  //  ③ 异或必须**分不开**，而且准确率明显低于可分档（不钉具体数字）
+  const xor = go({ data: '异或（线性不可分）', lr: 30, l2: 0 })
+  const sep = go({ data: '线性可分', lr: 30, l2: 0 })
+  !xor.separable && xor.acc < sep.acc - 0.15
+    ? ok(`异或准确率 ${(xor.acc * 100).toFixed(0)}%，可分档 ${(sep.acc * 100).toFixed(0)}% —— 一条直线切不开异或`)
+    : bad(`异或 ${(xor.acc * 100).toFixed(0)}% vs 可分 ${(sep.acc * 100).toFixed(0)}% —— 差距不足以说明"线性不可分"`)
+}
+
+// ═══ 二分查找：前提一破，它**安静地**给错答案 ══════════════
+console.log('\n【二分查找：有序是前提，破了不会报错】')
+{
+  const go = (p: P) => run(binsearchKernel.compile(doc('binsearch', p)), 200) as BinSearchState[]
+  const fin = (p: P) => last(go(p))
+
+  //  ① 有序档：比较次数不得超过 ⌈log₂(n+1)⌉，且必须命中真实位置
+  const wrong: string[] = []
+  for (const arr of ['有序 13 个', '有序 41 个']) {
+    for (const target of [3, 42, 60, 63, 95]) {
+      const s = fin({ arr, target })
+      if (s.compares > s.bound) wrong.push(`${arr} 找 ${target}：${s.compares} 次 > 上界 ${s.bound}`)
+      if (s.found !== s.reallyThere) wrong.push(`${arr} 找 ${target}：二分说 ${s.found}、线性扫说 ${s.reallyThere}`)
+    }
+  }
+  wrong.length === 0
+    ? ok('两个有序档 × 五个目标：比较次数全在 ⌈log₂(n+1)⌉ 以内，结论跟线性扫逐个一致')
+    : bad(wrong.slice(0, 3).join(' / '))
+
+  //  ② 未命中时停下来的 lo 必须正好是**插入位**（小于 target 的元素个数）
+  //     —— 结语和读数条都指着这个数；它曾经跟着最后一帧的旧 lo 走、差一格。
+  const miss: string[] = []
+  for (const arr of ['有序 13 个', '有序 41 个']) {
+    for (const target of [3, 42, 60, 63, 95]) {
+      const s = fin({ arr, target })
+      if (s.found >= 0) continue
+      const lb = s.arr.filter(v => v < target).length
+      if (s.lo !== lb) miss.push(`${arr} 找 ${target}：停在 lo=${s.lo}，插入位应是 ${lb}`)
+    }
+  }
+  miss.length === 0 ? ok('所有未命中的收场，lo 都等于 lower_bound 插入位')
+    : bad(miss.join(' / '))
+
+  //  ③ 乱序档必须**存在**一个"有但没找到"的目标 —— 这个实验补厚后的主菜
+  const silent = [3, 42, 60, 63, 95].map(target => fin({ arr: '乱序（前提被破坏）', target }))
+    .filter(s => s.found < 0 && s.reallyThere >= 0)
+  silent.length > 0
+    ? ok(`乱序档有 ${silent.length} 个目标"明明在却报不存在"（如 ${silent[0].target} 就在下标 ${silent[0].reallyThere}，只用了 ${silent[0].compares} 次比较）`)
+    : bad('乱序档没有一个静默失败的例子 —— 这个实验最该看见的东西没出场')
+
+  //  ④ 自检：静默失败必须**没有任何异常信号** —— 没报错、次数也没超界
+  silent.every(s => s.compares <= s.bound && s.phase === 'done')
+    ? ok('静默失败的那几次，比较次数照样在上界内、照样正常收场 —— "它失败得很安静"是真的')
+    : bad('静默失败伴随了越界或异常收场 —— 那就不叫"安静"了')
+
+  //  ⑤ 乱序档跟有序档必须是**同一批数**（只是顺序不同），否则对照不成立
+  const a = fin({ arr: '有序 13 个', target: 63 }).arr
+  const b = fin({ arr: '乱序（前提被破坏）', target: 63 }).arr
+  JSON.stringify([...a].sort((x, y) => x - y)) === JSON.stringify([...b].sort((x, y) => x - y))
+    ? ok('乱序档跟有序 13 个是同一批数、只是顺序变了 —— 差别只可能来自"有没有序"')
+    : bad('两档的元素不一样 —— 对照不干净，说明不了问题出在顺序上')
+}
+
+console.log(failures === 0 ? '\n本套全部通过' : `\n${failures} 处不对`)
+process.exit(failures === 0 ? 0 : 1)

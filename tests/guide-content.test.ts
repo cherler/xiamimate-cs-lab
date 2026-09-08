@@ -894,10 +894,10 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       b: { phase: 'done', stage: '完成', loss: 0.072, gLda: -0.538, gLdz: -0.106, gLdw: -0.106 },
     },
     binsearch: {
-      doc: { kind: 'binsearch', params: {}, entities: [], streams: [] },
+      doc: { kind: 'binsearch', params: { arr: '有序 13 个', target: 63 }, entities: [], streams: [] },
       //  A 第 1 次比较(去右) · B 命中(4 步) —— 结论必须换一套说法
-      a: { phase: 'run', target: 63, lo: 0, hi: 12, mid: 6, arr: [3, 7, 12, 18, 25, 31, 42, 55, 63, 71, 80, 88, 95], cmp: 'go-right', compares: 1, found: -1 },
-      b: { phase: 'done', target: 63, lo: 8, hi: 8, mid: 8, arr: [3, 7, 12, 18, 25, 31, 42, 55, 63, 71, 80, 88, 95], cmp: 'hit', compares: 4, found: 8 },
+      a: { phase: 'run', target: 63, lo: 0, hi: 12, mid: 6, arr: [3, 7, 12, 18, 25, 31, 42, 55, 63, 71, 80, 88, 95], cmp: 'go-right', compares: 1, found: -1, sorted: true, reallyThere: 8, bound: 4 },
+      b: { phase: 'done', target: 63, lo: 8, hi: 8, mid: 8, arr: [3, 7, 12, 18, 25, 31, 42, 55, 63, 71, 80, 88, 95], cmp: 'hit', compares: 4, found: 8, sorted: true, reallyThere: 8, bound: 4 },
     },
     nqueens: {
       doc: { kind: 'nqueens', params: {}, entities: [], streams: [] },

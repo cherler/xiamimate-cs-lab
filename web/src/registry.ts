@@ -3907,18 +3907,26 @@ const binsearch: Experiment<BinSearchState> = {
   title: '二分查找',
   subtitle: '有序=每问一次砍掉一半',
   kernel: binsearchKernel,
-  defaultDoc: { kind: 'binsearch', params: {}, entities: [], streams: [] },
-  params: [],
+    defaultDoc: { kind: 'binsearch', params: { arr: '有序 13 个', target: 63 }, entities: [], streams: [] },
+    /*  2026-09-08 补厚：数组和目标原来写死，于是二分查找的**前提**演不出来 ——
+      而它整条命就系在那个前提上：数组必须有序。乱序那一档实测 3 次比较返回"不存在"，
+      而目标就躺在下标 0 —— 不报错、不崩、也不慢。**它失败得很安静**，这才是最该看见的。 */
+  params: [
+    { key: 'arr', label: '数组', kind: 'enum', options: ['有序 13 个', '有序 41 个', '乱序（前提被破坏）'] },
+    { key: 'target', label: '找哪个数', kind: 'number', options: [3, 42, 60, 63, 95] },
+  ],
   paramsNote: `**二分查找是"分治+有序"的最小样板**:数组排好序后,查一个数不用一个个扫。
 
 - **每步砍一半**:看正中间那个,目标比它大就只在右半、小就只在左半——一次比较砍掉一半候选;区间 [lo,hi] 反复对折。
 - **威力**:每步范围减半,只需 log₂n 次比较就能在百万个里定位(n=10⁶ 也就 20 步);B+树索引、二分定位 bug、猜数游戏底子都是它。
 - **本实验**:13 个有序数找 63,看区间对半砍、mid 跳,4 步命中。`,
-  bounds: [
-    '13 个有序数,目标 63',
-    '每步 mid=(lo+hi)/2、比较后区间减半(可核)',
-    '4 步命中(≤log₂13≈4);灰格=已排除',
-    '要求数组有序;无序得先排序或用哈希',
+    bounds: [
+    '数组三选一（有序 13 / 有序 41 / 同一批数打乱）；目标可选，含一个**不在数组里**的 60',
+    '每步 mid=(lo+hi)>>1、按比较方向砍半，比较次数 ≤ ⌈log₂(n+1)⌉（实测 13 个用 4 次、41 个用 5 次）',
+    /*  ⚠️ 前提写在最显眼处：老版本只给有序数组，等于把这个前提藏起来了。 */
+    '**前提是有序**。乱序时算法照跑不误、不报错，只是会把目标所在的半边整个扔掉 —— 静默地返回"不存在"',
+    '"目标到底在不在"由**线性扫**给出（reallyThere），不由二分给出 —— 这样"二分说没有、其实有"才对得起来',
+    '只做基本二分；lower_bound / upper_bound 的完整边界变体不在范围内（只在未命中时点出插入位置）',
   ],
   tabs: [{ id: 'search', label: '区间对折' }],
   Stage: BinSearchStage,
@@ -3926,11 +3934,16 @@ const binsearch: Experiment<BinSearchState> = {
   metric: s => { const total = s.arr.length; const range = s.hi - s.lo + 1; return total ? Math.max(0, Math.min(1, 1 - range / total)) : 0 },
   tickLabel: s => (s.phase === 'done' ? '毕' : `${s.compares}`),
   whyInRail: true,
-  readouts: s => [
-    { label: '区间', value: `[${s.lo}, ${s.hi}]` },
-    { label: '中点', value: s.mid >= 0 ? `arr[${s.mid}]=${s.arr[s.mid]}` : '—', tone: s.mid >= 0 && s.phase !== 'done' ? 'hot' : undefined },
-    { label: '比较次数', value: `${s.compares}` },
-    { label: '结果', value: s.found >= 0 ? `命中@${s.found}` : '查找中', tone: s.found >= 0 ? 'good' : undefined },
+    readouts: s => [
+    { label: '区间 [lo,hi]', value: s.mid >= 0 ? `[${s.lo}, ${s.hi}]` : '—' },
+    { label: '比较次数', value: `${s.compares} / 上界 ${s.bound}`,
+      tone: s.compares <= s.bound ? 'good' : 'bad' },
+    { label: '二分的结论', value: s.found >= 0 ? `找到，下标 ${s.found}` : s.phase === 'done' ? '不存在' : '还在找',
+      tone: s.found >= 0 ? 'good' : undefined },
+    /*  事实来自线性扫。跟上一栏并排放着，"静默失败"才有对照 */
+    { label: '实际在不在', value: s.reallyThere >= 0 ? `在，下标 ${s.reallyThere}` : '真的不在' },
+    { label: '数组有序吗', value: s.sorted ? '有序 → 前提成立' : '乱序 → 前提被破坏',
+      tone: s.sorted ? 'good' : 'bad' },
   ],
 }
 
