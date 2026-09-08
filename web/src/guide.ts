@@ -4676,39 +4676,52 @@ export const GUIDES: Record<string, Guide> = {
       hook: '把每个数从 16 位压到 4 位，模型为什么还能用？',
       what: '这一屏讲的是**量化**：把模型权重从 16 位浮点压成 8 位甚至 4 位整数。为什么敢这么干？因为神经网络的权重描述的是「往这个方向偏一点」，**并不需要银行账目那样的精度** —— 把取值范围切成 256 档（int8）甚至 16 档（int4），多数情况够用。收益是实打实的：显存降到四分之一到八分之一，而推理速度的瓶颈**恰恰就是把权重从显存搬到计算单元**，搬得少了自然就快。这也是消费级显卡能跑起大模型的直接原因。',
       terms: '**位宽**：一个数用几位存。fp16 是 16 位，int8 是 8 位，int4 只有 4 位。\u3000**scale（步长）**：量化的标尺。做法是先找出这一组权重里绝对值最大的那个，**scale = 最大绝对值 ÷ 整数上限**（int8 的上限是 127，int4 是 7）。\u3000**量化 / 反量化**：量化是「权重 ÷ scale，四舍五入取整」；用的时候再「整数 × scale」还原回近似浮点值。还原值跟原值的差就是**量化误差**。\u3000**对称 / 非对称**：对称量化以 0 为中心、只存一个 scale；非对称还要多存一个零点偏移，能更好地贴合分布不居中的情况。\u3000**离群值**：量化最大的敌人。一组权重里只要有一个特别大的数，scale 就被它撑大，**其余正常权重全被压缩到少数几个档位里**，误差暴涨。所以实际方案会把离群值单独拎出来用高精度存。\u3000**分组量化**：不给整个矩阵共用一个 scale，而是每 64 或 128 个权重一组各算各的 —— 多存一点 scale，换来明显更小的误差。',
-      watch: '看同一个权重在不同位宽下变成了什么值，以及还原之后跟原值差多少。误差最大的往往是分布尾巴上那几个。',
+      watch: '别只盯位宽。把「权重分布」换成**有异常值**、粒度留在**整张一个 scale**，走到 int4 —— 屏幕上会红掉一大片：几个异常值把 scale 撑大，剩下 200 多个小权重全被四舍五入压成 0。**省下的显存全用来存 0 了**。这就是 GPTQ / AWQ / LLM.int8() 那一整条线要解决的事。',
     },
     step: (s: never) => {
-      const st = s as { phase: string; bits: number; qmax: number; scale: number; cursor: number; weights: number[]; ints: (number|null)[]; deq: (number|null)[]; errs: (number|null)[]; maxErr: number; bytesFp32: number; bytesQ: number }
+      const st = s as { phase: string; bits: number; qmax: number; scale: number; cursor: number
+        weights: number[]; ints: (number|null)[]; deq: (number|null)[]; errs: (number|null)[]
+        maxErr: number; bytesFp32: number; bytesQ: number
+        groups?: number; groupSize?: number; relErr?: number; zeroed?: number
+        effBits?: number; kind?: string; zeroedFlat4?: number; zeroedAt4?: number }
+      //  ⚠️ 补厚字段可选读：老快照没有 groups/zeroed，读不到就按老口径讲。
+      const N = st.weights.length
+      const g = st.groups ?? 1
       return [
-        { k: '本步输入',
-          v: st.phase === 'scale' ? `int${st.bits} 的整数范围 ±${st.qmax}，权重绝对值最大值`
-            : st.phase === 'done' ? `${st.weights.length} 个权重全部量化完`
-              : `第 ${st.cursor} 个权重 w=${st.weights[st.cursor]}` },
+        { k: '本步输入', v: `${N} 个权重，压到 int${st.bits}（整数范围 ±${st.qmax}）` },
         { k: '判定规则',
-          v: st.phase === 'scale'
-            ? `**定标**：scale = max|w| ÷ ${st.qmax} = **${st.scale.toFixed(4)}**。整数的每一格代表这么大的实数。`
-            : `**量化**：q = round(w ÷ scale) 截断到 ±${st.qmax}，只存这个整数（int${st.bits} 占 ${st.bits/8} 字节）；用时反量化 ŵ = q × scale。` },
+          v: `**定标**：scale = ${g > 1 ? `**每组**的` : ''} max|w| ÷ ${st.qmax}${g > 1 ? `（分 ${g} 组、每组 ${st.groupSize} 个）` : ` = **${st.scale.toFixed(4)}**`}。`
+            + `**量化**：q = round(w ÷ scale) 截断到 ±${st.qmax}，只存整数；用时反量化 ŵ = q × scale。`
+            + `　⚠️ scale 由 **max|w|** 定 —— 所以**一个特别大的权重能撑大整张的 scale**，把别的小权重全挤成 0。` },
         { k: '本步结果',
-          v: st.phase === 'done'
-            ? `fp32 的 ${st.bytesFp32} 字节压到 int${st.bits} 的 **${st.bytesQ} 字节**（省 ${Math.round((1-st.bytesQ/st.bytesFp32)*100)}%），最大误差 **${st.maxErr.toFixed(3)}**。位越少越省、误差越大。`
-            : st.phase === 'scale' ? `定标完成，接下来逐个把权重四舍五入到最近的整数格。`
-              : `q=${st.ints[st.cursor]}，反量化 ${(st.deq[st.cursor] ?? 0).toFixed(3)}，误差 ${(st.errs[st.cursor] ?? 0).toFixed(3)}。目前最大误差 ${st.maxErr.toFixed(3)}。` },
+          v: `压到 **${st.bytesQ} 字节**${st.effBits !== undefined ? `（等效 ${st.effBits} bit/权重${g > 1 ? `，含 ${g} 个 fp16 scale` : ''}）` : ''}，`
+            + (st.relErr !== undefined ? `相对误差 **${(st.relErr * 100).toFixed(1)}%**、` : '')
+            + `最大误差 ${st.maxErr.toFixed(3)}`
+            + (st.zeroed !== undefined
+              ? (st.zeroed > 0
+                ? `，**${st.zeroed}/${N} 个权重被压成 0**${st.zeroed > N * 0.5 ? '（一多半直接没了）' : ''}。` : `，没有权重被压成 0。`)
+              : `。`) },
       ]
     },
     verdict: (s: never) => {
-      const st = s as { phase: string; bits: number; bytesFp32: number; bytesQ: number; maxErr: number; cursor: number }
-      return st.phase === 'done' ? `int${st.bits} · 省 ${Math.round((1-st.bytesQ/st.bytesFp32)*100)}% · 最大误差 ${st.maxErr.toFixed(3)}`
-        : st.phase === 'scale' ? `int${st.bits} 定标中` : `量化第 ${st.cursor} 个`
+      const st = s as { phase: string; bits: number; bytesFp32: number; bytesQ: number; maxErr: number
+        cursor: number; zeroed?: number; weights?: number[] }
+      const n = st.weights?.length ?? 0
+      if (st.zeroed !== undefined && n > 0 && st.zeroed > n * 0.3) return `${st.zeroed} 个归零`
+      return `int${st.bits} · 省 ${Math.round((1 - st.bytesQ / st.bytesFp32) * 100)}%`
     },
     read: [
-      { at: 'scale 条', is: '整数范围 ±qmax 与 scale 步长，量化的标尺。', anchor: '.qzscale' },
-      { at: '量化表', is: 'w → 整数 q → 反量化 ŵ → 误差，逐行长出。', anchor: '.qztab' },
-      { at: '显存对比', is: 'fp32 与 int8/4 的字节数，右边是省下的比例与最大误差。', anchor: '.qzfoot' },
+      { at: '权重条', is: '**256 根条，一根一个权重**（高=|w|）。红=被压成 0、橙=异常值、竖线=组边界。这一屏最该看的就是"红了多大一片"。', anchor: '.qzbars' },
+      { at: '各组 scale', is: '分组时才有：每组自己一个 scale。**异常值所在那几组会明显更高**——破坏被关在了那里。', anchor: '.qzscales' },
+      { at: '量化表', is: 'w → 整数 q → 反量化 ŵ → 误差。只列前 8 个,便于手核。', anchor: '.qztab' },
+      { at: '显存对比', is: 'fp32 与 int 的字节数、省下的比例、**等效位宽**(把每组 scale 的开销摊了进去)。', anchor: '.qzfoot' },
     ],
     try: [
-      { act: '在 int8 / int4 之间切', watch: 'int4 显存再省一半，但 scale 变大、整数格变粗，误差明显变大（0.008 → 0.14）。', param: '量化位数' },
-      { act: '看绝对值最大的那个权重', watch: '它总被映射到 ±qmax（int8 的 ±127 / int4 的 ±7）—— scale 就是按它定的。', param: '量化位数' },
+      { act: '按 ▶ 把位宽从 int8 扫到 int2', watch: '整数越来越粗、相对误差越来越大、显存越来越小——**拿精度换显存**这笔账。' },
+      //  下面三条是补厚后的主菜
+      { act: '把「权重分布」换成「有异常值」，粒度留在「整张一个 scale」，走到 int4', watch: '**红掉一大片:212/256 个权重被压成 0**、相对误差 35.9%。scale 由 max|w| 定,三个异常值把它整个撑大,剩下的小权重全落进同一个量化格。**省下的显存全用来存 0 了。**' },
+      { act: '保持有异常值，把「量化粒度」拨到「分 8 组」', watch: '归零从 212 掉到 **83**、误差从 35.9% 掉到 19.9%。看"各组 scale"那排:异常值所在的那几组明显更高——**破坏被关进了它自己那组**。这就是 GPTQ / AWQ / LLM.int8() 在做的事。' },
+      { act: '再拨到「分 32 组」，然后盯住「等效位宽」', watch: '误差再降到 10.1%,但等效位宽从 4.5 涨到 **6.0** bit/权重——每组都要多存一个 fp16 的 scale。**组越小误差越小、开销也越大**;论文里"4-bit group128"那个 128 就是在这条线上挑的。' },
     ],
     terms: ['quantsym', 'params'],
   },

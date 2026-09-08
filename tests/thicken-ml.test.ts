@@ -33,6 +33,7 @@ import { residualKernel, type ResidualState } from '../src/kernels/residual.ts'
 import { condnumKernel, type CondNumState } from '../src/kernels/condnum.ts'
 import { svmKernel, type SVMState } from '../src/kernels/svm.ts'
 import { matmulKernel, type MatmulState } from '../src/kernels/matmul.ts'
+import { quantKernel, type QuantState } from '../src/kernels/quant.ts'
 
 let failures = 0
 const ok = (m: string) => console.log(`  ✅ ${m}`)
@@ -343,6 +344,60 @@ console.log('\n【逻辑回归：正则真的在压权重，异或真的分不�
   !xor.separable && xor.acc < sep.acc - 0.15
     ? ok(`异或准确率 ${(xor.acc * 100).toFixed(0)}%，可分档 ${(sep.acc * 100).toFixed(0)}% —— 一条直线切不开异或`)
     : bad(`异或 ${(xor.acc * 100).toFixed(0)}% vs 可分 ${(sep.acc * 100).toFixed(0)}% —— 差距不足以说明"线性不可分"`)
+}
+
+// ═══ 量化：一个异常值就能毁掉整张的 scale ═══════════════
+console.log('\n【量化：scale 由 max|w| 定，所以异常值能把小权重全挤成 0】')
+{
+  const all = (p: P) => (run(quantKernel.compile(doc('quant', p)), 40) as QuantState[]).filter(s => s.bits > 0)
+  const at = (p: P, bits: number) => all(p).find(s => s.bits === bits)!
+  const DIST = ['正态（教科书情形）', '有异常值（真实 LLM 的样子）', '长尾']
+  const GRP = ['整张一个 scale', '分 8 组', '分 32 组']
+
+  //  ① 位宽越低，误差越大、显存越小 —— 老口径也得守住
+  const bad1: string[] = []
+  for (const dist of DIST) for (const group of GRP) {
+    const seq = all({ dist, group })
+    const err = seq.map(s => s.relErr), by = seq.map(s => s.bytesQ)
+    if (!err.every((v, k) => k === 0 || v >= err[k - 1])) bad1.push(`${dist}/${group}：误差不单调`)
+    if (!by.every((v, k) => k === 0 || v <= by[k - 1])) bad1.push(`${dist}/${group}：字节数不单调`)
+  }
+  bad1.length === 0 ? ok('9 种组合 × 5 档位宽：位越少误差越大、显存越小 —— "拿精度换显存"这笔账没错')
+    : bad(bad1.slice(0, 3).join(' / '))
+
+  /*  ② 这个实验的主菜：**异常值 + 整张 scale** 时，int4 会把一大半权重压成 0。
+      少了这条，整个补厚就白做了。 */
+  const flat = at({ dist: DIST[1], group: GRP[0] }, 4)
+  const norm = at({ dist: DIST[0], group: GRP[0] }, 4)
+  const N = flat.weights.length
+  flat.zeroed > N * 0.5 && flat.zeroed > norm.zeroed * 3
+    ? ok(`异常值 + 整张 scale + int4：${flat.zeroed}/${N}（${Math.round(100 * flat.zeroed / N)}%）被压成 0；同样条件的正态分布只有 ${norm.zeroed} 个`)
+    : bad(`异常值那档没演出来：归零 ${flat.zeroed}/${N}，正态 ${norm.zeroed}`)
+
+  //  ③ 药：分组必须把归零和误差都明显压下去
+  const g8 = at({ dist: DIST[1], group: GRP[1] }, 4)
+  const g32 = at({ dist: DIST[1], group: GRP[2] }, 4)
+  g8.zeroed < flat.zeroed / 2 && g32.zeroed < g8.zeroed && g32.relErr < g8.relErr && g8.relErr < flat.relErr
+    ? ok(`分组是药：归零 ${flat.zeroed} → ${g8.zeroed} → ${g32.zeroed}，相对误差 ${(flat.relErr * 100).toFixed(1)}% → ${(g8.relErr * 100).toFixed(1)}% → ${(g32.relErr * 100).toFixed(1)}%`)
+    : bad(`分组没把误差压下去：${flat.zeroed}/${g8.zeroed}/${g32.zeroed}，${flat.relErr}/${g8.relErr}/${g32.relErr}`)
+
+  /*  ④ 药不是白吃的：等效位宽必须**把每组 scale 摊进去**并随组数上升。
+      少了这一项，"组越小越好"就成了一句没有代价的空话。 */
+  const eff = [flat, g8, g32].map(s => s.effBits)
+  eff[0] < eff[1] && eff[1] < eff[2] && Math.abs(eff[1] - (4 + 16 * 8 / N)) < 1e-6
+    ? ok(`等效位宽把 scale 开销摊了进去：${eff.join(' → ')} bit/权重（分 8 组 = 4 + 16·8/${N} = ${eff[1]}）`)
+    : bad(`等效位宽不对：${eff.join(' / ')}`)
+
+  //  ⑤ 分组之后，异常值所在那几组的 scale 必须**明显更大**（破坏被关在那里）
+  const sc = g8.scales
+  Math.max(...sc) > Math.min(...sc) * 3
+    ? ok(`分 8 组时各组 scale 差 ${(Math.max(...sc) / Math.min(...sc)).toFixed(1)} 倍 —— 异常值只撑大了它自己那几组`)
+    : bad(`各组 scale 差不多（最大/最小 ${(Math.max(...sc) / Math.min(...sc)).toFixed(2)}）—— 看不出"关进自己那组"`)
+
+  //  ⑥ 自检：正态那档不该有"一多半归零"，否则②的对照就不成立
+  norm.zeroed < N * 0.3
+    ? ok(`自检：正态分布 int4 只有 ${norm.zeroed}/${N} 归零 —— ②的对照干净，差别确实来自异常值`)
+    : bad(`正态档也归零了 ${norm.zeroed}/${N} —— 那"异常值的锅"就说不清了`)
 }
 
 // ═══ 矩阵乘：FLOPs 是定死的，访存不是 ═══════════════════

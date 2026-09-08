@@ -1428,9 +1428,14 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       b: { phase: 'done', experts: 4, topk: 2, tokens: ['猫','追','老','鼠'], cursor: 4, chosen: [], chosenGates: [], load: [3,1,3,1], activeFrac: 0.5 },
     },
     quant: {
-      doc: { params: { bits: 8 } },
-      a: { phase: 'quantize', bits: 8, qmax: 127, scale: 0.0165, cursor: 3, weights: [0.12,-0.87,1.53,-2.10,0.44,1.98,-0.33,0.71], ints: [7,-53,93,-127,null,null,null,null], deq: [0.116,-0.876,1.538,-2.100,null,null,null,null], errs: [0.004,0.006,0.008,0.000,null,null,null,null], maxErr: 0.008, bytesFp32: 32, bytesQ: 8 },
-      b: { phase: 'done', bits: 8, qmax: 127, scale: 0.0165, cursor: 8, weights: [0.12,-0.87,1.53,-2.10,0.44,1.98,-0.33,0.71], ints: [7,-53,93,-127,27,120,-20,43], deq: [0.116,-0.876,1.538,-2.100,0.446,1.984,-0.331,0.711], errs: [0.004,0.006,0.008,0.000,0.006,0.004,0.001,0.001], maxErr: 0.008, bytesFp32: 32, bytesQ: 8 },
+      doc: { params: { dist: '有异常值（真实 LLM 的样子）', group: '整张一个 scale' } },
+      //  A int8（误差还小） · B int4（212/256 被压成 0）—— 结论必须换一套说法
+      a: { phase: 'done', bits: 8, qmax: 127, scale: 0.0504, groups: 1, groupSize: 256,
+        weights: new Array(256).fill(0.1), ints: [], deq: [], errs: [],
+        maxErr: 0.025, relErr: 0.0217, zeroed: 14, effBits: 8.063, bytesFp32: 1024, bytesQ: 258, cursor: 256 },
+      b: { phase: 'done', bits: 4, qmax: 7, scale: 0.9143, groups: 1, groupSize: 256,
+        weights: new Array(256).fill(0.1), ints: [], deq: [], errs: [],
+        maxErr: 0.457, relErr: 0.3591, zeroed: 212, effBits: 4.063, bytesFp32: 1024, bytesQ: 130, cursor: 256 },
     },
     specdec: {
       doc: { params: { k: 3 } },

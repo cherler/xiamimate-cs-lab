@@ -3055,33 +3055,48 @@ const quant: Experiment<QuantState> = {
   title: '权重量化 W8 / W4',
   subtitle: 'int8→int2 位宽扫描 · 拿精度换显存',
   kernel: quantKernel,
-  defaultDoc: { kind: 'quant', params: {}, entities: [], streams: [] },
-  params: [],
+  defaultDoc: { kind: 'quant', params: { dist: '正态（教科书情形）', group: '整张一个 scale' }, entities: [], streams: [] },
+  /*  2026-09-08 补厚：老版本 8 个手挑的权重、整张一个 scale，扫一遍位宽就完了 ——
+      那演的是量化的**定义**，不是量化的**难处**。而大模型量化这个领域几乎所有工作
+      都在对付同一件事：**一个异常值就能毁掉整张的 scale**。 */
+  params: [
+    { key: 'dist', label: '权重分布', kind: 'enum', options: ['正态（教科书情形）', '有异常值（真实 LLM 的样子）', '长尾'] },
+    { key: 'group', label: '量化粒度', kind: 'enum', options: ['整张一个 scale', '分 8 组', '分 32 组'] },
+  ],
   paramsNote: `**量化不是一步步算的仿真,是个函数**:一组权重 + 位数 → 整数/误差/显存。真正在变的是**位宽**,这里把轴换成"位宽从高到低扫描(int8→int2)"。
 
 - **按 ▶ 播放**:同一组权重被压得整数越来越粗、最大误差越来越大、显存越来越小。
 - **对称量化**:scale = max|w| ÷ (2^(bits-1)−1),q = round(w/scale) 截断,反量化 ŵ = q·scale。
-- 本质就是**拿精度换显存和带宽**。`,
+- 本质就是**拿精度换显存和带宽**。
+- **真正的难处是异常值**:scale 由 max|w| 定,而 LLM 权重里就是会冒出几个特别大的值。scale 被撑大之后,小权重全被四舍五入压成 0。实测 256 个权重、有异常值、int4:**212 个被压成 0**(83%),相对误差 35.9%——**省下的显存全用来存 0 了**。
+- **药是分组**:每组自己一个 scale,把异常值关进它自己那组。分 8 组降到 83 个归零、19.9%;分 32 组降到 36 个、10.1%。这就是 GPTQ / AWQ / LLM.int8() 在做的事。
+- **分组不是白来的**:每组要多存一个 fp16 的 scale。所以屏幕上记**等效位宽**:int4 整张 4.06 bit → 分 8 组 4.5 → 分 32 组 6.0。**组越小误差越小、开销也越大**——论文里"4-bit group128"那个 128 就是在这条线上挑的。`,
   bounds: [
-    '用固定 8 个权重、对称 per-tensor 量化，便于手核',
-    '轴是位宽扫描 int8→int2：每步是同一组权重在该位数下的完整量化,不是计算中间步',
-    'scale = max|w| ÷ qmax；q 截断到 ±qmax；反量化 ŵ = q·scale；每权重占 bits/8 字节',
-    '只量化权重，未展开激活量化与 W8A8 矩阵乘的细节；未含 scale/zero-point 分组存储开销',
+    '256 个权重、对称量化（无 zero-point，即不做非对称/仿射量化）；前 8 个仍列表可手核',
+    '轴是位宽扫描 int8→int2：每步是同一组权重在该位数下的**完整**量化，不是计算的中间步',
+    'scale = 该组 max|w| ÷ qmax；q 截断到 ±qmax；反量化 ŵ = q·scale',
+    /*  ⚠️ 分组的开销必须记进去，否则"组越小越好"就是一句没有代价的空话。 */
+    '等效位宽 = (N·bits/8 + 组数·2 字节) × 8 ÷ N —— **把每组那个 fp16 scale 摊了进去**',
+    'N 取 256 而不是 64：N 太小时分 8 组等于每组才 8 个权重、多花 2 bit/权重，跟真实做法（group 128、多花 0.125 bit）完全不是一回事',
+    '只量化权重：激活量化、W8A8 矩阵乘、GPTQ 的逐列误差补偿、AWQ 的重要通道保护都不在范围内',
   ],
   tabs: [{ id: 'quant', label: '量化与误差' }],
   Stage: QuantStage,
-  tone: s => (s.bits >= 8 ? { key: 'good', label: `int${s.bits} 稳` }
-    : s.bits <= 2 ? { key: 'bad', label: `int${s.bits} 险` }
-    : { key: 'idle', label: `int${s.bits}` }),
+  tone: s => (s.zeroed > s.weights.length * 0.3 ? { key: 'bad', label: `${s.zeroed} 个归零` }
+    : s.bits >= 8 ? { key: 'good', label: `int${s.bits} 稳` }
+      : s.bits <= 2 ? { key: 'bad', label: `int${s.bits} 险` }
+        : { key: 'idle', label: `int${s.bits}` }),
   metric: s => 1 - s.bytesQ / s.bytesFp32,
   tickLabel: s => `int${s.bits}`,
   whyInRail: true,
   readouts: s => [
     { label: '量化位数', value: `int${s.bits}（±${s.qmax}）`, tone: 'hot' },
-    { label: 'scale', value: s.scale.toFixed(4) },
-    { label: '显存', value: `${s.bytesFp32}B → ${s.bytesQ}B` },
-    { label: '最大误差', value: s.maxErr.toFixed(3), tone: s.bits <= 2 ? 'bad' : undefined },
-    { label: '省下', value: `${Math.round((1 - s.bytesQ / s.bytesFp32) * 100)}%`, tone: 'good' },
+    /*  相对误差比最大误差有用得多：后者只反映一个点，前者反映"大多数权重被毁得多惨" */
+    { label: '相对误差 RMS', value: `${(s.relErr * 100).toFixed(1)}%`, tone: s.relErr > 0.15 ? 'bad' : s.relErr < 0.02 ? 'good' : undefined },
+    { label: '被压成 0', value: `${s.zeroed} / ${s.weights.length}`, tone: s.zeroed > s.weights.length * 0.3 ? 'bad' : undefined },
+    /*  等效位宽把每组 scale 的开销摊了进去 —— 少了它，"组越小越好"就没有代价 */
+    { label: '等效位宽', value: `${s.effBits} bit/权重${s.groups > 1 ? `（含 ${s.groups} 个 scale）` : ''}` },
+    { label: '省显存', value: `${Math.round((1 - s.bytesQ / s.bytesFp32) * 100)}%`, tone: 'good' },
   ],
 }
 
