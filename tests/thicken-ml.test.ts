@@ -41,6 +41,7 @@ import { scaleKernel, type ScaleState } from '../src/kernels/scale.ts'
 import { orthoKernel, type OrthoState } from '../src/kernels/ortho.ts'
 import { xentKernel, type XentState } from '../src/kernels/xent.ts'
 import { lowrankKernel, type LowRankState } from '../src/kernels/lowrank.ts'
+import { ragKernel, type RagState } from '../src/kernels/rag.ts'
 
 let failures = 0
 const ok = (m: string) => console.log(`  ✅ ${m}`)
@@ -351,6 +352,57 @@ console.log('\n【逻辑回归：正则真的在压权重，异或真的分不�
   !xor.separable && xor.acc < sep.acc - 0.15
     ? ok(`异或准确率 ${(xor.acc * 100).toFixed(0)}%，可分档 ${(sep.acc * 100).toFixed(0)}% —— 一条直线切不开异或`)
     : bad(`异或 ${(xor.acc * 100).toFixed(0)}% vs 可分 ${(sep.acc * 100).toFixed(0)}% —— 差距不足以说明"线性不可分"`)
+}
+
+// ═══ RAG：检索永远有输出，所以它不会说"我没有" ═══════════
+console.log('\n【RAG：检索错了答案一定错，而且错得理直气壮】')
+{
+  const go = (p: P) => last(run(ragKernel.compile(doc('rag', p)), 20) as RagState[])
+  const Q_OK = '猫爱吃什么？（库里有答案）'
+  const Q_NONE = '企鹅爱吃什么？（库里没有）'
+  const Q_DIST = '猫为什么半夜叫？（有干扰项）'
+  const HONEST = '老实（没依据就说不知道）', LIAR = '爱编（照着资料硬答）'
+
+  //  ① 顺利那档：任何 k 都命中，答案有出处
+  const ok1 = [1, 2, 4].map(topk => go({ q: Q_OK, topk, honest: HONEST }))
+  ok1.every(s => s.hit && !s.hallucinated && s.answerRank === 1)
+    ? ok('库里有答案那档：k=1/2/4 都命中（含答案那篇排第 1），不产生幻觉')
+    : bad(`顺利那档出问题：${ok1.map(s => `hit=${s.hit} rank=${s.answerRank}`).join(' / ')}`)
+
+  /*  ② **检索永远有输出**：库里根本没有答案时，它照样交出 k 篇。
+      这是所有 RAG 幻觉的根子，也是老版本演不出来的东西。 */
+  const none = [1, 2, 4].map(topk => go({ q: Q_NONE, topk, honest: HONEST }))
+  none.every((s, k) => s.retrieved.length === [1, 2, 4][k] && !s.hit && !s.hasAnswerInKb)
+    ? ok('库里没有答案时，检索照样交出 k 篇（k=1/2/4 分别是 1/2/4 篇）—— 它不会说"我没有"')
+    : bad(`没答案那档不对：${none.map(s => `取${s.retrieved.length}篇 hit=${s.hit}`).join(' / ')}`)
+
+  //  ③ 同样的检索结果，模型脾气一换就从"说不知道"变成幻觉
+  const honestOne = go({ q: Q_NONE, topk: 2, honest: HONEST })
+  const liarOne = go({ q: Q_NONE, topk: 2, honest: LIAR })
+  JSON.stringify(honestOne.retrieved) === JSON.stringify(liarOne.retrieved)
+    && !honestOne.hallucinated && liarOne.hallucinated && liarOne.answer !== honestOne.answer
+    ? ok(`同一份检索结果（${liarOne.retrieved.map(i => `#${i + 1}`).join(' ')}）：老实的说「${honestOne.answer}」，爱编的说「${liarOne.answer}」—— 幻觉来自模型脾气，不来自检索`)
+    : bad(`脾气那条没演出来：老实 ${honestOne.answer}（幻觉=${honestOne.hallucinated}）、爱编 ${liarOne.answer}（幻觉=${liarOne.hallucinated}）`)
+
+  /*  ④ 干扰项那档：**相似度高 ≠ 有答案**。含答案的那篇必须排在 top-2 之外、top-4 之内，
+      于是 k 从 2 调到 4 能把它捞回来。这条也是"这个实验的向量得调过"的原因。 */
+  const d2 = go({ q: Q_DIST, topk: 2, honest: HONEST })
+  const d4 = go({ q: Q_DIST, topk: 4, honest: HONEST })
+  d2.answerRank === 3 && !d2.hit && d4.hit
+    ? ok(`干扰项那档：含答案的那篇只排第 ${d2.answerRank}（两篇讲猫但答非所问的相似度反而更高）—— k=2 漏掉、k=4 捞回来`)
+    : bad(`干扰项没起作用：排第 ${d2.answerRank}，k=2 hit=${d2.hit}、k=4 hit=${d4.hit}`)
+
+  //  ⑤ 幻觉的定义要严：只有"没命中 + 还给了肯定答案"才算
+  const cases = [Q_OK, Q_NONE, Q_DIST].flatMap(q => [1, 2, 4].flatMap(topk => [HONEST, LIAR].map(honest => go({ q, topk, honest }))))
+  cases.every(s => s.hallucinated === (!s.hit && s.honest.startsWith('爱编')))
+    ? ok(`18 种组合：幻觉标记严格等于"没命中 + 模型爱编"—— 命中时不管什么脾气都不算幻觉`)
+    : bad('幻觉的判定跟定义对不上')
+
+  //  ⑥ 自检：库里没答案那档，调 k 救不回来（跟干扰项那档形成对照）
+  const noneK = [1, 2, 4].map(topk => go({ q: Q_NONE, topk, honest: HONEST }).hit)
+  noneK.every(h => !h) && d4.hit
+    ? ok('自检：库里没答案时 k=1/2/4 全都救不回来；而干扰项那档 k=4 就能捞到 —— 两种失败的解法完全不同')
+    : bad(`两种失败没区分开：没答案档 ${noneK.join('/')}、干扰项 k=4 hit=${d4.hit}`)
 }
 
 // ═══ 低秩近似：LoRA 靠的是谱的形状，不是"低秩"本身 ═══════

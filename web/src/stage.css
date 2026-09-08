@@ -3434,6 +3434,10 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
     linear-gradient(180deg, var(--panel), color-mix(in srgb,var(--ink) 3%,var(--panel)));
   box-shadow: inset 0 1px 4px rgba(20,32,42,.06), inset 0 0 0 1px rgba(255,255,255,.5); }
 .mlaxis { stroke:var(--dim); stroke-width:0.7; }
+.raganswer.bad { border-color:color-mix(in srgb,var(--miss) 45%,var(--plate-edge));
+  background:color-mix(in srgb,var(--miss) 8%,transparent) }
+.raganswer.bad b { color:var(--miss) }
+
 /*  ── 高维近正交补厚（2026-09-08）：容量三行（直接装 / 算容量 / 撞线概率）── */
 .orcap2 { display:flex; flex-direction:column; gap:6px; width:min(640px,96%); margin:12px auto 0;
   padding:10px 13px; border:1px solid var(--plate-edge); border-radius:8px; background:var(--panel) }

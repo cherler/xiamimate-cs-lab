@@ -5904,31 +5904,58 @@ export const GUIDES: Record<string, Guide> = {
       hook: '大模型记不住你的私有资料，怎么办？',
       what: '这一屏讲的是**检索增强生成（RAG）**：让大模型能回答它训练时没见过的内容 —— 你的私有文档、今天的新闻、内部知识库。思路是不指望模型记住，而是**用的时候现查给它**：把资料切成小段存进向量库，提问时先检索出最相关的几段，**连同问题一起塞进提示词，让它「看着材料回答」**。好处是资料随时可换、答案有出处、也不容易编造。难点则全部集中在「检索得准不准」上。',
       terms: '**切块（chunking）**：把文档切成小段。**块太大会混入无关内容、稀释相关性；太小又会切断上下文**（一个完整的论述被劈成两半）。实践中用重叠切分、按语义边界（段落、标题）切，而不是按固定字数硬切。\u3000**向量化与检索**：把每块和问题都变成向量，取最相近的几块。\u3000**混合检索**：**语义检索对精确的关键词、编号不敏感**（「订单 12345」和「12346」的向量几乎一样），所以实用系统会**同时用关键词检索（BM25）再融合排序**。\u3000**重排（rerank）**：粗排取回几十条，再用更贵更准的模型精排出最相关的几条。**这一步对最终质量的提升往往最明显。**\u3000**引用与溯源**：让模型在回答里标出用了哪一段。**这是 RAG 相对纯生成最大的价值** —— 答案可以被核对。\u3000**它的失败模式**：**检索错了，模型看着错的材料一样会自信地答错**，而且因为「有出处」反而更难被发现。\u3000**跟微调的分工**：**RAG 加的是知识，微调改的是行为和风格**。想让模型知道公司的新规章用 RAG，想让它按特定格式输出用微调 —— 两者解决的不是同一类问题。',
-      watch: '看检索出来的那几段跟问题的相关度，以及答案里哪句话对应哪一段。检索错了，答案就一定错。',
+      watch: '"检索错了答案就一定错"这句话，现在能亲手演出来。问「企鹅爱吃什么？」—— 库里根本没有，可**检索照样给你 k 篇**（它不会说"我没有"）；再把「模型脾气」拨到**爱编**，你会拿到一个理直气壮的「肉和鱼」，**还带着"出处"**。另一档「猫为什么半夜叫？」则是另一种失败：含答案那篇排第 3，k=1/2 漏掉、k=4 才捞回来。',
     },
     step: (s: never) => {
-      const st = s as { phase: string; stage: string; query: string; docs: { t: string; sim: number | null }[]; retrieved: number[]; answer: string; topK: number }
+      const st = s as { phase: string; stage: string; query: string
+        docs: { t: string; sim: number | null; isAnswer?: boolean }[]
+        retrieved: number[]; answer: string; topK: number
+        hit?: boolean; hasAnswerInKb?: boolean; hallucinated?: boolean; answerRank?: number }
+      //  ⚠️ 补厚字段可选读：老快照没有 hit/hallucinated，读不到就按老口径（必然成功）讲。
+      const names = st.retrieved.map(i => `「${st.docs[i]?.t}」`).join('')
       return [
-        { k: '本步输入', v: st.stage === 'query' ? `问题「${st.query}」+ 知识库 ${st.docs.length} 篇` : st.stage === 'score' ? '查询向量 vs 每篇文档' : st.stage === 'retrieve' ? `${st.docs.length} 篇的相似度` : st.stage === 'augment' ? `检索到的 ${st.topK} 篇` : '增强后的提示词' },
-        { k: '判定规则', v: `RAG 三步:①**检索**——问题编码成查询向量,和库里每篇比**相似度**(内积/余弦),取最相关 top-${st.topK}(这步=**向量最近邻**);②**增强**——把它们拼进提示词当上下文;③**生成**——模型据此作答。` },
-        { k: '本步结果', v: st.stage === 'score' ? '讲"猫吃"的两篇相似度最高、无关的(汽车/植物)接近 0。'
-            : st.stage === 'retrieve' ? `检索到「${st.docs[st.retrieved[0]]?.t}」「${st.docs[st.retrieved[1]]?.t}」,无关的丢掉。`
-            : st.stage === 'augment' ? '把 2 篇拼进上下文,模型开卷作答。'
-            : st.phase === 'done' ? `据此答「${st.answer}」——**有出处**、不靠瞎记。`
-            : '去库里找相关资料。' },
+        { k: '本步输入', v: st.stage === 'query' ? `问题「${st.query}」+ 知识库 ${st.docs.length} 篇`
+            : st.stage === 'score' ? '查询向量 vs 每篇文档'
+              : st.stage === 'retrieve' ? `${st.docs.length} 篇的相似度`
+                : st.stage === 'augment' ? `检索到的 ${st.topK} 篇` : '增强后的提示词' },
+        { k: '判定规则', v: `RAG 三步：①**检索**——问题编码成查询向量，比**相似度**取 top-${st.topK}（=向量最近邻）；`
+            + `②**增强**——拼进提示词当上下文；③**生成**——模型据此作答。`
+            + `　⚠️ 注意①排的是"**像不像**"，不是"**有没有答案**"，而且它**永远有输出**。` },
+        { k: '本步结果', v: st.stage === 'score' ? '相似度算完了 —— 但相似度高的那几篇，未必就含答案。'
+            : st.stage === 'retrieve'
+              ? `检索到 ${names}。`
+                + (st.hit === false
+                  ? (st.hasAnswerInKb
+                    ? `　⚠️ **里面没有能回答的**：含答案那篇排第 ${st.answerRank}，被 top-${st.topK} 卡在外面了。`
+                    : `　⚠️ **一个能答的都没有** —— 可检索照样给了你 ${st.topK} 篇。`)
+                  : st.hit ? `　含答案的那篇进来了（排第 ${st.answerRank}）。` : '')
+              : st.stage === 'augment'
+                ? `把这 ${st.topK} 篇拼进上下文，模型开卷作答。` + (st.hit === false ? `　⚠️ 但这份"已知"里没有答案。` : '')
+                : st.phase === 'done'
+                  ? (st.hallucinated
+                    ? `答「${st.answer}」—— ⚠️ **这是编的**：检索里没有依据，模型照着最像的那篇硬答了。`
+                    : st.hit === false
+                      ? `答「${st.answer}」—— 模型老实交代了（**这取决于它的脾气，不取决于 RAG**）。`
+                      : `据此答「${st.answer}」——**有出处**、不靠瞎记。`)
+                  : '去库里找相关资料。' },
       ]
     },
     verdict: (s: never) => {
-      const st = s as { phase: string; stage: string; retrieved: number[] }
-      return st.phase === 'done' ? '据此作答' : st.stage === 'retrieve' ? `命中 ${st.retrieved.length}` : st.stage === 'score' ? '算相似度' : '检索中'
+      const st = s as { phase: string; stage: string; retrieved: number[]; hit?: boolean; hallucinated?: boolean }
+      if (st.phase === 'done') return st.hallucinated ? '幻觉' : st.hit === false ? '说不知道' : '据此作答'
+      if (st.stage === 'retrieve') return st.hit === false ? '没检到答案' : `命中 ${st.retrieved.length}`
+      return st.stage === 'score' ? '算相似度' : '检索中'
     },
     read: [
       { at: '读数', is: '当前阶段、知识库篇数、命中的文档、答案。', anchor: '.scdim' },
       { at: '知识库', is: '每篇文档的相似度条(越长越相关),绿=被检索的 top-k、灰=落选;下方是增强后的提示词与答案。', anchor: '.raglib' },
     ],
     try: [
-      { act: '按「下一步」跑三步', watch: '算相似度→检索 top-2(绿)→拼进上下文→据此作答。' },
-      { act: '看无关文档', watch: '汽车、植物相似度接近 0、落选——检索只留跟问题最相关的。' },
+      { act: '按「下一步」跑三步', watch: '算相似度→检索 top-k(绿)→拼进上下文→据此作答。相似度是四维点积,可以手算核。' },
+      //  下面三条是补厚后的主菜：三种失败各演一遍
+      { act: '把「问题」换成「企鹅爱吃什么？（库里没有）」', watch: '库里一篇讲企鹅的都没有,可**检索照样给你 k 篇**——它不会说"我没有",只会给最像的(猫、鱼那几篇)。**检索永远有输出**,这是所有 RAG 幻觉的根子。' },
+      { act: '保持这个问题，把「模型脾气」拨到「爱编（照着资料硬答）」', watch: '同样的检索结果,答案变成理直气壮的「**肉和鱼**」——**错得有"出处"**。注意:能不能老实说"不知道",取决于**模型和提示词**,不取决于 RAG 本身。这一档调 k 也没用,答案根本不在库里。' },
+      { act: '换成「猫为什么半夜叫？（有干扰项）」，把 k 从 2 调到 4', watch: '另一种失败:两篇讲猫但答非所问的相似度**反而更高**,含答案那篇排第 **3**——k=1/2 漏掉,k=4 才捞回来。**相似度排的是"像不像",不是"有没有答案"。**实践里的重排序、切块、混合检索,救的都是这一步。' },
     ],
     terms: [],
   },

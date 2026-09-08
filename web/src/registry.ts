@@ -4616,32 +4616,54 @@ const rag: Experiment<RagState> = {
   title: 'RAG 检索增强生成',
   subtitle: '先按相似度检索资料塞进上下文，再据此作答',
   kernel: ragKernel,
-  defaultDoc: { kind: 'rag', params: {}, entities: [], streams: [] },
-  params: [],
+  defaultDoc: { kind: 'rag', params: { q: '猫爱吃什么？（库里有答案）', topk: 2, honest: '老实（没依据就说不知道）' }, entities: [], streams: [] },
+  /*  2026-09-08 补厚：老版本只有一个问题、一个必然成功的检索。
+      可 RAG 的上限**全卡在检索这一步**，而它最典型的失败（检索给了不相关的资料、
+      模型照着编）老版本一次都演不出来 —— 因为检索**永远成功**。 */
+  params: [
+    { key: 'q', label: '问题', kind: 'enum',
+      options: ['猫爱吃什么？（库里有答案）', '企鹅爱吃什么？（库里没有）', '猫为什么半夜叫？（有干扰项）'] },
+    { key: 'topk', label: '检索 top-k', kind: 'number', options: [1, 2, 4] },
+    { key: 'honest', label: '模型脾气', kind: 'enum', options: ['老实（没依据就说不知道）', '爱编（照着资料硬答）'] },
+  ],
   paramsNote: `**RAG 给大模型外挂"开卷考试"**:模型知识冻结在训练参数里,会过时、记不住私有资料、爱编造(幻觉);RAG 检索相关资料塞进提示词再作答。
 
 - **机制**:把问题编码成查询向量,在向量化知识库里按相似度(内积/余弦)检索最相关的 top-k,作为上下文塞进提示词,再让模型据此作答。
 - **好处**:答案有据可查、可溯源、随库更新、少幻觉,不用重训;检索这一步就是向量最近邻——和词向量、k-NN 同源。
-- **本实验**:问"猫爱吃什么",知识库 5 篇——两篇讲猫吃的相似度最高(0.9、0.74)被检索,汽车(0)、植物(0.02)落选;top-2 拼进上下文,模型据此答"肉和鱼"。相似度、检索结果都可手算。
-
-RAG 是问答、客服、企业搜索的主流范式。`,
+- **三档问题各演一种失败**(这是补厚补上的):
+  - **库里有答案**:含答案那篇排第 1,任何 k 都对。这是顺利的样子。
+  - **库里没有答案**("企鹅爱吃什么"):**检索照样给你 k 篇**——它不会说"我没有",只会给最像的。模型脾气一换,就得到理直气壮的「肉和鱼」,**还带着"出处"**。这就是 RAG 最典型的幻觉,调 k 也救不了,得先补资料。
+  - **有干扰项**("猫为什么半夜叫"):两篇讲猫但答非所问的相似度反而更高,**含答案的那篇排第 3**——k=1/2 漏掉、k=4 才捞回来。**相似度排的是"像不像",不是"有没有答案"。**
+- 所以 RAG 的上限**卡在检索**:检索错了,答案一定错。实践里的重排序、切块、混合检索,都是在救这一步。`,
   bounds: [
-    '问题 vs 知识库 5 篇,按点积相似度检索',
-    '猫吃两篇 0.9/0.74 命中;汽车 0、植物 0.02 落选(可核)',
-    'top-2 拼进上下文→模型据此作答',
-    '检索=向量最近邻;答案有出处、可更新、少幻觉',
+    '知识库 7 篇，语义坐标只有四维 [讲猫, 讲企鹅, 讲吃, 讲作息]，相似度=点积，**可手算核对**',
+    '每篇另标一个"它能回答哪个问题" —— **相似度高 ≠ 能回答**，这一屏就是要把这两件事分开',
+    '检索 = 取相似度最高的 top-k；"命中"指的是 top-k 里**真有**能回答的那篇',
+    /*  ⚠️ 这条是补厚后的重点，也是"模型脾气"那个旋钮存在的理由。 */
+    '生成这一步是**规则模拟**，不是真跑一个模型：命中就给答案，没命中时按"脾气"分两支（老实说不知道 / 照着最像那篇硬答）—— 后者就是幻觉',
+    '"能不能老实说不知道"取决于模型和提示词，**不取决于 RAG 本身**：这一屏把它做成旋钮，就是为了说清这件事',
+    '不含重排序（rerank）、切块策略、混合检索、查询改写 —— 那些都是在救"检索"这一步',
   ],
   tabs: [{ id: 'rag', label: '检索+增强+生成' }],
   Stage: RagStage,
-  tone: s => (s.phase === 'done' ? { key: 'good', label: '据此作答' } : s.stage === 'retrieve' ? { key: 'good', label: `命中 ${s.retrieved.length}` } : s.stage === 'augment' ? { key: 'idle', label: '增强' } : { key: 'idle', label: s.stage === 'score' ? '算相似度' : '检索' }),
+  tone: s => (s.phase === 'done'
+    ? (s.hallucinated ? { key: 'bad', label: '幻觉' } : s.hit ? { key: 'good', label: '据此作答' } : { key: 'idle', label: '老实说不知道' })
+    : s.stage === 'retrieve' ? (s.hit ? { key: 'good', label: '检索命中' } : { key: 'bad', label: '没检到答案' })
+      : s.stage === 'augment' ? { key: 'idle', label: '增强' }
+        : { key: 'idle', label: s.stage === 'score' ? '算相似度' : '检索' }),
   metric: s => { const order: Record<string, number> = { query: 0.15, score: 0.4, retrieve: 0.65, augment: 0.85, done: 1 }; return order[s.stage] ?? 0 },
   tickLabel: s => (s.phase === 'done' ? '答' : s.stage === 'score' ? '相似' : s.stage === 'retrieve' ? '检索' : s.stage === 'augment' ? '增强' : '问'),
   whyInRail: true,
   readouts: s => [
-    { label: '阶段', value: s.stage === 'query' ? '编码问题' : s.stage === 'score' ? '算相似度' : s.stage === 'retrieve' ? '检索 top-k' : s.stage === 'augment' ? '增强上下文' : s.phase === 'done' ? '生成' : '待走' },
-    { label: '知识库', value: `${s.docs.length} 篇` },
-    { label: '命中', value: s.retrieved.length ? s.retrieved.map(i => `#${i + 1}`).join(' ') : '—', tone: s.retrieved.length ? 'good' : undefined },
-    { label: '答案', value: s.phase === 'done' ? s.answer : '待检索' },
+    { label: '阶段', value: s.stage === 'query' ? '编码问题' : s.stage === 'score' ? '算相似度' : s.stage === 'retrieve' ? `检索 top-${s.topK}` : s.stage === 'augment' ? '增强上下文' : s.phase === 'done' ? '生成' : '待走' },
+    { label: '检索到', value: s.retrieved.length ? s.retrieved.map(i => `#${i + 1}`).join(' ') : '—' },
+    /*  这一栏才是关键：检索**永远有输出**，问题是里面有没有能回答的那篇 */
+    { label: '里面有能答的吗', value: s.stage === 'query' ? '—' : s.hit ? '有' : '没有',
+      tone: s.stage === 'query' ? undefined : s.hit ? 'good' : 'bad' },
+    { label: '含答案那篇排第', value: s.answerRank > 0 ? `${s.answerRank}` : '库里根本没有',
+      tone: s.answerRank > 0 && s.answerRank > s.topK ? 'bad' : undefined },
+    { label: '答案', value: s.phase === 'done' ? `${s.hallucinated ? '⚠️ ' : ''}${s.answer}` : '待检索',
+      tone: s.phase === 'done' ? (s.hallucinated ? 'bad' : s.hit ? 'good' : undefined) : undefined },
   ],
 }
 
