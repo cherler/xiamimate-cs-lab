@@ -1061,10 +1061,13 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       b: { phase: 'done', kernelName: '边缘', ci: 2, cj: 2, curVal: 0, out: [[27, 27, 0], [27, 27, 0], [27, 27, 0]] },
     },
     linreg: {
-      doc: { kind: 'linreg', params: {}, entities: [], streams: [] },
-      //  A 起点(平线、MSE大) · B 收敛(=OLS) —— 结论必须换一套说法
-      a: { phase: 'run', gdStep: 0, w: 0, b: 0, mse: 8.766, wOls: 2.223, bOls: 0.916 },
-      b: { phase: 'done', gdStep: 50, w: 2.223, b: 0.915, mse: 0.142, wOls: 2.223, bOls: 0.916 },
+      doc: { kind: 'linreg', params: { lr: 6, steps: 24, start: '原点 (0,0)' }, entities: [], streams: [] },
+      /*  A 起点(平线、MSE大) · B 收敛(=OLS) —— 结论必须换一套说法。
+          2026-09-08 内核补厚：多了梯度、学习率与它的稳定上界、发散标志。 */
+      a: { phase: 'run', gdStep: 0, w: 0, b: 0, gw: -4.446, gb: -1.832, lr: 0.06, lrMax: 0.635,
+           mse: 8.766, wOls: 2.223, bOls: 0.916, diverged: false },
+      b: { phase: 'done', gdStep: 24, w: 2.208, b: 0.874, gw: -0.03, gb: -0.084, lr: 0.06, lrMax: 0.635,
+           mse: 0.144, wOls: 2.223, bOls: 0.916, diverged: false },
     },
     pp: {
       doc: { kind: 'pp', params: { micro: 4 }, entities: [], streams: [] },

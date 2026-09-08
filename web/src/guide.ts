@@ -6198,27 +6198,44 @@ export const GUIDES: Record<string, Guide> = {
       terms: '**拟合直线 y = wx + b**：w 是斜率（这个特征影响多大），b 是截距。\u3000**残差**：每个点的真实值减去预测值，也就是那段竖直距离。\u3000**最小二乘**：目标是让**残差的平方和**最小。**为什么用平方而不是绝对值**：一是正负不会互相抵消，二是平方之后可以直接求导解出闭式解，不用迭代。\u3000**代价**：平方会**放大离群点的影响** —— 一个远远偏离的点能把整条线拽歪。所以拟合前先看有没有异常值，往往比换模型更有用。（要稳健就换绝对值损失或 Huber 损失。）\u3000**闭式解（正规方程）**：线性回归有解析解，一步就能算出最优的 w 和 b，不需要梯度下降。**特征多的时候矩阵求逆太贵，才改用梯度下降。**\u3000**过拟合与正则化**：特征一多，模型会去拟合噪声。**岭回归**（L2 正则）把权重往小了压，**Lasso**（L1 正则）还能把不重要的权重压到 0、顺带做特征选择。\u3000**R²**：拟合优度，表示模型解释了数据里多少比例的变化。1 是完美，0 相当于「不如直接用平均值预测」。',
       watch: '手动挪动一个点，看直线怎么跟着转。把它挪得特别远，整条线会被它一个人带走 —— 那就是平方项的代价。',
     },
+    /*  ⚠️ 2026-09-08 整段改过：内核补厚之后学习率/步数/起点都能调，还会**发散**。
+        原来这里写死「梯度下降 50 步」，而步数现在是旋钮。 */
     step: (s: never) => {
-      const st = s as { phase: string; gdStep: number; w: number; b: number; mse: number; wOls: number; bOls: number }
+      const st = s as { phase: string; gdStep: number; w: number; b: number; gw: number; gb: number
+                        lr: number; lrMax: number; mse: number; wOls: number; bOls: number; diverged: boolean }
       return [
-        { k: '本步输入', v: st.phase === 'done' ? '梯度下降 50 步' : `第 ${st.gdStep} 步梯度下降` },
-        { k: '判定规则', v: `损失=MSE(点到直线竖直距离的平方平均);沿负梯度调 w、b 让 MSE 下降。收敛到最小二乘闭式解。` },
-        { k: '本步结果', v: st.phase === 'done'
-            ? `直线 y=${st.w}x+${st.b}、MSE **${st.mse}**,正好=OLS(w=${st.wOls} b=${st.bOls})——找到数学最优线。`
-            : `直线 y=**${st.w}**x+**${st.b}**,MSE **${st.mse}**${st.gdStep === 0 ? '(还平、残差大)' : '(往点云里转)'}。` },
+        { k: '本步输入', v: st.phase === 'done' ? `梯度下降走完 ${st.gdStep} 步（学习率 ${(st.lr * 100).toFixed(0)}%）`
+            : `第 ${st.gdStep} 步梯度下降（学习率 ${(st.lr * 100).toFixed(0)}%）` },
+        { k: '判定规则', v: `损失=MSE（点到直线竖直距离的平方平均）；**沿负梯度**调 w、b：w ← w − lr·∂MSE/∂w。`
+            + `在稳定上界 **lr < 2/λmax = ${(st.lrMax * 100).toFixed(1)}%** 之内会收敛到最小二乘闭式解；越界必然发散。` },
+        { k: '本步结果', v: st.diverged
+            ? `**发散** —— 学习率 ${(st.lr * 100).toFixed(0)}% 越过了上界 ${(st.lrMax * 100).toFixed(1)}%，`
+              + `每步都迈过谷底冲到对面更高处，w 已经甩到 ${st.w}。`
+            : st.phase === 'done'
+              ? `直线 y=${st.w}x+${st.b}、MSE **${st.mse}**，正好落在 OLS（w=${st.wOls} b=${st.bOls}）上 —— 找到数学最优线。`
+              : `梯度 (${st.gw}, ${st.gb}) → 沿反方向挪 (${(-st.lr * st.gw).toFixed(4)}, ${(-st.lr * st.gb).toFixed(4)})；`
+                + `直线 y=**${st.w}**x+**${st.b}**，MSE **${st.mse}**。` },
       ]
     },
     verdict: (s: never) => {
-      const st = s as { phase: string; gdStep: number; mse: number }
-      return st.phase === 'done' ? `MSE ${st.mse.toFixed(2)}` : `步${st.gdStep}·${st.mse.toFixed(1)}`
+      const st = s as { phase: string; gdStep: number; mse: number; diverged: boolean }
+      return st.diverged ? '发散'
+        : st.phase === 'done' ? `MSE ${st.mse.toFixed(3)}` : `步${st.gdStep}·${st.mse.toFixed(2)}`
     },
     read: [
-      { at: '读数', is: '梯度下降步、MSE、当前直线、OLS 最优。', anchor: '.scdim' },
-      { at: '散点图', is: '蓝点=数据;橙线=拟合直线;红色竖虚线=残差(点到线的竖直距离)。', anchor: '.mlplot' },
+      { at: '读数', is: '步数、MSE、当前直线、**本步梯度**与它带来的位移、OLS 最优、学习率与它的**稳定上界**。', anchor: '.scdim' },
+      { at: '左边·数据空间', is: '绿点=数据；橙线=当前拟合；绿虚线=最小二乘最优线（梯度下降要去的地方）；红竖虚线=残差。', anchor: '.lrplot' },
+      { at: '右边·参数空间', is: '**梯度下降真正发生的地方**。底色是 (w,b) 平面上的 MSE 地形（越浅越低），'
+        + '绿十字=最优解，橙折线=走过的路，红色短线=当前点的负梯度方向。', anchor: '.lrparam' },
     ],
     try: [
-      { act: '按「下一步」推进梯度下降', watch: '直线从平的转进点云、残差竖线一根根变短、MSE 降。' },
-      { act: '看收敛', watch: 'w→2.22、b→0.92,正好等于最小二乘闭式解——梯度下降找到了最优。' },
+      { act: '把学习率拧到 90%', param: '学习率',
+        watch: '**发散**：右图上轨迹在谷底两侧来回横跳、一次比一次远，w 甩到几百。'
+          + '因为 90% 越过了稳定上界 2/λmax=63.5% —— 这个界是算出来的，不是试出来的。' },
+      { act: '把学习率拧到 60%', param: '学习率',
+        watch: '还在界内，收敛得比 6% 快得多 —— 「学习率越小越安全」不等于「越小越好」。' },
+      { act: '起点换成「偏远处 (-3,6)」', param: '从哪儿出发',
+        watch: '右图上那条路从另一个角落绕进谷底 —— 终点仍是同一个十字（凸问题只有一个最优解）。' },
     ],
     terms: [],
   },

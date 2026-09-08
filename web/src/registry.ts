@@ -4826,29 +4826,47 @@ const linreg: Experiment<LinRegState> = {
   title: '线性回归',
   subtitle: '机器怎么"拟合"一条线：梯度下降 + 最小二乘',
   kernel: linregKernel,
-  defaultDoc: { kind: 'linreg', params: {}, entities: [], streams: [] },
-  params: [],
+  defaultDoc: { kind: 'linreg', params: { lr: 6, steps: 24, start: '原点 (0,0)' }, entities: [], streams: [] },
+  /*  2026-09-08 补厚：原来一个旋钮都没有，学习率写死 0.06 —— 于是这门课最要紧的那件事
+      「学习率太大会发散」根本演不出来。90% 越过稳定上界 2/λmax=0.635，当场炸给你看。 */
+  params: [
+    { key: 'lr', label: '学习率', kind: 'number', options: [1, 6, 30, 60, 90], unit: '%' },
+    { key: 'steps', label: '走多少步', kind: 'number', options: [12, 24, 48] },
+    { key: 'start', label: '从哪儿出发', kind: 'enum', options: ['原点 (0,0)', '偏远处 (-3,6)'] },
+  ],
   paramsNote: `**线性回归 = 最基础的学习:给一堆 (x,y) 点,找一条 y=wx+b 让它离所有点最近**。"最近"用均方误差 MSE(点到直线竖直距离的平方和平均)衡量。
 
 - **训练骨架**:从随便一条线出发,顺负梯度调 w、b 让 MSE 下降——梯度下降在做回归;它有闭式最优解(最小二乘 OLS),梯度下降会收敛到它。看懂这条就抓住了几乎所有 ML 训练的骨架:定损失 → 对参数求梯度 → 沿负梯度更新 → 拟合。
 - **本实验**:12 个确定性散点(真线 y≈2x+1+噪声),w、b 从 0、lr=0.06 梯度下降——直线转进点云、残差变短、MSE 8.8→0.14、w→2.22 b→0.92(=OLS)。`,
   bounds: [
     '12 个确定性散点(真线 y≈2x+1 加噪声),可复现',
-    '损失=MSE;梯度下降 w←w−lr·∂MSE/∂w、b 同理(可核)',
-    'MSE 单调降 8.8→0.14;w/b 收敛到最小二乘闭式解',
-    '一元线性;多元/正则化未建',
+    '损失=MSE;梯度下降 w←w−lr·∂MSE/∂w、b 同理(每一步的梯度都印在屏幕上,可逐步核对)',
+    /*  ⚠️ 原来写「MSE 单调降 8.8→0.14」——学习率一能调就不成立了(90% 直接发散)。
+        改成写**条件**：在稳定上界之内才单调降。 */
+    '学习率在稳定上界 2/λmax≈0.635 之内时收敛到最小二乘闭式解;越界(如 90%)必然发散',
+    '一元线性;多元/正则化/随机梯度未建 —— 这里是全批量梯度下降',
   ],
   tabs: [{ id: 'fit', label: '散点+拟合' }],
   Stage: LinRegStage,
-  tone: s => (s.phase === 'done' ? { key: 'good', label: `MSE ${s.mse.toFixed(2)}` } : { key: 'idle', label: `步 ${s.gdStep}` }),
-  metric: s => Math.max(0, Math.min(1, 1 - s.mse / 8.8)),
+  tone: s => (s.diverged ? { key: 'bad', label: '发散' }
+    : s.phase === 'done' ? { key: 'good', label: `MSE ${s.mse.toFixed(2)}` }
+    : { key: 'idle', label: `步 ${s.gdStep}` }),
+  //  发散时 mse 是天文数字，metric 会变负 —— 夹住，否则走带柱子画不出来
+  metric: s => (s.diverged || !Number.isFinite(s.mse) ? 0 : Math.max(0, Math.min(1, 1 - s.mse / 8.8))),
   tickLabel: s => (s.phase === 'done' ? '毕' : `${s.gdStep}`),
   whyInRail: true,
   readouts: s => [
     { label: '梯度下降步', value: `${s.gdStep}` },
-    { label: 'MSE', value: `${s.mse}`, tone: s.phase === 'done' ? 'good' : undefined },
+    { label: 'MSE', value: s.diverged || !Number.isFinite(s.mse) ? '发散' : `${s.mse}`,
+      tone: s.diverged ? 'bad' : s.phase === 'done' ? 'good' : undefined },
     { label: '直线', value: `y=${s.w}x+${s.b}` },
+    /*  梯度摆出来 —— 「沿负梯度走」这句话得能对着数看：下一步 w 就该挪 −lr×∂/∂w */
+    { label: '本步梯度', value: `∂w=${s.gw}｜∂b=${s.gb}` },
+    { label: '这一步挪', value: `w ${(-s.lr * s.gw).toFixed(4)}｜b ${(-s.lr * s.gb).toFixed(4)}` },
     { label: 'OLS 最优', value: `w=${s.wOls} b=${s.bOls}` },
+    /*  稳定上界是算出来的（2/λmax），不是试出来的 —— 摆在学习率旁边才有意义 */
+    { label: '学习率 / 上界', value: `${(s.lr * 100).toFixed(0)}% / ${(s.lrMax * 100).toFixed(1)}%`,
+      tone: s.lr > s.lrMax ? 'bad' : undefined },
   ],
 }
 

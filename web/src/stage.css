@@ -3429,6 +3429,21 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
     linear-gradient(180deg, var(--panel), color-mix(in srgb,var(--ink) 3%,var(--panel)));
   box-shadow: inset 0 1px 4px rgba(20,32,42,.06), inset 0 0 0 1px rgba(255,255,255,.5); }
 .mlaxis { stroke:var(--dim); stroke-width:0.7; }
+/*  ── 线性回归补厚（2026-09-08）：左数据空间 / 右参数空间，见 LinRegStage 顶上 ── */
+.lrpair { display:flex; gap:14px; flex-wrap:wrap; justify-content:center; margin-top:6px }
+.lrcol { flex:1 1 300px; min-width:0; display:flex; flex-direction:column; align-items:center }
+.lrcol .gbsec { justify-content:center; text-align:center }
+.lrplot, .lrparam { width:min(340px,86%); aspect-ratio:1/1; border:1px solid var(--plate-edge);
+  border-radius:9px; background:var(--panel) }
+/*  OLS 那条最优线：梯度下降要去的地方，画成虚线 */
+.lrols { stroke:var(--hit); stroke-width:1.4; stroke-dasharray:4 3; opacity:.8 }
+/*  参数平面上的十字（最优解）、轨迹、当前点、负梯度箭头 */
+.lrstar { stroke:var(--hit); stroke-width:2 }
+.lrtraj { stroke:var(--now); stroke-width:1.6; opacity:.9 }
+.lrdot { fill:var(--now); opacity:.55 }
+.lrnow { fill:var(--now); stroke:var(--panel); stroke-width:.6 }
+.lrgrad { stroke:var(--miss); stroke-width:2.2 }
+
 /*  ── GBDT 补厚（2026-09-08）：残差图 + 两条 MSE 曲线，见 GbdtStage 顶上 ── */
 .gbsec { display:flex; gap:9px; align-items:baseline; flex-wrap:wrap; margin:14px 0 2px;
   font-size:var(--t-ui); color:var(--faint); line-height:1.6 }
