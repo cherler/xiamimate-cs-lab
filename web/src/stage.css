@@ -3526,6 +3526,11 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .mmcfn b { color:var(--ink) }
 .mmprog { display:flex; flex-direction:column; align-items:center; gap:5px; margin:12px auto 0; width:min(600px,96%) }
 
+/*  ── GAN 补厚（2026-09-08）：真模式圈 + μ_G 走过的路 ── */
+.ganmode { fill:none; stroke:var(--f-tag); stroke-width:1.2; stroke-dasharray:3 3 }
+.ganmode.on { stroke:var(--hit); stroke-width:1.8; stroke-dasharray:none }
+.gantrail { stroke:var(--now); stroke-width:1.4; opacity:.75 }
+
 /*  ── SVM 补厚（2026-09-08）：任意方向的边界 + 街沿 + 支持向量套圈 ── */
 .svmplot { aspect-ratio:1/1 }
 .svmmid { stroke:var(--ink); stroke-width:2 }

@@ -5047,32 +5047,48 @@ const gan: Experiment<GanState> = {
   title: '生成对抗网络 GAN',
   subtitle: '造假的 G 和验假的 D 互相较劲，把假数据逼到和真的难分',
   kernel: ganKernel,
-  defaultDoc: { kind: 'gan', params: {}, entities: [], streams: [] },
-  params: [],
+  defaultDoc: { kind: 'gan', params: { data: '一团', eta: 40 }, entities: [], streams: [] },
+  /*  2026-09-08 补厚：上一轮已经把 **D** 做成真的；这一轮把 **G** 也做成真的 ——
+      它的簇心轨迹原来是写死的数组（"每轮朝真质心挪、最后一轮正好追上"），是排好的动画。
+      G 一旦真的在追，两团数据下它会扑向哪一团就不由我说了算，**模式崩溃是跑出来的**。 */
+  params: [
+    { key: 'data', label: '真数据', kind: 'enum', options: ['一团', '两团（能看出模式崩溃）'] },
+    { key: 'eta', label: 'G 每轮追多快', kind: 'number', options: [15, 40, 90], unit: '%' },
+  ],
   paramsNote: `**GAN = 一场对抗博弈**(轴=对抗轮):生成器 G 造假想骗过审查、判别器 D 学着分辨真假,**轮流最佳响应**。
 
 - **D 每轮学一条判别边界**(这里=真/假两簇质心的垂直平分线),把靠真质心的一侧判"真";准确率=(真判真+假判假)/总,**从边界算出来、非硬编码**。
 - **G 每轮把假簇朝真数据挪一步**,去钻过 D 的边界。D 抓得越准 G 越造得像、G 越像 D 又学得更精——军备竞赛。
 - **纳什均衡**:G 的假分布=真分布、两质心重合,D 的边界再也分不开、准确率掉到 **50%**(瞎猜)=G 学会了生成。
 
-本实验准确率 100→100→83→50→50,每轮可手算;红环=骗过 D 的假点。GAN 是早期图像生成里程碑(人脸/风格迁移),和扩散模型同属生成模型。`,
+- **模式崩溃(mode collapse)——GAN 最出名的病**:把真数据换成**两团**,G 只是一个簇,它会**扑向离自己最近的那一团、彻底忽略另一团**。实测覆盖 **1/2**、到两团的距离 0.55 / 0.02。
+- **所以屏幕上多了"覆盖率"**:少了这一项,崩溃看起来跟成功差不多——**"D 分不出来"不等于"G 学会了"**。真实训练里的 minibatch discrimination、unrolled GAN、多样性正则,盯的都是这件事。
+- 红环=骗过 D 的假点。GAN 是早期图像生成里程碑(人脸/风格迁移),和扩散模型同属生成模型。`,
   bounds: [
-    '轴=对抗轮;D 学质心垂直平分线当判别边界,G 把假簇朝真数据挪',
-    '准确率=(真判真+假判假)/总,从边界现算(非硬编码)',
-    '你追我赶:100%→83%→50%,假点逐个钻过边界骗过 D',
-    '纳什均衡=假分布=真分布、两质心重合、D 瞎猜 50%;和扩散同属生成模型',
+    '轴=对抗轮（12 轮）；**G 和 D 都是算出来的**：D 按"离最近的真模式 vs 离假簇"判，G 朝最近的真模式挪 η',
+    '准确率 =（真判真 + 假判假）/ 总，逐轮现算；覆盖率 = G 的簇心落在半径 0.18 内的真模式数',
+    /*  ⚠️ 这两条是这一屏的诚实边界，不是免责声明 —— 屏幕上也会说。 */
+    'D 是**「最近质心」这条固定规则**，不是理论最优判别器：两分布重合时它还在硬按一条线切，准确率会掉到 **42%**（低于瞎猜）。理论最优的 D 此时处处输出 0.5、正好 50%',
+    'G 是**一个刚性小簇**（只能整体平移，不能变形分裂）—— 所以"一个 G 盖不住两个模式"在这里是结构性的，真实 GAN 的 G 是个网络、原则上能学多模态，只是训练中常常做不到',
+    '不建模 D/G 的容量失衡、梯度消失、WGAN 之类的损失改造；这一屏只演"轮流最佳响应"这条主干',
   ],
   tabs: [{ id: 'adv', label: '对抗训练' }],
   Stage: GanStage,
-  tone: s => (s.phase === 'done' ? { key: 'good', label: `D ${s.acc}%` } : { key: 'idle', label: `第${s.round}轮` }),
-  metric: s => (s.phase === 'done' ? 1 : (100 - s.acc) / 50),
+  tone: s => (s.phase !== 'done' ? { key: 'idle', label: `第${s.round}轮` }
+    : s.collapsed ? { key: 'bad', label: `模式崩溃 ${s.coverage}/${s.modes.length}` }
+      : { key: 'good', label: `D ${s.acc}%` }),
+  metric: s => (s.round < 0 ? 0 : Math.max(0, Math.min(1, (100 - s.acc) / 50))),
   tickLabel: s => (s.phase === 'done' ? '成' : `${s.acc}`),
   whyInRail: true,
   readouts: s => [
-    { label: '对抗轮', value: s.phase === 'done' ? '均衡' : `第 ${s.round} 轮` },
-    { label: 'D 准确率', value: `${s.acc}%`, tone: s.phase === 'done' ? 'good' : undefined },
-    { label: '骗过 D', value: `${s.fooled.filter(Boolean).length}/6 假数据` },
-    { label: '结果', value: s.phase === 'done' ? 'G 学会生成' : 'G/D 较劲中' },
+    { label: '对抗轮', value: `第 ${Math.max(0, s.round)} / ${s.rounds} 轮` },
+    { label: 'D 准确率', value: `${s.acc}%`, tone: s.phase === 'done' && !s.collapsed ? 'good' : undefined },
+    { label: '骗过 D', value: `${s.fooled.filter(Boolean).length}/${s.fake.length || 6} 假数据` },
+    /*  这一栏是补厚的重点：少了它，模式崩溃看起来跟成功差不多 */
+    { label: '盖住几个真模式', value: `${s.coverage} / ${s.modes.length}`,
+      tone: s.modes.length > 1 ? (s.coverage === s.modes.length ? 'good' : 'bad') : undefined },
+    { label: '结果', value: s.phase !== 'done' ? 'G/D 较劲中' : s.collapsed ? '⚠️ 模式崩溃' : 'G 学会生成',
+      tone: s.phase === 'done' ? (s.collapsed ? 'bad' : 'good') : undefined },
   ],
 }
 

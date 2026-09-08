@@ -42,6 +42,7 @@ import { orthoKernel, type OrthoState } from '../src/kernels/ortho.ts'
 import { xentKernel, type XentState } from '../src/kernels/xent.ts'
 import { lowrankKernel, type LowRankState } from '../src/kernels/lowrank.ts'
 import { ragKernel, type RagState } from '../src/kernels/rag.ts'
+import { ganKernel, type GanState } from '../src/kernels/gan.ts'
 
 let failures = 0
 const ok = (m: string) => console.log(`  ✅ ${m}`)
@@ -352,6 +353,57 @@ console.log('\n【逻辑回归：正则真的在压权重，异或真的分不�
   !xor.separable && xor.acc < sep.acc - 0.15
     ? ok(`异或准确率 ${(xor.acc * 100).toFixed(0)}%，可分档 ${(sep.acc * 100).toFixed(0)}% —— 一条直线切不开异或`)
     : bad(`异或 ${(xor.acc * 100).toFixed(0)}% vs 可分 ${(sep.acc * 100).toFixed(0)}% —— 差距不足以说明"线性不可分"`)
+}
+
+// ═══ GAN：G 也改成真的，模式崩溃才跑得出来 ═══════════════
+console.log('\n【GAN：D 分不出来 ≠ G 学会了】')
+{
+  const all = (p: P) => (run(ganKernel.compile(doc('gan', p)), 40) as GanState[]).filter(s => s.round >= 0)
+  const go = (p: P) => last(run(ganKernel.compile(doc('gan', p)), 40) as GanState[])
+  const ONE = '一团', TWO = '两团（能看出模式崩溃）'
+
+  /*  ① G 必须是**算出来**的：μ_G 每轮朝最近的真模式走 η 比例，
+      于是不同 η 会走出不同的轨迹。老版本 μ 是写死的数组，换 η 也不会变。 */
+  const trails = [15, 40, 90].map(eta => go({ data: ONE, eta }).muTrail)
+  new Set(trails.map(t2 => JSON.stringify(t2))).size === 3
+    ? ok(`三档 η 走出三条不同的轨迹（末位 ${trails.map(t2 => JSON.stringify(last(t2))).join(' / ')}）—— G 是真在追，不是排好的动画`)
+    : bad('不同 η 的轨迹一样 —— 那 G 还是写死的')
+
+  //  ② 一团档：G 必须追上（覆盖 1/1），D 的准确率一路降
+  const one = all({ data: ONE, eta: 40 })
+  const accs = one.map(s => s.acc)
+  last(one).coverage === 1 && accs[0] > 90 && last(accs) < 60
+    ? ok(`一团档：G 追上了（覆盖 1/1），D 准确率 ${accs[0]}% → ${last(accs)}%`)
+    : bad(`一团档不对：覆盖 ${last(one).coverage}，准确率 ${accs[0]}→${last(accs)}`)
+
+  /*  ③ 这一屏的主菜：两团时 **G 只盖住一个模式** —— 模式崩溃。
+      而且它扑的是**离起点近的那一团**（几何决定，不是我摆的）。 */
+  const two = go({ data: TWO, eta: 40 })
+  const dist = (a2: number[], b2: number[]) => Math.hypot(a2[0] - b2[0], a2[1] - b2[1])
+  const dToModes = two.modes.map(m => dist(two.muG, m))
+  two.collapsed && two.coverage === 1 && two.modes.length === 2
+    && Math.max(...dToModes) > 5 * Math.min(...dToModes)
+    ? ok(`两团档：覆盖 ${two.coverage}/2，到两团的距离 ${dToModes.map(d => d.toFixed(2)).join(' / ')} —— 扑向一团、彻底忽略另一团`)
+    : bad(`模式崩溃没跑出来：覆盖 ${two.coverage}/${two.modes.length}，距离 ${dToModes.map(d => d.toFixed(2)).join('/')}`)
+
+  //  ④ 崩溃时 D 的准确率**掉不到瞎猜** —— 它还能靠没被覆盖的那团认出假货
+  two.acc > 55 && go({ data: ONE, eta: 40 }).acc < 55
+    ? ok(`崩溃那档 D 准确率停在 ${two.acc}%（一团档是 ${go({ data: ONE, eta: 40 }).acc}%）—— 没被覆盖的那团出卖了 G`)
+    : bad(`两档的准确率没区分开：两团 ${two.acc}%、一团 ${go({ data: ONE, eta: 40 }).acc}%`)
+
+  /*  ⑤ 崩溃跟 η 无关：三档步长都崩。
+      这条钉的是"崩溃是结构性的（一个簇盖不住两团），不是没调好参"。 */
+  const allCollapse = [15, 40, 90].map(eta => go({ data: TWO, eta }))
+  allCollapse.every(s => s.collapsed && s.coverage === 1)
+    ? ok('η=15/40/90% 三档全都崩溃（覆盖都是 1/2）—— 崩溃是结构性的，不是步长没调好')
+    : bad(`有的 η 没崩：${allCollapse.map(s => `${s.eta}:${s.coverage}`).join(' ')}`)
+
+  /*  ⑥ 自检：这一屏的 D 是"最近质心"这条固定规则，不是理论最优判别器 ——
+      分布重合时它会掉到 50% 以下。这条把"屏幕上那句解释"钉住，免得哪天被当成 bug 抹平。 */
+  const dipped = [15, 40, 90].map(eta => Math.min(...all({ data: ONE, eta }).map(s => s.acc)))
+  Math.min(...dipped) < 50
+    ? ok(`自检：一团档的最低准确率 ${Math.min(...dipped)}%，**低于 50%** —— 这个 D 是固定规则、不是最优判别器，屏幕上有说明`)
+    : bad(`没出现低于 50% 的情形（${dipped.join('/')}）—— 那屏幕上那段解释就该删掉`)
 }
 
 // ═══ RAG：检索永远有输出，所以它不会说"我没有" ═══════════

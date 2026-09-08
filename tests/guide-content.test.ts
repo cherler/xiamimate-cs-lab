@@ -1087,10 +1087,14 @@ console.log('\n【「这一步为什么」真的在跟着走】')
            x0hat: [], weights: [1, 0, 0], names: ['❤', '✚', '▲'], landed: '❤', landedW: 1 },
     },
     gan: {
-      doc: { kind: 'gan', params: {}, entities: [], streams: [] },
-      //  A 对抗中(D 92%) · B 均衡(D 50%) —— 结论必须换一套说法
-      a: { phase: 'run', round: 2, acc: 92, fakeInside: 1, center: [0.72, 0.5], rad: 0.17, real: [], fake: [] },
-      b: { phase: 'done', round: 4, acc: 50, fakeInside: 6, center: [0.72, 0.5], rad: 0.17, real: [], fake: [] },
+      doc: { kind: 'gan', params: { data: '两团（能看出模式崩溃）', eta: 40 }, entities: [], streams: [] },
+      //  A 第 3 轮（还在追） · B 第 12 轮（模式崩溃，只盖住 1/2）—— 结论必须换一套说法
+      a: { phase: 'run', round: 3, acc: 67, fooled: [true, true, true, false, false, false],
+        coverage: 1, modes: [[0.722, 0.508], [0.217, 0.763]], collapsed: false, eta: 0.4,
+        fake: [0, 0, 0, 0, 0, 0] },
+      b: { phase: 'done', round: 12, acc: 61, fooled: [true, true, true, true, false, false],
+        coverage: 1, modes: [[0.722, 0.508], [0.217, 0.763]], collapsed: true, eta: 0.4,
+        fake: [0, 0, 0, 0, 0, 0] },
     },
     conv: {
       doc: { kind: 'conv', params: { kernel: '边缘' }, entities: [], streams: [] },
