@@ -32,6 +32,7 @@ import { backpropKernel, type BackpropState } from '../src/kernels/backprop.ts'
 import { residualKernel, type ResidualState } from '../src/kernels/residual.ts'
 import { condnumKernel, type CondNumState } from '../src/kernels/condnum.ts'
 import { svmKernel, type SVMState } from '../src/kernels/svm.ts'
+import { matmulKernel, type MatmulState } from '../src/kernels/matmul.ts'
 
 let failures = 0
 const ok = (m: string) => console.log(`  ✅ ${m}`)
@@ -342,6 +343,77 @@ console.log('\n【逻辑回归：正则真的在压权重，异或真的分不�
   !xor.separable && xor.acc < sep.acc - 0.15
     ? ok(`异或准确率 ${(xor.acc * 100).toFixed(0)}%，可分档 ${(sep.acc * 100).toFixed(0)}% —— 一条直线切不开异或`)
     : bad(`异或 ${(xor.acc * 100).toFixed(0)}% vs 可分 ${(sep.acc * 100).toFixed(0)}% —— 差距不足以说明"线性不可分"`)
+}
+
+// ═══ 矩阵乘：FLOPs 是定死的，访存不是 ═══════════════════
+console.log('\n【矩阵乘：同样的浮点数，换个循环顺序差一个数量级】')
+{
+  const t = (p: P) => run(matmulKernel.compile(doc('matmul', p)), 80) as MatmulState[]
+  const go = (p: P) => last(t(p))
+  const ORDERS = ['i-j-k（教科书写法）', 'i-k-j（行优先友好）', '分块（tiling）']
+  const MID = '中（32 行 × 8）'
+
+  //  ① 三种顺序的 FLOPs 必须**完全相同** —— 这是整个实验的前提
+  const flops = ORDERS.map(order => go({ size: '64×64', order, cache: MID }).totalFlops)
+  new Set(flops).size === 1 && flops[0] === 2 * 64 ** 3
+    ? ok(`三种顺序的浮点运算完全相同：${flops[0].toLocaleString()} = 2·64³`)
+    : bad(`FLOPs 居然随顺序变了：${flops.join(' / ')}`)
+
+  //  ② 而缺失必须差出数量级；且 i-j-k 最差、分块最好
+  const f64 = go({ size: '64×64', order: ORDERS[0], cache: MID })
+  const [ijk, ikj, tiled] = f64.compare.map(c => c[1])
+  ijk > ikj * 5 && tiled < ikj
+    ? ok(`64×64：i-j-k ${ijk.toLocaleString()} ／ i-k-j ${ikj.toLocaleString()} ／ 分块 ${tiled.toLocaleString()} —— 最差比最好多 ${(ijk / tiled).toFixed(1)} 倍缺失`)
+    : bad(`三种顺序没拉开：${ijk} / ${ikj} / ${tiled}`)
+
+  /*  ③ 每一帧的缺失必须是**当场数出来的**。
+      ⚠️ 这条判据写歪过一次：第一版钉的是"曲线不是直线"，可实测 i-j-k 的真实曲线
+      本来就几乎是直线（预热之后每次访问的缺失率基本恒定），偏离线性只有 0.01% ——
+      **直不直跟真不真没关系**，那条判据钉错了对象。
+      真正只有仿真才有的性质有两条，改钉它们：
+        · 逐帧累计的末值，必须等于**另一条代码路径**（compare 表）独立算出的总数；
+        · 分块那档的曲线**明显偏离线性**（块与块之间冷热不均），摊平模型给不出这个。 */
+  const badEnd: string[] = []
+  for (const order of ORDERS) for (const size of ['16×16', '32×32', '64×64']) {
+    const fr = t({ size, order, cache: MID }).filter(s => s.phase === 'cell')
+    const seq = fr.map(s => s.miss)
+    if (!seq.every((v, k) => k === 0 || v >= seq[k - 1])) badEnd.push(`${size}/${order}：累计缺失不单调`)
+    if (last(seq) !== last(fr).totalMiss) badEnd.push(`${size}/${order}：末帧 ${last(seq)} ≠ 总数 ${last(fr).totalMiss}`)
+  }
+  badEnd.length === 0
+    ? ok('9 种组合：逐帧累计缺失单调不减，且末值跟另一条代码路径算出的总数逐个相等')
+    : bad(badEnd.slice(0, 3).join(' / '))
+
+  {
+    const seq = t({ size: '32×32', order: ORDERS[2], cache: MID }).filter(s => s.phase === 'cell').map(s => s.miss)
+    const fin = last(seq)
+    const dev = Math.max(...seq.map((m, k) => Math.abs(m - fin * (k + 1) / seq.length) / fin))
+    dev > 0.01
+      ? ok(`分块那档的缺失曲线偏离线性 ${(dev * 100).toFixed(1)}% —— 块与块之间冷热不均，摊平模型给不出这个`)
+      : bad(`分块的曲线跟摊平的直线只差 ${(dev * 100).toFixed(2)}% —— 看不出是跟着真实访存流走的`)
+  }
+
+  /*  ④ 放得下就无所谓：矩阵小到塞进缓存时，前两种顺序的缺失必须**一模一样**。
+      这条撑着"分块不是玄学，是放不下才需要的"那句话。 */
+  const f16 = go({ size: '16×16', order: ORDERS[0], cache: MID }).compare.map(c => c[1])
+  f16[0] === f16[1] && ijk / ikj > 5
+    ? ok(`16×16 时 i-j-k 与 i-k-j 缺失一模一样（都是 ${f16[0]}），而 64×64 时差 ${(ijk / ikj).toFixed(1)} 倍 —— 分块是"放不下"才需要的`)
+    : bad(`小矩阵那档没体现"放得下就无所谓"：${f16[0]} vs ${f16[1]}`)
+
+  //  ⑤ 块边长必须由缓存容量算出来（3T² ≤ 容量），换缓存就跟着变
+  const tiles = ['小（16 行 × 8）', MID, '大（128 行 × 8）'].map(cache => {
+    const s = go({ size: '64×64', order: ORDERS[2], cache })
+    return { cap: s.cacheCap, tile: s.tile }
+  })
+  tiles.every(x => 3 * x.tile ** 2 <= x.cap && 3 * (x.tile + 1) ** 2 > x.cap)
+    ? ok(`块边长由缓存算出：${tiles.map(x => `容量 ${x.cap}→T=${x.tile}`).join('、')}（3T² ≤ 容量 的最大整数）`)
+    : bad(`块边长跟缓存容量对不上：${tiles.map(x => `${x.cap}/${x.tile}`).join(' ')}`)
+
+  //  ⑥ 小矩阵那档必须原样保住手核路径（C[0][0]=58）
+  const sm = t({ size: '2×3 · 3×2（逐格手核）', order: ORDERS[0], cache: MID }).filter(s => s.phase === 'cell')
+  sm.length === 4 && sm[0].value === 58 && sm[3].value === 154
+    ? ok('「逐格手核」那一档原样保留：4 个输出格，C[0][0]=58、C[1][1]=154，可拿计算器核')
+    : bad(`手核那档变了：${sm.length} 帧，值 ${sm.map(s => s.value).join('/')}`)
 }
 
 // ═══ SVM：真求解，而且只有几个点说了算 ═══════════════════

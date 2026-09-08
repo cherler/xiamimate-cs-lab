@@ -7414,35 +7414,56 @@ export const GUIDES: Record<string, Guide> = {
       hook: '为什么显卡是算 AI 的，不是 CPU？',
       what: '这一屏讲的是**矩阵乘法**：深度学习里绝大部分计算就是它。一个神经网络层做的事，本质上就是「输入向量乘上权重矩阵」。注意力里的 Q·Kᵀ、加权求和 V、前馈网络的两次升降维 —— 全是矩阵乘。所以「模型要多少算力」这个问题，答案基本就是「要做多少次矩阵乘」。规则本身很简单：结果矩阵的第 i 行第 j 列，等于**左边矩阵第 i 行**和**右边矩阵第 j 列**对应位相乘再求和。难的不是算，是怎么算得快 —— 那取决于数据怎么在内存里流动。',
       terms: '**形状规则**：M×K 的矩阵乘 K×N 的矩阵，得到 M×N。中间那个 K 必须对上，**它是被「消掉」的那一维**。\u3000**点积**：一行乘一列，对应位相乘再相加，得到结果里的一个格子。屏幕上高亮的那一行和那一列，算出来的就是右下角那一格。\u3000**FLOPs**：浮点运算次数。每个格子要 K 次乘法加 K 次加法，所以总量是 **2·M·N·K**。这个公式是估算模型算力需求的起点。\u3000**为什么用 GPU**：所有格子之间**互相独立**，谁先算都行 —— 这正是几千个核同时开工的理想任务。\u3000**访存才是瓶颈**：算力常常是富余的，真正卡住的是把数据从显存搬到计算单元。所以高性能实现的功夫全花在**分块**上：把小块搬进片上高速缓存，反复用够了再换下一块。同一个乘法，分块方式不同，速度能差好几倍。\u3000**批量矩阵乘**：实际推理时不是一个向量乘矩阵，而是一批向量一起乘 —— 这样那次昂贵的权重搬运可以被整批共享。',
-      watch: '看每一格结果是由哪一行和哪一列点乘出来的，以及分块之后同一块数据被复用了几次。复用率就是性能的关键。',
+      watch: '先在最小那档把"一行点一列"看清楚。然后把「矩阵规模」拧到 64×64 —— 这才是矩阵乘真正的难处：**浮点运算数是定死的，访存不是**。同一个乘法换个循环顺序，缓存缺失差 13 倍，而一次浮点都没省。',
     },
     step: (s: never) => {
-      const st = s as { phase: string; row: number; col: number; terms: {a:number;b:number;prod:number}[]; value: number; M:number;K:number;N:number; flops:number; totalFlops:number }
+      const st = s as { phase: string; row: number; col: number; terms: {a:number;b:number;prod:number}[]; value: number
+        M:number;K:number;N:number; flops:number; totalFlops:number
+        small?: boolean; order?: string; miss?: number; totalMiss?: number; hitRate?: number
+        compare?: [string, number][]; tile?: number; fitsInCache?: boolean; intensity?: number }
+      //  ⚠️ 补厚字段可选读：老快照没有 small/compare，读不到就按"逐格手核"讲（老口径）。
+      const isSmall = st.small !== false
+      const cmp = st.compare
+      const spread = cmp ? Math.max(...cmp.map(c => c[1])) / Math.max(1, Math.min(...cmp.map(c => c[1]))) : 0
       return [
         { k: '本步输入',
-          v: st.phase === 'done' ? `${st.M}×${st.K} · ${st.K}×${st.N} 全算完` : `输出格 C[${st.row}][${st.col}]：A 第 ${st.row} 行、B 第 ${st.col} 列` },
+          v: st.phase === 'done' ? `${st.M}×${st.K} · ${st.K}×${st.N} 全算完`
+            : isSmall ? `输出格 C[${st.row}][${st.col}]：A 第 ${st.row} 行、B 第 ${st.col} 列`
+              : `按「${st.order}」走访存流，走到 ${Math.round(100 * st.flops / st.totalFlops)}%` },
         { k: '判定规则',
-          v: `A[M×K]·B[K×N]=C[M×N]，**内维 K 必须对上**。每格 C[i][j] = A 第 i 行**点** B 第 j 列 = Σ 对应位相乘。` },
+          v: `A[M×K]·B[K×N]=C[M×N]，**内维 K 必须对上**。每格 C[i][j] = A 第 i 行**点** B 第 j 列。`
+            + (isSmall ? '' : `　总浮点 2·M·N·K **跟循环顺序无关**；顺序只改"下一个要读的数在不在缓存里"。`) },
         { k: '本步结果',
           v: st.phase === 'done'
-            ? `每格都是一行点一列。共 **${st.totalFlops}** 次浮点（2·M·N·K）。注意力 Q·Kᵀ、FFN 的 W·x 都是它 —— FlashAttention/张量并行切的就是这个乘法。`
-            : `= ${st.terms.map(t=>t.a+'×'+t.b).join(' + ')} = **${st.value}**。累计 ${st.flops}/${st.totalFlops} FLOPs。` },
+            ? (isSmall
+              ? `每格都是一行点一列。共 **${st.totalFlops}** 次浮点（2·M·N·K）。想看它真正的难处,把矩阵规模拧大。`
+              : `**${st.totalFlops.toLocaleString()}** 次浮点(三种顺序完全相同),缓存缺失 **${st.totalMiss?.toLocaleString()}**、命中率 ${st.hitRate}%。`
+                + (cmp ? `　三种顺序:${cmp.map(([o, m]) => `${o.split('（')[0]} ${m.toLocaleString()}`).join(' ／ ')} —— 差 **${spread.toFixed(1)} 倍**,一次浮点都没省。` : ''))
+            : isSmall
+              ? `= ${st.terms.map(t => t.a + '×' + t.b).join(' + ')} = **${st.value}**。累计 ${st.flops}/${st.totalFlops} FLOPs。`
+              : `已缺失 **${st.miss?.toLocaleString()}** 次、命中率 ${st.hitRate}%。浮点走了 ${st.flops.toLocaleString()}/${st.totalFlops.toLocaleString()}。` },
       ]
     },
     verdict: (s: never) => {
-      const st = s as { phase: string; row: number; col: number; value: number; M:number; N:number }
-      return st.phase === 'done' ? `${st.M}×${st.N} 算完 · 每格一行点一列`
-        : `C[${st.row}][${st.col}] = ${st.value}`
+      const st = s as { phase: string; row: number; col: number; value: number; M:number; N:number
+        small?: boolean; totalMiss?: number; hitRate?: number }
+      if (st.small === false) return st.phase === 'done' ? `缺失 ${st.totalMiss?.toLocaleString()}` : `命中 ${st.hitRate}%`
+      return st.phase === 'done' ? `${st.M}×${st.N} 算完 · 每格一行点一列` : `C[${st.row}][${st.col}] = ${st.value}`
     },
     read: [
       { at: 'A·B→C 布局', is: 'A 在左下、B 在右上、C 在右下；当前格由 A 的行 × B 的列决定。', anchor: '.mmlayout' },
       { at: '高亮的行与列', is: '蓝行是 A 第 i 行、紫列是 B 第 j 列，它俩点积落到 C 那一格。', anchor: '.mmC' },
       { at: '点积展开', is: '一行点一列 = 对应位相乘再相加。', anchor: '.mmdot' },
-      { at: 'FLOPs 条', is: '每格 2K 次浮点，共 2·M·N·K。', anchor: '.mmflops' },
+      { at: 'FLOPs 条', is: '每格 2K 次浮点，共 2·M·N·K。**只在最小那档画**。', anchor: '.mmflops' },
+      { at: '三种顺序的缺失对比条', is: '**矩阵规模拧大之后**换成它：同一个乘法、三种循环顺序,浮点完全相同、缺失差一个数量级。绿色是最省的那条,描边的是你选的那条。', anchor: '.mmcmp' },
     ],
     try: [
-      { act: '一格一格点下去', watch: 'A 的行、B 的列高亮，点积落到 C 对应格；FLOPs 每格涨 2K。' },
-      { act: '想想它在哪出现', watch: '注意力 Q·Kᵀ、FFN 的 W·x、LM 头投影全是矩阵乘 —— 这一个算法撑起整个网络。' },
+      { act: '在最小那档一格一格点下去', watch: 'A 的行、B 的列高亮,点积落到 C 对应格;FLOPs 每格涨 2K。C[0][0]=1×7+2×9+3×11=58,可以拿计算器核。' },
+      //  下面几条是补厚后的主菜
+      { act: '把「矩阵规模」拧到 64×64，看三种顺序的对比条', watch: '浮点全是 **524288** 次,一个不多不少;缺失 i-j-k **299520**、i-k-j **33792**、分块 **22606**——**差 13.2 倍,而一次浮点都没省**。矩阵乘的难处根本不在算术。' },
+      { act: '想一下为什么 i-j-k 最差', watch: '行优先存储里 B[k][j] 沿 j 是**连着的**、沿 k 是**跳着的**。教科书那个写法的最内层恰好在沿 k 跳 B——每读一个数就跨一整行,缓存行里另外 7 个元素全白搬。' },
+      { act: '把「矩阵规模」调回 16×16', watch: 'i-j-k 和 i-k-j 的缺失**一模一样**(576/576)。整个矩阵塞得进缓存时,怎么循环都无所谓——**分块不是玄学,是放不下才需要的**。' },
+      { act: '选「分块」，再换「缓存大小」', watch: '块边长跟着变(小缓存 T=6、中 T=9、大 T=18)。它是**算出来**的:分块指望"三块 T×T 同时待在缓存里",所以 3T² ≤ 缓存容量。' },
     ],
     terms: ['matmuldef'],
   },

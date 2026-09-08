@@ -3259,33 +3259,59 @@ const matmul: Experiment<MatmulState> = {
   title: '矩阵乘法',
   subtitle: 'C = A·B · 一切神经网络的地基',
   kernel: matmulKernel,
-  defaultDoc: { kind: 'matmul', params: {}, entities: [], streams: [] },
-  params: [],
+  defaultDoc: { kind: 'matmul', params: { size: '2×3 · 3×2（逐格手核）', order: 'i-j-k（教科书写法）', cache: '中（32 行 × 8）' }, entities: [], streams: [] },
+  /*  2026-09-08 补厚：老版本只有一个写死的 2×3·3×2，这里原来还写着"没有可调标量"。
+      逐格手核是好的（那一档原样保留），但它把矩阵乘讲成了一道**算术题** ——
+      而真实世界里矩阵乘的难处根本不在算术：**FLOPs 是定死的，访存不是**。 */
+  params: [
+    { key: 'size', label: '矩阵规模', kind: 'enum', options: ['2×3 · 3×2（逐格手核）', '16×16', '32×32', '64×64'] },
+    { key: 'order', label: '循环顺序', kind: 'enum', options: ['i-j-k（教科书写法）', 'i-k-j（行优先友好）', '分块（tiling）'] },
+    { key: 'cache', label: '缓存大小', kind: 'enum', options: ['小（16 行 × 8）', '中（32 行 × 8）', '大（128 行 × 8）'] },
+  ],
   paramsNote: `**神经网络几乎每步都是矩阵乘**:注意力的 Q·Kᵀ、FFN 的 W·x、LM 头投影。本实验自由度在固定的 A、B 两个小矩阵上(便于逐格手核),没有可调标量。
 
 - **规则**:A[M×K]·B[K×N]=C[M×N],内维 K 必须对上。
 - **每格**:C[i][j]=Σ A[i][k]·B[k][j](一行点一列);总运算量 2·M·N·K。
-- FlashAttention 分块、张量并行切矩阵,切的都是这个乘法而**不改结果**——所以它是那些的地基。`,
+- **难处不在算术,在访存**:同样的 2·M·N·K 次浮点,换个循环顺序慢十倍。挂了一个真的 LRU 缓存模拟,三种顺序跑同一个乘法:
+  - 64×64、中缓存:i-j-k **299520** 次缺失(命中率 43.8%)／i-k-j **33792**(95.7%)／分块 9×9 **22606**(97.2%)——**少 13.2 倍缺失,一次浮点都没省**。
+  - 道理只有一句:行优先存储里 B[k][j] 沿 j 是连着的、沿 k 是跳着的。教科书 i-j-k 的最内层恰好在沿 k 跳 B,每次跨一整行。
+  - **块边长是算出来的**:分块指望"三块 T×T 同时待在缓存里",所以 3T² ≤ 缓存容量。缓存换一档,块跟着变。
+- **放得下就无所谓**:16×16 时 i-j-k 和 i-k-j 的缺失**一模一样**(576/576)。分块不是玄学,是**放不下**才需要的。
+- FlashAttention 分块、张量并行切矩阵,切的都是这个乘法而**不改结果**——它们改的正是访存。`,
   bounds: [
-    '用固定 2×3 · 3×2 小矩阵，便于逐格手核；真实维度成千上万，机制相同',
-    '每格 = A 一行点 B 一列；内维 K 对不上就不能乘',
-    'FLOPs = 2·M·N·K（K 次乘 + K 次加，每格 2K）',
-    '只演示朴素逐格算法；分块/并行是同一乘法的不同访存与切分（见 FlashAttention / 张量并行）',
+    '「2×3 · 3×2」那一档原样保留，逐格可手核（C[0][0]=1·7+2·9+3·11=58）；16/32/64 那几档演访存',
+    'FLOPs = 2·M·N·K，**跟循环顺序无关** —— 三种顺序一个浮点都不多不少',
+    '缓存模型是**全相联 LRU**，行大小 8 个元素；三个矩阵按行优先连续摆放',
+    /*  ⚠️ 这条是模型边界，别拿这里的数去对真机。 */
+    '这是教学模型不是真 CPU：没有组相联、没有预取器、没有 L2/L3、没有写回策略 —— 真机上分块的收益只会更大（预取器最怕跳着走）',
+    '每一帧的缺失数都是**当场数出来的**：按本档顺序把访存流切成 24 段读真实累计值，不是拿总数按比例摊平',
+    '块边长 T 由缓存容量算出（3T² ≤ 容量），不是拍的；不做多级分块、不做寄存器分块',
   ],
   tabs: [{ id: 'grid', label: '逐格相乘' }],
   Stage: MatmulStage,
-  tone: s => (s.phase === 'done' ? { key: 'good', label: `${s.M}×${s.N} 算完` }
-    : { key: 'idle', label: `C[${s.row}][${s.col}]` }),
+  tone: s => (s.phase === 'done' ? { key: 'good', label: s.small ? `${s.M}×${s.N} 算完` : `缺失 ${s.totalMiss.toLocaleString()}` }
+    : { key: 'idle', label: s.small ? `C[${s.row}][${s.col}]` : `${s.hitRate}%` }),
   metric: s => (s.totalFlops > 0 ? s.flops / s.totalFlops : 0),
-  tickLabel: s => (s.phase === 'done' ? '毕' : `${s.row}${s.col}`),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.small ? `${s.row}${s.col}` : `${Math.round(100 * s.flops / s.totalFlops)}%`),
   whyInRail: true,
-  readouts: s => [
-    { label: '形状', value: `${s.M}×${s.K} · ${s.K}×${s.N} → ${s.M}×${s.N}` },
-    { label: '当前格', value: s.phase === 'done' ? '完成' : `C[${s.row}][${s.col}]` },
-    { label: '本格值', value: s.phase === 'done' ? '—' : `${s.value}` },
-    { label: 'FLOPs', value: `${s.flops} / ${s.totalFlops}` },
-    { label: '总量公式', value: '2·M·N·K' },
-  ],
+  readouts: s => (s.small
+    ? [
+      { label: '形状', value: `${s.M}×${s.K} · ${s.K}×${s.N} → ${s.M}×${s.N}` },
+      { label: '当前格', value: s.phase === 'done' ? '完成' : `C[${s.row}][${s.col}]` },
+      { label: '本格值', value: s.phase === 'done' ? '—' : `${s.value}` },
+      { label: 'FLOPs', value: `${s.flops} / ${s.totalFlops}（2·M·N·K）` },
+      { label: '想看访存差别', value: '把「矩阵规模」拧大' },
+    ]
+    : [
+      /*  FLOPs 和缺失并排 —— 这个实验的全部意思就在这两栏的对比上 */
+      { label: 'FLOPs（跟顺序无关）', value: `${s.flops.toLocaleString()} / ${s.totalFlops.toLocaleString()}` },
+      { label: '缓存缺失', value: `${s.miss.toLocaleString()}${s.phase === 'done' ? '' : ` / 全程 ${s.totalMiss.toLocaleString()}`}`,
+        tone: s.totalMiss === Math.max(...s.compare.map(c => c[1])) ? 'bad'
+          : s.totalMiss === Math.min(...s.compare.map(c => c[1])) ? 'good' : undefined },
+      { label: '命中率', value: `${s.hitRate}%`, tone: s.hitRate > 90 ? 'good' : s.hitRate < 60 ? 'bad' : undefined },
+      { label: '算术强度', value: `${s.intensity} 次浮点 / 缺失` },
+      { label: '三种顺序的缺失', value: s.compare.map(([o, m]) => `${o.split('（')[0].replace(/ .*/, '')} ${m.toLocaleString()}`).join(' · ') },
+    ]),
 }
 
 const tensorpar: Experiment<TensorParState> = {

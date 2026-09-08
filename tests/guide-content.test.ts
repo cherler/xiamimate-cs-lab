@@ -1525,9 +1525,9 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       b: { phase: 'done', layout: 'row-major', rows: 2, cols: 3, cur: null, rowStride: 1, colStride: 3, mem: [{v:1},{v:2},{v:3},{v:4},{v:5},{v:6}] },
     },
     matmul: {
-      doc: { params: {} },
-      a: { phase: 'cell', row: 0, col: 0, terms: [{a:1,b:7,prod:7},{a:2,b:9,prod:18},{a:3,b:11,prod:33}], value: 58, M:2, K:3, N:2, flops: 6, totalFlops: 24 },
-      b: { phase: 'done', row: 1, col: 1, terms: [], value: 0, M:2, K:3, N:2, flops: 24, totalFlops: 24 },
+      doc: { params: { size: '2×3 · 3×2（逐格手核）', order: 'i-j-k（教科书写法）', cache: '中（32 行 × 8）' } },
+      a: { phase: 'cell', row: 0, col: 0, terms: [{a:1,b:7,prod:7},{a:2,b:9,prod:18},{a:3,b:11,prod:33}], value: 58, M:2, K:3, N:2, flops: 6, totalFlops: 24, small: true },
+      b: { phase: 'done', row: 1, col: 1, terms: [], value: 0, M:2, K:3, N:2, flops: 24, totalFlops: 24, small: true },
     },
     softmax: {
       doc: { params: { temperature: 1, logits: '天气续写' } },
