@@ -890,10 +890,12 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       b: { wNorm: 1.5, l2: 0, data: '线性可分', separable: true, accCurve: [[0, 0.5], [140, 1]], normCurve: [[0, 0], [140, 3.03]], phase: 'done', gdStep: 60, w1: 1.967, w2: 1.421, b: 0.038, loss: 0.03, acc: 1 },
     },
     backprop: {
-      doc: { kind: 'backprop', params: {}, entities: [], streams: [] },
+      doc: { kind: 'backprop', params: { depth: 1, act: 'sigmoid', w: 0.8 }, entities: [], streams: [] },
       //  A 前向(算到 L) · B 反向完成(梯度全出) —— 结论必须换一套说法
-      a: { phase: 'forward', stage: '前向', loss: 0.072, gLda: null, gLdz: null, gLdw: null },
-      b: { phase: 'done', stage: '完成', loss: 0.072, gLda: -0.538, gLdz: -0.106, gLdw: -0.106 },
+      a: { phase: 'forward', stage: '前向', loss: 0.084, gLda: null, gLdz: null, gLdw: null,
+        depth: 1, act: 'sigmoid', chain: 1, vanish: false, explode: false, layerFactor: [0.164], gwAll: [-0.1188], fpCap: 0.25 },
+      b: { phase: 'done', stage: '完成', loss: 0.084, gLda: -0.578, gLdz: -0.1188, gLdw: -0.1188,
+        depth: 1, act: 'sigmoid', chain: 1, vanish: false, explode: false, layerFactor: [0.164], gwAll: [-0.1188], fpCap: 0.25 },
     },
     binsearch: {
       doc: { kind: 'binsearch', params: { arr: '有序 13 个', target: 63 }, entities: [], streams: [] },

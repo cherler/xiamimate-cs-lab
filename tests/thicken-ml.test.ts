@@ -28,6 +28,7 @@ import { logregKernel, type LogRegState } from '../src/kernels/logreg.ts'
 import { binsearchKernel, type BinSearchState } from '../src/kernels/binsearch.ts'
 import { graddescKernel, type GradDescState } from '../src/kernels/graddesc.ts'
 import { pcaKernel, type PCAState } from '../src/kernels/pca.ts'
+import { backpropKernel, type BackpropState } from '../src/kernels/backprop.ts'
 
 let failures = 0
 const ok = (m: string) => console.log(`  ✅ ${m}`)
@@ -338,6 +339,57 @@ console.log('\n【逻辑回归：正则真的在压权重，异或真的分不�
   !xor.separable && xor.acc < sep.acc - 0.15
     ? ok(`异或准确率 ${(xor.acc * 100).toFixed(0)}%，可分档 ${(sep.acc * 100).toFixed(0)}% —— 一条直线切不开异或`)
     : bad(`异或 ${(xor.acc * 100).toFixed(0)}% vs 可分 ${(sep.acc * 100).toFixed(0)}% —— 差距不足以说明"线性不可分"`)
+}
+
+// ═══ 反向传播：链一长就是连乘 ═══════════════════════════
+console.log('\n【反向传播：梯度消失/爆炸是一串连乘的必然结果】')
+{
+  const go = (p: P) => last(run(backpropKernel.compile(doc('backprop', p)), 80) as BackpropState[])
+
+  //  ① 回传信号必须**等于**每层因子的连乘 —— 屏幕上那句"每层乘 |w·f′|"就是它
+  const bad1: string[] = []
+  for (const act of ['sigmoid', 'tanh', 'ReLU']) for (const w of [0.5, 0.8, 1.5]) for (const depth of [4, 8]) {
+    const s = go({ act, w, depth })
+    const prod = s.layerFactor.slice(1).reduce((a, b) => a * b, 1)   // 第 1 层不再往上传
+    if (Math.abs(Math.log(s.chain / prod)) > 0.01) bad1.push(`${act}/w=${w}/L=${depth}：链 ${s.chain} vs 连乘 ${prod.toExponential(2)}`)
+  }
+  bad1.length === 0 ? ok('18 种组合：回传信号都等于各层 |w·f′| 的连乘 —— 这条链没有别的成分')
+    : bad(bad1.slice(0, 3).join(' / '))
+
+  //  ② sigmoid 的 f′ 上界 0.25 是**硬**的：任何 w、任何一层，实测 f′ 都不超过它
+  const sg = go({ act: 'sigmoid', w: 1.5, depth: 8 })
+  const fps = sg.layerFactor.map((f, k) => f / sg.w)
+  Math.max(...fps) <= 0.25 + 1e-9
+    ? ok(`sigmoid 各层实测 f′ 最大 ${Math.max(...fps).toFixed(4)} ≤ 0.25 —— 每层至少缩 4 倍，跟 w 多大无关`)
+    : bad(`有层的 f′ 超过了 0.25：${Math.max(...fps)}`)
+
+  //  ③ 这个实验的头条：同样 8 层、同样 w，ReLU 比 sigmoid 的回传信号大几个数量级
+  const s8 = go({ act: 'sigmoid', w: 0.8, depth: 8 })
+  const r8 = go({ act: 'ReLU', w: 0.8, depth: 8 })
+  s8.vanish && !r8.vanish && r8.chain / s8.chain > 1000
+    ? ok(`8 层 w=0.8：sigmoid 回传只剩 ${s8.chain.toExponential(1)}（判为消失），ReLU 还有 ${r8.chain} —— 大 ${(r8.chain / s8.chain).toExponential(1)} 倍`)
+    : bad(`ReLU 没能救回来：sigmoid ${s8.chain}（vanish=${s8.vanish}）vs ReLU ${r8.chain}（vanish=${r8.vanish}）`)
+
+  //  ④ 深度越深塌得越狠（同一激活、同一 w，chain 必须单调下降）
+  const dp = [1, 4, 8].map(depth => go({ act: 'sigmoid', w: 0.8, depth }).chain)
+  dp.every((v, k) => k === 0 || v < dp[k - 1])
+    ? ok(`sigmoid w=0.8：1/4/8 层的回传信号 ${dp.map(v => (v < 1e-3 ? v.toExponential(1) : v)).join(' → ')}`)
+    : bad(`深度加深、回传信号没单调变小：${dp.join(' / ')}`)
+
+  /*  ⑤ 这条钉的是**该看哪个数**。ReLU+w=1.5+8 层是真的爆炸（回传放大 17 倍），
+      但首末两层的权重梯度之比只有 0.84 —— 因为 dL/dw 还乘着本层输入 a，而 a 同步放大、两头抵消。
+      我一开始就是拿 ratio 判的，扫参数才发现它会**漏报爆炸**。 */
+  const ex = go({ act: 'ReLU', w: 1.5, depth: 8 })
+  ex.explode && ex.chain > 10 && ex.ratio > 0.5 && ex.ratio < 2
+    ? ok(`ReLU w=1.5 8 层：回传信号 ${ex.chain} 倍（判为爆炸），而首末权重梯度之比只有 ${ex.ratio} —— 拿 ratio 判会漏报`)
+    : bad(`爆炸档的两个数没形成对照：chain=${ex.chain} explode=${ex.explode} ratio=${ex.ratio}`)
+
+  /*  ⑥ b=0.1 不能改回 0.2：ReLU 链的不动点 a*=b/(1−w)，b=0.2、w=0.8 时正好撞上 t=1，
+      损失和梯度会全变 0。这条判据钉住"三档 w 一个都不撞 t"。 */
+  const zeroish = [0.5, 0.8, 1.5].map(w => go({ act: 'ReLU', w, depth: 8 })).filter(s => s.loss === 0)
+  zeroish.length === 0
+    ? ok('三档 w 配 ReLU 都没有踩上"输出恰好等于目标"的退化（损失全非 0，梯度演得出来）')
+    : bad(`有 ${zeroish.length} 档 ReLU 的损失恒为 0 —— 整屏梯度都会是 0，什么都演不出来`)
 }
 
 // ═══ PCA：三个坑，外加一个能逐位核对的恒等式 ═══════════════

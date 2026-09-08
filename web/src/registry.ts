@@ -3896,32 +3896,58 @@ const backprop: Experiment<BackpropState> = {
   title: '反向传播',
   subtitle: '链式法则把"误差"逐层回传成每个权重的梯度',
   kernel: backpropKernel,
-  defaultDoc: { kind: 'backprop', params: {}, entities: [], streams: [] },
-  params: [],
+  defaultDoc: { kind: 'backprop', params: { depth: 1, act: 'sigmoid', w: 0.8 }, entities: [], streams: [] },
+  /*  2026-09-08 补厚：老版本只有一个神经元。链式法则讲清楚了，但**反向传播真正的分量在深度上** ——
+      梯度回传是一长串数连乘，链一长要么塌成 0、要么炸上天。那件事一个神经元演不出来。 */
+  params: [
+    { key: 'depth', label: '层数', kind: 'number', options: [1, 4, 8], unit: '层' },
+    { key: 'act', label: '激活函数', kind: 'enum', options: ['sigmoid', 'tanh', 'ReLU'] },
+    { key: 'w', label: '每层权重 w', kind: 'number', options: [0.5, 0.8, 1.5] },
+  ],
   paramsNote: `**反向传播是训练神经网络的发动机**。核心一句:下游梯度×本站局部导数=上游梯度。
 
 - **两趟**:前向——数据从输入流到输出、算出损失 L;反向——从 L 出发用链式法则把"L 对每个中间量的偏导"一站站往回算,得到 L 对每个权重的梯度,交给梯度下降更新。
 - **每站只管局部导数**:sigmoid 局部导数 a(1−a)、乘法是"另一个数"……链一串就把梯度从损失送回最前的权重。
 - **为什么高效**:一趟就出所有权重梯度、和参数量成正比——这是深度学习能训上亿参数的底层原因。
-- **本实验**:一个神经元 x=1,w=0.8,b=0.2→z→a=σ(z)→L=(a−t)²,前向 L=0.072,反向逐站回传到 dL/dw、dL/db。`,
+- **深度才是重点**:把「层数」拧到 4 或 8,同一条链式法则会演出另一件事——每往上传一层要乘 **|w·f′|**,链一长就是连乘:
+  - **sigmoid** 的 f′=a(1−a) **最大只有 0.25**,哪怕 w 取到 4,w·f′ 也才勉强够到 1。8 层下来回传信号只剩 **百万分之几**——前面几层几乎收不到更新信号。这不是调参问题,是激活函数**自带**的天花板。
+  - **ReLU** 的 f′ 在正半轴恒等于 **1**,这一项不缩了。同样 8 层、同样 w=0.8,回传信号还剩 0.21——比 sigmoid 大三万倍。这就是它替掉 sigmoid 的全部理由。
+  - w 拧大到 1.5 配 ReLU:反过来**爆炸**,8 层放大 17 倍。梯度消失和爆炸是同一根链条的两端。
+- **判塌没塌要看哪个数**:看**回传信号** Π|w·f′|,不能看首末两层权重梯度之比——后者还乘着各层输入 a,ReLU 爆炸时 a 同步放大、两头抵消,会漏报。`,
   bounds: [
-    '一个神经元:x=1,w=0.8,b=0.2,t=1;z=wx+b、a=σ(z)、L=(a−t)²',
-    '前向 L=0.072;反向链式法则逐站(可核)',
-    'dL/da=2(a−t)、过 sigmoid ×a(1−a)、dL/dw=dL/dz·x',
-    '单神经元示意;多层网络同理逐层回传',
+    '一条 1~8 层的链，每层同样的 w 和 b（x=1、b=0.1、t=1）；z=w·a+b、a=f(z)、L=(a−t)²',
+    '反向逐站：dL/da=2(a−t)，过激活 ×f′，dL/dw=dL/dz·（本层输入），再乘 w 传给上一层 —— 每步可手核',
+    /*  ⚠️ b 从 0.2 改成 0.1 是为了躲开一个退化，见内核头注。 */
+    'b 取 0.1 而不是 0.2：ReLU 链的不动点 a*=b/(1−w)，b=0.2、w=0.8 时正好等于 t=1，损失和梯度会全是 0',
+    '每层同权重是**刻意简化**：真网络每层权重不同、还有多个神经元，但"每层乘一个 w·f′"这条主干一模一样',
+    '不含 BatchNorm、残差连接、梯度裁剪 —— 它们各自怎么救这条链，在别的实验里',
   ],
   tabs: [{ id: 'graph', label: '计算图' }],
   Stage: BackpropStage,
-  tone: s => (s.phase === 'done' ? { key: 'good', label: '梯度全出' } : s.phase === 'forward' ? { key: 'idle', label: '前向' } : { key: 'idle', label: s.stage }),
-  metric: s => (s.phase === 'forward' ? 0.2 : s.phase === 'done' ? 1 : s.gLdw !== null ? 0.8 : s.gLdz !== null ? 0.6 : 0.4),
-  tickLabel: s => (s.phase === 'done' ? '毕' : s.phase === 'forward' ? '前向' : s.gLdw !== null ? 'w,b' : s.gLdz !== null ? 'z' : 'a'),
+  tone: s => (s.phase !== 'done' ? { key: 'idle', label: s.phase === 'forward' ? '前向' : s.stage }
+    : s.vanish ? { key: 'bad', label: '梯度消失' } : s.explode ? { key: 'bad', label: '梯度爆炸' }
+      : { key: 'good', label: '梯度全出' }),
+  metric: s => (s.phase === 'done' ? 1 : s.phase === 'forward' ? 0.1 + 0.3 * ((s.fwdAt + 1) / s.depth) : 0.5 + 0.5 * ((s.depth - s.backAt) / s.depth)),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.depth === 1 ? (s.phase === 'forward' ? '前向' : s.gLdw !== null ? 'w,b' : s.gLdz !== null ? 'z' : 'a')
+    : s.phase === 'forward' ? `↑${s.fwdAt + 1}` : `↓${s.backAt + 1}`),
   whyInRail: true,
-  readouts: s => [
-    { label: '损失 L', value: `${s.loss}` },
-    { label: 'dL/da', value: s.gLda !== null ? `${s.gLda}` : '—' },
-    { label: 'dL/dz', value: s.gLdz !== null ? `${s.gLdz}` : '—' },
-    { label: 'dL/dw', value: s.gLdw !== null ? `${s.gLdw}` : '—', tone: s.phase === 'done' ? 'good' : undefined },
-  ],
+  readouts: s => (s.depth === 1
+    ? [
+      { label: '损失 L', value: `${s.loss}` },
+      { label: 'dL/da', value: s.gLda !== null ? `${s.gLda}` : '—' },
+      { label: 'dL/dz', value: s.gLdz !== null ? `${s.gLdz}` : '—' },
+      { label: 'dL/dw', value: s.gLdw !== null ? `${s.gLdw}` : '—', tone: s.phase === 'done' ? 'good' : undefined },
+    ]
+    : [
+      { label: '损失 L', value: `${s.loss}` },
+      { label: '每层乘 |w·f′|', value: `${s.layerFactor[1] ?? s.layerFactor[0]}（f′ 上界 ${s.fpCap}）`,
+        tone: (s.layerFactor[1] ?? 1) < 0.5 ? 'bad' : (s.layerFactor[1] ?? 1) > 1.2 ? 'bad' : 'good' },
+      /*  这一栏才是判据：回传信号本身的放大倍数 Π|w·f′| */
+      { label: `回传信号（穿过 ${s.depth} 层）`, value: s.chain < 1e-3 || s.chain > 1e3 ? `${s.chain.toExponential(1)}×` : `${s.chain}×`,
+        tone: s.vanish || s.explode ? 'bad' : 'good' },
+      { label: '第 1 层 / 末层 梯度',
+        value: `${Math.abs(s.gwAll[0]) < 1e-3 ? s.gwAll[0].toExponential(1) : s.gwAll[0]} / ${s.gwAll[s.depth - 1]}` },
+    ]),
 }
 
 const binsearch: Experiment<BinSearchState> = {

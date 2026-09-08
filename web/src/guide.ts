@@ -5268,30 +5268,49 @@ export const GUIDES: Record<string, Guide> = {
       hook: '上亿个权重，怎么一趟就把每个的梯度都算出来？',
       what: '这一屏讲的是**反向传播**：神经网络训练时，怎么算出「每个权重该往哪个方向调、调多少」。难点在数量 —— 一个模型有上亿个权重，要是对每个权重单独试一遍「把它加一点点，损失变了多少」，那要跑上亿次前向传播，永远算不完。反向传播的贡献是：**只用一次前向加一次反向，就把全部权重的梯度都算出来**，总开销跟一次前向差不多。整个深度学习能在工程上成立，靠的就是这一点。',
       terms: '**梯度**：损失对某个权重的偏导数，也就是「这个权重动一点点，损失会变多少」。它既给出了方向（正就该减小、负就该增大），也给出了力度。\u3000**计算图**：把整个计算拆成一个个小节点连成的图，屏幕上 w、x、b → z → a → L 那条链就是它。每个节点只需要知道自己那一步的局部导数。\u3000**链式法则**：微积分里的复合函数求导法则。**这是反向传播的全部数学内容** —— 从损失出发，「损失对 a 的导数」乘上「a 对 z 的导数」就得到「损失对 z 的导数」，一层层往前乘。\u3000**前向 / 反向**：前向从输入算到损失，顺便把每个节点的值存下来；反向从损失倒着走回去，每一步把后面传来的梯度乘上自己的局部导数再往前传。\u3000**为什么要存前向的值**：因为局部导数往往用得上前向那一步的输入（比如乘法节点的导数就是另一个乘数）。**这就是训练比推理吃显存的原因** —— 所有中间激活值都得留着等反向用。\u3000**梯度消失 / 爆炸**：一路连乘，每层的因子若都小于 1，传到底就成了 0；若都大于 1，就会炸掉。残差连接和归一化就是为了治这个。',
-      watch: '跟着一条路径从损失一路推回输入层，看每一层怎么把梯度乘上自己的局部导数再往前传。',
+      watch: '先在 1 层上看清链式法则怎么走，然后把「层数」拧到 8 —— 同一条规则会演出完全不同的一件事：梯度回传是一长串数**连乘**，链一长就塌成 0（sigmoid）或炸上天（ReLU + 大权重）。深层网络卡了二十年，卡的就是这个。',
     },
     step: (s: never) => {
-      const st = s as { phase: string; stage: string; loss: number; gLda: number | null; gLdz: number | null; gLdw: number | null }
+      const st = s as { phase: string; stage: string; loss: number; gLda: number | null; gLdz: number | null; gLdw: number | null
+        depth?: number; act?: string; chain?: number; vanish?: boolean; explode?: boolean
+        layerFactor?: number[]; gwAll?: number[]; backAt?: number; fpCap?: number }
+      //  ⚠️ 补厚字段一律可选读：老快照没有 depth，读不到就按单神经元讲（老口径）。
+      const d = st.depth ?? 1
+      const fac = st.layerFactor?.[1] ?? st.layerFactor?.[0]
+      const eN = (v: number) => (Math.abs(v) >= 1e-3 ? `${v}` : v.toExponential(1))
       return [
-        { k: '本步输入', v: st.phase === 'forward' ? '前向:算到损失 L' : st.phase === 'done' ? '反向完成' : `反向回传:${st.stage}` },
-        { k: '判定规则', v: `前向算 L;反向从 L 出发,用链式法则**下游梯度 × 本站局部导数 = 上游梯度**,一站站回传到每个权重。` },
+        { k: '本步输入', v: st.phase === 'forward' ? `前向${d > 1 ? '逐层' : ''}:算到损失 L` : st.phase === 'done' ? '反向完成' : `反向回传:${st.stage}` },
+        { k: '判定规则', v: `前向算 L;反向从 L 出发,用链式法则**下游梯度 × 本站局部导数 = 上游梯度**,一站站回传到每个权重。`
+            + (d > 1 ? `　注意这句话里的"乘"——每往上一层就多乘一个 |w·f′|${fac !== undefined ? `(这条链上约 ${fac})` : ''},**链一长就是连乘**。` : '') },
         { k: '本步结果', v: st.phase === 'done'
-            ? `dL/dw、dL/db 都算出来了(负→梯度下降增大 w、b、降损失)。一趟出全部梯度。`
-            : st.phase === 'forward' ? `损失 L=**${st.loss}**。接下来从它往回传梯度。`
-            : st.gLdw !== null ? `到权重:dL/dw=**${st.gLdw}**。` : st.gLdz !== null ? `过 sigmoid:dL/dz=**${st.gLdz}**。` : `dL/da=**${st.gLda}**。` },
+            ? (d === 1
+              ? `dL/dw、dL/db 都算出来了(负→梯度下降增大 w、b、降损失)。一趟出全部梯度。`
+              : st.vanish
+                ? `**梯度消失**:回传信号穿过 ${d} 层只剩 ${st.chain?.toExponential(1)} 倍,第 1 层梯度 ${eN(st.gwAll?.[0] ?? 0)}——前面几层几乎收不到更新信号。`
+                : st.explode
+                  ? `**梯度爆炸**:回传信号被放大 ${st.chain} 倍,一步更新就能把权重掀翻。`
+                  : `${d} 层的梯度一趟全出;回传信号 ${st.chain} 倍——**既没塌也没炸**,每层的 |w·f′| 贴着 1。`)
+            : st.phase === 'forward' ? `${d > 1 ? '这一层算完;' : ''}损失 L=**${st.loss}**。接下来从它往回传梯度。`
+            : st.gLdw !== null ? `到权重:dL/dw=**${st.gLdw}**${d > 1 && fac !== undefined ? `;再往上一层还要乘 ${fac}。` : '。'}`
+            : st.gLdz !== null ? `过 ${st.act ?? 'sigmoid'}:dL/dz=**${st.gLdz}**。` : `dL/da=**${st.gLda}**。` },
       ]
     },
     verdict: (s: never) => {
-      const st = s as { phase: string; stage: string }
-      return st.phase === 'done' ? '梯度全出' : st.phase === 'forward' ? '前向' : st.stage
+      const st = s as { phase: string; stage: string; vanish?: boolean; explode?: boolean }
+      if (st.phase !== 'done') return st.phase === 'forward' ? '前向' : st.stage
+      return st.vanish ? '梯度消失' : st.explode ? '梯度爆炸' : '梯度全出'
     },
     read: [
       { at: '读数', is: '当前趟、损失 L、逐站梯度 dL/da、dL/dz、dL/dw。', anchor: '.scdim' },
-      { at: '计算图', is: 'w,x,b→z→a→L 的链;节点上=前向值,节点下红字=回传的梯度 ∂L。', anchor: '.bpplot' },
+      { at: '计算图', is: '**1 层时**才画:w,x,b→z→a→L 的链;节点上=前向值,节点下红字=回传的梯度 ∂L。', anchor: '.bpplot' },
+      { at: '逐层梯度柱', is: '**多层时**换成它:一层一根柱,柱高=该层权重梯度的量级(**对数刻度,每格一个数量级**);柱间那个 ×0.18 就是往上传一层要乘的 |w·f′|。', anchor: '.bplayers' },
     ],
     try: [
-      { act: '一步步走', watch: '前向算到 L;再从 L 往回,dL/da → 过 sigmoid → dL/dz → dL/dw、dL/db。' },
-      { act: '盯每站', watch: '下游梯度 × 本站局部导数 = 上游梯度——链式法则把误差一路送回权重。' },
+      { act: '先在「1 层」上一步步走', watch: '前向算到 L;再从 L 往回,dL/da → 过激活 → dL/dz → dL/dw、dL/db。每一步都能拿计算器核。' },
+      //  下面三条是补厚后的主菜：同一条链式法则，深度一加就换了个故事。
+      { act: '把「层数」拧到 8（激活仍是 sigmoid）', watch: '柱子从右到左一路矮下去、矮到看不见:回传信号只剩**百万分之几**。sigmoid 的 f′=a(1−a) **最大只有 0.25**,每层至少缩 4 倍——这不是调参问题,是激活函数**自带**的天花板。' },
+      { act: '层数保持 8，把「激活函数」换成 ReLU', watch: '同样的 w、同样的深度,回传信号从 6.5e-6 变成 0.21——**大三万倍**。f′ 在正半轴恒等于 1,这一项就不缩了。这就是 2010 年之后 ReLU 换掉 sigmoid 的**全部理由**。' },
+      { act: 'ReLU + 8 层，把「每层权重 w」拧到 1.5', watch: '反过来**爆炸**:回传信号放大 17 倍。但注意柱状图上首末两层**差不多高**——dL/dw 还乘着这层的输入 a,而 a 也在同步放大,两头抵消。判塌没塌要看**回传信号** Π|w·f′|,看首末梯度之比会漏报。' },
     ],
     terms: [],
   },
