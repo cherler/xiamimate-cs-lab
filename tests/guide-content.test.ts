@@ -950,10 +950,16 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       b: { phase: 'done', act: 'done', cur: [7, 2], curG: 9, curH: 0, curF: 9, expanded: 19, open: ['5,2', '6,2'], path: ['0,2', '1,2', '2,2', '3,2', '3,3', '4,3', '5,3', '6,3', '7,3', '7,2'] },
     },
     perceptron: {
-      doc: { kind: 'perceptron', params: {}, entities: [], streams: [] },
-      //  A 分错→纠正 · B 收敛 —— 结论必须换一套说法
-      a: { phase: 'run', act: 'check', pts: [{ x: [1, 2], y: 1 }, { x: [2, 3], y: 1 }, { x: [2, 4], y: 1 }, { x: [3, 2], y: -1 }, { x: [4, 3], y: -1 }, { x: [4, 1], y: -1 }], w: [1, 2], b: 1, prevW: [0, 0], prevB: 0, pass: 0, ptIdx: 0, score: 0, ok: false, updated: true, updates: 1 },
-      b: { phase: 'done', act: 'done', pts: [{ x: [1, 2], y: 1 }, { x: [2, 3], y: 1 }, { x: [2, 4], y: 1 }, { x: [3, 2], y: -1 }, { x: [4, 3], y: -1 }, { x: [4, 1], y: -1 }], w: [-3, 2], b: 1, prevW: [-3, 2], prevB: 1, pass: -1, ptIdx: -1, score: 0, ok: true, updated: false, updates: 5 },
+      doc: { kind: 'perceptron', params: { data: '异或（怎么画都分不开）' }, entities: [], streams: [] },
+      //  A 第 1 轮某次纠正 · B 12 轮跑完仍没收敛（第 2 轮=第 3 轮，陷进循环）—— 结论必须换一套说法
+      a: { phase: 'run', act: 'check', w: [0, 1], b: 1, pass: 0, ptIdx: 2, score: 0, ok: false,
+        updated: true, updates: 1, dataTag: '异或（怎么画都分不开）', converged: false, passes: 1,
+        mistakesNow: 2, bestMistakes: 2, cycleAt: null,
+        pts: [{ x: [0, 0], y: -1 }, { x: [1, 1], y: -1 }, { x: [0, 1], y: 1 }, { x: [1, 0], y: 1 }] },
+      b: { phase: 'done', act: 'done', w: [0, 1], b: 1, pass: -1, ptIdx: -1, score: 0, ok: true,
+        updated: false, updates: 45, dataTag: '异或（怎么画都分不开）', converged: false, passes: 12,
+        mistakesNow: 2, bestMistakes: 1, cycleAt: [2, 3],
+        pts: [{ x: [0, 0], y: -1 }, { x: [1, 1], y: -1 }, { x: [0, 1], y: 1 }, { x: [1, 0], y: 1 }] },
     },
     pooling: {
       doc: { kind: 'pooling', params: { kind: '最大' }, entities: [], streams: [] },

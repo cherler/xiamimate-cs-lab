@@ -4338,31 +4338,46 @@ const perceptron: Experiment<PerceptronState> = {
   subtitle: '一个神经元靠"错了就纠"学出分界线',
   kernel: perceptronKernel,
   defaultDoc: { kind: 'perceptron', params: {}, entities: [], streams: [] },
-  params: [],
+  params: [
+    { key: 'data', label: '数据', kind: 'enum', options: ['线性可分', '一个噪声点', '异或（怎么画都分不开）'] },
+  ],
   paramsNote: `**感知机 = 神经网络的最小单元**:给输入各配权重 w、加偏置 b,算 w·x+b 看正负判类别——几何上就是一条分界线(高维是超平面)。
 
 - **怎么学**:错了就纠——遇到分错的点,把权重朝"下次能分对它"的方向挪一点(w+=y·x、b+=y,y=±1 是真实类别)。
 - **收敛保证**:反复扫所有点,只要两类**线性可分**,感知机收敛定理保证有限步内学到能全分对的线。
-- **本实验**:6 个点(3 正 3 负),线从乱猜开始、每遇分错点纠一下、慢慢转到位,5 次更新后某轮零错误即收敛(w=-3,2;b=1)。
-
-它是逻辑回归、SVM 和整个深度网络里每个神经元的祖先(激活换成硬阈值 sign)。`,
+- **本实验**:6 个点(3 正 3 负),5 次更新后某轮零错误即收敛。它是逻辑回归、SVM 和整个深度网络里每个神经元的祖先(激活换成硬阈值 sign)。
+- **补厚补的是那个前提**:收敛定理只对**线性可分**成立,而老版本从没兑现过反面。三档数据各顶一个问题:
+  - **异或**:四个点怎么画直线都分不开。它**不是慢慢收敛,是陷进循环**——实测**第 2 轮和第 3 轮的 (w,b) 一模一样**,再跑一万轮也是这几个状态来回转。这不是没训练够,是**表达能力不够**;1969 年 Minsky & Papert 摁住感知机、带来第一次 AI 寒冬的就是它。
+  - **一个噪声点**:数据本来可分,混进一个标错的点(夹在两个负例正中间,几何上不可能分开),同样永不收敛(第 5 轮=第 11 轮)。**这比异或更常见——真实数据总有噪声,所以感知机在实践中几乎不能直接用。**
+- **它还不记得最好的那次**:屏幕上并排摆着"此刻错几个"和"历史最好错几个"。异或档实测**此刻错 2、历史最好错 1**——感知机只有"当前的 w",停在哪儿全看运气。把最好的揣兜里就是 **pocket algorithm**。`,
   bounds: [
-    '6 个点(3 正 3 负),线性可分',
-    'score=w·x+b;符号≠真实类就纠 w+=y·x、b+=y(可核)',
-    '扫到某轮零错误即收敛;这里 5 次更新',
-    '仅线性可分才收敛;异或需多层+非线性',
+    '三档数据可切；score=w·x+b，符号≠真实类就纠 w+=y·x、b+=y —— 每一步都能手算核对',
+    '扫到某一整轮零错误即收敛；最多跑 12 轮，跑满仍有错就是"没收敛"',
+    /*  ⚠️ 「不收敛」要有铁证，不能只说"跑满了还没好"——那只说明轮数不够。 */
+    '不收敛的**铁证是循环**：记下每轮开始时的 (w,b)，重复出现就是陷进循环了（再跑多久都一样）',
+    '噪声点选的是 (4,2)：它跟 (4,1)、(4,3) 在同一条竖线上、还夹在正中间，**不可分是几何保证的**（第一版翻了个标签，但那份数据仍然可分、照样收敛）',
+    '学习率固定为 1、按固定顺序扫点、w 从 0 起 —— 都不影响"可分才收敛"这条结论，但换顺序会换出不同的解',
+    '只演单层感知机：多层 + 非线性激活（能解异或）不在这一屏',
   ],
   tabs: [{ id: 'plane', label: '平面学线' }],
   Stage: PerceptronStage,
-  tone: s => (s.phase === 'done' ? { key: 'good', label: `${s.updates} 次收敛` } : s.act === 'converged' ? { key: 'good', label: '收敛' } : s.updated ? { key: 'bad', label: '纠正' } : { key: 'idle', label: '分对' }),
-  metric: s => (s.phase === 'done' || s.act === 'converged' ? 1 : Math.min(0.9, s.updates / 5)),
+  tone: s => (s.phase === 'done'
+    ? (s.converged ? { key: 'good', label: `${s.updates} 次收敛` } : { key: 'bad', label: `没收敛（错 ${s.mistakesNow}）` })
+    : s.act === 'converged' ? { key: 'good', label: '收敛' }
+      : s.updated ? { key: 'bad', label: '纠正' } : { key: 'idle', label: '分对' }),
+  metric: s => (s.phase === 'done' || s.act === 'converged' ? 1 : Math.min(0.9, s.updates / 8)),
   tickLabel: s => (s.phase === 'done' ? '毕' : s.act === 'converged' ? '敛' : s.updated ? '纠' : '✓'),
   whyInRail: true,
   readouts: s => [
-    { label: '权重 w', value: `(${s.w.join(',')})` },
-    { label: '偏置 b', value: `${s.b}` },
+    { label: '权重 w / 偏置 b', value: `(${s.w.join(',')}) / ${s.b}` },
     { label: '本步', value: s.ptIdx >= 0 ? `点(${s.pts[s.ptIdx].x.join(',')}) score=${s.score}` : s.act === 'converged' ? '零错误' : '完成' },
-    { label: '纠正次数', value: `${s.updates}`, tone: s.act === 'converged' || s.phase === 'done' ? 'good' : undefined },
+    { label: '纠正次数', value: `${s.updates}` },
+    /*  这两栏并排是补厚的重点：感知机不记得自己最好的时候（pocket algorithm 的理由） */
+    { label: '此刻错 / 历史最好', value: `${s.mistakesNow} / ${s.bestMistakes}`,
+      tone: s.bestMistakes < s.mistakesNow ? 'bad' : undefined },
+    { label: '收敛了吗', value: s.phase !== 'done' && s.act !== 'converged' ? '还在扫'
+      : s.converged ? `是（${s.passes} 轮）` : s.cycleAt ? `否 —— 第 ${s.cycleAt[0]} 轮=第 ${s.cycleAt[1]} 轮，陷进循环` : '否',
+      tone: s.phase === 'done' ? (s.converged ? 'good' : 'bad') : undefined },
   ],
 }
 

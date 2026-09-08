@@ -43,6 +43,7 @@ import { xentKernel, type XentState } from '../src/kernels/xent.ts'
 import { lowrankKernel, type LowRankState } from '../src/kernels/lowrank.ts'
 import { ragKernel, type RagState } from '../src/kernels/rag.ts'
 import { ganKernel, type GanState } from '../src/kernels/gan.ts'
+import { perceptronKernel, type PerceptronState } from '../src/kernels/perceptron.ts'
 
 let failures = 0
 const ok = (m: string) => console.log(`  ✅ ${m}`)
@@ -353,6 +354,72 @@ console.log('\n【逻辑回归：正则真的在压权重，异或真的分不�
   !xor.separable && xor.acc < sep.acc - 0.15
     ? ok(`异或准确率 ${(xor.acc * 100).toFixed(0)}%，可分档 ${(sep.acc * 100).toFixed(0)}% —— 一条直线切不开异或`)
     : bad(`异或 ${(xor.acc * 100).toFixed(0)}% vs 可分 ${(sep.acc * 100).toFixed(0)}% —— 差距不足以说明"线性不可分"`)
+}
+
+// ═══ 感知机：收敛定理的前提，和"它不记得最好的那次" ═══════
+console.log('\n【感知机：不可分时不是慢慢收敛，是陷进循环】')
+{
+  const go = (p: P) => last(run(perceptronKernel.compile(doc('perceptron', p)), 200) as PerceptronState[])
+  const SEP = '线性可分', NOISY = '一个噪声点', XOR = '异或（怎么画都分不开）'
+
+  //  ① 老口径守住：线性可分那档仍是 5 次更新、4 轮收敛
+  const sep = go({ data: SEP })
+  sep.converged && sep.updates === 5 && sep.mistakesNow === 0
+    ? ok(`线性可分档原样保留：${sep.passes} 轮、${sep.updates} 次更新收敛，w=(${sep.w.join(',')}) b=${sep.b}`)
+    : bad(`可分档变了：收敛=${sep.converged} 更新=${sep.updates} 错=${sep.mistakesNow}`)
+
+  /*  ② 不可分的两档必须**都不收敛**，而且要有**循环**这个铁证 ——
+      光说"跑满 12 轮还没好"只能说明轮数不够，说明不了"永远不会好"。 */
+  const bad2: string[] = []
+  for (const data of [NOISY, XOR]) {
+    const s2 = go({ data })
+    if (s2.converged) bad2.push(`${data} 居然收敛了`)
+    if (!s2.cycleAt) bad2.push(`${data} 没检出循环（只能说明轮数不够，证明不了不收敛）`)
+  }
+  bad2.length === 0
+    ? ok(`两档不可分数据都没收敛，且都检出循环：噪声点 第${go({ data: NOISY }).cycleAt![0]}轮=第${go({ data: NOISY }).cycleAt![1]}轮、异或 第${go({ data: XOR }).cycleAt![0]}轮=第${go({ data: XOR }).cycleAt![1]}轮`)
+    : bad(bad2.join(' / '))
+
+  /*  ③ 噪声点必须**真的**破坏可分性。这条钉的是一次实打实的翻车：
+      第一版把 (2,3) 的标签翻成负，数据**仍然线性可分**（w=(−3,2)、b=−0.5 就能分开），
+      那一档照样收敛，"噪声让它停不下来"根本没演出来。
+      判据直接暴力验证：不存在任何整系数超平面能分对全部点。 */
+  {
+    const pts = go({ data: NOISY }).pts
+    let sepExists = false
+    for (let w1 = -8; w1 <= 8 && !sepExists; w1++)
+      for (let w2 = -8; w2 <= 8 && !sepExists; w2++)
+        for (let bb = -20; bb <= 20 && !sepExists; bb++) {
+          if (pts.every(pt => Math.sign(w1 * pt.x[0] + w2 * pt.x[1] + bb) === pt.y)) sepExists = true
+        }
+    !sepExists
+      ? ok(`噪声点那档**确实线性不可分**：在 w∈[−8,8]²、b∈[−20,20] 里穷举，没有一个超平面能分对全部 ${pts.length} 个点`)
+      : bad('噪声点那档其实还是可分的 —— "噪声让它停不下来"就没演出来（第一版就栽在这儿）')
+  }
+
+  //  ④ 异或的四个点：任何直线都分不开（同样穷举验证，别只靠"大家都知道"）
+  {
+    const pts = go({ data: XOR }).pts
+    let sepExists = false
+    for (let w1 = -8; w1 <= 8 && !sepExists; w1++)
+      for (let w2 = -8; w2 <= 8 && !sepExists; w2++)
+        for (let bb = -20; bb <= 20 && !sepExists; bb++)
+          if (pts.every(pt => Math.sign(w1 * pt.x[0] + w2 * pt.x[1] + bb) === pt.y)) sepExists = true
+    !sepExists ? ok('异或那四个点穷举验证：确实没有任何直线能分开')
+      : bad('异或居然找到了分界线 —— 那点集摆错了')
+  }
+
+  /*  ⑤ "它不记得最好的那次"：异或档最后交出来的必须**比历史最好更差**。
+      这是 pocket algorithm 存在的理由，少了这条差距就看不见。 */
+  const x = go({ data: XOR })
+  x.bestMistakes < x.mistakesNow
+    ? ok(`异或档：此刻错 ${x.mistakesNow} 个，而历史最好只错 ${x.bestMistakes} 个 —— 感知机不记得自己最好的时候（pocket algorithm 的理由）`)
+    : bad(`没拉开差距：此刻 ${x.mistakesNow}、最好 ${x.bestMistakes}`)
+
+  //  ⑥ 自检：可分那档"此刻=最好=0"，不该报出 pocket 差距（否则⑤就是碰巧）
+  sep.bestMistakes === 0 && sep.mistakesNow === 0
+    ? ok('自检：可分档收敛后此刻错 0、历史最好也是 0 —— ⑤那条差距只在不收敛时才出现')
+    : bad(`可分档也有差距：${sep.mistakesNow} / ${sep.bestMistakes}`)
 }
 
 // ═══ GAN：G 也改成真的，模式崩溃才跑得出来 ═══════════════

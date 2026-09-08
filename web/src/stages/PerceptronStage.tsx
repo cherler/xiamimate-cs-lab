@@ -8,7 +8,7 @@ const px = (x: number) => (x - LO) / (HI - LO) * 100
 const py = (y: number) => 100 - (y - LO) / (HI - LO) * 100
 
 export function PerceptronStage({ state }: StageProps<PerceptronState>) {
-  const { pts, w, b, pass, ptIdx, score, ok, updated, updates, act, phase } = state
+  const { pts, w, b, pass, ptIdx, score, ok, updated, updates, act, phase , dataTag, converged, passes, mistakesNow, bestMistakes, bestW, bestB, cycleAt } = state
   const done = phase === 'done'
   const hasLine = Math.abs(w[0]) + Math.abs(w[1]) > 1e-6
   const yb = (x: number) => -(w[0] * x + b) / (w[1] || 1e-6)
@@ -49,8 +49,30 @@ export function PerceptronStage({ state }: StageProps<PerceptronState>) {
         </div>
 
         {done
-          ? <p className="scnote">感知机=<b>一个神经元</b>:给输入各配权重 w、加偏置 b,算 w·x+b 看正负判类别——几何上就是一条<b>分界线</b>。学法是<b>"错了就纠"</b>:遇到分错的点,把权重朝"下次能分对它"挪一点(w+=y·x)。数据<b>线性可分</b>时保证有限步收敛(这里 {updates} 次)。它是逻辑回归、SVM 和整个深度网络里每个神经元的<b>祖先</b>(激活换成硬阈值 sign);不可分(如异或)才需要多层+非线性——那就是神经网络。</p>
-          : <p className="scnote" style={{ opacity: .85 }}>蓝=正类、琥珀=负类;那条线是当前的 w·x+b=0。逐点看:线判的符号和真实类一致=分对(绿圈),不一致=分错(红圈)→ 把线朝该点纠一下(w+=y·x、b+=y)。扫到某一整轮零错误就学好了。</p>}
+          ? (converged
+            ? <p className="scnote">感知机 = <b>一个神经元</b>：算 w·x+b 看正负判类别，几何上就是一条<b>分界线</b>；
+              学法是<b>"错了就纠"</b>（w += y·x）。数据<b>线性可分</b>时保证有限步收敛（这里 {updates} 次）。
+              它是逻辑回归、SVM 和整个深度网络里每个神经元的<b>祖先</b>（激活换成硬阈值 sign）。
+              　⚠️ 但<b>收敛定理有前提</b>：把「数据」换成<b>异或</b>或<b>一个噪声点</b>再看 ——
+              同一套算法会<b>永远停不下来</b>。</p>
+            : <p className="scnote"><b>{passes} 轮跑完了，还没收敛</b> —— 此刻仍错 {mistakesNow}/{pts.length} 个，共纠了 {updates} 次。
+              {cycleAt && <>　而且它不是"还差一点"：<b>第 {cycleAt[0]} 轮和第 {cycleAt[1]} 轮的 (w, b) 一模一样</b> ——
+                它已经<b>陷进循环</b>了，再跑一万轮也是这几个状态来回转。</>}
+              {dataTag.startsWith('异或')
+                ? <>　异或的四个点<b>怎么画一条直线都分不开</b>，而感知机能表达的全部就是一条直线。
+                  这不是没训练够，是<b>模型的表达能力不够</b> —— 1969 年 Minsky 和 Papert 摁住感知机、
+                  直接带来第一次 AI 寒冬的，就是这个例子。出路是<b>多层 + 非线性激活</b>。</>
+                : <>　数据本来可分，只是混进了<b>一个标错的点</b>（它夹在两个负例正中间，任何直线都分不开）。
+                  收敛定理要求"存在一条线把所有点都分对"，一个噪声点就把这个前提破了。
+                  　⚠️ 这比异或更常见：<b>真实数据总有噪声，所以感知机在实践中几乎不能直接用</b>。</>}
+              {bestMistakes < mistakesNow && <>　　还有一处值得看：此刻错 <b>{mistakesNow}</b> 个，
+                而历史最好只错 <b>{bestMistakes}</b> 个（w=({bestW.join(',')})、b={bestB}）。
+                <b>感知机不记得最好的那次</b> —— 它只有"当前的 w"，停在哪儿全看运气。
+                把见过的最好权重揣兜里，就是 <b>pocket algorithm</b>。</>}</p>)
+          : <p className="scnote" style={{ opacity: .85 }}>蓝=正类、琥珀=负类；那条线是当前的 w·x+b=0。
+            逐点看：符号和真实类一致=分对（绿圈），不一致=分错（红圈）→ 把线朝该点纠一下（w+=y·x、b+=y）。
+            扫到某一整轮零错误就学好了。
+            　盯读数条上「此刻错几个 / 历史最好」这两栏：它俩<b>不一定相等</b> —— 感知机不记得自己最好的时候。</p>}
       </div>
     </div>
   )

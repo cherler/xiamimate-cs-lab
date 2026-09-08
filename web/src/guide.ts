@@ -5631,31 +5631,53 @@ export const GUIDES: Record<string, Guide> = {
       hook: '最早的神经网络，只有一个神经元。',
       what: '这一屏讲的是**感知机**：1958 年提出的最早的神经网络模型，只有一个神经元。结构简单到极致：输入各自乘一个权重加起来，超过门槛就输出 1，否则输出 0。训练规则也朴素：**判错了就把权重朝着「下次别错」的方向挪一点**。它能学会「与」「或」这些线性可分的逻辑，但**学不会异或** —— 因为异或的正负例在平面上没法用一条直线分开。这个发现曾让神经网络研究停滞了十几年，直到多层结构和反向传播出现。',
       terms: '**权重 w / 偏置 b**：模型的全部参数。权重决定每个输入的重要程度，偏置决定门槛的高低。\u3000**激活（阶跃函数）**：加权和超过 0 就输出 1，否则 0。**它不可导** —— 这正是感知机没法用梯度下降、只能用专门更新规则的原因，也是后来改用 sigmoid、ReLU 的动机。\u3000**感知机学习规则**：判错时 **w ← w + η·(真实 − 预测)·x**。判对了完全不动。直觉是：把决策边界朝着这个被判错的样本挪过去一点。\u3000**线性可分**：能用一条直线（高维是超平面）把两类完全分开。**感知机收敛定理**保证：只要数据线性可分，它一定在有限步内找到一个解；**不可分则永远震荡下去**。\u3000**异或问题**：四个点 (0,0)→0、(0,1)→1、(1,0)→1、(1,1)→0，画在平面上是对角线关系，**任何直线都分不开**。\u3000**破局**：加一层隐藏层就能表示异或。所以「深度」不是为了好看 —— **它带来的是表达能力的质变**。',
-      watch: '看权重怎么随每次判错而更新、决策直线怎么转动。换成异或的数据再跑，你会看到它永远收敛不了。',
+      watch: '换成**异或**再跑 —— 它不是"慢慢收敛"，是**陷进循环**：第 2 轮和第 3 轮的 (w,b) 一模一样，再跑一万轮也是这几个状态来回转。**这不是没训练够，是表达能力不够**（1969 年摁住感知机、带来第一次 AI 寒冬的就是这个例子）。再看「此刻错 / 历史最好」那一栏：**它不记得自己最好的时候** —— 那就是 pocket algorithm 存在的理由。',
     },
     step: (s: never) => {
-      const st = s as { phase: string; act: string; pts: { x: number[]; y: number }[]; w: number[]; b: number; pass: number; ptIdx: number; score: number; ok: boolean; updated: boolean; updates: number }
+      const st = s as { phase: string; act: string; pts: { x: number[]; y: number }[]; w: number[]; b: number
+        pass: number; ptIdx: number; score: number; ok: boolean; updated: boolean; updates: number
+        dataTag?: string; converged?: boolean; passes?: number
+        mistakesNow?: number; bestMistakes?: number; cycleAt?: [number, number] | null }
+      //  ⚠️ 补厚字段可选读：老快照没有 converged/cycleAt，读不到就按老口径（必然收敛）讲。
       const p = st.ptIdx >= 0 ? st.pts[st.ptIdx] : null
+      const n = st.pts.length
       return [
-        { k: '本步输入', v: st.act === '' ? '一条还没定的线,6 个点' : st.act === 'converged' ? `第 ${st.pass} 轮扫查` : st.act === 'done' ? `学好的线 w=(${st.w.join(',')})` : `点 (${p!.x.join(',')}) 真实类 ${p!.y > 0 ? '正' : '负'}` },
-        { k: '判定规则', v: `神经元算 **score=w·x+b**,看符号判类别(几何=一条分界线)。逐点检查:符号和真实类**一致就分对、不动**;**不一致就纠**——把权重朝该点挪:w += y·x、b += y。扫到某轮**零错误**即收敛(线性可分保证)。` },
-        { k: '本步结果', v: st.act === 'converged' ? `6 个点全分对、零更新 → **收敛**!`
-            : st.act === 'done' ? `学好:w=(${st.w.join(',')})、b=${st.b},共 ${st.updates} 次纠正。`
-            : st.ok ? `score=${st.score},符号对 → 分对,不动。`
-            : `score=${st.score},符号错 → 纠:w→(${st.w.join(',')})、b→${st.b},线转一下。` },
+        { k: '本步输入', v: st.act === '' ? `一条还没定的线，${n} 个点`
+            : st.act === 'converged' ? `第 ${st.pass} 轮扫查`
+              : st.act === 'done' ? `跑完（${st.dataTag ?? '线性可分'}）`
+                : `点 (${p!.x.join(',')}) 真实类 ${p!.y > 0 ? '正' : '负'}` },
+        { k: '判定规则', v: `神经元算 **score=w·x+b**，看符号判类别（几何=一条分界线）。`
+            + `符号和真实类**一致就不动**、**不一致就纠**：w += y·x、b += y。扫到某轮**零错误**即收敛。`
+            + `　⚠️ 这条保证**只对线性可分成立** —— 不可分时它不会停，而是陷进循环。` },
+        { k: '本步结果', v: st.act === 'converged' ? `${n} 个点全分对、零更新 → **收敛**！`
+            : st.act === 'done'
+              ? (st.converged === false
+                ? `**${st.passes} 轮跑完还没收敛**，此刻仍错 ${st.mistakesNow}/${n} 个。`
+                  + (st.cycleAt ? `　而且**第 ${st.cycleAt[0]} 轮和第 ${st.cycleAt[1]} 轮的 (w,b) 一模一样** —— 陷进循环了。` : '')
+                  + (st.bestMistakes !== undefined && st.bestMistakes < (st.mistakesNow ?? 0)
+                    ? `　另外历史最好只错 ${st.bestMistakes} 个，**它没被记住**（pocket algorithm 就是干这个的）。` : '')
+                : `学好：w=(${st.w.join(',')})、b=${st.b}，共 ${st.updates} 次纠正。`)
+              : st.ok ? `score=${st.score}，符号对 → 分对，不动。`
+                : `score=${st.score}，符号错 → 纠：w→(${st.w.join(',')})、b→${st.b}，线转一下。`
+                  + (st.mistakesNow !== undefined ? `　此刻全体点错 ${st.mistakesNow} 个。` : '') },
       ]
     },
     verdict: (s: never) => {
-      const st = s as { phase: string; act: string; updates: number; updated: boolean }
-      return st.phase === 'done' ? `${st.updates} 次收敛` : st.act === 'converged' ? '收敛' : st.updated ? '纠正' : '分对'
+      const st = s as { phase: string; act: string; updates: number; updated: boolean
+        converged?: boolean; mistakesNow?: number }
+      if (st.phase === 'done') return st.converged === false ? `没收敛（错 ${st.mistakesNow}）` : `${st.updates} 次收敛`
+      return st.act === 'converged' ? '收敛' : st.updated ? '纠正' : '分对'
     },
     read: [
       { at: '读数', is: '权重 w、偏置 b、纠正次数。', anchor: '.scdim' },
       { at: '平面', is: '蓝=正类、琥珀=负类,那条线是 w·x+b=0;当前点分对=绿圈、分错=红圈(触发纠正,线转一下)。', anchor: '.mlplot' },
     ],
     try: [
-      { act: '按「下一步」逐点', watch: '符号对就跳过、符号错就纠(w+=y·x),线朝分错的点转一下。' },
-      { act: '看它收敛', watch: '5 次纠正后某一整轮零错误——线学好了,两类干净分开。' },
+      { act: '按「下一步」逐点', watch: '符号对就跳过、符号错就纠(w+=y·x),线朝分错的点转一下;5 次纠正后某一整轮零错误——线学好了。' },
+      //  下面三条是补厚后的主菜：把"收敛定理的前提"兑现出来
+      { act: '把「数据」换成「异或（怎么画都分不开）」', watch: '**永远停不下来**。而且它不是"还差一点"——读数条最后一栏会点出**第 2 轮和第 3 轮的 (w,b) 一模一样**:它**陷进循环**了,再跑一万轮也是这几个状态来回转。这不是没训练够,是**表达能力不够**;出路是多层+非线性。' },
+      { act: '换成「一个噪声点」', watch: '数据本来可分,只混进一个标错的点(夹在两个负例正中间,几何上不可能分开),同样不收敛(第 5 轮=第 11 轮循环)。**这比异或更常见——真实数据总有噪声,所以感知机在实践中几乎不能直接用。**' },
+      { act: '在异或那档盯住「此刻错 / 历史最好」', watch: '**2 / 1** ——中途出现过只错 1 个的权重,最后交出来的却错 2 个。**感知机只有"当前的 w",不记得自己最好的时候**;把见过的最好权重揣兜里,就是 **pocket algorithm**。' },
     ],
     terms: [],
   },
