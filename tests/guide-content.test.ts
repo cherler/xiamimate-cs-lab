@@ -1129,10 +1129,10 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       b: { phase: 'done', mu: 5.5, ent: 1.375, naiveEnt: 1, maxEnt: 2.585 },
     },
     jl: {
-      doc: { kind: 'jl', params: {}, entities: [], streams: [] },
+      doc: { kind: 'jl', params: { dim: 256, points: 6 }, entities: [], streams: [] },
       //  A K=16(偏差 31%) · B K=128(偏差 11%) —— 结论必须换一套说法
-      a: { phase: 'run', d: 256, k: 16, avgRatio: 1.09, maxDev: 0.31 },
-      b: { phase: 'done', d: 256, k: 128, avgRatio: 0.968, maxDev: 0.109 },
+      a: { pairs: 15, devCurve: [[16, 0.31], [128, 0.109]], kNeeded: 150, phase: 'run', d: 256, k: 16, avgRatio: 1.09, maxDev: 0.31 },
+      b: { pairs: 15, devCurve: [[16, 0.31], [128, 0.109]], kNeeded: 1207, phase: 'done', d: 256, k: 128, avgRatio: 0.968, maxDev: 0.109 },
     },
     greedy: {
       doc: { kind: 'greedy', params: {}, entities: [], streams: [] },

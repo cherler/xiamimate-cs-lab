@@ -5189,17 +5189,25 @@ const jl: Experiment<JLState> = {
   title: 'JL 引理·随机投影',
   subtitle: '高维压到低维还几乎不丢距离',
   kernel: jlKernel,
-  defaultDoc: { kind: 'jl', params: {}, entities: [], streams: [] },
-  params: [],
+    defaultDoc: { kind: 'jl', params: { dim: 256, points: 6 }, entities: [], streams: [] },
+    /*  2026-09-08 补厚：D 和 N 原来全写死，而 JL 最惊人的那句「所需维度**与原始维度 D 无关**」
+      正是靠这两个旋钮才验得了。实测 N=6 固定、D 从 64→1024，K=16 的最大偏差 32.4%/31.0%/28.5%
+      —— 几乎不动；而 D 固定、N 从 6→200，同样 K=16 从 31% 涨到 75%。 */
+  params: [
+    { key: 'dim', label: '原始维度 D', kind: 'number', options: [64, 256, 1024] },
+    { key: 'points', label: '点数 N', kind: 'number', options: [6, 50, 200] },
+  ],
   paramsNote: `**Johnson–Lindenstrauss 引理:N 个高维点投影到 k~O(log N/ε²) 维,就能把所有两两距离保持在 (1±ε) 倍以内**——与原始维度 D 无关,只跟点数 N 和精度 ε 有关。
 
 - **意义**:几百上千维可压到几十维、几何结构几乎原样保留;随机投影降维、近似最近邻(ANN)、特征哈希、"嵌入维度不用很大也够用"都靠它,也和 LoRA/低秩、高维近正交一家(高维很空、可压)。
 - **本实验**:6 个 256 维随机点,用高斯随机矩阵(每列÷√K 保范数)投到 K=16→32→64→128 维,看 15 对点的距离比越来越贴 1、最大偏差 ~31%→~11%。`,
-  bounds: [
-    '6 个 256 维随机点,投到 K=16→32→64→128 维',
-    '高斯随机投影矩阵(÷√K 保范数),确定性可复现',
-    '距离比(低维/高维)平均≈1、最大偏差随 K 降(可核)',
-    'K 越大越准;所需 K 与原维度 D 无关(JL 核心)',
+    bounds: [
+    'N 个 D 维高斯随机点，高斯随机投影矩阵（每列除以 √K 保范数），确定性可复现',
+    '距离比 = 低维距离/高维距离；报 15~19900 对里的**最大**偏差（不是平均，最大才是 JL 保证的东西）',
+    /*  ⚠️ 老版本写死「最大偏差从 ~31% 收到 ~11%」——D/N 一能调就是假话。只写性质。 */
+    '最大偏差随 K 增大而降；**随 N 增大而升**（点对数 N(N−1)/2 变多）；**随 D 变化几乎不动**',
+    '旁边的 k≈8·lnN/ε² 是 JL 经典形式的界，量级参考用 —— 常数因子各版本不同，不必对上小数',
+    '只做随机高斯投影，不含稀疏投影(Achlioptas)、快速 JL(FJLT) 等工程变体',
   ],
   tabs: [{ id: 'ratio', label: '距离比' }],
   Stage: JLStage,
@@ -5207,11 +5215,15 @@ const jl: Experiment<JLState> = {
   metric: s => (s.k > 0 ? Math.max(0, Math.min(1, 1 - s.maxDev / 0.4)) : 0),
   tickLabel: s => (s.phase === 'done' ? '毕' : s.k > 0 ? `K${s.k}` : '0'),
   whyInRail: true,
-  readouts: s => [
-    { label: '维度', value: s.k > 0 ? `${s.d}→${s.k}` : `${s.d}→?` },
-    { label: '平均距离比', value: s.k > 0 ? `${s.avgRatio}` : '—' },
-    { label: '最大偏差', value: s.k > 0 ? `${(s.maxDev * 100).toFixed(0)}%` : '—', tone: s.maxDev > 0 && s.maxDev < 0.15 ? 'good' : undefined },
-    { label: '点对数', value: `${s.ratios.length || (s.n * (s.n - 1) / 2)}` },
+    readouts: s => [
+    { label: '原始维度 D', value: `${s.d}` },
+    { label: '投影维度 K', value: s.k ? `${s.k}` : '—' },
+    { label: '点数 N / 点对', value: `${s.n} / ${s.pairs} 对` },
+    { label: '平均距离比', value: s.k ? `${s.avgRatio}` : '—' },
+    { label: '最大偏差', value: s.k ? `${(s.maxDev * 100).toFixed(1)}%` : '—',
+      tone: s.k && s.maxDev < 0.15 ? 'good' : s.maxDev > 0.4 ? 'bad' : undefined },
+    /*  理论界摆在旁边，"够不够"才有尺子 */
+    { label: '这个精度理论上要几维', value: s.kNeeded ? `k≈${s.kNeeded}（8·lnN/ε²）` : '—' },
   ],
 }
 
