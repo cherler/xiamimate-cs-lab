@@ -5609,18 +5609,28 @@ const lln: Experiment<LlnState> = {
   title: '大数定理',
   subtitle: '撒点估 π：为什么“多采样就准”',
   kernel: llnKernel,
-  defaultDoc: { kind: 'lln', params: {}, entities: [], streams: [] },
-  params: [],
+  defaultDoc: { kind: 'lln', params: { target: '蒙特卡洛估 π', trials: 200 }, entities: [], streams: [] },
+  /*  2026-09-08 补厚：原来一个旋钮都没有，于是最要紧的一件事问不出来 ——
+      **大数定理有前提：期望必须存在**。柯西分布违背它，样本均值根本不收敛。
+      老版本只演"多采就准"，等于把这条定理讲成了无条件的。 */
+  params: [
+    { key: 'target', label: '在估什么', kind: 'enum',
+      options: ['蒙特卡洛估 π', '正态均值', '柯西均值（没有期望）'] },
+    { key: 'trials', label: '独立试验数', kind: 'number', options: [40, 200, 800] },
+  ],
   paramsNote: `**大数定理:i.i.d. 样本的均值随样本数 n 增大收敛到期望;估计误差按 1/√n 缩**。
 
 - **为何 1/√n**:标准误∵方差可加——n 个独立项相加、方差涨 n 倍、std 涨 √n,均值的 std 就 ∝ 1/√n。
 - **蒙特卡洛估 π**:单位正方形里随机撒 n 点,落进 1/4 圆的比例×4≈π;n 从 50 加到 12800,估计越来越贴 3.14159、|误差| 越来越小,而 |误差|×√n 大致恒定——"误差 ∝ 1/√n"。
 - **同底**:采样、蒙特卡洛、dropout、MoE 路由"多次平均就稳"的底。`,
   bounds: [
-    '确定性伪随机(LCG, seed 固定)撒点，可复现',
-    '撒点数 n 逐步取 50→200→800→3200→12800',
-    '估计=4·内点/n；|误差| 随 n 大致单调降；|误差|×√n 大致恒定(可核)',
-    '展示散点最多抽 400 点；只看收敛与 1/√n，不建模方差估计',
+    '确定性伪随机(LCG, seed 固定)采样，可复现；n 逐步取 50→200→800→3200→12800',
+    '每个 n 跑若干次**独立试验**，报 RMS 误差 —— 单条随机路径太吵，说明不了 1/√n',
+    /*  ⚠️ 老版本写「|误差|×√n 大致恒定」——那是**有前提**的结论，
+        写成无条件的恰好把这条定理最要紧的那一半抹掉了。 */
+    '**期望存在时**（π / 正态）×√n 才大致恒定；柯西没有期望，×√n 一路涨、均值不收敛',
+    '柯西那一档的"真值 0"只是画线用 —— 它的期望积分发散，本来就没有真值可言',
+    '只看收敛与 1/√n，不建模方差估计、也不做置信区间',
   ],
   tabs: [{ id: 'mc', label: '蒙特卡洛' }],
   Stage: LlnStage,
@@ -5633,7 +5643,12 @@ const lln: Experiment<LlnState> = {
     { label: '撒点数 n', value: s.n ? `${s.n}（×${s.trials}试验）` : '—' },
     { label: '均值估计', value: s.n ? `${s.meanEst}` : '—' },
     { label: 'RMS 误差', value: s.n ? `${s.rmsError}` : '—', tone: s.n && s.rmsError < 0.05 ? 'good' : undefined },
-    { label: 'RMS误差×√n', value: s.n ? `${s.rmsErrSqrtN}` : '—' },
+    /*  这一栏是全屏最要紧的数：期望存在时它≈常数（误差∝1/√n），
+        柯西那一档它会一路涨 —— 定理的前提就藏在这个数里。 */
+    { label: 'RMS误差×√n', value: s.n ? `${s.rmsErrSqrtN}` : '—',
+      tone: !s.hasMean ? 'bad' : undefined },
+    { label: '期望存在吗', value: s.hasMean ? '存在 → 定理成立' : '不存在 → 定理不成立',
+      tone: s.hasMean ? 'good' : 'bad' },
   ],
 }
 

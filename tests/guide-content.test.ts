@@ -1201,10 +1201,15 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       b: { phase: 'done', m: 32, trials: 20000, std: 0.0516, theoStd: 0.051, exKurt: -0.031 },
     },
     lln: {
-      doc: { kind: 'lln', params: {}, entities: [], streams: [] },
-      //  A 撒点少、RMS 误差大（还没准） · B 撒点多、跑完（收敛到 π）—— 结论必须换一套说法
-      a: { phase: 'run', n: 50, trials: 40, meanEst: 3.148, rmsError: 0.2438, rmsErrSqrtN: 1.72 },
-      b: { phase: 'done', n: 12800, trials: 40, meanEst: 3.1441, rmsError: 0.0147, rmsErrSqrtN: 1.67 },
+      doc: { kind: 'lln', params: { target: '蒙特卡洛估 π', trials: 200 }, entities: [], streams: [] },
+      /*  A 撒点少、RMS 误差大 · B 撒点多、跑完 —— 结论必须换一套说法。
+          2026-09-08 补厚：多了「在估什么」「期望存不存在」和 ×√n 曲线。 */
+      a: { phase: 'run', n: 50, trials: 200, meanEst: 3.148, rmsError: 0.2438, rmsErrSqrtN: 1.72,
+           target: '蒙特卡洛估 π', truth: Math.PI, hasMean: true,
+           ratioCurve: [[50, 1.72], [12800, 1.67]] },
+      b: { phase: 'done', n: 12800, trials: 200, meanEst: 3.1441, rmsError: 0.0147, rmsErrSqrtN: 1.67,
+           target: '蒙特卡洛估 π', truth: Math.PI, hasMean: true,
+           ratioCurve: [[50, 1.72], [12800, 1.67]] },
     },
     ortho: {
       doc: { kind: 'ortho', params: {}, entities: [], streams: [] },
