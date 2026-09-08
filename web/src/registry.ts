@@ -4706,8 +4706,15 @@ const diffusion: Experiment<DiffusionState> = {
   title: '扩散模型 Diffusion',
   subtitle: '前向加噪把图变噪声，反向去噪从噪声生成图',
   kernel: diffusionKernel,
-  defaultDoc: { kind: 'diffusion', params: {}, entities: [], streams: [] },
-  params: [],
+  defaultDoc: { kind: 'diffusion', params: { steps: 8, seed: 1, schedule: '线性' }, entities: [], streams: [] },
+  /*  2026-09-08 补厚：老版本反向是**倒放前向的录像**（见 kernels/diffusion.ts 顶上），
+      所以换什么参数都只有那一颗心。现在反向是真采样，**换个噪声种子就生成另一张图** ——
+      种子 1→❤、2→✚、3→▲（实测）。这才是"生成"这个词的意思。 */
+  params: [
+    { key: 'seed', label: '噪声种子', kind: 'number', options: [1, 2, 3, 5] },
+    { key: 'steps', label: '采样步数', kind: 'number', options: [4, 8, 16] },
+    { key: 'schedule', label: '噪声调度', kind: 'enum', options: ['线性', '余弦'] },
+  ],
   paramsNote: `**扩散模型:先学破坏、再学修复**——怎么让 AI 画出一张全新的图?
 
 - **前向过程**:拿真实图片一步步掺高斯噪声(x_t=√ᾱ·x₀+√(1−ᾱ)·ε),几十步后变成纯噪声——这步固定、不用学。
@@ -4716,10 +4723,13 @@ const diffusion: Experiment<DiffusionState> = {
 
 Stable Diffusion/DALL·E/Sora 底层,AI 求职大热门。`,
   bounds: [
-    '一张 8×8 小图,前向加噪→反向去噪',
-    '前向 x=√ᾱ·原图+√(1−ᾱ)·噪声(可核)',
-    '√ᾱ 从 1 降到 0.14,信号被噪声淹没',
-    '反向是网络学的:从噪声一步步去噪、生成新图',
+    '8×8 小图；前向 x=√ᾱ·原图+√(1−ᾱ)·ε，每一步都能手算核对',
+    /*  ⚠️ 老版本这里写「反向是网络学的」，而代码里**根本没有反向计算**（倒放录像）。
+        现在写清楚反向到底算的是什么，以及它跟真实模型的差别在哪。 */
+    '反向是**真采样**（DDIM η=0）：先算后验权重 → 估 x̂₀ → 反解 ε̂ → 走一步',
+    '去噪器不是神经网络，是**这个先验下的贝叶斯最优解**：图像只可能是 ❤/✚/▲ 三者之一，'
+      + '于是 E[x₀|x_t] 有闭式解。训练充分的网络逼近的就是它 —— 但真实模型的先验是上亿张图，没有闭式解',
+    '没有文字条件、没有 classifier-free guidance、没有 VAE 潜空间 —— 真实的 Stable Diffusion 三样都有',
   ],
   tabs: [{ id: 'diffuse', label: '加噪/去噪' }],
   Stage: DiffusionStage,
@@ -4729,9 +4739,14 @@ Stable Diffusion/DALL·E/Sora 底层,AI 求职大热门。`,
   whyInRail: true,
   readouts: s => [
     { label: '方向', value: s.phase === 'done' ? '生成完成' : s.dir === 'forward' ? '前向加噪' : '反向去噪' },
-    { label: '噪声级', value: `${s.t}` },
+    { label: '噪声级 t', value: `${s.t} / ${s.T}` },
     { label: '√ᾱ 信号', value: `${s.sqrtA}` },
-    { label: '√(1-ᾱ) 噪声', value: `${s.sqrtN}`, tone: s.phase === 'done' ? 'good' : undefined },
+    { label: '√(1-ᾱ) 噪声', value: `${s.sqrtN}` },
+    /*  后验权重摆进读数：生成的决策过程，比任何一句话都直接 */
+    { label: '像哪个图案', value: s.x0hat
+        ? s.names.map((n, k) => `${n} ${(s.weights[k] * 100).toFixed(0)}%`).join('｜') : '—' },
+    { label: '磨出来的是', value: s.landed ? `${s.landed}（把握 ${(s.landedW * 100).toFixed(1)}%）` : '—',
+      tone: s.phase === 'done' ? 'good' : undefined },
   ],
 }
 

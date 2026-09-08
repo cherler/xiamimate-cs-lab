@@ -3429,6 +3429,21 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
     linear-gradient(180deg, var(--panel), color-mix(in srgb,var(--ink) 3%,var(--panel)));
   box-shadow: inset 0 1px 4px rgba(20,32,42,.06), inset 0 0 0 1px rgba(255,255,255,.5); }
 .mlaxis { stroke:var(--dim); stroke-width:0.7; }
+/*  ── 扩散补厚（2026-09-08）：x_t / x̂₀ 并排 + 后验权重条，见 DiffusionStage 顶上 ── */
+.dfpair { display:flex; gap:18px; align-items:flex-start; justify-content:center; flex-wrap:wrap }
+.dfone { display:flex; flex-direction:column; align-items:center; gap:5px }
+.dflab { font-size:var(--t-meta); color:var(--faint); font-family:var(--mono) }
+/*  后验权重：生成的决策过程。一行一个图案，条越长越像 */
+.dfvote { display:flex; flex-direction:column; gap:4px; margin-top:12px; width:min(360px,88%) }
+.dfvt { font-size:var(--t-ui); color:var(--faint) }
+.dfbar { display:flex; align-items:center; gap:8px; font-size:var(--t-ui); color:var(--dim) }
+.dfbar b { width:18px; text-align:center; font-size:15px; color:var(--dim) }
+.dfbar i { height:9px; border-radius:5px; background:color-mix(in srgb,var(--f-tag) 40%,transparent);
+  transition:width var(--anim) }
+.dfbar em { font-style:normal; font-family:var(--mono); font-size:var(--t-meta); min-width:32px }
+.dfbar.on b, .dfbar.on em { color:var(--now); font-weight:700 }
+.dfbar.on i { background:color-mix(in srgb,var(--now) 62%,transparent) }
+
 /*  ── k-means 补厚（2026-09-08）：收敛曲线 + 「最好的一次」基准线 ── */
 .kmcurve { width:min(400px,86%); aspect-ratio:4/1; border:1px solid var(--plate-edge);
   border-radius:9px; background:var(--panel) }

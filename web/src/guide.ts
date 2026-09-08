@@ -6114,13 +6114,22 @@ export const GUIDES: Record<string, Guide> = {
       watch: '看去噪的每一步图像怎么变清晰。步数减少会更快但更糊 —— 这就是采样步数与质量的取舍。',
     },
     step: (s: never) => {
-      const st = s as { phase: string; dir: string; t: number; sqrtA: number; sqrtN: number }
+      /*  ⚠️ 2026-09-08 整段改过：反向从"倒放录像"换成了真采样（见 kernels/diffusion.ts）。
+          原来「网络减掉噪声」那句是**空话** —— 代码里没有任何减噪计算。 */
+      const st = s as { phase: string; dir: string; t: number; T: number; sqrtA: number; sqrtN: number
+                        weights: number[]; names: string[]; landed: string; landedW: number; x0hat: number[] | null }
+      const top = st.weights ? st.weights.indexOf(Math.max(...st.weights)) : 0
       return [
-        { k: '本步输入', v: st.dir === '' ? '一张 8×8 小图 ❤' : st.dir === 'forward' ? `噪声级 ${st.t} 的图` : st.phase === 'done' ? '纯噪声' : `噪声级 ${st.t + 1} 的图` },
-        { k: '判定规则', v: `扩散=先学破坏、再学修复。**前向**给图一步步掺高斯噪声(x=√ᾱ·原图+√(1−ᾱ)·ε),几十步变纯噪声——**固定不用学**。**反向**训练网络**预测并去掉每步的噪声**;从随机噪声去噪就=生成。` },
-        { k: '本步结果', v: st.phase === 'done' ? `从纯噪声一步步去噪,"磨"出了新图——这就是生成。`
-            : st.dir === 'forward' ? `√ᾱ=${st.sqrtA}(信号)、√(1−ᾱ)=${st.sqrtN}(噪声),图渐被淹没。`
-            : `网络减掉噪声,回到 √ᾱ=${st.sqrtA},图像浮现。` },
+        { k: '本步输入', v: st.dir === 'forward' ? `噪声级 t=${st.t} 的图`
+            : st.phase === 'done' ? `走完 ${st.T} 步采样` : `当前这团 x_t（t=${st.t}），**不知道原图是什么**` },
+        { k: '判定规则', v: `扩散 = 先学破坏、再学修复。**前向**给图掺高斯噪声（x=√ᾱ·原图+√(1−ᾱ)·ε），固定、能手算。`
+            + `**反向**每一步三件事：①算"像哪个图案"的后验权重 ②据此估出干净图 x̂₀ ③反解噪声 ε̂ 并走一步 DDIM。`
+            + `这里的去噪器是这个先验下的**贝叶斯最优解**，不是"假装有个网络"。` },
+        { k: '本步结果', v: st.phase === 'done'
+            ? `磨出了 **${st.landed}**（把握 ${(st.landedW * 100).toFixed(1)}%）—— 换个噪声种子会磨出另一张，这才叫生成。`
+            : st.dir === 'forward' ? `√ᾱ=${st.sqrtA}（信号）、√(1−ᾱ)=${st.sqrtN}（噪声），图渐被淹没。`
+            : `后验权重 ${st.names.map((n, k) => `${n} ${(st.weights[k] * 100).toFixed(0)}%`).join('、')}`
+              + ` → 此刻最像 **${st.names[top]}**；据此估 x̂₀、走一步到 t=${st.t - 1}。` },
       ]
     },
     verdict: (s: never) => {
@@ -6128,12 +6137,20 @@ export const GUIDES: Record<string, Guide> = {
       return st.phase === 'done' ? '生成✓' : st.dir === 'forward' ? '加噪' : '去噪'
     },
     read: [
-      { at: '读数', is: '方向(加噪/去噪)、噪声级、√ᾱ 信号、√(1-ᾱ) 噪声。', anchor: '.scdim' },
-      { at: '图', is: '8×8 小图(深=亮);前向被噪声淹没、反向从噪声浮现。', anchor: '.dfgrid' },
+      { at: '读数', is: '方向、噪声级 t、√ᾱ 信号、√(1−ᾱ) 噪声，以及**此刻觉得它像哪个图案**。', anchor: '.scdim' },
+      { at: '两张图', is: '左=当前这团 x_t；**右=去噪器猜的干净图 x̂₀**。'
+        + '「一步步磨出来」这句话，只有这两张并排才看得见：左边还是噪声，右边已经有形状了。', anchor: '.dfpair' },
+      { at: '权重条', is: '生成的**决策过程**：图案不是预先定好的，是这几个后验权重投票投出来的。', anchor: '.dfvote' },
     ],
     try: [
-      { act: '按「下一步」看加噪', watch: '前向每步 x=√ᾱ·原图+√(1−ᾱ)·噪声,图渐渐变纯噪声。' },
-      { act: '看反向去噪', watch: '网络一步步去噪,图像从噪声里浮现——这就是生成。' },
+      { act: '把噪声种子从 1 换成 2、再换成 3', param: '噪声种子',
+        watch: '**同样的模型、同样的步数，磨出的是另一张图**（❤ → ✚ → ▲）。'
+          + '这才叫生成 —— 生成什么由那团初始噪声决定，不是预先写好的。' },
+      { act: '把采样步数降到 4', param: '采样步数',
+        watch: '步子迈得大，中间的权重还没分化清楚就跳过去了 —— 真实 DDPM 也是这个毛病，'
+          + 'DDIM / 蒸馏这些加速方法要解决的正是它。' },
+      { act: '噪声调度换成「余弦」', param: '噪声调度',
+        watch: '中段噪声加得慢、信息保留更久 —— improved-DDPM 的做法。看前向那几步的 √ᾱ 掉得比线性慢。' },
     ],
     terms: [],
   },

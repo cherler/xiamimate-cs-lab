@@ -1044,10 +1044,13 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       b: { phase: 'done', stage: 'done', pr: 0, pc: 2, users: [{ n: '小明', v: [1, 0] }, { n: '小红', v: [0, 1] }, { n: '阿强', v: [0.8, 0.6] }], movies: [{ n: '复仇者', v: [5, 0] }, { n: '小森林', v: [0, 5] }, { n: '盗梦空间', v: [4, 3] }], known: ['0,0', '0,1', '1,1', '2,0', '2,2'], rating: [[5, 0, 4], [0, 5, 3], [4, 3, 5]] },
     },
     diffusion: {
-      doc: { kind: 'diffusion', params: {}, entities: [], streams: [] },
-      //  A 前向加噪中 · B 生成完成 —— 结论必须换一套说法
-      a: { phase: 'run', dir: 'forward', t: 2, n: 8, sqrtA: 0.387, sqrtN: 0.922, img: [] },
-      b: { phase: 'done', dir: 'done', t: 0, n: 8, sqrtA: 1, sqrtN: 0, img: [] },
+      doc: { kind: 'diffusion', params: { steps: 8, seed: 1, schedule: '线性' }, entities: [], streams: [] },
+      /*  A 前向加噪中 · B 生成完成 —— 结论必须换一套说法。
+          2026-09-08 反向改成真采样，多了后验权重、x̂₀、落点。 */
+      a: { phase: 'run', dir: 'forward', t: 2, n: 8, T: 8, sqrtA: 0.387, sqrtN: 0.922, img: [],
+           x0hat: null, weights: [1, 0, 0], names: ['❤', '✚', '▲'], landed: '', landedW: 0 },
+      b: { phase: 'done', dir: 'done', t: 0, n: 8, T: 8, sqrtA: 1, sqrtN: 0, img: [],
+           x0hat: [], weights: [1, 0, 0], names: ['❤', '✚', '▲'], landed: '❤', landedW: 1 },
     },
     gan: {
       doc: { kind: 'gan', params: {}, entities: [], streams: [] },
