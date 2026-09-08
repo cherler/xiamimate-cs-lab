@@ -5732,29 +5732,47 @@ export const GUIDES: Record<string, Guide> = {
       hook: '读一句话，怎么让模型记住前面说了什么？',
       what: '这一屏讲的是**循环神经网络（RNN）**：在 Transformer 之前，处理序列（文本、语音、时间序列）的主力模型。它的核心想法是**边读边攒一个状态**：读一个词，把它和当前状态揉一揉得到新状态，再读下一个。这个状态就是它的「记忆」，理论上能装下前面所有信息。但实际上这份记忆会**指数级衰减** —— 信息每经过一步都要乘一次权重，几十步之后开头那句话的影响已经小到看不见。这正是它被注意力取代的根本原因。',
       terms: '**隐藏状态 h**：那个一路传下去的记忆向量。**它是固定大小的** —— 不管序列多长，都得压进同样多的数里，这是天生的瓶颈。\u3000**时间步**：序列里的每一个位置。RNN 在每个时间步做同样的运算、用同一套权重。\u3000**权重共享**：所有时间步共用一套参数。这让 RNN 能处理任意长度的序列，也大幅减少了参数量。\u3000**沿时间反向传播（BPTT）**：训练时把循环展开成一条很长的链再反向传播。\u3000**梯度消失 / 爆炸**：**RNN 的致命伤**。梯度沿时间一路连乘，因子小于 1 就衰减到 0（学不到远处的依赖），大于 1 就爆炸（训练发散）。爆炸可以靠梯度裁剪缓解，**消失则很难治** —— 这催生了 LSTM。\u3000**无法并行**：**第 t 步必须等第 t−1 步算完**。而注意力可以整句一起算 —— 在 GPU 时代，这个差别比精度差别更致命，是 Transformer 胜出的直接原因。',
-      watch: '看状态向量怎么随每个词更新。序列拉长再看回传的梯度，前几步几乎收不到信号 —— 那就是长程依赖学不会的原因。',
+      watch: '把「序列」换成"开头一个脉冲、之后全 0"，盯住**开头那个输入的影响力**：它在 log 轴上是一条直线往下扎，半衰期只有几步。这跟「反向传播」那一屏是同一件事，只是连乘的方向换成了**时间**。然后试着把 wh 调大救它 —— 你会发现**救不回来，甚至更糟**。',
     },
     step: (s: never) => {
-      const st = s as { phase: string; t: number; xt: number; hPrev: number; pre: number; ht: number; wx: number; wh: number; b: number; xs: number[] }
+      const st = s as { phase: string; t: number; xt: number; hPrev: number; pre: number; ht: number
+        wx: number; wh: number; b: number; xs: number[]
+        short?: boolean; grad?: number; factor?: number; factorAsymp?: number; halfLife?: number
+        compare?: [number, number][] }
+      //  ⚠️ 补厚字段可选读：老快照没有 short/grad，读不到就按老口径（短序列）讲。
+      const isShort = st.short !== false
       return [
-        { k: '本步输入', v: st.t === 0 ? `序列 [${st.xs.join(',')}],记忆 h₀=0` : st.phase === 'done' ? '整段读完' : `x=${st.xt},带着上一刻记忆 h=${st.hPrev}` },
-        { k: '判定规则', v: `隐藏状态 **h(记忆)沿时间传递**。每读一个 x_t,用**同一套共享权重**把当前输入和上一刻记忆揉进新记忆:**h_t = tanh(wx·x_t + wh·h_{'{'}t-1{'}'} + b)**。权重所有时刻共享,能吃任意长序列。` },
-        { k: '本步结果', v: st.phase === 'done' ? `记忆演化到末态 **${st.ht}**——它藏着整段历史(同样末输入、历史不同 h 就不同)。`
+        { k: '本步输入', v: st.t === 0 ? `序列长 ${st.xs.length}，记忆 h₀=0`
+            : st.phase === 'done' ? `整段 ${st.xs.length} 步读完` : `x=${st.xt}，带着上一刻记忆 h=${st.hPrev}` },
+        { k: '判定规则', v: `隐藏状态 **h（记忆）沿时间传递**：**h_t = tanh(wx·x_t + wh·h_{'{'}t-1{'}'} + b)**，权重所有时刻共享。`
+            + (isShort ? '' : `　同时跟着一条链：**开头那个输入的影响力**每步要乘 |wh·(1−h²)| —— 跟反向传播沿深度的连乘是同一回事。`) },
+        { k: '本步结果', v: st.phase === 'done'
+            ? (isShort
+              ? `记忆演化到末态 **${st.ht}**——它藏着整段历史（同样末输入、历史不同 h 就不同）。`
+              : `开头那个输入的影响力掉到 **${st.grad}**，稳下来后每步乘 **${st.factorAsymp}**，`
+                + `半衰期 **${st.halfLife && st.halfLife > 0 ? `${st.halfLife} 步` : '—'}**。`
+                + (st.compare ? `　三档 wh 的半衰期：${st.compare.map(([w, hl]) => `${w}→${hl > 0 ? hl + ' 步' : '不衰减'}`).join('、')}——**调大 wh 反而更短**。` : ''))
             : st.t === 0 ? '待读。'
-            : `h_${st.t} = tanh(${st.wx}·${st.xt}+${st.wh}·${st.hPrev}) = tanh(${st.pre}) = **${st.ht}**,传给下一步。` },
+              : `h_${st.t} = tanh(${st.wx}·${st.xt}+${st.wh}·${st.hPrev}) = tanh(${st.pre}) = **${st.ht}**，传给下一步。`
+                + (isShort ? '' : `　影响力再乘 ${st.factor} → **${st.grad}**。`) },
       ]
     },
     verdict: (s: never) => {
-      const st = s as { phase: string; t: number; ht: number }
-      return st.phase === 'done' ? `末态 ${st.ht}` : st.t > 0 ? `h=${st.ht}` : '记忆流动'
+      const st = s as { phase: string; t: number; ht: number; short?: boolean; halfLife?: number }
+      if (st.phase !== 'done') return st.t > 0 ? `h=${st.ht}` : '记忆流动'
+      return st.short === false && st.halfLife ? `半衰期 ${st.halfLife} 步` : `末态 ${st.ht}`
     },
     read: [
       { at: '读数', is: '时间步、当前输入、记忆 h、共享权重。', anchor: '.scdim' },
-      { at: '时间链', is: '上排=记忆 h 沿时间流的传送带(蓝正/琥珀负、越深越大),下排=每步输入 x;h_t 同时吃当前 x 和上一刻 h。', anchor: '.rnnchain' },
+      { at: '时间链', is: '上排=记忆 h 沿时间流的传送带(蓝正/琥珀负、越深越大),下排=每步输入 x;h_t 同时吃当前 x 和上一刻 h。长序列只画前 12 步。', anchor: '.rnnchain' },
+      { at: '影响力衰减曲线', is: '**长序列那两档才有**:开头那个输入 ∂h_t/∂x₁ 还剩多少。纵轴 log,所以**指数衰减在这儿是一条直线**,斜率就是每步乘的那个数。', anchor: '.rnndecay' },
     ],
     try: [
-      { act: '按「下一步」读序列', watch: '每步 h_t=tanh(wx·x+wh·h_prev),记忆沿时间更新、往右传。' },
-      { act: '想记忆的作用', watch: '同样最后输入 +2,历史 [2] 得 0.923、[−3] 得 0.269——h 记着过去。' },
+      { act: '按「下一步」读序列', watch: '每步 h_t=tanh(wx·x+wh·h_prev),记忆沿时间更新、往右传。短序列那档每步都能拿计算器核。' },
+      //  下面三条是补厚后的主菜
+      { act: '把「序列」换成「脉冲后全 0（T=50）」', watch: '开头喂一个 2、之后全喂 0,盯**影响力**那条线:在 log 轴上一条直线往下扎,50 步之后只剩 0.00027。**这就是"记不住远处"的实际长相。**' },
+      { act: '把 wh 从 0.8 调到 0.9', watch: '每步乘的因子涨到 0.90、半衰期从 ~2 步涨到 **6.6 步**——记得久一点了,但也就久一点。' },
+      { act: '再把 wh 调到 1.5，想想会怎样', watch: '**反而更短:半衰期掉到 0.7 步。** 因为 wh 一大,h 很快被推到饱和区(稳在 0.86),tanh′=1−h² 只剩 0.26,每步的因子 |wh·(1−h²)| 反而更小。**调参救不了它,得换结构**——这就是 LSTM 的门控和注意力存在的理由。' },
     ],
     terms: [],
   },

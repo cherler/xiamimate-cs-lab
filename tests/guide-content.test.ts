@@ -968,10 +968,14 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       b: { phase: 'done', act: 'done', t: 3, k: 2, beamsIn: [{ seq: 'BC·', p: 0.288 }, { seq: 'AB·', p: 0.1 }], cands: [], kept: ['BC·', 'AB·'], best: { seq: 'BC·', p: 0.288 }, greedy: { seq: 'AB·', p: 0.1 }, showGreedy: true },
     },
     rnn: {
-      doc: { kind: 'rnn', params: {}, entities: [], streams: [] },
-      //  A 第 3 步(记忆更新) · B 读完整段 —— 结论必须换一套说法
-      a: { phase: 'run', t: 3, xt: 3, hPrev: 0.109, pre: 1.587, ht: 0.92, hs: [0.762, 0.109, 0.92, null], xs: [2, -1, 3, -2], wx: 0.5, wh: 0.8, b: 0 },
-      b: { phase: 'done', t: -1, xt: 0, hPrev: 0, pre: 0, ht: -0.258, hs: [0.762, 0.109, 0.92, -0.258], xs: [2, -1, 3, -2], wx: 0.5, wh: 0.8, b: 0 },
+      doc: { kind: 'rnn', params: { seq: '脉冲后全 0（T=20）', wh: 0.9 }, entities: [], streams: [] },
+      //  A 第 3 步（影响力还有 0.08） · B 读完 20 步（掉到 0.0064）—— 结论必须换一套说法
+      a: { phase: 'run', t: 3, xt: 0, hPrev: 0.595, pre: 0.536, ht: 0.49, wx: 0.5, wh: 0.9, b: 0,
+        xs: new Array(20).fill(0), short: false, grad: 0.0835, factor: 0.6843, factorAsymp: 0.8914,
+        halfLife: 6, compare: [[0.5, 1], [0.9, 6], [1.5, 0.7]] },
+      b: { phase: 'done', t: -1, xt: 0, hPrev: 0, pre: 0, ht: 0.063, wx: 0.5, wh: 0.9, b: 0,
+        xs: new Array(20).fill(0), short: false, grad: 0.0064, factor: 0.8964, factorAsymp: 0.8914,
+        halfLife: 6, compare: [[0.5, 1], [0.9, 6], [1.5, 0.7]] },
     },
     wordvec: {
       doc: { kind: 'wordvec', params: {}, entities: [], streams: [] },

@@ -4400,32 +4400,51 @@ const rnn: Experiment<RNNState> = {
   title: '循环神经网络 RNN',
   subtitle: '一个隐藏状态沿时间流动，把"过去"记在里面',
   kernel: rnnKernel,
-  defaultDoc: { kind: 'rnn', params: {}, entities: [], streams: [] },
-  params: [],
+  defaultDoc: { kind: 'rnn', params: { seq: '短序列 [2,−1,3,−2]（可手核）', wh: 0.8 }, entities: [], streams: [] },
+  /*  2026-09-08 补厚：老版本只有一条写死的 4 步序列。前向机制讲清楚了，
+      但 RNN 在历史上的位置是由它**做不到**的事定义的 —— 记不住远处的东西。
+      那条链（∂h_T/∂h₁ = ∏ wh·(1−h²)）跟「反向传播」沿深度、「残差」沿层数是同一件事。 */
+  params: [
+    { key: 'seq', label: '序列', kind: 'enum', options: ['短序列 [2,−1,3,−2]（可手核）', '脉冲后全 0（T=20）', '脉冲后全 0（T=50）'] },
+    { key: 'wh', label: '循环权重 wh', kind: 'number', options: [0.5, 0.8, 0.9, 1.5] },
+  ],
   paramsNote: `**RNN 用隐藏状态 h(记忆)处理变长序列**:感知机/CNN 一次只看固定大小输入,吃不了变长序列(一句话、一段语音);RNN 让 h 沿时间一步步传递。
 
 - **机制**:每读一个 x_t,用同一套共享权重把"当前输入 + 上一刻记忆"揉进新记忆 h_t=tanh(wx·x_t+wh·h_{t-1}+b);权重所有时刻共享(能吃任意长序列),h_t 藏着全部过去——同样当前输入、历史不同 h 就不同。
 - **本实验**:序列 [2,-1,3,-2],wx=0.5、wh=0.8、b=0,逐步算 h=tanh(1)=0.762→0.109→0.92→-0.258,每步可手算。
-- **记忆演示**:同样最后输入 +2,历史 [2] 得 0.923、[-3] 得 0.269。
-
-长序列会梯度消失,于是有 LSTM/GRU 门控、再到 Transformer 注意力。`,
+- **补厚补的是它的软肋**:把序列换成"开头一个脉冲、之后全 0",屏幕上会多出**开头那个输入的影响力** ∂h_t/∂x₁ 和它的**半衰期**。这条链是 ∏|wh·(1−h²)|——**跟「反向传播」沿深度的连乘是同一件事**,只是方向换成了时间。
+- **最反直觉的一条**:把 wh 调大**救不回来,甚至更糟**。wh 一大 h 就被推到饱和区,tanh′=1−h² 趋近 0。实测半衰期:wh=0.5 → 1 步、wh=0.9 → **6.6 步**、wh=1.5 → **0.7 步**——**1.5 比 0.9 记得还短**。
+- 所以这不是调参能解决的问题,**得换结构**:LSTM 给记忆另开一条近乎线性的传送带(c_t=f·c_{t−1}+i·c̃,f≈1 时不衰减),再往后是注意力——干脆让每一步直接看所有历史,不再逐级传递。`,
   bounds: [
-    '序列 [2,-1,3,-2],wx=0.5 wh=0.8 b=0,h₀=0',
-    '每步 h_t=tanh(wx·x_t+wh·h_{t-1}+b)(可核)',
-    'h:0.762→0.109→0.92→-0.258;权重所有时刻共享',
-    'h_t 藏历史:同样末输入、历史不同 h 不同',
+    '标量 RNN：wx=0.5、b=0、h₀=0，wh 可调；短序列那档原样保留，逐步可手核',
+    '每步 h_t = tanh(wx·x_t + wh·h_{t-1} + b)；权重所有时刻共享（所以能吃任意长序列）',
+    '影响力 = ∂h_t/∂x₁ = wx·∏_{s≥2} wh·(1−h_s²) —— 就是 BPTT 里那串连乘，现算',
+    /*  ⚠️ 半衰期的算法换过一次，理由值得留着。 */
+    '半衰期由**渐近**的每步因子算（后 40% 步的几何平均），不是从第 0 步的影响力往下数：脉冲那一刻 h 大、tanh′ 小，头一两步就掉一大半，会把后面的规律整个盖住',
+    '标量、单层、无输出层与损失：这里量的是"信息还剩多少"，不是真的在训练一个 RNN',
+    '不含 LSTM/GRU 的门控（另有实验）、不含梯度裁剪与截断 BPTT',
   ],
   tabs: [{ id: 'unroll', label: '时间展开' }],
   Stage: RNNStage,
-  tone: s => (s.phase === 'done' ? { key: 'good', label: `末态 ${s.ht}` } : s.t > 0 ? { key: 'idle', label: `h=${s.ht}` } : { key: 'idle', label: '记忆流动' }),
+  tone: s => (s.phase !== 'done' ? (s.t > 0 ? { key: 'idle', label: `h=${s.ht}` } : { key: 'idle', label: '记忆流动' })
+    : s.short ? { key: 'good', label: `末态 ${s.ht}` }
+      : s.halfLife > 0 && s.halfLife < 10 ? { key: 'bad', label: `半衰期 ${s.halfLife} 步` }
+        : { key: 'good', label: `半衰期 ${s.halfLife} 步` }),
   metric: s => (s.phase === 'done' ? 1 : s.xs.length ? s.t / s.xs.length : 0),
   tickLabel: s => (s.phase === 'done' ? '毕' : `t${s.t}`),
   whyInRail: true,
   readouts: s => [
-    { label: '时间步', value: s.phase === 'done' ? '读完' : `第 ${s.t} 步` },
-    { label: '当前输入', value: s.t > 0 && s.phase !== 'done' ? `x=${s.xt}` : '—' },
-    { label: '记忆 h', value: s.t > 0 || s.phase === 'done' ? `${s.ht}` : '0', tone: s.phase === 'done' ? 'good' : undefined },
+    { label: '时间步', value: s.phase === 'done' ? `读完 ${s.xs.length} 步` : `第 ${s.t} / ${s.xs.length} 步` },
+    { label: '记忆 h', value: s.t > 0 || s.phase === 'done' ? `${s.ht}` : '0', tone: s.phase === 'done' && s.short ? 'good' : undefined },
     { label: '共享权重', value: `wx=${s.wx} wh=${s.wh}` },
+    /*  下面三栏才是补厚补上的：短序列那档没意义，不显示 */
+    ...(s.short ? [{ label: '想看它的软肋', value: '把「序列」换成脉冲那两档' }]
+      : [
+        { label: '开头输入的影响力', value: `${s.grad}`, tone: (Math.abs(s.grad) < 1e-3 ? 'bad' : undefined) as 'bad' | undefined },
+        { label: '每步乘（渐近）', value: `${s.factorAsymp}`, tone: (s.factorAsymp < 0.9 ? 'bad' : undefined) as 'bad' | undefined },
+        { label: '记忆半衰期', value: s.halfLife > 0 ? `${s.halfLife} 步` : '不衰减',
+          tone: (s.halfLife > 0 && s.halfLife < 10 ? 'bad' : 'good') as 'bad' | 'good' },
+      ]),
   ],
 }
 

@@ -34,6 +34,7 @@ import { condnumKernel, type CondNumState } from '../src/kernels/condnum.ts'
 import { svmKernel, type SVMState } from '../src/kernels/svm.ts'
 import { matmulKernel, type MatmulState } from '../src/kernels/matmul.ts'
 import { quantKernel, type QuantState } from '../src/kernels/quant.ts'
+import { rnnKernel, type RNNState } from '../src/kernels/rnn.ts'
 
 let failures = 0
 const ok = (m: string) => console.log(`  ✅ ${m}`)
@@ -344,6 +345,67 @@ console.log('\n【逻辑回归：正则真的在压权重，异或真的分不�
   !xor.separable && xor.acc < sep.acc - 0.15
     ? ok(`异或准确率 ${(xor.acc * 100).toFixed(0)}%，可分档 ${(sep.acc * 100).toFixed(0)}% —— 一条直线切不开异或`)
     : bad(`异或 ${(xor.acc * 100).toFixed(0)}% vs 可分 ${(sep.acc * 100).toFixed(0)}% —— 差距不足以说明"线性不可分"`)
+}
+
+// ═══ RNN：沿时间的连乘，跟沿深度是同一件事 ═══════════════
+console.log('\n【RNN：记不住远处；而且把 wh 调大反而更糟】')
+{
+  const go = (p: P) => last(run(rnnKernel.compile(doc('rnn', p)), 80) as RNNState[])
+  const LONG = '脉冲后全 0（T=50）'
+
+  //  ① 影响力必须真是那串连乘：末值 = wx·∏|wh·(1−h²)|，跟逐帧因子对得上
+  const t50 = run(rnnKernel.compile(doc('rnn', { seq: LONG, wh: 0.9 })), 80) as RNNState[]
+  const runs = t50.filter(s => s.phase === 'run')
+  const prod = runs.slice(1).reduce((p2, s) => p2 * s.factor, Math.abs(runs[0].grad))
+  Math.abs(Math.log(prod / Math.abs(last(runs).grad))) < 0.02
+    ? ok(`影响力确实是连乘出来的：逐帧因子连乘 ${prod.toExponential(2)} = 末值 ${last(runs).grad}`)
+    : bad(`连乘对不上：${prod.toExponential(3)} vs ${last(runs).grad}`)
+
+  /*  ② 影响力必须单调衰减，而且掉出至少两个数量级。
+      ⚠️ 门槛写 1e3 会误伤：wh=0.9 那档实测掉 778 倍（2.9 个数量级），是**真实值**不是毛病。
+      两个条件分开判，红的时候才说得清是哪一条不成立。 */
+  const gs = runs.map(s => Math.abs(s.grad))
+  const mono = gs.every((v, k) => k === 0 || v <= gs[k - 1] + 1e-30)
+  const drop = gs[0] / last(gs)
+  mono ? ok(`影响力逐步单调不增（${gs.length} 帧）`) : bad('影响力中途反弹了 —— 那就不是连乘衰减')
+  drop > 100
+    ? ok(`50 步里影响力从 ${gs[0]} 掉到 ${last(gs).toExponential(1)} —— ${drop.toExponential(1)} 倍，两个数量级以上`)
+    : bad(`只掉了 ${drop.toFixed(0)} 倍，看不出"记不住远处"`)
+
+  /*  ③ 这个实验补厚后最反直觉、也最该钉住的一条：
+      **把 wh 调大救不回来，甚至更糟**。wh=1.5 的半衰期必须**短于** wh=0.9。
+      道理是 h 被推到饱和区、tanh′ 塌掉；判据顺便把"末态 h 确实饱和了"也钉上。 */
+  const w9 = go({ seq: LONG, wh: 0.9 })
+  const w15 = go({ seq: LONG, wh: 1.5 })
+  const w5 = go({ seq: LONG, wh: 0.5 })
+  w15.halfLife < w9.halfLife && w5.halfLife < w9.halfLife && Math.abs(w15.ht) > 0.8
+    ? ok(`半衰期 wh=0.5 → ${w5.halfLife} 步、0.9 → ${w9.halfLife} 步、1.5 → ${w15.halfLife} 步 —— **1.5 比 0.9 还短**（h 饱和在 ${w15.ht}，tanh′ 只剩 ${(1 - w15.ht ** 2).toFixed(2)}）`)
+    : bad(`"调大 wh 反而更糟"没演出来：${w5.halfLife} / ${w9.halfLife} / ${w15.halfLife}，末态 h=${w15.ht}`)
+
+  //  ④ 半衰期必须跟渐近因子对得上（ln0.5/ln f），两个数不能各说各的
+  const badH = [w5, w9, w15].filter(s => Math.abs(s.halfLife - Math.log(0.5) / Math.log(s.factorAsymp)) > 0.1)
+  badH.length === 0 ? ok('三档的半衰期都等于 ln0.5/ln(渐近因子) —— 屏幕上那两个数是同一件事的两种说法')
+    : bad(`半衰期跟渐近因子对不上：${badH.map(s => `wh=${s.wh}：${s.halfLife} vs ${(Math.log(0.5) / Math.log(s.factorAsymp)).toFixed(2)}`).join(' / ')}`)
+
+  //  ⑤ 短序列那档原样保住（老口径：h 一路 0.762 → 0.109 → 0.92 → −0.258）
+  const sh = (run(rnnKernel.compile(doc('rnn', { seq: '短序列 [2,−1,3,−2]（可手核）', wh: 0.8 })), 80) as RNNState[])
+    .filter(s => s.phase === 'run').map(s => s.ht)
+  JSON.stringify(sh) === JSON.stringify([0.762, 0.109, 0.92, -0.258])
+    ? ok('短序列那档原样保留：h = 0.762 → 0.109 → 0.92 → −0.258，逐步可手核')
+    : bad(`短序列的 h 变了：${sh.join(' / ')}`)
+
+  /*  ⑥ 自检：半衰期不能拿"从第 0 步往下数"来算 —— 那样三档全是 1~2 步、分不出高下。
+      这条把当初写歪的算法固定成一个**会红**的对照。 */
+  const naive = (s2: RNNState[]) => {
+    const g0 = Math.abs(s2.filter(x => x.phase === 'run')[0].grad)
+    const seq2 = s2.filter(x => x.phase === 'run')
+    for (let k = 1; k < seq2.length; k++) if (Math.abs(seq2[k].grad) < g0 / 2) return k
+    return -1
+  }
+  const naiveHl = [0.5, 0.9, 1.5].map(wh => naive(run(rnnKernel.compile(doc('rnn', { seq: LONG, wh })), 80) as RNNState[]))
+  new Set(naiveHl).size < 3 && new Set([w5.halfLife, w9.halfLife, w15.halfLife]).size === 3
+    ? ok(`自检：按"从第 0 步往下数"算，三档半衰期是 ${naiveHl.join('/')}（分不出高下）；按渐近因子算是 ${[w5, w9, w15].map(s => s.halfLife).join('/')} —— 换算法是必要的`)
+    : bad(`自检没成立：朴素算法 ${naiveHl.join('/')}、渐近算法 ${[w5, w9, w15].map(s => s.halfLife).join('/')}`)
 }
 
 // ═══ 量化：一个异常值就能毁掉整张的 scale ═══════════════
