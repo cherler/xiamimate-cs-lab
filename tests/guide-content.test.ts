@@ -990,10 +990,12 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       b: { phase: 'done', stage: 'done', query: '猫爱吃什么?', topK: 2, retrieved: [0, 3], answer: '肉和鱼（含鸡肉）', docs: [{ t: '猫是肉食动物，主食是肉和鱼', sim: 0.9 }, { t: '狗需要每天遛弯运动', sim: 0.34 }, { t: '汽车每 5000 公里保养一次', sim: 0 }, { t: '猫特别爱吃鱼、鸡肉', sim: 0.74 }, { t: '绿色植物靠光合作用产能', sim: 0.02 }] },
     },
     selfconsist: {
-      doc: { kind: 'selfconsist', params: {}, entities: [], streams: [] },
+      doc: { kind: 'selfconsist', params: { p: 44, spread: '分散', seed: 7 }, entities: [], streams: [] },
       //  A 采样第 2 条(平票) · B 多数投票(17 胜) —— 结论必须换一套说法
-      a: { phase: 'run', problem: '小明有 5 个苹果，又买了 3 袋、每袋 4 个，一共几个？', n: 5, correct: 17, winner: 17, tally: [[17, 1], [32, 1]], chains: [{ r: '5 + 3×4 = 17', a: 17, ok: true }, { r: '(5+3)×4 = 32', a: 32, ok: false }] },
-      b: { phase: 'done', problem: '小明有 5 个苹果，又买了 3 袋、每袋 4 个，一共几个？', n: 5, correct: 17, winner: 17, tally: [[17, 3], [32, 1], [19, 1]], chains: [{ r: '5 + 3×4 = 17', a: 17, ok: true }, { r: '(5+3)×4 = 32', a: 32, ok: false }, { r: '3×4=12, +5 = 17', a: 17, ok: true }, { r: '5 + 12 = 17', a: 17, ok: true }, { r: '5×3 + 4 = 19', a: 19, ok: false }] },
+      a: { phase: 'run', problem: '小明有 5 个苹果，又买了 3 袋、每袋 4 个，一共几个？', n: 5, correct: 17, winner: 17, tally: [[17, 1], [32, 1]], chains: [{ r: '5 + 3×4 = 17', a: 17, ok: true }, { r: '(5+3)×4 = 32', a: 32, ok: false }],
+           pWin: 0.5, pCorrect: 0.44, spread: '分散', curve: [[1, 0.4], [5, 0.5], [49, 1]], correctCount: 2, reliable: false, tie: false, samples: [] },
+      b: { phase: 'done', problem: '小明有 5 个苹果，又买了 3 袋、每袋 4 个，一共几个？', n: 49, correct: 17, winner: 17, tally: [[17, 3], [32, 1], [19, 1]], chains: [{ r: '5 + 3×4 = 17', a: 17, ok: true }, { r: '(5+3)×4 = 32', a: 32, ok: false }, { r: '3×4=12, +5 = 17', a: 17, ok: true }, { r: '5 + 12 = 17', a: 17, ok: true }, { r: '5×3 + 4 = 19', a: 19, ok: false }],
+           pWin: 1, pCorrect: 0.44, spread: '分散', curve: [[1, 0.4], [5, 0.5], [49, 1]], correctCount: 22, reliable: true, tie: false, samples: [] },
     },
     bestofn: {
       doc: { kind: 'bestofn', params: {}, entities: [], streams: [] },

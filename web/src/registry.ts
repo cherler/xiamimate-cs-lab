@@ -4430,9 +4430,16 @@ const selfconsist: Experiment<SelfConsistState> = {
   title: '思维链自洽 Self-Consistency',
   subtitle: '采样越多条推理链，多数票越向正解收敛',
   kernel: selfconsistKernel,
-  defaultDoc: { kind: 'selfconsist', params: {}, entities: [], streams: [] },
-  params: [],
-  paramsNote: `**轴 = 采样链数 N**（扫 1→25，无可调参数，按「下一步」看多数票随 N 变化）。
+  defaultDoc: { kind: 'selfconsist', params: { p: 44, spread: '分散', seed: 7 }, entities: [], streams: [] },
+  /*  2026-09-08 补厚：答案序列原来是**手敲死的**一串数，于是"换个分布还灵不灵"问不出来，
+      更演不出自洽的**硬前提** —— 正解必须是唯一众数。「集中」那一档（大家都犯同一个错）
+      可靠率随 N **往下掉**（实测 40%→23%）：自洽赌的是错法互不相同，这一档它输了。 */
+  params: [
+    { key: 'p', label: '正解占比', kind: 'number', options: [30, 44, 60], unit: '%' },
+    { key: 'spread', label: '错法分布', kind: 'enum', options: ['分散', '集中'] },
+    { key: 'seed', label: '采样种子', kind: 'number', options: [7, 11, 23] },
+  ],
+  paramsNote: `**轴 = 采样链数 N**（扫 1→49）。左边三个旋钮换的是**采样分布**，答案是照它真采出来的。
 
 **为什么"多采几条"就更准**：一道有唯一解的推理题，正确推法往往**很多条、都殊途同归**到同一答案（这里 17 由三种算法得到）；错法却**五花八门、彼此不一致**（32/19/35/20 各错各的）。所以正解单条链只占约 44%（不到半数），却是**唯一的众数**。
 
@@ -4442,10 +4449,13 @@ const selfconsist: Experiment<SelfConsistState> = {
 
 答案序列钉死（按真实分布手排、票数可手数），扫 N 看多数票怎么从不可靠收敛到正解。`,
   bounds: [
-    '轴=采样链数 N(1→25);每个 N 取钉死答案序列的前 N 条数票(可手数)',
-    '正解 17 由三种不同算法殊途同归;错法 32/19/35/20 各错各的、发散',
-    '正解单链约占 44%(不到半数)却是唯一众数 → 采样够多必胜',
-    'N=1 抽到错的(32)、N≤5 平票、N≥9 正解稳压 —— 少采样不可靠、多采样才稳',
+    '轴=采样链数 N(1→49)；答案由给定分布**真的采样**出来（种子可换），每个 N 取序列前 N 条数票，可手数',
+    '正解 17 由三种不同算法殊途同归；错法 32/19/35/20 各错各的（「分散」）或全犯同一个（「集中」）',
+    /*  ⚠️ 老版本写「正解…是唯一众数 → 采样够多必胜」——那只在「分散」时成立。
+        写成无条件的结论，恰好把这个方法的边界抹掉了。 */
+    '**只有当正解是唯一众数时**，多采才必胜；「集中」那一档错答案才是众数，采得越多越确信错的',
+    '「多数票答对的概率」是**蒙特卡洛重采样 400 次**算的，不是断言 —— 它就是那条可靠率曲线',
+    '真实自洽还要模型自己产生推理链；这里的链是预置文本，重点在**投票这一步的统计**',
   ],
   tabs: [{ id: 'vote', label: '采样+投票' }],
   Stage: SelfConsistStage,
@@ -4458,6 +4468,10 @@ const selfconsist: Experiment<SelfConsistState> = {
     { label: '多数票', value: s.tie ? '平票·未定' : `${s.winner}`, tone: s.tie ? undefined : (s.reliable ? 'good' : 'bad') },
     { label: '正解占比', value: `${s.correctCount}/${s.n}（${s.n ? Math.round(s.correctCount / s.n * 100) : 0}%）` },
     { label: '可靠', value: s.reliable ? '是 ✓' : s.tie ? '平票' : '否 ✗', tone: s.reliable ? 'good' : undefined },
+    /*  单看这一次的输赢是运气；**这个 N 下答对的概率**才是"多跑几条有多大用"的答案 */
+    { label: '这个 N 答对的概率', value: `${(s.pWin * 100).toFixed(1)}%（重采样 400 次）`,
+      tone: s.pWin >= 0.9 ? 'good' : s.pWin < 0.5 ? 'bad' : undefined },
+    { label: '配置', value: `正解 ${(s.pCorrect * 100).toFixed(0)}%｜错法${s.spread}` },
   ],
 }
 
