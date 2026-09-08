@@ -88,7 +88,7 @@ export function BackpropStage({ state }: StageProps<BackpropState>) {
             <div className="orcap">
               {phase === 'forward'
                 ? `前向逐层算：a${state.fwdAt + 1}=${act}(z)=${as[Math.max(0, state.fwdAt)]}，一路算到损失`
-                : `柱高 = 该层权重梯度的**量级（对数刻度，每格一个数量级）**；`
+                : `柱高 = 该层权重梯度的量级（对数刻度，每格一个数量级）；`
                   + `柱子之间那个 ×${layerFactor[1] ?? layerFactor[0]} 就是往上传一层要乘的 |w·f′|`}
             </div>
           </div>

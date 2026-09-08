@@ -1169,10 +1169,12 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       b: { stage: 'done', cur: 'A', matches: [1, 4], prediction: 'B' },
     },
     residual: {
-      doc: { kind: 'residual', params: {}, entities: [], streams: [] },
-      //  A 传到第 8 层(没残差已 0.13) · B 穿完 16 层(没残差 0.03 消失) —— 结论必须换一套说法
-      a: { phase: 'run', layer: 8, depth: 16, gradPlain: 0.1342, gradRes: 1.089, resFactor: 0.977, histPlain: [1, 0.8], histRes: [1, 1.06] },
-      b: { phase: 'done', layer: 1, depth: 16, gradPlain: 0.0281, gradRes: 0.9323, resFactor: 0.939, histPlain: [1, 0.8], histRes: [1, 1.06] },
+      doc: { kind: 'residual', params: { depth: 16, branch: '中 f′≈0.4' }, entities: [], streams: [] },
+      //  A 传到第 8 层(没残差已 2e-4) · B 穿完 16 层(没残差 3.5e-7、残差守住) —— 结论必须换一套说法
+      a: { phase: 'run', layer: 8, depth: 16, gradPlain: 0.0002, gradRes: 0.4711, plainFactor: 0.483, resFactor: 0.517,
+        branch: 0.4, resHolds: false, gain: 0, histPlain: [1, 0.8], histRes: [1, 1.06] },
+      b: { phase: 'done', layer: 1, depth: 16, gradPlain: 3.49e-7, gradRes: 0.1753, plainFactor: 0.414, resFactor: 1.414,
+        branch: 0.4, resHolds: true, gain: 502449.8, histPlain: [1, 0.8], histRes: [1, 1.06] },
     },
     graddesc: {
       doc: { kind: 'graddesc', params: { shape: '椭圆 κ=5', lr: '公式值 1/(λmin+λmax)', mom: '0（普通梯度下降）' }, entities: [], streams: [] },

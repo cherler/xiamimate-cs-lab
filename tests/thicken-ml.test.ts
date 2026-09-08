@@ -29,6 +29,7 @@ import { binsearchKernel, type BinSearchState } from '../src/kernels/binsearch.t
 import { graddescKernel, type GradDescState } from '../src/kernels/graddesc.ts'
 import { pcaKernel, type PCAState } from '../src/kernels/pca.ts'
 import { backpropKernel, type BackpropState } from '../src/kernels/backprop.ts'
+import { residualKernel, type ResidualState } from '../src/kernels/residual.ts'
 
 let failures = 0
 const ok = (m: string) => console.log(`  ✅ ${m}`)
@@ -339,6 +340,65 @@ console.log('\n【逻辑回归：正则真的在压权重，异或真的分不�
   !xor.separable && xor.acc < sep.acc - 0.15
     ? ok(`异或准确率 ${(xor.acc * 100).toFixed(0)}%，可分档 ${(sep.acc * 100).toFixed(0)}% —— 一条直线切不开异或`)
     : bad(`异或 ${(xor.acc * 100).toFixed(0)}% vs 可分 ${(sep.acc * 100).toFixed(0)}% —— 差距不足以说明"线性不可分"`)
+}
+
+// ═══ 残差：差别只有那个 +1，而它不是万能的 ═══════════════
+console.log('\n【残差：同一批 f′，两条链只差一个 +1】')
+{
+  const go = (p: P) => last(run(residualKernel.compile(doc('residual', p)), 200) as ResidualState[])
+  const DEPTHS = [8, 16, 50]
+  const BRANCH = ['弱 f′≈0.1', '中 f′≈0.4', '强 f′≈0.6']
+
+  /*  ① 两条链必须**共用同一批 f′**：每一帧上 |f′| 与 |1+f′| 要能互相推出来。
+      老版本两条曲线的因子是各写各的（0.8 和 ≈1），这条判据在那时候是过不了的。 */
+  const bad1: string[] = []
+  for (const branch of BRANCH) {
+    const t = run(residualKernel.compile(doc('residual', { depth: 16, branch })), 200) as ResidualState[]
+    for (const s of t.filter(x => x.phase === 'run')) {
+      //  |1+f′| 只可能是 1+|f′| 或 |1−|f′||，取决于 f′ 的正负 —— 别的值就说明不是同一个 f′
+      const up = 1 + s.plainFactor, dn = Math.abs(1 - s.plainFactor)
+      if (Math.min(Math.abs(s.resFactor - up), Math.abs(s.resFactor - dn)) > 2e-3)
+        bad1.push(`${branch} 第 ${s.layer} 层：|f′|=${s.plainFactor} 却配了 |1+f′|=${s.resFactor}`)
+    }
+  }
+  bad1.length === 0
+    ? ok('三档 × 每一层：|1+f′| 都能由同一个 |f′| 推出来 —— 两条链确实共用一批 f′，差别只有那个 +1')
+    : bad(bad1.slice(0, 2).join(' / '))
+
+  //  ② 理论 exp(N·E[log 因子]) 必须跟实测末值对上（两条链都要）
+  const bad2: string[] = []
+  for (const depth of DEPTHS) for (const branch of BRANCH) {
+    const s = go({ depth, branch })
+    for (const [nm, meas, th] of [['普通', s.gradPlain, s.thPlain], ['残差', s.gradRes, s.thRes]] as const)
+      if (Math.abs(Math.log10(meas / th)) > 0.02) bad2.push(`${branch}/N=${depth}/${nm}：实测 ${meas} vs 理论 ${th}`)
+  }
+  bad2.length === 0 ? ok('9 种组合 × 两条链：实测末值都等于 exp(N·E[log 因子]) —— 衰减率是算得出来的')
+    : bad(bad2.slice(0, 2).join(' / '))
+
+  //  ③ 残差必须**总是**优于普通（这一档参数范围内），且弱支路时优势大到几十个数量级
+  const bad3: string[] = []
+  for (const depth of DEPTHS) for (const branch of BRANCH) {
+    const s = go({ depth, branch })
+    if (s.gradRes <= s.gradPlain) bad3.push(`${branch}/N=${depth}：残差 ${s.gradRes} ≤ 普通 ${s.gradPlain}`)
+  }
+  const weak = go({ depth: 50, branch: '弱 f′≈0.1' })
+  bad3.length === 0 && weak.gradRes / weak.gradPlain > 1e40
+    ? ok(`9 种组合里残差全都优于普通；弱支路 50 层时差 ${(weak.gradRes / weak.gradPlain).toExponential(1)} 倍（普通只剩 ${weak.gradPlain.toExponential(1)}）`)
+    : bad(bad3.length ? bad3.join(' / ') : `弱支路的优势只有 ${weak.gradRes / weak.gradPlain}`)
+
+  /*  ④ 但残差**不是万能的**：支路一强，它自己也塌。这是补厚后最该保住的一条。
+      同时钉住"强"档没有越过标量模型的翻转点（f′=1/√2≈0.707）—— 越过去就会得出
+      "残差不如普通"的一维假象，那不该出现在屏幕上。 */
+  const strong = go({ depth: 50, branch: '强 f′≈0.6' })
+  !strong.resHolds && strong.gradRes > strong.gradPlain && strong.branch < Math.SQRT1_2
+    ? ok(`强支路 f′≈${strong.branch}（未越过标量翻转点 ${Math.SQRT1_2.toFixed(3)}）：50 层后残差也塌到 ${strong.gradRes.toExponential(1)}，但仍好过普通的 ${strong.gradPlain.toExponential(1)}`)
+    : bad(`强支路那档不对：resHolds=${strong.resHolds}、残差 ${strong.gradRes} vs 普通 ${strong.gradPlain}、branch=${strong.branch}`)
+
+  //  ⑤ 同一支路强度下，越深塌得越狠（两条链都要单调）
+  const seq = DEPTHS.map(depth => go({ depth, branch: '中 f′≈0.4' }))
+  seq.every((s, k) => k === 0 || (s.gradPlain < seq[k - 1].gradPlain && s.gradRes < seq[k - 1].gradRes))
+    ? ok(`中支路：8/16/50 层，普通 ${seq.map(s => s.gradPlain.toExponential(1)).join(' → ')}，残差 ${seq.map(s => s.gradRes.toExponential(1)).join(' → ')}`)
+    : bad('加深之后有一条链没有变小 —— 连乘衰减这件事就没演对')
 }
 
 // ═══ 反向传播：链一长就是连乘 ═══════════════════════════

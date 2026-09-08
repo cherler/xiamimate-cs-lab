@@ -5478,31 +5478,50 @@ const residual: Experiment<ResidualState> = {
   title: '残差=梯度高速路',
   subtitle: '为什么深网络能训得动',
   kernel: residualKernel,
-  defaultDoc: { kind: 'residual', params: {}, entities: [], streams: [] },
-  params: [],
+  defaultDoc: { kind: 'residual', params: { depth: 16, branch: '中 f′≈0.4' }, entities: [], streams: [] },
+  /*  2026-09-08 补厚：老版本把两条曲线的因子**直接写死**（没残差 ×0.8、有残差 ×≈1），
+      于是"我说它塌它就塌、我说它稳它就稳"——演示了结论，没演示为什么。
+      现在两条链**用同一批现抽的 f′**，差别只剩那个 +1。 */
+  params: [
+    { key: 'depth', label: '层数 N', kind: 'number', options: [8, 16, 50], unit: '层' },
+    { key: 'branch', label: '支路强度', kind: 'enum', options: ['弱 f′≈0.1', '中 f′≈0.4', '强 f′≈0.6'] },
+  ],
   paramsNote: `**反向传播里梯度=各层局部导数的连乘(链式法则)**。没残差深层学不动,残差给梯度一条恒等高速路。
 
 - **没残差**:每层导数常<1(如0.8),N 层连乘→0.8^N 指数衰减到≈0——梯度消失、深层学不动(2015 年前深网难训的核心)。
 - **残差 y=x+f(x)**:这层导数=1+f′,那个 +1 是"恒等高速路",让梯度即使 f′很小也能原样穿过,连乘不再塌向 0,几十上百层也训得动。ResNet、Transformer 每个子层(注意力/FFN)都裹残差就是这道理。
-- **本实验**:N=16 层,梯度从输出(=1)倒传——没残差每层×0.8、有残差每层×(1+小扰动)≈1;你会看到没残差塌到~0.03、有残差稳在~1。`,
+- **两条链用同一批 f′**:每层现抽一个支路导数 f′(随机正负、量级由旋钮定),普通链乘 |f′|、残差链乘 |1+f′|——**差别只剩那个 +1**,不是两组我编的数。
+- **残差不是万能的**:那个 +1 只有在 f′ 足够小、让 1+f′ 真的贴着 1 的时候才是高速路。实测 f′≈0.1 时 50 层还剩 0.22;f′≈0.6 时 16 层就掉到 0.013、50 层剩 3.4e-10——仍比普通链好几十倍,但**也塌了**。这正是 ResNet-v2 预激活 / Fixup / LayerScale / Transformer 残差缩放要解决的同一件事:**把支路压小**。`,
   bounds: [
-    'N=16 层,梯度从输出(=1)往输入倒传',
-    '没残差每层×0.8(连乘);有残差每层×(1+f′)≈1(可核)',
-    '没残差塌到≈0.8^16≈0.03(梯度消失);有残差守在≈1',
-    '残差因子用确定性小扰动示意;未建模具体 f 与激活',
+    'N∈{8,16,50} 层，梯度从输出（=1）往输入倒传；每层现抽一个支路导数 f′（正负各半，量级由旋钮定）',
+    '两条链**共用同一批 f′**：普通乘 |f′|、残差乘 |1+f′| —— 差别只有那个 +1，逐层可手核',
+    '理论衰减 exp(N·E[log 因子]) 跟实测并排印着，可逐位对',
+    /*  ⚠️ 这是本实验最该说清的边界，也是"强"档只取到 0.6 的原因。 */
+    '这是**一维标量**模型：真网络的雅可比是矩阵，加单位阵之后谱的行为并不等同于标量 1+f′',
+    '因此"强"档只取到 f′≈0.6：标量模型在 f′=1/√2≈0.707 处会翻转成"残差还不如普通"，那是一维的假象，不该搬上屏幕',
+    '不建模具体的 f、激活函数、归一化位置（Pre-LN / Post-LN）；只演"每层乘什么"这条主干',
   ],
   tabs: [{ id: 'grad', label: '梯度衰减' }],
   Stage: ResidualStage,
-  tone: s => (s.phase === 'done' ? { key: 'good', label: '残差守住' } : s.histPlain.length > 1 && s.gradPlain < 0.1 ? { key: 'bad', label: '没残差消失' } : { key: 'idle', label: s.layer <= s.depth ? `第${s.layer}层` : '' }),
-  metric: s => (s.histPlain.length > 1 ? Math.max(0, Math.min(1, s.gradRes / 1.2)) : 0),
+  tone: s => (s.phase === 'done' ? (s.resHolds ? { key: 'good', label: '残差守住' } : { key: 'bad', label: '残差也塌了' })
+    : s.histPlain.length > 1 && s.gradPlain < 0.1 ? { key: 'bad', label: '没残差消失' }
+      : { key: 'idle', label: s.layer <= s.depth ? `第${s.layer}层` : '' }),
+  metric: s => (s.histPlain.length > 1 ? Math.max(0, Math.min(1, (s.depth - s.layer + 1) / s.depth)) : 0),
   tickLabel: s => (s.phase === 'done' ? '毕' : s.layer <= s.depth ? `${s.layer}` : '0'),
   whyInRail: true,
-  readouts: s => [
-    { label: '倒传到第', value: s.layer <= s.depth ? `${s.layer} 层` : '—' },
-    { label: '没残差 梯度', value: s.histPlain.length > 1 ? `${s.gradPlain}` : '1', tone: s.gradPlain < 0.1 ? 'bad' : undefined },
-    { label: '有残差 梯度', value: s.histRes.length > 1 ? `${s.gradRes}` : '1', tone: 'good' },
-    { label: '这层残差因子', value: s.histRes.length > 1 ? `×${s.resFactor}` : '—' },
-  ],
+  readouts: s => {
+    //  小于 0.01 走有效数字，理由同内核里的 keep()
+    const e = (v: number) => (v >= 0.01 ? `${v}` : v.toPrecision(3))
+    return [
+      { label: '倒传到第', value: s.layer <= s.depth ? `${s.layer} / ${s.depth} 层` : '—' },
+      { label: '没残差 梯度', value: s.histPlain.length > 1 ? e(s.gradPlain) : '1', tone: s.gradPlain < 0.01 ? 'bad' : undefined },
+      { label: '有残差 梯度', value: s.histRes.length > 1 ? e(s.gradRes) : '1',
+        tone: s.histRes.length > 1 ? (s.gradRes > 0.1 ? 'good' : 'bad') : undefined },
+      /*  这一栏是全实验的题眼：同一层、同一个 f′，两条链乘的东西只差一个 +1 */
+      { label: '这一层：|f′| vs |1+f′|', value: s.histRes.length > 1 ? `×${s.plainFactor} vs ×${s.resFactor}` : '—' },
+      { label: '残差 / 普通', value: s.phase === 'done' ? `${s.gain > 1e4 ? s.gain.toExponential(1) : s.gain} 倍` : '—' },
+    ]
+  },
 }
 
 const graddesc: Experiment<GradDescState> = {

@@ -3167,7 +3167,12 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 
 /* 残差 = 梯度高速路 */
 .rswrap { display:flex; flex-direction:column; align-items:center; gap:6px; margin:10px 0; }
-.rsplot { width:min(340px,80vw); height:110px; border:1px solid var(--line); border-radius:6px; background:var(--panel); }
+.rsplot { width:100%; height:150px; border:1px solid var(--line); border-radius:6px; background:var(--panel); }
+/*  ── 残差补厚（2026-09-08）：纵轴换成 log，指数衰减才画得出来（一条直线）── */
+.rsbox { position:relative; width:min(380px,82vw); padding-right:34px }
+.rsdec { position:absolute; inset:0 0 0 auto; width:34px; pointer-events:none }
+.rsdt { position:absolute; right:0; transform:translateY(-50%); font-size:var(--t-meta);
+  color:var(--faint); font-variant-numeric:tabular-nums; white-space:nowrap }
 .rsref { stroke:var(--line); stroke-width:0.5; stroke-dasharray:2 2; }
 .rsref.dim { opacity:.5; }
 .rsline { fill:none; stroke-width:2; }

@@ -93,7 +93,7 @@ export function PCAStage({ state }: StageProps<PCAState>) {
             {phase === 'cloud' ? `${points.length} 个点${hasClass ? '，两种颜色是两个类别（PCA 看不见颜色）' : ''}——哪个方向铺得最开？`
               : phase === 'axis' ? `实线 = PC1（${angle}°，方差最大）；虚线 = 与它正交的 PC2，降到 1 维时被丢掉的就是它`
               : hasClass
-                ? `投影后两种颜色${squashed ? '**混到了一起**——判别信息全在被丢掉的那条虚线上' : '仍然分得开'}`
+                ? `投影后两种颜色${squashed ? '混到了一起 —— 判别信息全在被丢掉的那条虚线上' : '仍然分得开'}`
                 : `把点投影到 PC1 轴（垂线落下）；原 2D 坐标 → 轴上位置这一个数`}
           </div>
         </div>

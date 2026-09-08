@@ -6829,29 +6829,41 @@ export const GUIDES: Record<string, Guide> = {
       hook: '楼太高，一楼喊话到顶楼就听不清了。',
       what: '这一屏讲的是**残差连接**：让几十上百层的深网络能训起来的那个关键设计。问题是这样的：训练信号要从最后一层一路传回第一层，每经过一层就要乘一次这层的导数。几十个小于 1 的数连乘，传到底就衰减成了零 —— **前面几层根本收不到信号，学不动**。残差连接的解法简单到不可思议：**每一层的输出，都把这一层的输入原样加回来**。于是梯度有了一条**直通的高速路**，可以不衰减地传回去。这一条让网络深度从十几层一下子跨到了上百层。',
       terms: '**残差连接（skip connection）**：输出 = F(输入) + 输入。那个「+ 输入」就是全部的改动。\u3000**梯度消失**：反向传播时梯度一路连乘，越传越小，最后趋近于零。屏幕上那条灰色曲线画的就是它往 0 塌下去的样子。\u3000**恒等映射**：残差那条支路什么也不做、原样通过。求导之后它贡献一个 **1**，所以连乘时至少还有个 1 兜着，不会归零 —— 这就是红色曲线守在 1 附近的原因。\u3000**换个角度理解**：有了残差，每一层要学的不再是「输出该是什么」，而是「**在输入的基础上该改动什么**」。什么都不改（F 输出 0）就是原样通过，所以**多加一层至少不会更差**。这让「更深」从一件有风险的事变成了一件安全的事。\u3000**Pre-LN / Post-LN**：归一化放在残差支路里面（Pre）还是外面（Post）。Pre 让主干上那条通路更干净，深层模型不用预热就能训 —— 现在的大模型基本都用它。\u3000**用在哪儿**：ResNet 让卷积网络做到上百层，Transformer 每个子层也都有它。可以说没有这一条就没有今天的深度学习。',
-      watch: '把残差连接关掉再走一遍，看回传到前几层的梯度掉到多小。这一条几乎是所有深层网络能训起来的前提。',
+      watch: '两条链用的是**同一批**支路导数 f′，差别只有那个 +1。先在"弱 f′≈0.1"上看它有多神（50 层还剩 0.22，没残差是 1.6e-50），再把支路拧到"强 f′≈0.6" —— 残差**也会塌**。那个 +1 只有在支路够小的时候才是高速路。',
     },
     step: (s: never) => {
-      const st = s as { phase: string; layer: number; depth: number; gradPlain: number; gradRes: number; resFactor: number }
+      const st = s as { phase: string; layer: number; depth: number; gradPlain: number; gradRes: number
+        resFactor: number; plainFactor?: number; branch?: number; resHolds?: boolean; gain?: number }
+      //  ⚠️ 补厚字段可选读：老快照没有 plainFactor / resHolds，读不到就走老口径。
+      const e = (v: number) => (v >= 1e-4 ? `${v}` : v.toExponential(2))
+      const pf = st.plainFactor
       return [
         { k: '本步输入', v: st.phase === 'done' ? `梯度穿过全部 ${st.depth} 层` : `倒传到第 ${st.layer} 层` },
-        { k: '判定规则', v: `反向传播=各层导数**连乘**。没残差每层×0.8(<1)→指数衰减;残差 y=x+f(x)、导数=**1+f′**，那个 +1 让梯度原样穿过。` },
+        { k: '判定规则', v: `反向传播=各层导数**连乘**。普通块 y=f(x) 这一层乘 **|f′|**;残差块 y=x+f(x) 乘 **|1+f′|**——`
+            + `**同一个 f′,差别只有那个 +1**。` },
         { k: '本步结果', v: st.phase === 'done'
-            ? `没残差塌到 **${st.gradPlain}**(≈梯度消失);有残差稳在 **${st.gradRes}**——这就是残差的作用。`
-            : `没残差 →**${st.gradPlain}**;有残差 ×${st.resFactor}→**${st.gradRes}**${st.gradPlain < 0.1 ? '(没残差快没了)' : ''}。` },
+            ? (st.resHolds === false
+              ? `没残差 **${e(st.gradPlain)}**、有残差 **${e(st.gradRes)}**——**两条都塌了**。支路 f′≈${st.branch} 太大,1+f′ 的 log 均值仍是负的,那个 +1 就不再是高速路。`
+              : `没残差塌到 **${e(st.gradPlain)}**(梯度消失);有残差还有 **${e(st.gradRes)}**${st.gain ? `,强 ${st.gain > 1e4 ? st.gain.toExponential(1) : st.gain} 倍` : ''}——差的只有那个 +1。`)
+            : `这一层 f′ 定了两个因子:没残差 ×${pf ?? '?'}→**${e(st.gradPlain)}**;有残差 ×${st.resFactor}→**${e(st.gradRes)}**`
+              + `${st.gradPlain < 0.01 && st.gradRes > 0.1 ? '(没残差快没了、有残差还稳着)' : ''}。` },
       ]
     },
     verdict: (s: never) => {
-      const st = s as { phase: string; layer: number; gradPlain: number; gradRes: number }
-      return st.phase === 'done' ? '残差守住' : `层${st.layer}·平${st.gradPlain}`
+      const st = s as { phase: string; layer: number; gradPlain: number; gradRes: number; resHolds?: boolean }
+      if (st.phase !== 'done') return `层${st.layer}·平${st.gradPlain}`
+      return st.resHolds === false ? '残差也塌了' : '残差守住'
     },
     read: [
       { at: '读数', is: '层数、没残差梯度、有残差梯度。', anchor: '.scdim' },
-      { at: '两条曲线', is: '红=有残差(守在1)、灰=没残差(往0塌);虚线是 y=1 与消失阈 0.1。', anchor: '.rsplot' },
+      { at: '两条曲线', is: '绿=有残差、红=没残差。纵轴是 **log 刻度**(每格一个数量级)——所以**指数衰减在这张图上就是一条直线**,斜率=每层的 log 因子。', anchor: '.rsplot' },
     ],
     try: [
-      { act: '按「下一步」让梯度倒传', watch: '灰线(没残差)指数往 0 掉、红线(有残差)守在 1 附近。' },
-      { act: '看穿过 16 层后', watch: '没残差≈0.03(消失)、有残差≈1——差了一条 +1 恒等高速路。' },
+      { act: '按「下一步」让梯度倒传', watch: '红线(没残差)在 log 轴上是一条**直线**往下扎——每层乘同一个 <1 的数,就是这个样子;绿线(有残差)几乎是平的。' },
+      { act: '盯读数条上的「这一层：|f′| vs |1+f′|」', watch: '两条链**用的是同一个 f′**。比如 f′=−0.31:没残差乘 0.31、有残差乘 0.69。差别只有那个 +1,别的全一样。' },
+      { act: '把「支路强度」拧到「弱 f′≈0.1」、层数拧到 50', watch: '没残差塌到 **1.6e-50**(五十个数量级!),有残差还剩 0.22。这就是 ResNet、Transformer 每个子层都裹残差的原因。' },
+      //  这一条是补厚后最该看的：残差不是万能的
+      { act: '支路拧到「强 f′≈0.6」,层数还是 50', watch: '**残差也塌了**(3.4e-10)。1+f′ 在 1.6 和 0.4 之间跳,log 的均值仍是负的——那个 +1 只有在支路够小、让 1+f′ 真的贴着 1 时才是高速路。ResNet-v2 预激活、Fixup、LayerScale、Transformer 残差缩放,做的都是同一件事:**把支路压小**。' },
     ],
     terms: [],
   },
