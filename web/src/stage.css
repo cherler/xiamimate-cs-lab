@@ -1105,24 +1105,37 @@
 .gvlab.dropped{color:var(--miss);opacity:.6;text-decoration:line-through}
 
 /* ═══ B+ 树 ═══ */
-.bpt{display:flex;flex-direction:column;gap:22px;align-items:center;min-width:min-content;padding:8px 0}
-.bprow{display:flex;gap:16px;justify-content:center}
-.bpnode{display:flex;gap:1px;border:1px solid var(--line);border-radius:4px;overflow:hidden;
-  background:var(--panel-2)}
-.bpnode span{padding:5px 9px;font-family:var(--mono);font-size:var(--t-body);color:var(--dim);
+/*  ⚠️ 结点类名是 `.bptnode` 不是 `.bpnode` —— 后者被反向传播那张图的 <rect> 占着
+    （见本文件「反向传播计算图」一节）。原来两边同名，B+ 树这边的 display:flex /
+    border / overflow 全落在了那个 SVG 矩形上，谁也没报错。改名各归各。 */
+.bptbox{position:relative;margin:auto}
+.bptbox svg{position:absolute;inset:0}
+.bptedge{stroke:var(--line);stroke-width:1.2}
+/*  中间键往上送：虚线 + 一枚标签。这一步的主角，画粗一点 */
+.bptup{fill:none;stroke:var(--now);stroke-width:1.4;stroke-dasharray:4 3}
+.bptarrowhead{fill:var(--now)}
+.bptup-tag{position:absolute;transform:translateY(-50%);white-space:nowrap;
+  padding:1px 6px;border-radius:9px;font-size:var(--t-ui);font-family:var(--mono);
+  color:var(--now);background:var(--panel);border:1px solid #F0B42955}
+.bptnode{position:absolute;display:flex;gap:1px;border:1px solid var(--line);border-radius:4px;
+  overflow:hidden;background:var(--panel-2);white-space:nowrap}
+.bptnode span{padding:5px 9px;font-family:var(--mono);font-size:var(--t-body);color:var(--dim);
   background:var(--sunk-2);min-width:26px;text-align:center}
-.bpnode span.cur{background:#F0B42926;color:var(--now);font-weight:700}
-.bpnode em{padding:5px 12px;font-style:normal;font-size:var(--t-ui);color:var(--faint)}
-.bpnode.inner{border-color:#9B6FCC55}
-.bpnode.inner span{color:var(--f-idx);background:#9B6FCC14}
-.bpnode.leaf{border-color:#45B39A55}
-.bpnode.leaf span{color:var(--hit);background:#45B39A14}
-.bpnode.hot{box-shadow:0 0 0 2px #F0B42955}
-.bplegend{display:flex;gap:14px;font-size:var(--t-ui);color:var(--faint);margin-top:11px}
+.bptnode span.cur{background:#F0B42926;color:var(--now);font-weight:700}
+.bptnode em{padding:5px 12px;font-style:normal;font-size:var(--t-ui);color:var(--faint)}
+.bptnode.inner{border-color:#9B6FCC55}
+.bptnode.inner span{color:var(--f-idx);background:#9B6FCC14}
+.bptnode.leaf{border-color:#45B39A55}
+.bptnode.leaf span{color:var(--hit);background:#45B39A14}
+.bptnode.hot{box-shadow:0 0 0 2px #F0B42955}
+/*  刚裂出来、父结点还没接上的那半边：虚线框表示「悬着」 */
+.bptnode.fresh{border-style:dashed;border-color:var(--now)}
+.bplegend{display:flex;gap:14px;font-size:var(--t-ui);color:var(--faint);margin-top:11px;flex-wrap:wrap}
 .bplegend span{display:flex;gap:5px;align-items:center}
 .bw{width:10px;height:10px;border-radius:2px;display:inline-block}
 .bw.inner{background:#9B6FCC14;border:1px solid #9B6FCC55}
 .bw.leaf{background:#45B39A14;border:1px solid #45B39A55}
+.bw.fresh{background:transparent;border:1px dashed var(--now)}
 .bpchain{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:13px;min-width:min-content}
 .bpleaf{display:flex;gap:6px;align-items:center}
 .bpleaf .ks{display:flex;gap:1px;border:1px solid #45B39A55;border-radius:4px;overflow:hidden}
@@ -2204,14 +2217,16 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 }
 
 /* SVG 图/树：结点与边的填充、描边、透明度 */
-.stagewrap .gedge, .stagewrap .gedge line, .stagewrap .tvedge,
+.stagewrap .gedge, .stagewrap .gedge line, .stagewrap .tvedge, .stagewrap .bptedge,
 .stagewrap .gvwrap circle, .stagewrap .gvwrap line, .stagewrap .gvwrap path,
 .stagewrap .tvbox circle, .stagewrap .tvbox line {
   transition: fill var(--anim), stroke var(--anim), stroke-width var(--anim), opacity var(--anim);
 }
 /* HTML 结点/边权标签不是 SVG，fill/stroke 不管用——它们的背景/描边/光环/位移要单独过渡，
    否则图/树算法每步的"点亮/确定"都是啪地跳(图族与树族"静止"的病根)。 */
-.stagewrap .gnode, .stagewrap .gvlab, .stagewrap .tvnode {
+/*  B+ 树的结点只过渡颜色，**不过渡 left/top**：`<line>` 的 x1/y1 不是 CSS 属性、
+    没法跟着动，结点滑过去而连线瞬移会比不动更难看。 */
+.stagewrap .gnode, .stagewrap .gvlab, .stagewrap .tvnode, .stagewrap .bptnode {
   transition: background var(--anim), border-color var(--anim), box-shadow var(--anim),
               transform var(--anim), color var(--anim);
 }

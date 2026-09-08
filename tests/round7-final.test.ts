@@ -132,6 +132,54 @@ const KEYSETS = [
     : bad(wrong.join(' / ') || '没有发生叶子分裂，这组数据说明不了问题')
 }
 
+/* ── 6. 每一帧的每个结点，舞台都画得出来 ──────────────────
+ *
+ * 用户 2026-09-08 报的：「分裂、上提的过程中，还会隐藏（无法展示）右边树」。真的。
+ * 舞台原来只画**从根可达**的结点，而分裂帧里刚裂出来的右半边还没挂到父结点上
+ * （内核是下一步才往父结点写指针）—— 于是日志写着「左 [10] / 右 [20 30]」，
+ * 屏幕上只有左边那半。默认序列 23 帧里 7 个分裂帧全中，内部结点分裂的两帧
+ * 一次藏 3 个（右结点连它的两个孩子）。
+ *
+ * 这条判据钉的是**内核和舞台之间那个口径**：舞台画「从根可达 ∪ 悬着的右半边（focus[1]）」，
+ * 那么每一帧的 nodes 就必须全部落在这个集合里 —— 一个都不许剩下没人画。
+ * 换句话说，内核以后要是再造出别的暂时挂不上的结点，这里会先红，而不是等用户发现画面少了一块。
+ */
+{
+  const missed: string[] = []
+  const selfcheck: string[] = []
+  for (const order of [3, 4, 5]) for (const keys of KEYSETS) {
+    const t = bpRun(keys, order)
+    t.forEach((s, i) => {
+      const parentOf = new Map<number, number>()
+      s.nodes.forEach((nd, k) => nd.children.forEach(c => parentOf.set(c, k)))
+      const reach = (from: number) => {
+        const seen = new Set<number>(); const q = [from]
+        while (q.length) {
+          const n = q.shift()!
+          if (seen.has(n) || !s.nodes[n]) continue
+          seen.add(n); q.push(...s.nodes[n].children)
+        }
+        return seen
+      }
+      const drawn = reach(s.root)
+      //  舞台认「悬着的右半边」的三条件：在 focus 里、没有父、不是根
+      const ghost = s.focus.length === 2 && s.focus[1] !== s.root && !parentOf.has(s.focus[1])
+        ? s.focus[1] : -1
+      if (ghost >= 0) for (const n of reach(ghost)) drawn.add(n)
+      const left = s.nodes.map((_, k) => k).filter(k => !drawn.has(k))
+      if (left.length > 0) missed.push(`阶${order} [${keys}] 第 ${i} 帧漏了 ${left.length} 个结点`)
+      //  自检：把「悬着的右半边」那一条去掉（＝出事前那版的画法），分裂帧必须漏
+      if (s.act === 'split' && reach(s.root).size === s.nodes.length) selfcheck.push(`第 ${i} 帧`)
+    })
+  }
+  missed.length === 0
+    ? ok(`3 种阶 × 4 组键的每一帧：结点全都在「可达 ∪ 悬着的右半边」里，一个都没漏`)
+    : bad(`有结点没人画：${missed.slice(0, 3).join(' / ')}`)
+  selfcheck.length === 0
+    ? ok('自检：只画「从根可达」的话，分裂帧必定漏结点 —— 这条判据能红')
+    : bad(`自检没成立：${selfcheck.slice(0, 3).join(' / ')} 只画可达也不漏，这条判据抓不住原来的 bug`)
+}
+
 // ═══ 图遍历 ════════════════════════════════════════════
 console.log('\n【图的遍历】')
 
