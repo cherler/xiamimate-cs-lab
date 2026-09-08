@@ -6,20 +6,31 @@ import { dirname, resolve } from 'node:path'
 const here = dirname(fileURLToPath(import.meta.url))
 
 /**
- * **让 :5178 也能开两个游戏。**
+ * **让 :5178 也能开挂在 /lab/ 下的那几个子应用。**
  *
- * 坑:游戏挂在 `/lab/cards`、`/lab/world`,但那两条路由只配在**网关**(:8090)和线上 Caddy 里,
- * Vite 自己不认识。而 Vite 对未知路径会**回退到 index.html** —— 于是
- * `http://127.0.0.1:5178/lab/cards` 返回 **200**、却是实验室主页(标题「虾米课堂」),
- * 看起来像「游戏打不开」,其实是拿到了另一个页面。**又一次「200 不代表拿到的是那个东西」。**
+ * 坑:它们挂在 `/lab/cards`、`/lab/world`、`/lab/explainer`,但这些路由只配在
+ * **网关**(:8090)和线上 Caddy 里,Vite 自己不认识。而 Vite 对未知路径会**回退到 index.html**
+ * —— 于是 `http://127.0.0.1:5178/lab/cards` 返回 **200**、却是实验室主页(标题「虾米课堂」),
+ * 看起来像「打不开」,其实是拿到了另一个页面。**又一次「200 不代表拿到的是那个东西」。**
  *
- * 这条中间件把这两个前缀直接指到各游戏自己的 `dist/`,所以 :5178 和 :8090 都能开,
- * 不用记「游戏得换个端口看」。dist 不存在时给一句人话提示,而不是回退成主页。
+ * 这条中间件把这些前缀直接指到各自的产物目录,所以 :5178 和 :8090 都能开。
+ * 目录不存在时给一句人话提示,而不是回退成主页。
+ *
+ * ⚠️ 2026-09-08 补上 `/lab/explainer`。用户报「Transformer 图解按钮打不开」——
+ * 查下来这条路径**全仓只出现在 App.tsx 那颗按钮上**:没有产物、没有部署配置、
+ * 也没进这张表,于是一直静静地回退成实验室主页。正是这段注释开头写的那个坑,
+ * 只不过当时只把两个游戏挂进来了。它指的那份东西其实一直都在:
+ * `experiments/qwen-browser/` —— 一张自带 CDN 依赖的静态页,不需要构建。
  */
-function gamesPlugin() {
-  const GAMES: Record<string, string> = {
-    '/lab/cards': resolve(here, '..', 'games', 'algo-cards', 'dist'),
-    '/lab/world': resolve(here, '..', 'games', 'xiami-world', 'dist'),
+function subappsPlugin() {
+  const GAMES: Record<string, { dir: string; hint: string }> = {
+    '/lab/cards': { dir: resolve(here, '..', 'games', 'algo-cards', 'dist'),
+      hint: 'cd games/algo-cards && npm install && npm run build' },
+    '/lab/world': { dir: resolve(here, '..', 'games', 'xiami-world', 'dist'),
+      hint: 'cd games/xiami-world && npm install && npm run build' },
+    //  这一份是**源码目录**、本来就不需要构建（依赖走 CDN、模型走 ModelScope）
+    '/lab/explainer': { dir: resolve(here, '..', 'experiments', 'qwen-browser'),
+      hint: '它是 experiments/qwen-browser/index.html，不需要构建 —— 文件要是不见了，去 git 历史里找' },
   }
   const MIME: Record<string, string> = {
     '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css',
@@ -36,7 +47,7 @@ function gamesPlugin() {
         if (url === prefix) { res.statusCode = 308; res.setHeader('location', prefix + '/'); return res.end() }
         const { readFile, stat } = await import('node:fs/promises')
         const rel = url.slice(prefix.length) || '/'
-        const file = resolve(GAMES[prefix], '.' + (rel === '/' ? '/index.html' : rel))
+        const file = resolve(GAMES[prefix].dir, '.' + (rel === '/' ? '/index.html' : rel))
         try {
           if (!(await stat(file)).isFile()) throw new Error('not a file')
           const ext = file.slice(file.lastIndexOf('.'))
@@ -47,8 +58,8 @@ function gamesPlugin() {
           res.statusCode = 404
           res.setHeader('content-type', 'text/html; charset=utf-8')
           return res.end(`<meta charset="utf-8"><body style="font:15px/1.7 system-ui;padding:40px;background:#0a141f;color:#e6eef7">`
-            + `<h2>这个游戏还没构建</h2><p><code>${url}</code> 要读 <code>games/${prefix.split('/')[2] === 'cards' ? 'algo-cards' : 'xiami-world'}/dist</code>,但那里没有产物。</p>`
-            + `<p>先构建一次:<br><code style="color:#f0a94a">cd games/${prefix.split('/')[2] === 'cards' ? 'algo-cards' : 'xiami-world'} &amp;&amp; npm install &amp;&amp; npm run build</code></p></body>`)
+            + `<h2>这个子应用还没有产物</h2><p><code>${url}</code> 要读 <code>${GAMES[prefix].dir}</code>,但那里没有。</p>`
+            + `<p><code style="color:#f0a94a">${GAMES[prefix].hint}</code></p></body>`)
         }
       })
     },
@@ -60,7 +71,7 @@ export default defineConfig(({ mode }) => {
   /** 端口做成变量，是因为下面的 `hmr.clientPort` 必须跟它是同一个数 —— 见那段注释。 */
   const port = Number(env.VITE_PORT || 5178)
   return {
-    plugins: [react(), gamesPlugin()],
+    plugins: [react(), subappsPlugin()],
     /**
      * 挂在主站子路径下时要设 base，否则产物里的资源链接指向域名根 —— 表现是
      * 「/lab/ 打开一片空白，控制台一堆 404」。线上：`VITE_BASE=/lab/`。

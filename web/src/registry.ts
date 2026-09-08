@@ -3729,8 +3729,15 @@ const gbdt: Experiment<GBDTState> = {
   title: '梯度提升树 GBDT',
   subtitle: '一棵棵小树接力，每棵只补上一棵的"错"',
   kernel: gbdtKernel,
-  defaultDoc: { kind: 'gbdt', params: {}, entities: [], streams: [] },
-  params: [],
+  defaultDoc: { kind: 'gbdt', params: { lr: 50, rounds: 8, shape: '阶梯' }, entities: [], streams: [] },
+  /*  2026-09-08 补厚：原来一个旋钮都没有，整屏只能看着它自己跑完。
+      学习率是 GBDT 最要紧的那个权衡，轮数决定什么时候开始过拟合，
+      数据形状决定「树桩阶梯」这把锤子趁不趁手 —— 三样都得能拧。 */
+  params: [
+    { key: 'lr', label: '学习率', kind: 'number', options: [10, 30, 50, 100], unit: '%' },
+    { key: 'rounds', label: '提升轮数', kind: 'number', options: [4, 8, 16], unit: '棵树' },
+    { key: 'shape', label: '数据形状', kind: 'enum', options: ['阶梯', '正弦', '直线'] },
+  ],
   paramsNote: `**梯度提升(GBDT)让一串小树接力**:每棵只补前面所有树合起来还没拟合掉的误差(残差)。单棵决策树易过拟合、拟合不了平滑曲线。
 
 - **步骤**:先用常数(均值)当初始预测;每轮算残差(真值−预测),训一棵小树拟合残差,乘学习率加进预测;残差越来越小、预测越来越准。
@@ -3738,10 +3745,13 @@ const gbdt: Experiment<GBDTState> = {
 - **定位**:一堆弱学习器串起来=强学习器,是集成学习 boosting 路线,和随机森林(并行投票 bagging)并称;GBDT/XGBoost/LightGBM 至今是表格数据主力。
 - **本实验**:20 个 1D 阶梯+噪声点,用只切一刀的树桩逐轮 boosting,预测阶梯长出贴近数据、MSE 0.75→0.03。`,
   bounds: [
-    '20 个 1D 点(阶梯+噪声),可复现',
-    '初始=均值;每轮拟合残差、乘 lr 加进预测(可核)',
-    'MSE 单调降 0.75→0.03;预测阶梯逼近数据',
-    '弱学习器=单刀树桩;真实 GBDT 更深、有正则',
+    '20 个训练点 + 19 个留出点（夹在训练点中间、噪声换一把种子），可复现',
+    '初始 = 均值；每轮两拍：算残差 → 拟合树桩、乘学习率加进预测（每一步都可核对）',
+    /*  ⚠️ 原来这里写「MSE 单调降 0.75→0.03」—— 写死的数，参数一能调就是假话。
+        现在只写**性质**：训练 MSE 必单调降（这正是它演不出过拟合的原因）。 */
+    '训练 MSE 必单调降 —— 所以光看它永远看不出过拟合；掉头往上的是留出 MSE',
+    '弱学习器 = 只切一刀的树桩；真实 GBDT 的树更深、还有正则与早停，这里都没有',
+    '只有一维特征，也没有列采样/行采样 —— XGBoost/LightGBM 的加速技巧不在范围内',
   ],
   tabs: [{ id: 'boost', label: '逐轮拟合残差' }],
   Stage: GBDTStage,
@@ -3750,10 +3760,13 @@ const gbdt: Experiment<GBDTState> = {
   tickLabel: s => (s.phase === 'done' ? '毕' : `${s.round}`),
   whyInRail: true,
   readouts: s => [
-    { label: '提升轮数', value: `${s.round}` },
-    { label: 'MSE', value: `${s.mse}`, tone: s.phase === 'done' ? 'good' : undefined },
-    { label: '小树棵数', value: `${s.round}` },
-    { label: '本轮切', value: s.round > 0 ? `x≈${s.splitT}` : '—' },
+    { label: '已加的树', value: `${s.round} 棵` },
+    { label: '训练 MSE', value: `${s.mse}`, tone: s.phase === 'done' ? 'good' : undefined },
+    /*  留出 MSE 摆在训练 MSE 旁边 —— 这两个数并排放着，过拟合才看得出来 */
+    { label: '留出 MSE', value: `${s.testMse}`,
+      tone: s.testHist.length > 1 && s.testMse > Math.min(...s.testHist) ? 'bad' : undefined },
+    { label: '本轮树桩', value: s.stump ? `切 x=${s.stump.t}｜左 ${s.stump.lm}｜右 ${s.stump.rm}` : '—' },
+    { label: '学习率', value: `${(s.lr * 100).toFixed(0)}%` },
   ],
 }
 

@@ -865,10 +865,14 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       b: { phase: 'done', margin: 1, supportVectors: [0, 1, 5, 6], isMax: true },
     },
     gbdt: {
-      doc: { kind: 'gbdt', params: {}, entities: [], streams: [] },
-      //  A 第 0 轮(均值、MSE大) · B 提升 8 轮(MSE 0.03) —— 结论必须换一套说法
-      a: { phase: 'run', round: 0, mse: 0.746, splitT: 0 },
-      b: { phase: 'done', round: 8, mse: 0.033, splitT: 0.34 },
+      doc: { kind: 'gbdt', params: { lr: 50, rounds: 8, shape: '阶梯' }, entities: [], streams: [] },
+      /*  A 第 0 轮(均值、误差大) · B 提升 8 轮 —— 结论必须换一套说法。
+          2026-09-08 内核补厚：多了两拍(act)、学习率、留出集，夹具跟着补齐。 */
+      a: { phase: 'run', act: 'init', round: 0, lr: 0.5, mse: 0.746, testMse: 0.776,
+           mseHist: [0.746], testHist: [0.776], stump: null },
+      b: { phase: 'done', act: 'done', round: 8, lr: 0.5, mse: 0.033, testMse: 0.272,
+           mseHist: [0.746, 0.033], testHist: [0.776, 0.265, 0.272],
+           stump: { t: 0.711, lm: 0.181, rm: -0.423 } },
     },
     dtree: {
       doc: { kind: 'dtree', params: {}, entities: [], streams: [] },

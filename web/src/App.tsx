@@ -45,7 +45,10 @@ import * as sync from './sync.ts'
  * 游戏做完部署到 /lab/<x> 后，把 href 填上即可（照 llm 那样）。
  */
 const VIZ_OF_DISC: Record<string, { icon: string; label: string; href?: string; tip: string }> = {
-  llm:  { icon: '🔬', label: 'Transformer 图解', href: '/lab/explainer', tip: '在浏览器里看 Qwen 怎么想：注意力 + 下一词预测（服务器推理，可切 0.5B/1.5B）' },
+  /*  ⚠️ tip 原来写「服务器推理」—— 说反了。那一页是 `experiments/qwen-browser/`：
+      **纯浏览器**跑真模型（transformers.js + WebGPU，没有服务器），首次要下模型权重。
+      2026-09-08 顺着「按钮打不开」查出来的（路径当时还没进 vite 的子应用表，见 vite.config.ts）。 */
+  llm:  { icon: '🔬', label: 'Transformer 图解', href: '/lab/explainer', tip: '在浏览器里看 Qwen 怎么想：真实分词 + 下一词预测。纯浏览器推理（transformers.js + WebGPU），可切 0.5B / 1.5B —— 首次载入要下模型权重' },
   algo: { icon: '🎴', label: '算法卡牌', href: '/lab/cards', tip: '卡是算法、敌人是有性质的数据，血条是时间预算' },
   //  原来这里也是 🧩,和锚点「软件」同屏撞车;换成手柄,一眼就知道是游戏
   base: { icon: '🕹️', label: '探索游戏', href: '/lab/world', tip: '在游戏里吃透 408 四门（xiami-world）' },

@@ -5106,28 +5106,49 @@ export const GUIDES: Record<string, Guide> = {
       terms: '**弱学习器**：单棵浅树，比随便猜好一点点就行。\u3000**残差**：上一轮预测值跟真实值的差。**新的一棵树要学的就是它** —— 这是「提升」这个名字的来历。\u3000**梯度提升**：更一般的说法 —— 新树拟合的是**损失函数的负梯度**。用平方损失时负梯度恰好就是残差，换别的损失（分类、排序）时就是别的东西。\u3000**学习率（shrinkage）**：每棵新树的贡献要乘一个小系数（比如 0.1）再加进去。**补得越慢越稳** —— 学习率小、树多，通常比学习率大、树少效果好。\u3000**跟随机森林的区别**：**随机森林是并行的**（很多棵独立的树投票，各自减小方差），**GBDT 是串行的**（每棵树纠正前面的错，主要减小偏差）。前者不容易过拟合但上限低，后者上限高但需要仔细调参。\u3000**为什么表格数据上打得过神经网络**：树天然处理类别特征、不需要归一化、对特征的单调变换免疫，而且**能自动捕捉特征之间的交互** —— 这些正是表格数据的典型需求。',
       watch: '看残差怎么一轮轮变小，以及每棵新树在拟合什么。调大学习率，收敛更快但也更容易过拟合。',
     },
+    /*  ⚠️ 2026-09-08 这一段整个改过：内核补厚之后每轮拆成**两拍**（算残差 / 拟合并加进去），
+        还多了留出集。原来这里写死「MSE 从 0.75 降到…」，而学习率、轮数、数据形状现在都能调，
+        写死的那个 0.75 一拧参数就是假话。 */
     step: (s: never) => {
-      const st = s as { phase: string; round: number; mse: number; splitT: number }
+      const st = s as { phase: string; act: string; round: number; lr: number
+                        mse: number; testMse: number; mseHist: number[]; testHist: number[]
+                        stump: { t: number; lm: number; rm: number } | null }
+      const worse = st.testHist.length > 1 && st.testMse > Math.min(...st.testHist)
       return [
-        { k: '本步输入', v: st.phase === 'done' ? `boosting ${st.round} 轮` : st.round === 0 ? '起点:只用均值当预测' : `第 ${st.round} 轮,加第 ${st.round} 棵小树` },
-        { k: '判定规则', v: `每轮算残差(真值−当前预测),训一棵小树拟合**残差**,乘学习率加进预测。拟合的是残差/梯度,故名梯度提升。` },
+        { k: '本步输入', v: st.phase === 'done' ? `boosting ${st.round} 轮完成`
+            : st.act === 'init' ? '起点：还没有树，只用均值当预测'
+            : st.act === 'resid' ? `第 ${st.round + 1} 轮 · 先算残差（真值 − 当前预测）`
+            : `第 ${st.round} 轮 · 拟合一棵树桩并加进预测（学习率 ${(st.lr * 100).toFixed(0)}%）` },
+        { k: '判定规则', v: `每轮两拍：①算残差 ②训一棵树桩拟合**残差**、**乘学习率**加进预测。`
+            + `拟合的是残差/梯度，故名梯度提升。`
+            + `训练 MSE 必然单调降 —— 所以判"学过头了没有"要看**留出 MSE**。` },
         { k: '本步结果', v: st.phase === 'done'
-            ? `MSE 从 0.75 降到 **${st.mse}**,预测阶梯贴上数据——弱学习器接力=强学习器。`
-            : st.round === 0 ? `一条平线,MSE **${st.mse}**,啥都没学。`
-            : `加一棵切 x≈${st.splitT} 的树桩,MSE 降到 **${st.mse}**。` },
+            ? `训练 MSE ${st.mseHist[0]} → **${st.mse}**；留出 MSE ${st.testHist[0]} → **${st.testMse}**`
+              + (worse ? '（留出已经掉头往上 —— 后面的树在学噪声）。' : '（两条还一起降）。')
+            : st.act === 'init' ? `一条平线，训练 MSE **${st.mse}**，什么都还没学。`
+            : st.act === 'resid' ? `残差摊开了 —— **下一棵树要拟合的是它**，不是原始数据。`
+            : `树桩切在 x=${st.stump?.t}（左补 ${st.stump?.lm}、右补 ${st.stump?.rm}），`
+              + `训练 MSE 降到 **${st.mse}**、留出 **${st.testMse}**${worse ? '（涨了）' : ''}。` },
       ]
     },
     verdict: (s: never) => {
       const st = s as { phase: string; round: number; mse: number }
-      return st.phase === 'done' ? `MSE ${st.mse.toFixed(2)}` : `第${st.round}轮·${st.mse.toFixed(2)}`
+      return st.phase === 'done' ? `MSE ${st.mse.toFixed(3)}` : `第${st.round}轮·${st.mse.toFixed(3)}`
     },
     read: [
-      { at: '读数', is: '提升轮数、MSE、小树棵数、本轮切在哪。', anchor: '.scdim' },
-      { at: '散点图', is: '蓝点=数据;橙折线=当前预测(阶梯);红竖虚线=残差。', anchor: '.mlplot' },
+      { at: '读数', is: '已加的树、训练 MSE、**留出 MSE**、本轮树桩切在哪、学习率。', anchor: '.scdim' },
+      { at: '①拟合图', is: '实心点=训练数据、**空心点=留出数据**（训练时没见过）、橙阶梯=当前预测、红虚线=残差。', anchor: '.mlplot' },
+      { at: '②残差图', is: '绿柱=预测低了、红柱=预测高了；橙色那两段横线就是**这一轮拟合出来的树桩**，虚线是它切的那一刀。', anchor: '.gbresid' },
+      { at: '③两条曲线', is: '实线=训练 MSE（必单调降）、虚线=留出 MSE。**两条分岔的那一刻就是该早停的点**。', anchor: '.gbcurve' },
     ],
     try: [
-      { act: '一轮一轮加树', watch: '预测阶梯从平线开始、一段段长出,越来越贴数据、残差变短。' },
-      { act: '盯 MSE', watch: '每轮都降(0.75→0.03)——每棵小树只补上一棵没拟合掉的残差。' },
+      { act: '把学习率从 50% 拧到 100%', param: '学习率',
+        watch: '训练 MSE 掉得更快，但留出 MSE 更早触底掉头 —— 学得越猛，越早开始背噪声。'
+          + '（形状选「阶梯」、轮数 16：留出 MSE 第 3 轮就触底。）' },
+      { act: '把学习率拧到 10%', param: '学习率',
+        watch: '每棵树只挪一点点，同样轮数下还没学够 —— 这就是「补得慢但稳」的另一头。' },
+      { act: '把数据形状换成「正弦」或「直线」', param: '数据形状',
+        watch: '树桩只会画横线，遇到平滑曲线只能一级级去逼近 —— 阶梯永远带锯齿，得用更多棵树。' },
     ],
     terms: [],
   },
