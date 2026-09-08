@@ -3429,6 +3429,17 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
     linear-gradient(180deg, var(--panel), color-mix(in srgb,var(--ink) 3%,var(--panel)));
   box-shadow: inset 0 1px 4px rgba(20,32,42,.06), inset 0 0 0 1px rgba(255,255,255,.5); }
 .mlaxis { stroke:var(--dim); stroke-width:0.7; }
+/*  ── 逻辑回归补厚（2026-09-08）：准确率 + ‖w‖ 两条曲线 ── */
+.lgcurve { width:min(400px,86%); aspect-ratio:3.2/1; border:1px solid var(--plate-edge);
+  border-radius:9px; background:var(--panel) }
+.lgacc { stroke:var(--now); stroke-width:2 }
+.lgacc.bad { stroke:var(--miss) }
+.lgnorm { stroke:var(--f-tag); stroke-width:1.6; stroke-dasharray:4 3 }
+.lgdot { fill:var(--now); opacity:.55 }
+.lgnow { fill:var(--now); stroke:var(--panel); stroke-width:.8 }
+/*  100% 那条参考线 */
+.lgfull { stroke:var(--hit); stroke-width:1; stroke-dasharray:3 3; opacity:.55 }
+
 /*  ── JL 补厚（2026-09-08）：K–最大偏差曲线（拧 D 不动、拧 N 抬高）── */
 .jlcurve { width:min(400px,86%); aspect-ratio:3.4/1; border:1px solid var(--plate-edge);
   border-radius:9px; background:var(--panel) }

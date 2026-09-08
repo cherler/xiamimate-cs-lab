@@ -882,10 +882,10 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       b: { phase: 'done', splits: [{}, {}], curGini: 0, gain: 0, leaves: [{}, {}, {}], depth: 2 },
     },
     logreg: {
-      doc: { kind: 'logreg', params: {}, entities: [], streams: [] },
+      doc: { kind: 'logreg', params: { data: '线性可分', lr: 30, l2: 0 }, entities: [], streams: [] },
       //  A 起点(无边界、蒙一半) · B 收敛(100%) —— 结论必须换一套说法
-      a: { phase: 'run', gdStep: 0, w1: 0, w2: 0, b: 0, loss: 0.693, acc: 0.5 },
-      b: { phase: 'done', gdStep: 60, w1: 1.967, w2: 1.421, b: 0.038, loss: 0.03, acc: 1 },
+      a: { wNorm: 1.5, l2: 0, data: '线性可分', separable: true, accCurve: [[0, 0.5], [140, 1]], normCurve: [[0, 0], [140, 3.03]], phase: 'run', gdStep: 0, w1: 0, w2: 0, b: 0, loss: 0.693, acc: 0.5 },
+      b: { wNorm: 1.5, l2: 0, data: '线性可分', separable: true, accCurve: [[0, 0.5], [140, 1]], normCurve: [[0, 0], [140, 3.03]], phase: 'done', gdStep: 60, w1: 1.967, w2: 1.421, b: 0.038, loss: 0.03, acc: 1 },
     },
     backprop: {
       doc: { kind: 'backprop', params: {}, entities: [], streams: [] },

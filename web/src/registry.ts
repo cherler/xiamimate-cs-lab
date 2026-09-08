@@ -3825,19 +3825,28 @@ const logreg: Experiment<LogRegState> = {
   title: '逻辑回归',
   subtitle: '把"拟合直线"改造成"分两类"',
   kernel: logregKernel,
-  defaultDoc: { kind: 'logreg', params: {}, entities: [], streams: [] },
-  params: [],
+    defaultDoc: { kind: 'logreg', params: { data: '线性可分', lr: 30, l2: 0 }, entities: [], streams: [] },
+    /*  2026-09-08 补厚：数据原来写死成可分的两团，于是这个模型的**天花板**演不出来。
+      异或那一档实测准确率卡在 50%（＝瞎猜）—— 不是没练够，是线性模型画不出那条边界。
+      另加 L2：可分数据不加正则时 ‖w‖ 会一直涨（最大似然解不存在），λ=0.2 时稳在 1.13。 */
+  params: [
+    { key: 'data', label: '数据形状', kind: 'enum', options: ['线性可分', '有重叠', '异或（线性不可分）'] },
+    { key: 'lr', label: '学习率', kind: 'number', options: [10, 30, 80], unit: '%' },
+    { key: 'l2', label: 'L2 正则 λ', kind: 'number', options: [0, 10, 50, 200], unit: '‰' },
+  ],
   paramsNote: `**逻辑回归把线性回归改造成分类**。它是最基础的分类器,也是单个神经元+sigmoid 的样子。
 
 - **算概率**:先算线性打分 z=w₁x+w₂y+b,再用 sigmoid 把 z 压到 (0,1) 当"属于第 1 类的概率"。
 - **损失**:从 MSE 换成交叉熵(对数损失),预测概率离真实标签越远罚越狠。
 - **训练**:同样梯度下降调 w、b,让决策边界(z=0 那条线)转到分开两类的位置,一侧概率>0.5 判 1、另一侧判 0。
 - **本实验**:两类各 9 点(大致线性可分),w、b 从 0、lr=0.3,边界转到两类之间、交叉熵 0.69→0.03、准确率 50%→100%。`,
-  bounds: [
-    '两类各 9 个确定性点(大致线性可分),可复现',
-    '打分 z=w₁x+w₂y+b、概率=sigmoid(z)、损失=交叉熵',
-    '梯度下降调 w、b(可核);交叉熵单调降、准确率→100%',
-    '一层线性边界;非线性可分要核方法/神经网络',
+    bounds: [
+    '两类各若干确定性散点（可分 / 有重叠 / 异或三选一），可复现',
+    'z=w₁x+w₂y+b → sigmoid → 交叉熵；梯度下降 w←w−lr·(∇+λw)（偏置不罚），每步可核',
+    /*  ⚠️ 老版本写死「交叉熵 0.69→0.03、准确率 50%→100%」——换份数据就是假话。 */
+    '**只有线性可分（或近似可分）时**准确率才上得去；异或排布下它的上限就是瞎猜，这是模型的边界不是训练的问题',
+    '完全可分且 λ=0 时最大似然解**不存在**，‖w‖ 无上界、会一直涨；λ>0 才有界',
+    '只有两个特征、没有隐藏层 —— 想分开异或得加非线性（那是神经网络那一屏的事）',
   ],
   tabs: [{ id: 'boundary', label: '决策边界' }],
   Stage: LogRegStage,
@@ -3845,11 +3854,16 @@ const logreg: Experiment<LogRegState> = {
   metric: s => s.acc,
   tickLabel: s => (s.phase === 'done' ? '毕' : `${s.gdStep}`),
   whyInRail: true,
-  readouts: s => [
+    readouts: s => [
     { label: '梯度下降步', value: `${s.gdStep}` },
-    { label: '交叉熵损失', value: `${s.loss}`, tone: s.phase === 'done' ? 'good' : undefined },
-    { label: '准确率', value: `${(s.acc * 100).toFixed(0)}%`, tone: s.acc >= 1 ? 'good' : undefined },
+    { label: '交叉熵损失', value: `${s.loss}`, tone: s.phase === 'done' && s.separable ? 'good' : undefined },
+    { label: '准确率', value: `${(s.acc * 100).toFixed(0)}%`,
+      tone: s.acc >= 1 ? 'good' : !s.separable ? 'bad' : undefined },
     { label: '边界 w', value: `(${s.w1}, ${s.w2})` },
+    /*  ‖w‖ 单独一栏：λ=0 且完全可分时它会一直涨 —— 正则项管的就是这个 */
+    { label: '‖w‖', value: `${s.wNorm}${s.l2 === 0 ? '（λ=0，可分时会一直涨）' : `（λ=${s.l2}）`}` },
+    { label: '这份数据分得开吗', value: s.separable ? '线性可分' : '异或 —— 直线分不开',
+      tone: s.separable ? undefined : 'bad' },
   ],
 }
 
