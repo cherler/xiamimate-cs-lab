@@ -5006,14 +5006,21 @@ export const GUIDES: Record<string, Guide> = {
       watch: '换个初始中心再跑一遍，看结果是否不同。把数据换成两条平行的长带，你会看到它拦腰切开而不是按带子分。',
     },
     step: (s: never) => {
-      const st = s as { phase: string; iter: number; k: number; inertia: number; converged: boolean }
+      const st = s as { phase: string; iter: number; k: number; inertia: number
+                        bestInertia: number; gapPct: number; converged: boolean }
+      const stuck = st.gapPct > 0.5
       return [
-        { k: '本步输入', v: st.phase === 'done' ? 'k-means 收敛' : `第 ${st.iter + 1} 轮 · ${st.phase === 'assign' ? '分配' : '更新重心'}` },
-        { k: '判定规则', v: `两步反复:①每点归给最近的重心(分堆);②重心移到"自己那堆点"的均值。inertia(簇内平方和)每步降。` },
+        { k: '本步输入', v: st.phase === 'done' ? `k-means 收敛（k=${st.k}）` : `第 ${st.iter + 1} 轮 · ${st.phase === 'assign' ? '分配' : '更新重心'}` },
+        { k: '判定规则', v: `两步反复：①每点归给最近的重心（分堆）；②重心移到"自己那堆点"的均值。`
+            + `inertia（簇内平方和）**每步都不增** —— 这就是它必然收敛的原因；`
+            + `但收敛**不等于最优**，落在哪个局部最优由初始重心决定。` },
         { k: '本步结果', v: st.phase === 'done'
-            ? `重心 march 到三堆中心、inertia 稳定 **${st.inertia}**、归属稳定——没用任何标签。`
-            : st.phase === 'assign' ? `按最近重心分堆,此刻 inertia **${st.inertia}**。`
-            : `重心跳到各堆均值${st.converged ? '——不再动了,收敛' : ''}。` },
+            ? `inertia 稳定在 **${st.inertia}**、归属稳定 —— 全程没用任何标签。`
+              + (stuck
+                ? `　⚠️ 但同样的 k、同样的数据，最好的一次只要 ${st.bestInertia} —— 这一次**高出 ${st.gapPct}%**，掉进了局部最优。`
+                : `　这一次正好落在最好的那一档（${st.bestInertia}）。`)
+            : st.phase === 'assign' ? `按最近重心分堆，此刻 inertia **${st.inertia}**。`
+            : `重心跳到各堆均值${st.converged ? ' —— 不再动了，收敛' : ''}，inertia **${st.inertia}**。` },
       ]
     },
     verdict: (s: never) => {
@@ -5021,12 +5028,18 @@ export const GUIDES: Record<string, Guide> = {
       return st.phase === 'done' || st.converged ? `inertia ${st.inertia}` : `轮${st.iter + 1}·${st.phase === 'assign' ? '分' : '移'}`
     },
     read: [
-      { at: '读数', is: '轮次、簇数 k、簇内平方和、是否收敛。', anchor: '.scdim' },
-      { at: '散点图', is: '点按归属染色(三色);✕=重心;看点变色、✕ 移动。', anchor: '.mlplot' },
+      { at: '读数', is: '轮次、簇数 k、簇内平方和，以及**同样条件下最好的一次能到多少** —— 两个数并排，才看得出这次有没有停在局部最优。', anchor: '.scdim' },
+      { at: '散点图', is: '点按归属染色；✕=重心。看点变色、✕ 移动。', anchor: '.mlplot' },
+      { at: '收敛曲线', is: '实线=这一次的 inertia；**虚线=最好的一次**。两条不合拢，就是这次停在了更差的地方。', anchor: '.kmcurve' },
     ],
     try: [
-      { act: '一步步走「分配→移动」', watch: '点按最近 ✕ 染色 → ✕ 跳到自己那堆中心;几轮后三堆清清楚楚。' },
-      { act: '盯 inertia', watch: '每步都在降(54→4),重心不再动=收敛。全程没用真实标签。' },
+      { act: '把「初始重心」换成「一角扎堆」', param: '初始重心',
+        watch: '**同样的算法、同样的数据，只因为起点不同**，收敛到 inertia 30.19，而最好的一次只要 4.05（高出 645%）。'
+          + '图上能看见：两堆被并成一堆，还有一个重心孤零零挂着。这就是"k-means 只保证收敛、不保证最优"。' },
+      { act: '把 k 从 3 拧到 5', param: '分几堆 k',
+        watch: 'inertia 跟着降 —— 它**必然随 k 单调降**（k=点数时为 0）。所以**不能靠 inertia 选 k**，这正是手肘法存在的理由。' },
+      { act: '数据形状换成「两条月牙」', param: '数据形状',
+        watch: '它一定切错 —— k-means 按"离哪个重心近"划分，边界永远是直的，切不开互相嵌着的弯月。这不是 bug，是这个算法的边界。' },
     ],
     terms: [],
   },

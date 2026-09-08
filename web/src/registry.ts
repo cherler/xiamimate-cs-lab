@@ -3627,8 +3627,15 @@ const kmeans: Experiment<KMeansState> = {
   title: 'k-means 聚类',
   subtitle: '无标签的点，怎么自己分成几堆',
   kernel: kmeansKernel,
-  defaultDoc: { kind: 'kmeans', params: {}, entities: [], streams: [] },
-  params: [],
+  defaultDoc: { kind: 'kmeans', params: { k: 3, init: 'k-means++', shape: '三团' }, entities: [], streams: [] },
+  /*  2026-09-08 补厚：原来 k、初始重心、数据全写死，一个旋钮都没有 ——
+      于是老说明里那两条软肋（依赖初始化、k 要人定）**写着却演不出来**。
+      现在两条都能拧出来看：「一角扎堆」当场掉进更差的局部最优，k 一改 inertia 就跟着变。 */
+  params: [
+    { key: 'k', label: '分几堆 k', kind: 'number', options: [2, 3, 4, 5] },
+    { key: 'init', label: '初始重心', kind: 'enum', options: ['k-means++', '分散', '一角扎堆'] },
+    { key: 'shape', label: '数据形状', kind: 'enum', options: ['三团', '两条月牙'] },
+  ],
   paramsNote: `**k-means 是最经典的无监督聚类**:没标签,把一堆点分成 k 堆。是"没老师、靠数据自己找结构"的代表,向量量化/图像分割/用户分群都用它。
 
 - **两步反复跳**:①分配——每点归给最近的重心;②更新——每个重心移到"分给它的点"的平均位置。
@@ -3636,10 +3643,13 @@ const kmeans: Experiment<KMeansState> = {
 - **软肋**:依赖初始重心、k 要人定。
 - **本实验**:18 个点(来自 3 个簇)、k=3、重心故意初始化偏,看分配→移动交替、inertia 54→4、几步收敛。`,
   bounds: [
-    '18 个确定性点(来自 3 个簇),k=3,重心初始偏',
-    '分配=每点归最近重心;更新=重心移到均值(可核)',
-    'inertia 单调降 54→4;几步收敛(重心不再动)',
-    '结果依赖初始化;k 需人定——k-means 的已知软肋',
+    '确定性数据（三团 18 点 / 两条月牙 22 点），可复现',
+    '分配=每点归最近重心；更新=重心移到均值（每一步都可核对）',
+    /*  ⚠️ 原来写「inertia 单调降 54→4」——k 一能调就是假话。只写**性质**。 */
+    'inertia 每一步都不增（这是 k-means 必然收敛的原因），但**只保证收敛、不保证收敛到最好**',
+    '「最好的一次」= 同样 k、同样数据跑 20 次随机重启取最小；用它来量这一次差多少',
+    'inertia **必然随 k 单调降** —— 所以不能靠它选 k（手肘法的由来）',
+    '只会切球形的堆：换成「两条月牙」它一定切错，那不是 bug 是这个算法的边界',
   ],
   tabs: [{ id: 'cluster', label: '分配+移动' }],
   Stage: KMeansStage,
@@ -3651,6 +3661,11 @@ const kmeans: Experiment<KMeansState> = {
     { label: '第几轮', value: `${s.iter + 1}` },
     { label: '阶段', value: s.phase === 'assign' ? '分配' : s.phase === 'move' ? '移动重心' : '收敛' },
     { label: '簇内平方和', value: `${s.inertia}`, tone: s.converged ? 'good' : undefined },
+    /*  把「最好的一次」摆在旁边 —— 「k-means 只保证收敛、不保证最优」这句话，
+        只有并排放着两个数才立得住。差得多就标红。 */
+    { label: '最好的一次', value: `${s.bestInertia}（20 次重启）` },
+    { label: '这次差多少', value: s.gapPct > 0.5 ? `高 ${s.gapPct}%（局部最优）` : '就是最好的一档',
+      tone: s.gapPct > 0.5 ? 'bad' : 'good' },
     { label: '收敛', value: s.converged ? '是' : '未', tone: s.converged ? 'good' : undefined },
   ],
 }

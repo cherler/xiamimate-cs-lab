@@ -847,10 +847,11 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       b: { phase: 'done', k: 3, seen: 3, voteA: 1, voteB: 2, predict: 1 },
     },
     kmeans: {
-      doc: { kind: 'kmeans', params: {}, entities: [], streams: [] },
-      //  A 第 1 轮分配(inertia 54) · B 收敛(inertia 4) —— 结论必须换一套说法
-      a: { phase: 'assign', iter: 0, k: 3, inertia: 54.17, converged: false },
-      b: { phase: 'done', iter: 3, k: 3, inertia: 4.05, converged: true },
+      doc: { kind: 'kmeans', params: { k: 3, init: 'k-means++', shape: '三团' }, entities: [], streams: [] },
+      /*  A 第 1 轮分配 · B 收敛 —— 结论必须换一套说法。
+          2026-09-08 内核补厚：多了「最好的一次」和差距百分比。 */
+      a: { phase: 'assign', iter: 0, k: 3, inertia: 8.94, bestInertia: 4.05, gapPct: 120.7, converged: false },
+      b: { phase: 'done', iter: 1, k: 3, inertia: 4.05, bestInertia: 4.05, gapPct: 0, converged: true },
     },
     pca: {
       doc: { kind: 'pca', params: {}, entities: [], streams: [] },
