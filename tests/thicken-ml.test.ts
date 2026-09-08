@@ -35,6 +35,7 @@ import { svmKernel, type SVMState } from '../src/kernels/svm.ts'
 import { matmulKernel, type MatmulState } from '../src/kernels/matmul.ts'
 import { quantKernel, type QuantState } from '../src/kernels/quant.ts'
 import { rnnKernel, type RNNState } from '../src/kernels/rnn.ts'
+import { lstmKernel, type LSTMState } from '../src/kernels/lstm.ts'
 
 let failures = 0
 const ok = (m: string) => console.log(`  ✅ ${m}`)
@@ -345,6 +346,49 @@ console.log('\n【逻辑回归：正则真的在压权重，异或真的分不�
   !xor.separable && xor.acc < sep.acc - 0.15
     ? ok(`异或准确率 ${(xor.acc * 100).toFixed(0)}%，可分档 ${(sep.acc * 100).toFixed(0)}% —— 一条直线切不开异或`)
     : bad(`异或 ${(xor.acc * 100).toFixed(0)}% vs 可分 ${(sep.acc * 100).toFixed(0)}% —— 差距不足以说明"线性不可分"`)
+}
+
+// ═══ LSTM：跟 RNN 同一把尺子，只差 tanh′ 那一项 ═══════════
+console.log('\n【LSTM：∏f 没有 tanh′ 掺进来，所以 f 能取到 1】')
+{
+  const go = (p: P) => last(run(lstmKernel.compile(doc('lstm', p)), 80) as LSTMState[])
+  const L50 = '长序列（T=50）'
+
+  //  ① f=1 时影响力必须**一点不掉**（∏f=1），这是 LSTM 存在的全部理由
+  const f1 = go({ seq: L50, forget: 1 })
+  Math.abs(f1.grad - 1) < 1e-12 && f1.halfLife < 0
+    ? ok(`f=1、走 50 步：开头写进 cell 的东西还剩 ${f1.grad}（一点没少），半衰期判为"不衰减"`)
+    : bad(`f=1 居然掉了：还剩 ${f1.grad}、半衰期 ${f1.halfLife}`)
+
+  /*  ② 这一屏最值钱的一条：**f=0.9 的衰减跟 RNN wh=0.9 一模一样**。
+      因为脉冲之后 RNN 的 h→0、tanh′→1，两条链此刻乘的正是同一个数。
+      这条把"两边只差 tanh′ 那一项"钉成了一个可核对的等式。 */
+  const lf9 = go({ seq: L50, forget: 0.9 })
+  const rw9 = last(run(rnnKernel.compile(doc('rnn', { seq: '脉冲后全 0（T=50）', wh: 0.9 })), 80) as RNNState[])
+  Math.abs(lf9.halfLife - rw9.halfLife) < 0.15
+    ? ok(`f=0.9 的半衰期 ${lf9.halfLife} 步 = RNN wh=0.9 的 ${rw9.halfLife} 步 —— 两条链此刻乘的是同一个数`)
+    : bad(`两边对不上：LSTM f=0.9 → ${lf9.halfLife} 步，RNN wh=0.9 → ${rw9.halfLife} 步`)
+
+  //  ③ 影响力必须是**纯粹的 ∏f**：逐帧算出来的值要等于 f 的幂
+  const seq = (run(lstmKernel.compile(doc('lstm', { seq: L50, forget: 0.9 })), 80) as LSTMState[]).filter(s => s.phase === 'run')
+  const off = seq.map((s, k) => (k === 0 ? 0 : Math.abs(Math.log(Math.abs(s.grad) / 0.9 ** k))))
+  Math.max(...off) < 0.02
+    ? ok(`影响力逐帧等于 0.9^k —— 是**纯粹的 ∏f**，没有 tanh′ 之类的东西掺进来`)
+    : bad(`影响力不等于 ∏f（最大偏差 ${Math.max(...off).toFixed(3)}）`)
+
+  /*  ④ 跟 RNN 的关键差别：LSTM 的因子**可以取到 1**，RNN 的**取不到**。
+      拿两边各自最好的一档比 —— 这才是"门控赢在哪"的硬凭据。 */
+  const rnnBest = [0.5, 0.9, 1.5].map(wh => last(run(rnnKernel.compile(doc('rnn', { seq: '脉冲后全 0（T=50）', wh })), 80) as RNNState[]))
+  const bestRnnFactor = Math.max(...rnnBest.map(s => s.factorAsymp))
+  bestRnnFactor < 1 && f1.grad === 1
+    ? ok(`RNN 三档的每步因子最大也只有 ${bestRnnFactor}（<1，必然衰减）；LSTM 的 f 可以取到 1（不衰减）—— 门控赢的就是这一项`)
+    : bad(`对照不成立：RNN 最大因子 ${bestRnnFactor}、LSTM f=1 时还剩 ${f1.grad}`)
+
+  //  ⑤ 剧本那一档原样保住（cell 全程 0.8、末步 h=tanh(0.8)=0.664）
+  const sc = (run(lstmKernel.compile(doc('lstm', { seq: '存/守/取 剧本（可手核）', forget: 1 })), 80) as LSTMState[]).filter(s => s.phase === 'run')
+  JSON.stringify(sc.map(s => s.c)) === JSON.stringify([0.8, 0.8, 0.8, 0.8]) && sc[3].h === 0.664
+    ? ok('剧本那一档原样保留：cell 全程 0.8，末步 h=tanh(0.8)=0.664，逐步可手核')
+    : bad(`剧本那档变了：c=${sc.map(s => s.c).join('/')}，末步 h=${sc[3]?.h}`)
 }
 
 // ═══ RNN：沿时间的连乘，跟沿深度是同一件事 ═══════════════

@@ -4488,31 +4488,56 @@ const lstm: Experiment<LSTMState> = {
   title: 'LSTM 门控',
   subtitle: '给记忆装门，一条几乎不衰减的 cell 传送带扛住长距离依赖',
   kernel: lstmKernel,
-  defaultDoc: { kind: 'lstm', params: {}, entities: [], streams: [] },
-  params: [],
+  defaultDoc: { kind: 'lstm', params: { seq: '存/守/取 剧本（可手核）', forget: 1 }, entities: [], streams: [] },
+  /*  2026-09-08 补厚：老版本是一段 4 步的**理想化剧本**，门值全被手写成 0/1。
+      机制是演清楚了，但"传送带扛住了"更像一句宣告 —— 而且它跟隔壁 RNN **没法直接比**，
+      可 LSTM 存在的全部理由就是"RNN 做不到的它做得到"。
+      长序列那两档改成跟 RNN **同一个任务、同一把尺子**。 */
+  params: [
+    { key: 'seq', label: '序列', kind: 'enum', options: ['存/守/取 剧本（可手核）', '长序列（T=20）', '长序列（T=50）'] },
+    { key: 'forget', label: '遗忘门 f', kind: 'number', options: [0.5, 0.9, 1] },
+  ],
   paramsNote: `**LSTM 另开一条细胞状态 c 当传送带,治 RNN 的梯度消失**:普通 RNN 记忆每步都过 tanh、反复挤压,长序列很快忘光=梯度消失;LSTM 的更新 c_t=f·c_{t-1}+i·c̃ 加法为主、近乎线性的高速路。
 
 - **三个门(0~1 sigmoid)**:遗忘门 f 留多少旧记忆、输入门 i 写多少新内容、输出门 o 放多少出来;h=o·tanh(c)。f≈1、i≈0 时旧记忆和梯度原封不动传很远。
-- **本实验**:"记住开头、末尾取出"任务,标量 4 步(门值理想化 0/1)——存(i=1,c̃=0.8→c=0.8)、守守(f=1,i=0→c 一直 0.8)、取(o=1→h=tanh(0.8)=0.664);cell 全程稳在 0.8,正是 RNN 做不到的长期记忆。
-
-GRU 是简化;后来 Transformer 注意力。`,
+- **剧本那一档**(原样保留):存(i=1,c̃=0.8→c=0.8)、守守(f=1,i=0→c 一直 0.8)、取(o=1→h=tanh(0.8)=0.664),逐步可手核。
+- **长序列那两档跟隔壁 RNN 用同一把尺子**:同样"开头一个脉冲、之后全 0",量同样的"开头那个输入还剩多少影响"。**两条链只差一项**:
+  - RNN 要乘 ∏ **wh·(1−h²)**——tanh′ 是**算出来的、必然小于 1**(h 一饱和还趋近 0,所以 RNN 把 wh 调大反而更糟)。
+  - LSTM 只乘 ∏ **f**——**没有 tanh′ 掺进来**,而 f 是**学出来的门,可以学成 1**。
+- **实测**:f=1.0 时 50 步后影响力**一点没少**(半衰期 ∞);f=0.9 → 6.6 步,而 RNN 最好那档(wh=0.9)也是 **6.6 步**——一模一样,因为那时两条链乘的正是同一个数。
+- 所以**门控赢的不是"更聪明",是把那一项从"必然小于 1"变成了"可以等于 1"**。再往后 Transformer 的注意力干脆不传了:每个位置直接看全序列,连乘链一步都不用走。`,
   bounds: [
-    '标量 LSTM 4 步:存→守→守→取',
-    'c=f·c_prev+i·c̃、h=o·tanh(c)(可核)',
-    'cell 全程 0.8(f=1 守住);末步 h=tanh(0.8)=0.664',
-    '门理想化 0/1(真实 0~1 sigmoid);GRU 是简化',
+    '标量 LSTM；c = f·c_prev + i·c̃、h = o·tanh(c)，每步可手核',
+    '「存/守/取 剧本」那一档原样保留（4 步、门值理想化成 0/1、cell 全程 0.8）',
+    '长序列那两档跟 RNN **同一个任务**：第 1 步写入、中间一路守、末步取出；量 ∂c_t/∂c₁ = ∏f',
+    /*  ⚠️ 这条是这一屏跟 RNN 能不能对上的前提，别改。 */
+    '影响力用的是**跟 RNN 完全一样的定义**（开头那个输入还剩多少），半衰期也用同一个算法 ln0.5/ln(每步因子)',
+    '门值仍是**给定的**，不是从数据学出来的：这里要演的是"门能取到 1 时会怎样"，不是训练一个 LSTM',
+    '标量、单层、无损失与训练；GRU、peephole、层归一化位置都不在范围内',
   ],
   tabs: [{ id: 'gate', label: '门控+传送带' }],
   Stage: LSTMStage,
-  tone: s => (s.phase === 'done' ? { key: 'good', label: `守住 ${s.c}` } : s.role === '存' ? { key: 'idle', label: '写入' } : s.role === '守' ? { key: 'good', label: '守住' } : s.role === '取' ? { key: 'good', label: '取出' } : { key: 'idle', label: '门控' }),
-  metric: s => (s.phase === 'done' ? 1 : s.t > 0 ? s.t / 4 : 0),
+  tone: s => (s.phase !== 'done'
+    ? (s.role === '存' ? { key: 'idle', label: '写入' } : s.role === '守' ? { key: 'good', label: '守住' }
+      : s.role === '取' ? { key: 'good', label: '取出' } : { key: 'idle', label: '门控' })
+    : s.script ? { key: 'good', label: `守住 ${s.c}` }
+      : s.halfLife < 0 ? { key: 'good', label: '不衰减' } : { key: 'bad', label: `半衰期 ${s.halfLife} 步` }),
+  metric: s => (s.phase === 'done' ? 1 : s.t > 0 ? s.t / s.cs.length : 0),
   tickLabel: s => (s.phase === 'done' ? '毕' : s.role || `t${s.t}`),
   whyInRail: true,
   readouts: s => [
     { label: '细胞状态 c', value: s.t > 0 || s.phase === 'done' ? `${s.c}` : '0', tone: s.phase === 'done' ? 'good' : undefined },
     { label: '隐藏 h', value: s.t > 0 || s.phase === 'done' ? `${s.h}` : '0' },
     { label: '门 f/i/o', value: s.t > 0 && s.phase !== 'done' ? `${s.f}/${s.ig}/${s.o}` : '—' },
-    { label: '本步', value: s.t > 0 && s.phase !== 'done' ? s.role : s.phase === 'done' ? '取出' : '待走' },
+    ...(s.script
+      ? [{ label: '想跟 RNN 比', value: '把「序列」换成长序列' }]
+      : [
+        /*  跟 RNN 那一屏是**同一个量、同一把尺子** —— 这两栏就是为了并排看 */
+        { label: '开头写入的还剩', value: `${s.grad}`, tone: (s.grad > 0.5 ? 'good' : 'bad') as 'good' | 'bad' },
+        { label: '记忆半衰期', value: s.halfLife < 0 ? '不衰减（∏f=1）' : `${s.halfLife} 步`,
+          tone: (s.halfLife < 0 ? 'good' : 'bad') as 'good' | 'bad' },
+        { label: '对照 RNN（wh=0.9）', value: `${s.rnnHalf} 步` },
+      ]),
   ],
 }
 

@@ -5816,31 +5816,52 @@ export const GUIDES: Record<string, Guide> = {
       hook: '给记忆装三道闸门，就不容易忘了。',
       what: '这一屏讲的是**LSTM（长短期记忆网络）**：为治 RNN 的梯度消失而设计的改良版，在 Transformer 出现之前统治了序列建模近二十年。普通 RNN 每一步都把整个状态**重写**一遍，旧信息很快被冲掉。LSTM 的做法是另开一条**几乎原样往下传的主线**（细胞状态），再配三道闸门决定：这一步该忘掉多少旧的、该写进多少新的、该输出多少。主线上的传递接近恒等，梯度就不会一路衰减 —— **跟残差连接是同一个思路**。',
       terms: '**细胞状态 c**：那条主线，信息在上面**加性地**流动而不是被反复相乘。这是 LSTM 能记住长距离依赖的关键。\u3000**遗忘门**：决定旧的细胞状态保留多少。**输出接近 1 就是「全部记住」，接近 0 就是「清空」。**\u3000**输入门**：决定这一步的新信息写进去多少。\u3000**输出门**：决定细胞状态里有多少露出来当作这一步的输出。\u3000**门是学出来的**：三道门都是由当前输入和上一步状态算出的 0–1 之间的数。**所以模型可以自己学会「这条信息我要一直记着」或者「这里该翻篇了」。**\u3000**GRU**：LSTM 的简化版，把三道门减成两道、去掉独立的细胞状态。参数更少、训得更快，多数任务上效果相当。\u3000**为什么最终还是被取代**：LSTM 治好了梯度消失，但**没治好「无法并行」和「信息要一路传递」这两条** —— 注意力可以让任意两个位置一步直达，而且全序列并行计算。',
-      watch: '看三道闸门的开合值随输入怎么变，以及主线上的信息怎么被保住。把遗忘门强行设成 0，记忆立刻断片。',
+      watch: '把「序列」换成长序列，跟隔壁 RNN **用同一把尺子**比：两条链只差一项 —— RNN 乘 ∏wh·(1−h²)（tanh′ 算出来，**必然小于 1**），LSTM 只乘 ∏f（门学出来，**可以等于 1**）。f=1 时走 50 步影响力**一点不掉**；而 f=0.9 的半衰期跟 RNN 最好那档一模一样，因为那时两边乘的正是同一个数。',
     },
     step: (s: never) => {
-      const st = s as { phase: string; t: number; role: string; f: number; ig: number; o: number; ctil: number; cPrev: number; c: number; h: number }
+      const st = s as { phase: string; t: number; role: string; f: number; ig: number; o: number
+        ctil: number; cPrev: number; c: number; h: number
+        script?: boolean; grad?: number; halfLife?: number; rnnHalf?: number
+        cs?: unknown[]; compare?: [number, number][] }
+      //  ⚠️ 补厚字段可选读：老快照没有 script/grad，读不到就按剧本那一档讲（老口径）。
+      const isScript = st.script !== false
+      const T = st.cs?.length ?? 4
       return [
-        { k: '本步输入', v: st.t === 0 ? '空记忆 c₀=0' : st.phase === 'done' ? '走完 4 步' : `第 ${st.t} 步(${st.role}):门 f=${st.f} i=${st.ig} o=${st.o}` },
-        { k: '判定规则', v: `另开一条**细胞状态 c(传送带)**:**c_t = f·c_{'{'}t-1{'}'} + i·c̃**(加法为主、近乎线性)。遗忘门 **f** 留多少旧记忆、输入门 **i** 写多少新内容、输出门 **o** 放多少:**h = o·tanh(c)**。f≈1、i≈0 记忆就原样传很远。` },
-        { k: '本步结果', v: st.phase === 'done' ? `传送带全程稳在 **${st.c}**——存进去被原样扛到末尾、再取出 ${st.h}。这是 RNN 做不到的长期记忆。`
-            : st.role === '存' ? `开输入门 → c=${st.c},写入记忆。`
-            : st.role === '守' ? `f=1、i=0 → c=1·${st.cPrev}=**${st.c}**,记忆原样传下去。`
-            : st.role === '取' ? `开输出门 → h=tanh(${st.c})=**${st.h}**,放出记忆。`
-            : '待走。' },
+        { k: '本步输入', v: st.t === 0 ? '空记忆 c₀=0' : st.phase === 'done' ? `走完 ${T} 步` : `第 ${st.t} 步（${st.role}）：门 f=${st.f} i=${st.ig} o=${st.o}` },
+        { k: '判定规则', v: `另开一条**细胞状态 c（传送带）**：**c_t = f·c_{'{'}t-1{'}'} + i·c̃**（加法为主、近乎线性）；**h = o·tanh(c)**。`
+            + `　于是 ∂c_t/∂c₁ = **∏f** —— **没有 tanh′ 掺进来**，这就是它跟 RNN 的**全部**差别。` },
+        { k: '本步结果', v: st.phase === 'done'
+            ? (isScript
+              ? `传送带全程稳在 **${st.c}**——存进去被原样扛到末尾、再取出 ${st.h}。但门值是**手写死的**，换成长序列才比得出高下。`
+              : `开头写进去的还剩 **${st.grad}**`
+                + (st.halfLife !== undefined && st.halfLife < 0
+                  ? `——**一点没少**（f=1 ⇒ ∏f=1，半衰期无穷）。`
+                  : `（半衰期 ${st.halfLife} 步）。`)
+                + (st.rnnHalf !== undefined ? `　RNN 最好那档是 ${st.rnnHalf} 步。` : ''))
+            : st.role === '存' ? `开输入门 → c=${st.c}，写入记忆。`
+              : st.role === '守' ? `f=${st.f}、i=0 → c=${st.f}·${st.cPrev}=**${st.c}**，记忆往下传`
+                + (isScript ? '。' : `；开头写入的还剩 **${st.grad}**。`)
+                : st.role === '取' ? `开输出门 → h=tanh(${st.c})=**${st.h}**，放出记忆。`
+                  : '待走。' },
       ]
     },
     verdict: (s: never) => {
-      const st = s as { phase: string; role: string; c: number }
-      return st.phase === 'done' ? `守住 ${st.c}` : st.role || '门控'
+      const st = s as { phase: string; role: string; c: number; script?: boolean; halfLife?: number }
+      if (st.phase !== 'done') return st.role || '门控'
+      if (st.script === false) return st.halfLife !== undefined && st.halfLife < 0 ? '不衰减' : `半衰期 ${st.halfLife} 步`
+      return `守住 ${st.c}`
     },
     read: [
       { at: '读数', is: '细胞状态 c(记忆)、隐藏 h、三个门、本步动作。', anchor: '.scdim' },
-      { at: '传送带+门', is: '上=cell 记忆传送带(全程稳在 0.8),下=三个门(绿开/灰关):遗忘 f、输入 i、输出 o。', anchor: '.lstmwrap' },
+      { at: '传送带+门', is: '上=cell 记忆传送带,下=三个门(绿开/灰关):遗忘 f、输入 i、输出 o。长序列只画前 10 格。', anchor: '.lstmwrap' },
+      { at: '跟 RNN 并排的对照条', is: '**长序列那两档才有**:同一把尺子量"开头写进去的还剩多少"。绿=LSTM 的 ∏f、红=RNN 的 ∏wh·(1−h²)。', anchor: '.lscmp' },
     ],
     try: [
-      { act: '按「下一步」走 4 步', watch: '存(开输入门)→守守(f=1 i=0,c 不变)→取(开输出门)。' },
-      { act: '盯 cell 传送带', watch: 'c 全程稳在 0.8——记忆被原封不动扛过来,这正是 RNN 会丢的。' },
+      { act: '按「下一步」走完剧本那一档', watch: '存(开输入门)→守守(f=1 i=0,c 不变)→取(开输出门);c 全程稳在 0.8,每步可手核。' },
+      //  下面三条是补厚后的主菜：跟 RNN 摆到同一把尺子上
+      { act: '把「序列」换成「长序列（T=50）」，遗忘门留在 1', watch: '开头写进 cell 的东西走了 50 步**一点没少**(还剩 1)。因为 ∂c_T/∂c₁ = ∏f = 1——**这条传送带上没有任何东西在乘除它**。对照条上 RNN 那根已经掉没了。' },
+      { act: '把「遗忘门 f」调到 0.9', watch: '半衰期 **6.6 步**。去隔壁 RNN 把 wh 也调到 0.9 ——**也是 6.6 步,一模一样**。不是巧合:那时两条链乘的正是同一个数。' },
+      { act: '想清楚差别在哪', watch: 'RNN 乘的是 wh·(1−h²),**tanh′ 是算出来的、必然小于 1**(h 一饱和还趋近 0,所以调大 wh 反而更糟);LSTM 乘的是 f,**门是学出来的、可以学成 1**。**门控赢的不是"更聪明",是把那一项从"必然小于 1"变成了"可以等于 1"。**' },
     ],
     terms: [],
   },

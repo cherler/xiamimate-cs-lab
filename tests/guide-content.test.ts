@@ -984,10 +984,14 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       b: { phase: 'done', stage: 'done', dir: [1, 0], result: [1, 1], ranked: [{ name: '王后', d: 0 }, { name: '王子', d: 0.906 }], nearest: '王后', words: [{ name: '国王', v: [1, 0] }, { name: '男人', v: [0, 0] }, { name: '女人', v: [0, 1] }, { name: '王后', v: [1, 1] }] },
     },
     lstm: {
-      doc: { kind: 'lstm', params: {}, entities: [], streams: [] },
-      //  A 存(写入记忆) · B 取出(全程守住) —— 结论必须换一套说法
-      a: { phase: 'run', t: 1, role: '存', f: 0, ig: 1, ctil: 0.8, o: 0, cPrev: 0, c: 0.8, h: 0, cs: [0.8, null, null, null] },
-      b: { phase: 'done', t: -1, role: '毕', f: 1, ig: 0, ctil: 0, o: 1, cPrev: 0.8, c: 0.8, h: 0.664, cs: [0.8, 0.8, 0.8, 0.8] },
+      doc: { kind: 'lstm', params: { seq: '长序列（T=20）', forget: 1 }, entities: [], streams: [] },
+      //  A 第 4 步（守，c 不变） · B 走完 20 步（影响力一点没少）—— 结论必须换一套说法
+      a: { phase: 'run', t: 4, role: '守', f: 1, ig: 0, o: 0, ctil: 0, cPrev: 0.8, c: 0.8, h: 0,
+        script: false, grad: 1, halfLife: -1, rnnHalf: 6.6, cs: new Array(20).fill(0.8),
+        compare: [[0.5, 1], [0.9, 6.6], [1, -1]] },
+      b: { phase: 'done', t: -1, role: '毕', f: 1, ig: 0, o: 1, ctil: 0, cPrev: 0.8, c: 0.8, h: 0.664,
+        script: false, grad: 1, halfLife: -1, rnnHalf: 6.6, cs: new Array(20).fill(0.8),
+        compare: [[0.5, 1], [0.9, 6.6], [1, -1]] },
     },
     norm: {
       doc: { kind: 'norm', params: { kind: '批归一化' }, entities: [], streams: [] },
