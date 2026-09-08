@@ -26,6 +26,7 @@ import { cltKernel, type CltState } from '../src/kernels/clt.ts'
 import { jlKernel, type JLState } from '../src/kernels/jl.ts'
 import { logregKernel, type LogRegState } from '../src/kernels/logreg.ts'
 import { binsearchKernel, type BinSearchState } from '../src/kernels/binsearch.ts'
+import { graddescKernel, type GradDescState } from '../src/kernels/graddesc.ts'
 
 let failures = 0
 const ok = (m: string) => console.log(`  ✅ ${m}`)
@@ -336,6 +337,66 @@ console.log('\n【逻辑回归：正则真的在压权重，异或真的分不�
   !xor.separable && xor.acc < sep.acc - 0.15
     ? ok(`异或准确率 ${(xor.acc * 100).toFixed(0)}%，可分档 ${(sep.acc * 100).toFixed(0)}% —— 一条直线切不开异或`)
     : bad(`异或 ${(xor.acc * 100).toFixed(0)}% vs 可分 ${(sep.acc * 100).toFixed(0)}% —— 差距不足以说明"线性不可分"`)
+}
+
+// ═══ 梯度下降：上限是算出来的，动量要成对调 ═══════════════
+console.log('\n【梯度下降：稳定上限、理论收缩率、动量】')
+{
+  const go = (p: P) => last(run(graddescKernel.compile(doc('graddesc', p)), 200) as GradDescState[])
+  const NONE = '0（普通梯度下降）', FORM = '公式值 1/(λmin+λmax)'
+
+  //  ① 公式档的**实测**收缩率必须跟理论 (κ−1)/(κ+1) 对上 —— 这一栏是"公式没骗人"的现场核对
+  const off = [5, 50].map(k => {
+    const s = go({ shape: `${k === 5 ? '椭圆' : '峡谷'} κ=${k}`, lr: FORM, mom: NONE })
+    return { k, meas: s.measRate, th: s.rateGd, d: Math.abs(s.measRate - s.rateGd) }
+  })
+  off.every(o => o.d < 5e-4)
+    ? ok(`公式档实测收缩率跟理论逐位对上：${off.map(o => `κ=${o.k} 实测 ${o.meas}/理论 ${o.th}`).join('、')}`)
+    : bad(`实测跟理论对不上：${off.map(o => `κ=${o.k} 差 ${o.d}`).join(' / ')}`)
+
+  //  ② 稳定上限必须真的分开收敛与发散（上限本身是算出来的 1/κ）
+  const wrong: string[] = []
+  for (const shape of ['圆碗 κ=1', '椭圆 κ=5', '峡谷 κ=50']) {
+    for (const lr of ['很小（上限的 10%）', '一半（上限的 50%）', FORM, '临界（正好等于上限）', '超限（上限的 110%）']) {
+      const s = go({ shape, lr, mom: NONE })
+      const should = s.lr > s.lrMaxEff + 1e-12
+      if (s.diverged !== should) wrong.push(`${shape}/${lr}：步长 ${s.lr} 上限 ${s.lrMaxEff}，标成${s.diverged ? '发散' : '收敛'}`)
+    }
+  }
+  wrong.length === 0 ? ok('三种谷 × 五档步长：发散标记跟解析判据 lr>(1+β)/κ 完全一致')
+    : bad(wrong.slice(0, 3).join(' / '))
+
+  //  ③ 临界档必须**既不炸也不收** —— 这个实验最反直觉的一档
+  const crit = go({ shape: '峡谷 κ=50', lr: '临界（正好等于上限）', mom: NONE })
+  !crit.diverged && crit.reach < 0 && Math.abs(Math.abs(crit.y) - 4) < 1e-6
+    ? ok(`临界档：不发散、也永远到不了（y 走了 36 步还是 ${Math.abs(crit.y)}，跟起点一模一样）`)
+    : bad(`临界档表现不对：发散=${crit.diverged}、到 1% 第 ${crit.reach} 步、末了 y=${crit.y}`)
+
+  //  ④ 动量顺带放宽了稳定上限 —— 同一个"超限"档，加了动量就炸不了
+  const noMom = go({ shape: '峡谷 κ=50', lr: '超限（上限的 110%）', mom: NONE })
+  const withMom = go({ shape: '峡谷 κ=50', lr: '超限（上限的 110%）', mom: '90%' })
+  noMom.diverged && !withMom.diverged && withMom.lrMaxEff > withMom.lrMax
+    ? ok(`同一档超限步长：不加动量发散，β=90% 时上限从 ${withMom.lrMax} 放宽到 ${withMom.lrMaxEff}，就不炸了`)
+    : bad(`动量放宽上限这件事没演出来：无动量 diverged=${noMom.diverged}、有动量 diverged=${withMom.diverged}`)
+
+  //  ⑤ 配套调好的动量，实测收缩率必须**优于普通 GD 的理论最好值**
+  const TUNED = '最优（连步长一起配）'
+  const tw = [5, 50].map(k => {
+    const s = go({ shape: `${k === 5 ? '椭圆' : '峡谷'} κ=${k}`, lr: FORM, mom: TUNED })
+    return { k, meas: s.measRate, gd: s.rateGd, ok: s.measRate < s.rateGd }
+  })
+  tw.every(t => t.ok)
+    ? ok(`配套动量实测 ${tw.map(t => `κ=${t.k} ${t.meas}`).join('、')}，都低于普通 GD 的理论最好值 ${tw.map(t => t.gd).join('、')} —— κ 开了平方根`)
+    : bad(`配套动量没跑赢普通 GD 的理论界：${tw.map(t => `κ=${t.k} ${t.meas} vs ${t.gd}`).join(' / ')}`)
+
+  /*  ⑥ 反过来钉一条我差点按印象写反的话：**只拧 β、步长不动，会更慢**。
+      写文案时我本来要写"动量拧上去就更快"，扫参数才发现椭圆上 β=90% 比 β=0 慢了两倍。
+      这条判据就是防止哪天有人（包括我）把这句话又改回去。 */
+  const plain = go({ shape: '椭圆 κ=5', lr: FORM, mom: NONE })
+  const naive = go({ shape: '椭圆 κ=5', lr: FORM, mom: '90%' })
+  naive.reach > plain.reach && plain.reach > 0
+    ? ok(`椭圆上只拧 β=90%（步长不配）反而更慢：第 ${naive.reach} 步才进 1%，β=0 只要 ${plain.reach} 步 —— "动量拧上去就更快"是错的`)
+    : bad(`只拧 β 居然不更慢（${naive.reach} vs ${plain.reach}）—— 那"要成对调"这句话就没凭据了`)
 }
 
 // ═══ 二分查找：前提一破，它**安静地**给错答案 ══════════════

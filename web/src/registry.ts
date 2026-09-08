@@ -5462,30 +5462,54 @@ const graddesc: Experiment<GradDescState> = {
   title: '梯度下降',
   subtitle: '模型到底怎么"学"：顺负梯度走到谷底',
   kernel: graddescKernel,
-  defaultDoc: { kind: 'graddesc', params: {}, entities: [], streams: [] },
-  params: [],
+  defaultDoc: { kind: 'graddesc', params: { shape: '椭圆 κ=5', lr: '公式值 1/(λmin+λmax)', mom: '0（普通梯度下降）' }, entities: [], streams: [] },
+  /*  2026-09-08 补厚：老版本三个数全写死（L=x²+5y²、lr=0.14、8 步），
+      结语却写着"太大发散、太小太慢""学习率与曲率的博弈"——屏幕上一样都看不见。
+      三个旋钮补上之后，发散、临界、蹭、冲，四种样子都能亲手拧出来。
+      ⚠️ 步长按「占稳定上限的百分之几」给，不给绝对数：上限 1/κ 随谷的形状变，
+      给绝对数会让同一档在三种谷上意思完全不同。 */
+  params: [
+    { key: 'shape', label: '谷的形状', kind: 'enum', options: ['圆碗 κ=1', '椭圆 κ=5', '峡谷 κ=50'] },
+    { key: 'lr', label: '步长', kind: 'enum',
+      options: ['很小（上限的 10%）', '一半（上限的 50%）', '公式值 1/(λmin+λmax)', '临界（正好等于上限）', '超限（上限的 110%）'] },
+    { key: 'mom', label: '动量 β', kind: 'enum', options: ['0（普通梯度下降）', '50%', '90%', '最优（连步长一起配）'] },
+  ],
   paramsNote: `**想最小化损失 L(θ),就沿负梯度更新 θ←θ−lr·∇L**。梯度指向上升最快方向,取负号朝下降最快走,学习率 lr 控步长——这就是所有神经网络"训练"的核心。
 
-- **单调下降**:反复走、损失单调下降逼近最低点。
-- **病态与震荡**:本实验用碗形损失 L=x²+5y²(y 方向更陡=病态一点),从 (4,4)、lr=0.14 出发,梯度 ∇L=(2x,10y);损失 96→21→6→2.6…单调降,但 y 方向更陡、步子迈过头来回震荡(4→−1.6→0.64…)。
-- **取舍**:学习率与曲率(条件数)的博弈,太大发散、太小太慢。`,
+- **谷的形状 κ**:损失 L=x²+κy²。κ 是**条件数**(长宽比)。κ=1 是正圆碗,负梯度直指谷底;κ=50 是又长又窄的峡谷,**负梯度几乎垂直于谷底方向**,只能横跳着往前蹭。
+- **步长按"占上限的百分之几"给**:上限 lrMax=1/κ 是**算出来**的(沿陡方向的迭代因子 |1−2κ·lr| 要小于 1),不是试出来的。所以同一组档位在三种谷上都成立:10% 慢、100% **正好等幅震荡一步不收**、110% 必炸。
+- **动量 β**:把"上一步的速度"接着用。⚠️ **不是拧上去就更快**——单拧 β 而步长不动,在圆碗和椭圆上反而更慢。快的是**配套调好的一对**,所以"最优"那一档会把步长一起接管。
+- **两条理论速率**:普通 GD 的收缩率 (κ−1)/(κ+1)、重球法 (√κ−1)/(√κ+1)——**κ 开了平方根**。屏幕上跟实测并排摆着,可以逐位核对。`,
   bounds: [
-    '损失 L=x²+5y²(碗形，y 方向曲率更大)，起点 (4,4)、lr=0.14',
-    '每步 θ←θ−lr·∇L，∇L=(2x,10y)(可核)；损失单调下降',
-    '损失 96→…→0.08 逼近谷底 (0,0)；y 正负来回震荡',
-    '定步长(无动量/Adam)；只演示一条轨迹',
+    '损失 L=x²+κy²（二次碗），起点固定 (4,4)，最多走 36 步；κ、步长、动量三个旋钮',
+    '每步 θ←θ−lr·∇L（加动量时先攒速度 v←βv−lr·∇L 再按 v 走），∇L=(2x,2κy) 可手核',
+    '稳定上限 lrMax=1/κ、公式步长 1/(1+κ)、两条理论收缩率 —— 全部**现算**，不是查表',
+    /*  ⚠️ 这条是实测扫出来的，别删：只有两个曲率的玩具会有"巧劲"，真问题没有。 */
+    '这是个**只有两个曲率**的玩具：lr=1/λmax 能把陡的那一模一步清零，于是"上限的 50%"有时比公式步长更快 —— 真问题的曲率连成一片，没有这种巧劲，该信的是收缩率',
+    '只演示二次碗：没有非凸、没有鞍点、没有随机小批量；Adam/RMSProp 等自适应方法不在范围内',
   ],
   tabs: [{ id: 'descent', label: '等高线+轨迹' }],
   Stage: GradDescStage,
-  tone: s => (s.phase === 'done' ? { key: 'good', label: '到谷底' } : s.step >= 0 ? { key: 'idle', label: `L=${s.loss.toFixed(1)}` } : { key: 'idle', label: '' }),
-  metric: s => (s.step >= 0 ? Math.max(0, Math.min(1, 1 - s.loss / 96)) : 0),
+  tone: s => (s.diverged ? { key: 'bad', label: '发散' }
+    : s.phase === 'done' ? (s.reach >= 0 ? { key: 'good', label: `第 ${s.reach} 步到 1%` } : { key: 'bad', label: '没收敛' })
+      : s.step >= 0 ? { key: 'idle', label: `L=${s.loss.toFixed(1)}` } : { key: 'idle', label: '' }),
+  metric: s => (s.step >= 0 && Number.isFinite(s.loss) ? Math.max(0, Math.min(1, 1 - s.loss / (16 + 16 * s.kappa))) : 0),
   tickLabel: s => (s.phase === 'done' ? '毕' : s.step >= 0 ? `${s.step}` : '0'),
   whyInRail: true,
   readouts: s => [
-    { label: '迭代步', value: s.step >= 0 ? `${s.step}` : '0' },
-    { label: '损失 L', value: s.step >= 0 ? `${s.loss}` : '96', tone: s.phase === 'done' ? 'good' : undefined },
-    { label: '位置', value: s.step >= 0 ? `(${s.x}, ${s.y})` : '(4, 4)' },
-    { label: '梯度 ∇L', value: s.step >= 0 ? `(${s.gx}, ${s.gy})` : '—' },
+    { label: '损失 L', value: !Number.isFinite(s.loss) ? '∞' : s.loss > 1e5 ? s.loss.toExponential(1) : `${s.loss}`,
+      tone: s.diverged ? 'bad' : s.phase === 'done' && s.reach >= 0 ? 'good' : undefined },
+    { label: '位置 / 梯度', value: s.step >= 0 ? `(${s.x}, ${s.y}) ∇=(${s.gx}, ${s.gy})` : `(4, 4)` },
+    /*  步长跟上限并排 —— "太大"到底大在哪儿，只有跟上限比才说得清 */
+    { label: '步长 / 稳定上限', value: `${s.lr} / ${s.lrMax}${s.mom > 0 ? `（加动量后放宽到 ${s.lrMaxEff}）` : ''}`,
+      tone: s.lr > s.lrMaxEff ? 'bad' : s.lr === s.lrMax && s.mom === 0 ? 'bad' : undefined },
+    /*  实测 vs 理论并排：这一栏就是"公式没骗人"的现场核对 */
+    { label: '实测每步收缩', value: s.step > 0 ? `${s.measRate}` : '—',
+      tone: s.step > 0 && s.measRate >= 1 ? 'bad' : undefined },
+    { label: '理论收缩率', value: `GD ${s.rateGd} / 动量 ${s.rateMom}` },
+    /*  横跳次数不标红：收敛得很好的路照样每步横跳（椭圆公式档 37 次、损失归零）。
+        真正该红的是"没收敛"，那由第一栏的损失和 tone 负责。 */
+    { label: '横跳次数', value: `${s.zig}` },
   ],
 }
 

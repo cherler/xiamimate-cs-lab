@@ -1171,10 +1171,12 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       b: { phase: 'done', layer: 1, depth: 16, gradPlain: 0.0281, gradRes: 0.9323, resFactor: 0.939, histPlain: [1, 0.8], histRes: [1, 1.06] },
     },
     graddesc: {
-      doc: { kind: 'graddesc', params: {}, entities: [], streams: [] },
-      //  A 第 1 步(损失 21、y 震荡) · B 到谷底(损失 0.08) —— 结论必须换一套说法
-      a: { phase: 'run', step: 1, x: 2.88, y: -1.6, loss: 21.094, gx: 5.76, gy: -16, lr: 0.14 },
-      b: { phase: 'done', step: 8, x: 0.289, y: 0.003, loss: 0.083, gx: 0.578, gy: 0.026, lr: 0.14 },
+      doc: { kind: 'graddesc', params: { shape: '椭圆 κ=5', lr: '公式值 1/(λmin+λmax)', mom: '0（普通梯度下降）' }, entities: [], streams: [] },
+      //  A 第 1 步(还在走) · B 走完(第 6 步进 1%) —— 结论必须换一套说法
+      a: { phase: 'run', step: 1, x: 2.6667, y: -2.6667, loss: 42.667, gx: 5.333, gy: -26.667, lr: 0.1667,
+        kappa: 5, mom: 0, zig: 1, reach: -1, diverged: false, measRate: 0.6667, rateGd: 0.6667 },
+      b: { phase: 'done', step: 36, x: 0, y: 0, loss: 0, gx: 0, gy: 0, lr: 0.1667,
+        kappa: 5, mom: 0, zig: 37, reach: 6, diverged: false, measRate: 0.6667, rateGd: 0.6667 },
     },
     bloom: {
       doc: { kind: 'bloom', params: {}, entities: [], streams: [] },
