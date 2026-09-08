@@ -1179,10 +1179,12 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       b: { phase: 'done', a: 'horse', b: 'ros', ci: 5, cj: 3, match: false, val: 3 },
     },
     induction: {
-      doc: { kind: 'induction', params: {}, entities: [], streams: [] },
-      //  A 扫描阶段(还没预测) · B 完成(复制出 B) —— 结论必须换一套说法
-      a: { stage: 'scan', cur: 'A', matches: [1, 4], prediction: '' },
-      b: { stage: 'done', cur: 'A', matches: [1, 4], prediction: 'B' },
+      doc: { kind: 'induction', params: { seq: '有歧义（上次跟 B、上上次跟 D）', beta: 8 }, entities: [], streams: [] },
+      //  A 扫先例（还没投票） · B 完成（B 88% / D 12%）—— 结论必须换一套说法
+      a: { stage: 'scan', cur: 'A', matches: [1, 4], prediction: '', seq: ['A', 'D', 'C', 'A', 'B', 'C', 'A'],
+        dist: [['B', 0.8808], ['D', 0.1192]], conf: 0.8808, beta: 8, ambiguous: true, noPrecedent: false },
+      b: { stage: 'done', cur: 'A', matches: [1, 4], prediction: 'B', seq: ['A', 'D', 'C', 'A', 'B', 'C', 'A'],
+        dist: [['B', 0.8808], ['D', 0.1192]], conf: 0.8808, beta: 8, ambiguous: true, noPrecedent: false },
     },
     residual: {
       doc: { kind: 'residual', params: { depth: 16, branch: '中 f′≈0.4' }, entities: [], streams: [] },

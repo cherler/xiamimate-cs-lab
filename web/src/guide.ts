@@ -6871,33 +6871,57 @@ export const GUIDES: Record<string, Guide> = {
       hook: '模型是怎么学会「照葫芦画瓢」的？',
       what: '这一屏讲的是**归纳头（induction head）**：模型内部一个被真正找出来、解释清楚的「电路」，**也是上下文学习能力最基础的机制之一**。现象是这样的：给模型看「A B ... A」，**它能接着输出 B —— 哪怕 A B 是刚编出来的乱码**。这说明它不是靠记忆，而是**当场从上下文里归纳出了一条规律：「上次 A 后面跟的是 B，这次多半也是」**。你在提示词里给几个例子、模型就能照着办，很大程度上就是它在起作用。',
       terms: '**上下文学习（in-context learning）**：不改动权重，**只靠提示词里的例子就学会一个新模式**。**这是大模型最神奇也最实用的能力之一**，归纳头是它的底层机制。\u3000**归纳头的规则**：**找「前一个 token 正好跟当前 token 相同」的位置，然后抄它后面那个**。\u3000**需要两层**：**这是最精妙的一点** —— 单层注意力做不到这件事。**第一层（前一个 token 头）把「我前面是什么」的信息搬到每个位置上；第二层才能拿这个信息去匹配、去找「上次出现同样内容的地方」。**所以归纳头是一个**跨两层的电路**，不是单个注意力头。\u3000**涌现时机**：训练过程中，**归纳头往往在某个阶段突然形成，同时上下文学习能力也跳变式提升** —— 这个时间上的重合是它被认为如此重要的原因。\u3000**可解释性研究的样板**：**这是少数几个被完整逆向出来的模型内部机制**，也是机制可解释性这个方向最有说服力的成果之一。\u3000**它的边界**：归纳头解释的是「照抄重复模式」，**更复杂的推理显然不止于此** —— 但它给出了一个可以往上搭的起点。',
-      watch: '看第二层的注意力落在哪个位置：它盯着的正是上一次出现同样 token 的地方的下一个。这就是「照抄」的机制。',
+      watch: '别停在"它答对了"。换成**没见过的符号**（♣♠♦）——它照样答对，这才是"不是背下来的"的直接证据；再换成**有歧义**那一档——你会看到"复制"其实是一次**投票**，答案是个分布不是一个字。',
     },
     step: (s: never) => {
-      const st = s as { stage: string; cur: string; matches: number[]; prediction: string }
+      const st = s as { stage: string; cur: string; matches: number[]; prediction: string
+        seq?: string[]; dist?: [string, number][]; conf?: number; beta?: number
+        ambiguous?: boolean; noPrecedent?: boolean }
+      //  ⚠️ 补厚字段可选读：老快照没有 dist/noPrecedent，读不到就按教科书那档讲。
       const nm: Record<string, string> = { id: '认当前 token', scan: '扫匹配位置', attend: '注意力落点', copy: '复制预测', done: '完成' }
+      const line = st.seq ? st.seq.join(' ') : 'A B C A B C A'
+      const pct = (v: number) => `${(v * 100).toFixed(0)}%`
+      const distStr = st.dist?.map(([k, v]) => `${k} ${pct(v)}`).join('、')
       return [
-        { k: '本步输入', v: st.stage === 'done' ? '序列 A B C A B C A' : `阶段:${nm[st.stage]}（当前 token ${st.cur}）` },
-        { k: '判定规则', v: `归纳头:"上次见到当前 token(${st.cur})时,它后面跟了什么?复制过来。"找"前一个 token==${st.cur}"的位置,注意力落其上。` },
-        { k: '本步结果', v: st.stage === 'done'
-            ? `A B C A B C A → **${st.prediction}**——纯靠上下文模式现学现用,这就是上下文学习。`
-            : st.stage === 'id' ? `当前 token = **${st.cur}**,准备回头找它上次之后跟了什么。`
-            : st.stage === 'scan' ? `找到匹配位置 [${st.matches.join(', ')}](前面都是 ${st.cur})。`
-            : st.stage === 'attend' ? `注意力集中在 pos ${st.matches.join('、')}(上次 ${st.cur} 之后)。`
-            : `那些位置的 token 都是 **${st.prediction}** → 复制成预测。` },
+        { k: '本步输入', v: st.stage === 'done' ? `序列 ${line}` : `阶段：${nm[st.stage]}（当前 token ${st.cur}）` },
+        { k: '判定规则', v: `归纳头："上次见到当前 token（${st.cur}）时，它后面跟了什么？"找"前一个 token == ${st.cur}"的位置，注意力落其上。`
+            + (st.ambiguous ? `　⚠️ 先例不止一条、后继还不一样 —— 所以它做的其实是**对所有先例投票**，票数就是 softmax 权重（β=${st.beta}，越近的先例票越重）。` : '') },
+        { k: '本步结果', v: st.noPrecedent
+            ? (st.stage === 'done'
+              ? `${line} → **？** 当前 token 没有先例，归纳头**无从下手**——这是这条电路的**前提**，不是 bug。`
+              : st.stage === 'id' ? `当前 token = **${st.cur}**。`
+                : `一条先例都没有：${st.cur} 在这段上下文里是第一次出现。`)
+            : st.stage === 'done'
+              ? `${line} → **${st.prediction}**${st.ambiguous ? `（把握 ${pct(st.conf ?? 0)}，另有 ${st.dist?.slice(1).map(([k, v]) => `${k} ${pct(v)}`).join('、')}）` : ''}`
+                + `——纯靠上下文模式现学现用，这就是上下文学习。`
+              : st.stage === 'id' ? `当前 token = **${st.cur}**，准备回头找它上次之后跟了什么。`
+                : st.stage === 'scan' ? `找到先例位置 [${st.matches.join(', ')}]（前面都是 ${st.cur}）。`
+                  : st.stage === 'attend' ? `注意力集中在 pos ${st.matches.join('、')}${distStr ? `，投票结果 ${distStr}` : ''}。`
+                    : st.ambiguous ? `按票数加权取出：**${distStr}** → 最高票 **${st.prediction}**，但把握只有 ${pct(st.conf ?? 0)}。`
+                      : `那些位置的 token 都是 **${st.prediction}** → 复制成预测。` },
       ]
     },
     verdict: (s: never) => {
-      const st = s as { stage: string; prediction: string }
-      return st.stage === 'done' ? `→ ${st.prediction}` : st.prediction ? `复制 ${st.prediction}` : st.stage
+      const st = s as { stage: string; prediction: string; noPrecedent?: boolean; ambiguous?: boolean; conf?: number }
+      if (st.noPrecedent) return st.stage === 'id' ? '认当前' : '无先例'
+      if (st.stage === 'done' || st.prediction) {
+        return st.ambiguous ? `${st.prediction} ${((st.conf ?? 0) * 100).toFixed(0)}%`
+          : st.stage === 'done' ? `→ ${st.prediction}` : `复制 ${st.prediction}`
+      }
+      return st.stage
     },
     read: [
       { at: '读数', is: '当前 token、注意力落点、预测。', anchor: '.scdim' },
-      { at: 'token 序列', is: '每个 token 一格;查询高亮、匹配位高亮、下方小柱=注意力权重。', anchor: '.idcrow' },
+      { at: 'token 序列', is: '每个 token 一格;查询高亮、先例位高亮、下方小柱=注意力权重。', anchor: '.idcrow' },
+      { at: '预测分布', is: '**对所有先例投票**的票数。教科书那档只有一根(答案唯一);歧义那档有两根,那才是这条电路真正在算的东西。', anchor: '.idcdist' },
     ],
     try: [
       { act: '一步步走', watch: '认当前 A → 扫出 pos1/pos4(前面是 A) → 注意力落上去 → 复制出 B。' },
-      { act: '看预测', watch: '"上次 A 之后跟的是 B",于是补全 A B C A B C A → B。' },
+      //  下面三条是补厚后的主菜，各顶一个"它到底是不是在背"的追问
+      { act: '把「序列」换成「没见过的符号（♣♠♦）」', watch: '换成一组**不可能在训练里出现**的符号,它照样答对 ♠。**这不是背下来的,是一条现场执行的规则**——"上下文学习"四个字的分量就在这里。' },
+      { act: '换成「有歧义（上次跟 B、上上次跟 D）」', watch: '上次 A 后面跟 B、上上次跟 D。预测不再是一个字,而是 **B 88% / D 12%** 的分布——**"复制"其实是对所有先例投票**,票数就是 softmax 权重。' },
+      { act: '在歧义那档把 β 从 20 调到 1', watch: '分布从 **B 99% / D 1%** 摊成 **B 56% / D 44%**。β 大=只认最近那条先例(近乎硬复制),β 小=各条先例平摊——**softmax 温度在这条电路里的意思,就是"多信最近的那一次"**。' },
+      { act: '换成「没有先例（当前 token 首次出现）」', watch: '匹配集**空的**,归纳头无从下手。这不是 bug,是它的**前提**:它做的是"照着上次做"。所以少样本提示里那几个例子,作用就是**现场造出先例**。' },
     ],
     terms: [],
   },

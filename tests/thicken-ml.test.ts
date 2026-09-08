@@ -36,6 +36,7 @@ import { matmulKernel, type MatmulState } from '../src/kernels/matmul.ts'
 import { quantKernel, type QuantState } from '../src/kernels/quant.ts'
 import { rnnKernel, type RNNState } from '../src/kernels/rnn.ts'
 import { lstmKernel, type LSTMState } from '../src/kernels/lstm.ts'
+import { inductionKernel, type InductionState } from '../src/kernels/induction.ts'
 
 let failures = 0
 const ok = (m: string) => console.log(`  ✅ ${m}`)
@@ -346,6 +347,53 @@ console.log('\n【逻辑回归：正则真的在压权重，异或真的分不�
   !xor.separable && xor.acc < sep.acc - 0.15
     ? ok(`异或准确率 ${(xor.acc * 100).toFixed(0)}%，可分档 ${(sep.acc * 100).toFixed(0)}% —— 一条直线切不开异或`)
     : bad(`异或 ${(xor.acc * 100).toFixed(0)}% vs 可分 ${(sep.acc * 100).toFixed(0)}% —— 差距不足以说明"线性不可分"`)
+}
+
+// ═══ 归纳头：它不是记忆，是一条现场执行的规则 ═══════════
+console.log('\n【归纳头：换成没见过的符号照样对；先例不止一条时它在投票】')
+{
+  const go = (p: P) => last(run(inductionKernel.compile(doc('induction', p)), 20) as InductionState[])
+  const BOOK = 'A B C A B C A（教科书）'
+  const NOVEL = '没见过的符号（♣♠♦）'
+  const AMB = '有歧义（上次跟 B、上上次跟 D）'
+  const NONE = '没有先例（当前 token 首次出现）'
+
+  //  ① 教科书那档的老口径不能变：A B C A B C A → B，先例是 pos1/pos4
+  const bk = go({ seq: BOOK, beta: 8 })
+  bk.prediction === 'B' && JSON.stringify(bk.matches) === '[1,4]' && bk.conf > 0.999
+    ? ok('教科书档原样保留：先例 pos1/pos4，预测 B，把握 100%')
+    : bad(`教科书档变了：预测 ${bk.prediction}、先例 ${JSON.stringify(bk.matches)}、把握 ${bk.conf}`)
+
+  /*  ② 这个实验补厚后最要紧的一条：**换成不可能在训练里出现的符号，它照样答对**。
+      这是"不是背下来的、是一条现场执行的规则"的直接证据。 */
+  const nv = go({ seq: NOVEL, beta: 8 })
+  nv.prediction === '♠' && nv.conf > 0.999 && JSON.stringify(nv.matches) === JSON.stringify(bk.matches)
+    ? ok(`换成 ♣♠♦ 照样答对（预测 ♠、把握 100%），先例位置跟教科书档完全一样 —— 规则跟符号无关`)
+    : bad(`没见过的符号那档没答对：预测 ${nv.prediction}、把握 ${nv.conf}`)
+
+  //  ③ 歧义档：预测必须是个**分布**，而且两条先例的后继确实不同
+  const am = go({ seq: AMB, beta: 8 })
+  am.ambiguous && am.dist.length === 2 && am.conf < 0.95 && Math.abs(am.dist.reduce((a2, d) => a2 + d[1], 0) - 1) < 1e-3
+    ? ok(`歧义档给出的是分布：${am.dist.map(([k, v]) => `${k} ${(v * 100).toFixed(0)}%`).join(' / ')}（和为 1）—— "复制"其实是投票`)
+    : bad(`歧义档没给出分布：${JSON.stringify(am.dist)}、ambiguous=${am.ambiguous}`)
+
+  /*  ④ β 就是 softmax 温度：β 越大越只认最近那条先例。
+      ⚠️ 这条要成立，得分必须带**近因偏好** —— 否则两条先例永远平票，β 拧到天上也没用。 */
+  const bs = [1, 4, 8, 20].map(beta => go({ seq: AMB, beta }).conf)
+  bs.every((v, k) => k === 0 || v > bs[k - 1]) && bs[0] < 0.6 && last(bs) > 0.98
+    ? ok(`β=1/4/8/20 → 把握 ${bs.map(v => `${(v * 100).toFixed(0)}%`).join(' → ')}：β 越大越只认最近那条先例`)
+    : bad(`β 没起到温度的作用：${bs.map(v => v.toFixed(3)).join(' / ')}`)
+
+  //  ⑤ 没有先例那档：匹配集必须是空的，且不能硬编一个预测出来
+  const nn = go({ seq: NONE, beta: 8 })
+  nn.noPrecedent && nn.matches.length === 0 && nn.dist.length === 0 && nn.conf === 0
+    ? ok(`没有先例那档：匹配集为空、不给分布也不给预测 —— 这条电路的**前提**说清楚了`)
+    : bad(`无先例那档还给了东西：matches=${JSON.stringify(nn.matches)}、dist=${JSON.stringify(nn.dist)}`)
+
+  //  ⑥ 自检：教科书档和没见过的符号档必须**除了符号本身之外完全一致**（证明②不是碰巧）
+  JSON.stringify(bk.weights) === JSON.stringify(nv.weights)
+    ? ok('自检：两档的注意力权重逐位相同 —— 差别只在符号，机制一模一样')
+    : bad(`两档的权重不同：${JSON.stringify(bk.weights)} vs ${JSON.stringify(nv.weights)}`)
 }
 
 // ═══ LSTM：跟 RNN 同一把尺子，只差 tanh′ 那一项 ═══════════

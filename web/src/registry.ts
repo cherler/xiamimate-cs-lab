@@ -5569,30 +5569,52 @@ const induction: Experiment<InductionState> = {
   title: '归纳头',
   subtitle: '上下文学习：照着上文的样式继续',
   kernel: inductionKernel,
-  defaultDoc: { kind: 'induction', params: {}, entities: [], streams: [] },
-  params: [],
+  defaultDoc: { kind: 'induction', params: { seq: 'A B C A B C A（教科书）', beta: 8 }, entities: [], streams: [] },
+  /*  2026-09-08 补厚：老版本只有一条写死的 A B C A B C A → B。机制讲清楚了，
+      但有个说服力上的漏洞：这么规整的序列，看客完全可以怀疑"是不是背下来的"。
+      而归纳头最要紧的一点恰恰是**它不是记忆，是一条现场执行的规则** —— 得靠换序列逼出来。 */
+  params: [
+    { key: 'seq', label: '序列', kind: 'enum',
+      options: ['A B C A B C A（教科书）', '没见过的符号（♣♠♦）', '有歧义（上次跟 B、上上次跟 D）', '没有先例（当前 token 首次出现）'] },
+    { key: 'beta', label: '匹配锐度 β', kind: 'number', options: [1, 4, 8, 20] },
+  ],
   paramsNote: `**归纳头(induction head)是 2022 年在 Transformer 里发现的一种具体电路,被认为是上下文学习的核心机制之一**。它干的事:"上次见到当前这个 token 时,它后面跟了什么?把那个复制过来。"
 
 - **两个注意力头接力**:一个"前一 token 头"给每个位置标注"我前面是谁",一个"归纳头"用当前 token 去匹配——凡是"前一个 token=当前 token"的位置就把注意力放上去,于是落在上次那个 token 之后,再把那里的 token 复制成预测。
 - **现学现用**:它没在训练里见过这个具体序列,纯靠上下文的模式现学现用。
-- **本实验**:A B C A B C A → 当前 A,回头找"前面是 A"的 pos1/pos4(后面都是 B)→复制出 B。`,
+- **四档序列各顶一个问题**:
+  - **教科书** A B C A B C A → B,答案唯一。
+  - **没见过的符号**(♣♠♦):换成一组不可能在训练里出现的符号,它照样答对——**"不是背下来的"的直接证据**。
+  - **有歧义**(上次 A 跟 B、上上次跟 D):这一档把"复制"这个说法**拆开了**——归纳头其实是在**对所有先例投票**,票数就是 softmax 权重。答案是个**分布**,不是一个字。
+  - **没有先例**(当前 token 首次出现):匹配集为空,归纳头**无从下手**。这划出了机制的前提——所以少样本提示里那几个例子,作用就是**现场造出先例**。
+- **匹配锐度 β** 就是 softmax 温度在这条电路里的含义:β 大→只认最近那条先例(歧义档 B 99%);β 小→各条先例平摊(B 56% / D 44%)。`,
   bounds: [
-    '序列 A B C A B C A,问下一个 token',
-    '归纳头:位置 j 得分高 ⟺ seq[j−1]==当前 token(前一 token 匹配)',
-    '注意力落 pos1/pos4(上次 A 之后)、都是 B → 复制预测 B(可核)',
-    '简化成硬匹配示意;真实里由两个注意力头学出来',
+    '四档序列可切；归纳头：位置 j 得分高 ⟺ seq[j−1] == 当前 token（前一 token 匹配）',
+    '注意力 = softmax(β·得分)，预测 = 落点上的 token 按权重投票 —— 每一步都可手核',
+    /*  ⚠️ 这条不是实现细节：没有它，歧义那一档会平票，β 的意义就演不出来。 */
+    '得分带**近因偏好**（越近的先例得分越高，每往前一格减 0.5）：否则歧义档两条先例永远 50/50，"β 越大越只认最近那条"就没得看',
+    '简化成**硬匹配**示意：真实模型里这是两个注意力头（前一 token 头 + 归纳头）**学出来**的，匹配是软的、还混着别的电路',
+    '只演一个查询位置、不演训练过程；也不演归纳头是怎么在训练中涌现的（那是另一条线）',
   ],
   tabs: [{ id: 'copy', label: '模式补全' }],
   Stage: InductionStage,
-  tone: s => (s.stage === 'done' ? { key: 'good', label: `→ ${s.prediction}` } : s.stage === 'copy' ? { key: 'good', label: `复制 ${s.prediction}` } : { key: 'idle', label: s.stage }),
+  tone: s => (s.noPrecedent ? { key: 'bad', label: s.stage === 'id' ? '认当前' : '无先例' }
+    : s.stage === 'done' || s.stage === 'copy'
+      ? (s.ambiguous ? { key: 'idle', label: `${s.prediction} ${(s.conf * 100).toFixed(0)}%` } : { key: 'good', label: `→ ${s.prediction}` })
+      : { key: 'idle', label: s.stage }),
   metric: s => (s.stage === 'done' || s.stage === 'copy' ? 1 : s.stage === 'attend' ? 0.7 : s.stage === 'scan' ? 0.4 : 0.1),
   tickLabel: s => (s.stage === 'done' ? '毕' : ({ id: '认', scan: '扫', attend: '注', copy: 'copy' } as Record<string, string>)[s.stage] ?? `${s.step}`),
   whyInRail: true,
   readouts: s => [
     { label: '当前 token', value: s.cur },
-    { label: '注意力落点', value: s.matches.length ? `pos ${s.matches.join(', ')}` : '—' },
-    { label: '预测', value: s.prediction || '?', tone: s.prediction ? 'good' : undefined },
-    { label: '阶段', value: ({ id: '认当前', scan: '扫匹配', attend: '注意力', copy: '复制', done: '完成' } as Record<string, string>)[s.stage] },
+    { label: '先例（注意力落点）', value: s.matches.length ? `pos ${s.matches.join(', ')}` : '一条都没有',
+      tone: s.noPrecedent ? 'bad' : undefined },
+    /*  预测是个**分布**，不是一个字 —— 歧义那一档全靠这一栏才说得清 */
+    { label: '预测分布', value: s.dist.length ? s.dist.map(([k, v]) => `${k} ${(v * 100).toFixed(0)}%`).join(' · ') : '—',
+      tone: s.dist.length && !s.ambiguous ? 'good' : s.noPrecedent ? 'bad' : undefined },
+    { label: '把握', value: s.dist.length ? `${(s.conf * 100).toFixed(0)}%` : '—',
+      tone: s.conf > 0.95 ? 'good' : s.conf > 0 ? 'bad' : undefined },
+    { label: '匹配锐度 β', value: `${s.beta}` },
   ],
 }
 
