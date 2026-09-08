@@ -3,19 +3,23 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Transformer 图解 · 两个入口 · 虾米课堂</title>
+<title>Transformer 图解 · 三个入口 · 虾米课堂</title>
 <!--
   这一页是 `/lab/explainer` 的**门厅**。
 
-  起因（用户 2026-09-08）：「Transformer 图解当前是『cs-lab 浏览器端真推理原型』，
-  应该还有一个基于开源项目 poloclub/transformer-explainer，倾向于两个都保留；
-  另外添加返回虾米课堂的返回键。」
+  起因（用户 2026-09-08）：「应该还有一个基于开源项目 poloclub/transformer-explainer，
+  倾向于两个都保留；另外添加返回虾米课堂的返回键。」
 
-  两个是**不同的东西**，不是重复：
-    · 我们这份跑的是**真模型**（Qwen2.5，中文原生分词），但画面朴素；
-    · poloclub 那份把 GPT-2 的**内部结构**画出来（嵌入 / QKV / 注意力热力图 / 层层前向），
-      是"看得见的 Transformer"，但模型是 GPT-2、中文会碎成星号。
-  所以门厅并排摆，各写清各自能看到什么、代价是什么。
+  ⚠️ 第一版我只摆了两张卡，并写着"poloclub 那份是 GPT-2、中文会碎成星号"。
+  用户随后指出「poloclub 已经实现了基于 qwen 的版本了」。查证结果（2026-09-08）：
+    · **upstream poloclub/transformer-explainer 确实还是 GPT-2**
+      —— main 分支最后一次提交 2026-06-06，代码里写死 `Xenova/gpt2` 与
+      `model-v2/gpt2.onnx.part*`；线上 demo 页面 "GPT-2" 出现 11 次、没有 qwen 字样；
+      poloclub 组织下没有 qwen 相关仓库，该仓也没有提到 qwen 的 issue/PR。
+    · **但确实存在一个 Qwen 版**，是**社区 fork**：
+      `yangzhiganlubobobing/transformer-explainer-zh-qwen`（MIT，2026-08-17 更新），
+      用的是 **Qwen3-0.6B / 4B**（不是 Qwen2.5），全中文汉化、WebGPU 本地推理。
+  所以我原来那句话对的是 upstream，漏的是这个 fork —— 现在三张卡各写各的，并注明来源。
 -->
 <style>
 :root{
@@ -67,9 +71,9 @@ code{font-family:var(--mono);font-size:12px;background:var(--bg);border:1px soli
 
   <header>
     <p class="eyebrow">虾米课堂 · 大模型</p>
-    <h1>Transformer 图解 · 两个入口</h1>
-    <p class="sub">同一件事的两种看法：一个跑<b>真模型</b>但画面朴素，一个把<b>内部结构</b>画出来但模型是 GPT-2。
-      两个都留着 —— 想验证"中文到底怎么分词、下一个字是什么"，走左边；想看清"一次前向里数据流过哪些块"，走右边。</p>
+    <h1>Transformer 图解 · 三个入口</h1>
+    <p class="sub">同一件事的三种看法：一个跑<b>真模型</b>但画面朴素，一个把<b>内部结构</b>整个画出来（英文 GPT-2），
+      还有一个是社区把后者<b>换成中文 Qwen3</b> 的增强版。三个都留着，各写清各自能看到什么、代价是什么。</p>
   </header>
 
   <div class="grid">
@@ -98,16 +102,36 @@ code{font-family:var(--mono);font-size:12px;background:var(--bg);border:1px soli
       <a class="go ghost" href="https://poloclub.github.io/transformer-explainer/" target="_blank" rel="noopener">
         打开官方在线版 ↗</a>
       <div class="note">
-        <b>想在本机跑一份？</b>可以，但代价要先知道：它的 GPT-2 权重是
-        <code>static/model-v2/</code> 下 <b>626MB</b> 的 ONNX 分片，路径写死在代码里、没有远程开关；
-        另外要装 SvelteKit 的依赖并 build 一次。所以现在先接官方在线版 —— 要落地本机再说一声。
+        <b>想在本机跑一份？</b>代价要先知道：GPT-2 权重是 <code>static/model-v2/</code> 下
+        <b>626MB</b> 的 ONNX 分片，路径写死在代码里、没有远程开关；另外要装 SvelteKit 依赖并 build。
+        所以先接官方在线版。
+      </div>
+    </div>
+
+    <div class="card">
+      <p class="tag">社区 fork · 中文 Qwen3（MIT）</p>
+      <h2>中文增强版（Qwen3-0.6B）</h2>
+      <p>把上面那份<b>整个汉化</b>，并把模型从 GPT-2 换成 <b>Qwen3-0.6B</b>（也可跑 4B）。</p>
+      <ul>
+        <li><b>中文不碎</b> —— 151,936 双语词表，敲"天生我材必有用，"能正常看下一个词</li>
+        <li>架构也换新了：<b>GQA（16Q×8KV）+ SwiGLU + RoPE</b>，对齐现代 LLM 主流</li>
+        <li><b>WebGPU 本地推理</b>，1.44GB fp16 模型直接在浏览器里跑</li>
+        <li>仓库本身只有 <b>9.6MB</b>（不含权重），脚本自动从 HF 镜像 / ModelScope 拉</li>
+      </ul>
+      <a class="go ghost" href="https://github.com/yangzhiganlubobobing/transformer-explainer-zh-qwen" target="_blank" rel="noopener">
+        看仓库 ↗</a>
+      <div class="note">
+        <b>它没有在线 demo，只能本机跑</b>，门槛也实在：Node ≥20 + Python ≥3.10（torch/transformers/onnx）、
+        <b>16GB 内存</b>、支持 WebGPU 的 Chrome/Edge、<b>约 4GB 硬盘</b>，首次搭建 10–20 分钟。
+        要不要把它接进 <code>/lab/</code>，说一声我来弄。
       </div>
     </div>
   </div>
 
   <p class="foot">
     Transformer Explainer 由 <a href="https://github.com/poloclub/transformer-explainer" target="_blank" rel="noopener">poloclub/transformer-explainer</a> 提供，MIT License，© 2022 Polo Club of Data Science。<br>
-    左边那份是本仓 <code>experiments/qwen-browser/</code>，模型权重来自 ModelScope。
+    中文 Qwen3 版是社区 fork：<a href="https://github.com/yangzhiganlubobobing/transformer-explainer-zh-qwen" target="_blank" rel="noopener">yangzhiganlubobobing/transformer-explainer-zh-qwen</a>，MIT License。<br>
+    最左那份是本仓 <code>experiments/qwen-browser/</code>，模型权重来自 ModelScope。
   </p>
 </div>
 </body>

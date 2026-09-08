@@ -28,7 +28,8 @@ function subappsPlugin() {
       hint: 'cd games/algo-cards && npm install && npm run build' },
     '/lab/world': { dir: resolve(here, '..', 'games', 'xiami-world', 'dist'),
       hint: 'cd games/xiami-world && npm install && npm run build' },
-    /*  Transformer 图解是**两个入口**（用户 2026-09-08：「倾向于两个都保留」）：
+    /*  Transformer 图解是**三个入口**（用户 2026-09-08：「倾向于两个都保留」，
+        随后又指出还有个 Qwen 版 —— 查证是社区 fork，见 explainer-hub 里那段）：
         `/lab/explainer` 是门厅，并排摆着"我们这份真模型"和"poloclub 那份真图解"。
         两份都是源码目录、不需要构建（依赖走 CDN、模型走 ModelScope）。 */
     '/lab/explainer': { dir: resolve(here, '..', 'experiments', 'explainer-hub'),
