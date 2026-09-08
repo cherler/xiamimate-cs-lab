@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Transformer 图解 · 两个入口 · 虾米课堂</title>
+<!--
+  这一页是 `/lab/explainer` 的**门厅**。
+
+  起因（用户 2026-09-08）：「Transformer 图解当前是『cs-lab 浏览器端真推理原型』，
+  应该还有一个基于开源项目 poloclub/transformer-explainer，倾向于两个都保留；
+  另外添加返回虾米课堂的返回键。」
+
+  两个是**不同的东西**，不是重复：
+    · 我们这份跑的是**真模型**（Qwen2.5，中文原生分词），但画面朴素；
+    · poloclub 那份把 GPT-2 的**内部结构**画出来（嵌入 / QKV / 注意力热力图 / 层层前向），
+      是"看得见的 Transformer"，但模型是 GPT-2、中文会碎成星号。
+  所以门厅并排摆，各写清各自能看到什么、代价是什么。
+-->
+<style>
+:root{
+  --bg:#0f1117; --panel:#171a22; --panel2:#1e222c; --line:#2a2f3a; --line2:#363c49;
+  --ink:#e8ebf2; --dim:#9aa3b5; --faint:#6b7385;
+  --accent:#7c9bff; --accent2:#5b86ff; --hit:#39c07a; --warn:#e8a33d; --miss:#e2604b;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.6;-webkit-font-smoothing:antialiased}
+.wrap{max-width:920px;margin:0 auto;padding:22px 20px 80px}
+.back{display:inline-flex;align-items:center;gap:7px;font-size:13px;color:var(--dim);
+  text-decoration:none;border:1px solid var(--line);background:var(--panel);
+  border-radius:20px;padding:6px 14px;transition:.15s}
+.back:hover{color:var(--ink);border-color:var(--line2);background:var(--panel2)}
+header{border-bottom:1px solid var(--line);padding-bottom:18px;margin:18px 0 22px}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--faint);margin:0 0 8px}
+h1{font-size:26px;margin:0;font-weight:650;letter-spacing:-.01em}
+.sub{color:var(--dim);font-size:14px;margin:8px 0 0;max-width:70ch}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:16px;margin-top:20px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px;
+  display:flex;flex-direction:column}
+.card h2{font-size:17px;margin:0 0 4px;font-weight:650}
+.tag{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--faint);margin:0 0 10px}
+.card p{color:var(--dim);font-size:13.5px;margin:0 0 10px}
+ul{margin:0 0 14px;padding-left:18px;color:var(--dim);font-size:13px}
+li{margin:3px 0}
+li b{color:var(--ink);font-weight:600}
+.go{margin-top:auto;display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  background:var(--accent2);color:#fff;text-decoration:none;border-radius:9px;
+  padding:10px 16px;font-size:14px;font-weight:600;transition:.15s}
+.go:hover{background:var(--accent)}
+.go.ghost{background:transparent;border:1px solid var(--line2);color:var(--ink)}
+.go.ghost:hover{background:var(--panel2)}
+.note{margin-top:12px;padding:11px 13px;border:1px solid var(--line);border-left:3px solid var(--warn);
+  border-radius:0 8px 8px 0;background:var(--panel2);color:var(--dim);font-size:12.5px}
+.note b{color:var(--ink)}
+code{font-family:var(--mono);font-size:12px;background:var(--bg);border:1px solid var(--line);
+  border-radius:4px;padding:1px 5px;color:var(--accent)}
+.foot{margin-top:26px;color:var(--faint);font-size:12px;line-height:1.9}
+.foot a{color:var(--dim)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="/lab/">← 返回虾米课堂</a>
+
+  <header>
+    <p class="eyebrow">虾米课堂 · 大模型</p>
+    <h1>Transformer 图解 · 两个入口</h1>
+    <p class="sub">同一件事的两种看法：一个跑<b>真模型</b>但画面朴素，一个把<b>内部结构</b>画出来但模型是 GPT-2。
+      两个都留着 —— 想验证"中文到底怎么分词、下一个字是什么"，走左边；想看清"一次前向里数据流过哪些块"，走右边。</p>
+  </header>
+
+  <div class="grid">
+    <div class="card">
+      <p class="tag">本地 · 真模型</p>
+      <h2>浏览器端真推理原型</h2>
+      <p>纯浏览器跑 Qwen2.5（transformers.js + WebGPU），没有服务器。</p>
+      <ul>
+        <li><b>真实的中文分词</b> —— 一个汉字≈一个 token，不会碎成星号</li>
+        <li><b>下一个词的 top-k 概率</b> + 续写</li>
+        <li>可切 0.5B / 1.5B，精度可选 q4f16 / q4 / q8</li>
+        <li>首次载入要下模型权重（0.5B 约 460MB，之后缓存在浏览器里）</li>
+      </ul>
+      <a class="go" href="/lab/explainer-live/">打开 →</a>
+    </div>
+
+    <div class="card">
+      <p class="tag">开源 · poloclub（MIT）</p>
+      <h2>Transformer Explainer</h2>
+      <p>Georgia Tech Polo Club 做的那份经典可视化：把 GPT-2 的一次前向<b>整个画出来</b>。</p>
+      <ul>
+        <li><b>嵌入 → QKV → 注意力热力图 → MLP → 输出概率</b>，逐块可点</li>
+        <li>可以拖温度、看每一层每个头在看哪儿</li>
+        <li>模型是 <b>GPT-2</b>：英文为主，<b>中文会碎成星号</b>（这正是左边那份存在的理由）</li>
+      </ul>
+      <a class="go ghost" href="https://poloclub.github.io/transformer-explainer/" target="_blank" rel="noopener">
+        打开官方在线版 ↗</a>
+      <div class="note">
+        <b>想在本机跑一份？</b>可以，但代价要先知道：它的 GPT-2 权重是
+        <code>static/model-v2/</code> 下 <b>626MB</b> 的 ONNX 分片，路径写死在代码里、没有远程开关；
+        另外要装 SvelteKit 的依赖并 build 一次。所以现在先接官方在线版 —— 要落地本机再说一声。
+      </div>
+    </div>
+  </div>
+
+  <p class="foot">
+    Transformer Explainer 由 <a href="https://github.com/poloclub/transformer-explainer" target="_blank" rel="noopener">poloclub/transformer-explainer</a> 提供，MIT License，© 2022 Polo Club of Data Science。<br>
+    左边那份是本仓 <code>experiments/qwen-browser/</code>，模型权重来自 ModelScope。
+  </p>
+</div>
+</body>
+</html>

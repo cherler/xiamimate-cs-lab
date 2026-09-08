@@ -57,6 +57,15 @@ a{color:var(--accent)}
 </head>
 <body>
 <div class="wrap">
+  <!--  返回键（用户 2026-09-08 要的）：这一页是从虾米课堂那颗「Transformer 图解」按钮点进来的，
+        它不是 SPA 的一条路由、是另一个站点，浏览器的后退能用但不明显，给一颗看得见的。
+        指回门厅而不是直接回课堂 —— 门厅上还有另一个入口。 -->
+  <p style="margin:0 0 16px"><a href="/lab/explainer/" style="display:inline-flex;align-items:center;gap:7px;
+    font-size:13px;color:var(--dim);text-decoration:none;border:1px solid var(--line);
+    background:var(--panel);border-radius:20px;padding:6px 14px">← 返回 Transformer 图解门厅</a>
+    <a href="/lab/" style="display:inline-flex;align-items:center;gap:7px;margin-left:8px;
+    font-size:13px;color:var(--dim);text-decoration:none;border:1px solid var(--line);
+    background:var(--panel);border-radius:20px;padding:6px 14px">← 返回虾米课堂</a></p>
   <header>
     <p class="eyebrow">cs-lab · 浏览器端真推理原型</p>
     <h1>把中文小模型搬进浏览器</h1>

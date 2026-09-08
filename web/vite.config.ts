@@ -28,8 +28,12 @@ function subappsPlugin() {
       hint: 'cd games/algo-cards && npm install && npm run build' },
     '/lab/world': { dir: resolve(here, '..', 'games', 'xiami-world', 'dist'),
       hint: 'cd games/xiami-world && npm install && npm run build' },
-    //  这一份是**源码目录**、本来就不需要构建（依赖走 CDN、模型走 ModelScope）
-    '/lab/explainer': { dir: resolve(here, '..', 'experiments', 'qwen-browser'),
+    /*  Transformer 图解是**两个入口**（用户 2026-09-08：「倾向于两个都保留」）：
+        `/lab/explainer` 是门厅，并排摆着"我们这份真模型"和"poloclub 那份真图解"。
+        两份都是源码目录、不需要构建（依赖走 CDN、模型走 ModelScope）。 */
+    '/lab/explainer': { dir: resolve(here, '..', 'experiments', 'explainer-hub'),
+      hint: '它是 experiments/explainer-hub/index.html，不需要构建' },
+    '/lab/explainer-live': { dir: resolve(here, '..', 'experiments', 'qwen-browser'),
       hint: '它是 experiments/qwen-browser/index.html，不需要构建 —— 文件要是不见了，去 git 历史里找' },
   }
   const MIME: Record<string, string> = {
