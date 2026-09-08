@@ -132,6 +132,20 @@ const stepOne = async () => {
   if (next) { await next.click(); await p.waitForTimeout(150) }
 }
 /**
+ * 把序列编辑器**展开**。预置按钮（`.seqacts .pcard`）只在展开态可见 ——
+ * 收起态它们还在 DOM 里但 `visible` 为假，点它会一直等到超时、把整套冒烟带走。
+ *
+ * ⚠️ 展开/收起是**跨组粘着**的（存在 localStorage 里）。所以哪一组要点预置，
+ * 哪一组就自己保证这个前提，别指望上一组碰巧把它留在展开态 ——
+ * 「靠上一组的残留状态」正是这类判据烂在暗处的原因。
+ */
+const seqOpen = async () => {
+  if (await p.$('.card.seq.shut')) {
+    await p.click('.card.seq > h3 .fold').catch(() => {})
+    await p.waitForTimeout(160)
+  }
+}
+/**
  * 日志 / 真题 / 边界现在收在底部坞里，同一时刻只露一块（为了「一屏装下一个实验」）。
  * 三块都挂在 DOM 上，所以**读**得到；但非当前的那两块是 `hidden`，**点**不着。
  * 要跟它们交互，先把那一格切出来。
@@ -1710,22 +1724,36 @@ console.log('\n【14】一屏装得下：30 个实验 × 两档窗口')
    * 而这几个容器都没有 style prop。撑高的办法也更贴题 ——
    * 这一条量的本来就是"内容比容器高会不会被裁掉"。
    */
-  await p.evaluate(() => {
+  /*  ⚠️ **先切到一个有舞台的实验再撑。**
+      2026-09-08 之前这里是直接撑 —— 撑的是"上面那个循环最后停在哪儿"，
+      而目录最后几项是软件库词条页（Redis / nginx / Wireshark…），那种页面没有舞台、
+      也就没有 `.fit`，`f.dataset` 当场抛 TypeError，**整套冒烟在这儿崩掉**。
+      崩掉的后果不是少一条绿：**这一组最后两条自检从此一次都没跑过** ——
+      正是验证"裁剪"和"舞台过矮"两条判据能不能红的那两条。
+      而套件的退出码一直是非零，没人看。（跟前一轮那句同一个教训：判据要看退出码。）
+      根因是"自检跑在碰巧停下的那一页上"，所以补的是这个，不是补一个 try。 */
+  await nav('图的遍历'); await p.waitForTimeout(300)
+  const stretched = await p.evaluate(() => {
     const f = document.querySelector('.fit')
+    if (!f) return false
     f.dataset.keepMinH = f.style.minHeight
     f.style.minHeight = '900px'
+    return true
   })
   await p.waitForTimeout(250)
-  const cutProbe = await probe()
+  const cutProbe = stretched ? await probe() : { cut: [] }
   await p.evaluate(() => {
     const f = document.querySelector('.fit')
+    if (!f) return
     f.style.minHeight = f.dataset.keepMinH ?? ''
     delete f.dataset.keepMinH
   })
   await p.waitForTimeout(200)
-  cutProbe.cut.length > 0
-    ? ok(`自检：把舞台内容撑到 900px，立刻量到「${cutProbe.cut[0]}」—— 裁剪那一条会红`)
-    : bad('自检失败：内容撑到 900px 也说没东西被裁，裁剪判据量不出东西')
+  !stretched
+    ? bad('自检没跑成：这一页上没有 .fit（舞台不在），撑不了内容 —— 换个有舞台的实验再来')
+    : cutProbe.cut.length > 0
+      ? ok(`自检：把舞台内容撑到 900px，立刻量到「${cutProbe.cut[0]}」—— 裁剪那一条会红`)
+      : bad('自检失败：内容撑到 900px 也说没东西被裁，裁剪判据量不出东西')
 
   //  舞台那一条的自检：挑一个图最密的实验，把走带撑厚，缺口必须明显变大。
   //  （原来撑的是坞 —— 坞抽屉化之后浮在舞台上，不再参与挤压，撑它量不到了。）
@@ -1770,6 +1798,8 @@ console.log('\n【15】实验单：四段走通，结论是现算的')
    */
   const shot = () => p.evaluate(() => ({
     open: !!document.querySelector('.gnote'),
+    //  第 0 步摊开的是**扫盲层**（讲的是什么 / 名词 / 盯着看什么），不是那三张编号卡
+    plain: !!document.querySelector('.gnplain'),
     keys: [...document.querySelectorAll('.gncard .gnhead')].map(e => e.textContent.replace(/^\d+/, '').trim()),
     vals: [...document.querySelectorAll('.gncard .gnv')].map(e => e.textContent.trim()),
     q: document.querySelector('.gnq')?.textContent?.trim() ?? '',
@@ -1778,13 +1808,27 @@ console.log('\n【15】实验单：四段走通，结论是现算的')
       .reduce((n, e) => n + (e.scrollHeight - e.clientHeight), 0),
   }))
 
+  /*  ⚠️ 2026-09-08 这一段重写过两处，都是**烂在暗处**的东西：
+      ① 刷新之后落在**第 0 步**（渲染层加的那一帧），笔记这时摊开的是扫盲层，
+         「输入 / 规则 / 结果」要走一步才有 —— 原判据不知道有第 0 步，量到空数组就红。
+      ② 底下那两下点的是 `.gnplay > button`（笔记里自带的步进器）。那对按钮**早就撤了**
+         （笔记现在与实验台共存，走带在下面同屏可见），只剩一条没人用的 CSS。
+         点它必然 30 秒超时、整套冒烟当场崩。
+      两处都没人发现，是因为这一组前面还有一处崩溃，跑到这儿之前就死了 ——
+      **判据要看退出码，不是看有没有红字**。 */
+  const a0 = await shot()
+  a0.open && a0.plain && a0.keys.length === 0
+    ? ok(`头一回进来停在第 0 步，笔记摊开的是扫盲层（标题「${a0.q}」）—— 还没有"本步"，不摆那三张卡`)
+    : bad(`第 0 步的笔记不对：开了 ${a0.open}、扫盲层 ${a0.plain}、三段 ${JSON.stringify(a0.keys)}`)
+
+  await stepOne(); await p.waitForTimeout(280)
   const a = await shot()
   a.open && a.keys.join('|') === '输入|规则|结果' && a.vals.every(v => v.length >= 4) && a.cut === 0
-    ? ok(`头一回进来自动摊开笔记：${a.keys.join(' → ')}，正文一个字没藏（标题「${a.q}」）`)
+    ? ok(`走第 1 步，笔记换成三段：${a.keys.join(' → ')}，正文一个字没藏`)
     : bad(`笔记不对：开了 ${a.open}、三段 ${JSON.stringify(a.keys)}、裁掉 ${a.cut}px`)
 
-  await p.click('.gnplay > button:last-child'); await p.waitForTimeout(280)
-  await p.click('.gnplay > button:last-child'); await p.waitForTimeout(280)
+  await stepOne(); await p.waitForTimeout(280)
+  await stepOne(); await p.waitForTimeout(280)
   const b2 = await shot()
   b2.vals.join('|') !== a.vals.join('|') && b2.vals.every(v => v.length >= 4)
     ? ok(`按「下一步」，三段跟着改写（「${a.vals[0]}」→「${b2.vals[0]}」）—— 不是写死的`)
@@ -1824,6 +1868,7 @@ console.log('\n【15】实验单：四段走通，结论是现算的')
     : bad(`本次发现不对：「${v1.say.slice(0, 40)}」、数 ${JSON.stringify(nums(v1.say))}、还剩星号 ${v1.stars}`)
 
   await p.click('.gnx'); await p.waitForTimeout(200)
+  await seqOpen()          //  预置按钮只在展开态可见，别赌上一组把它留在展开态
   await p.click('.seqacts button:has-text("同组冲突")'); await p.waitForTimeout(400)
   await p.click('.chip.bchip'); await p.waitForTimeout(400)
   const v2 = await p.evaluate(() => document.querySelector('.gnsay')?.textContent?.trim() ?? '')
@@ -1837,8 +1882,10 @@ console.log('\n【15】实验单：四段走通，结论是现算的')
     open: !!document.querySelector('.gnote'),
     chip: document.querySelector('.chip.bchip')?.textContent?.trim(),
   }))
-  !again.open && again.chip?.includes('看结论')
-    ? ok(`刷新后不再自来 —— 页眉留着「${again.chip}」`)
+  /*  页眉那颗药丸的字改过（「看结论」→「导览」，看过之后缀一个 ✓）。
+      判据跟着改到**意思**上：刷新后不再自来、入口还在、而且标着"看过了"。 */
+  !again.open && again.chip?.includes('导览') && again.chip?.includes('✓')
+    ? ok(`刷新后不再自来 —— 页眉留着「${again.chip}」，✓ 表示看过了`)
     : bad(`记忆不对：又自己弹出来 ${again.open}、页眉写着「${again.chip}」`)
 }
 
@@ -2410,6 +2457,10 @@ console.log('\n【17b】大屏上舞台会长大，两栏收得起来')
     const w2 = await boxw()
     await p.reload({ waitUntil: 'networkidle' }); await p.waitForTimeout(700)
     const bf5 = await p.$('.gnote .gnx'); if (bf5) { await bf5.click(); await p.waitForTimeout(140) }
+    /*  ⚠️ 刷新之后落在**第 0 步**，那儿摆的是起点卡、没有 FitBox（`.fit` 不存在），
+        `boxw()` 会当场抛 TypeError 把整套冒烟带走。走一步再量。
+        （这一处跟第 15 组是同一个病根，都被更早的那处崩溃盖着，谁也没跑到过。） */
+    await stepOne(); await p.waitForTimeout(200)
     const w3 = await boxw()
     //  收起后那两条窄轨还得在 —— 不然再打开的按钮就没地方找了
     const rails = await p.evaluate(() => ({

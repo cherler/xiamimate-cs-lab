@@ -61,9 +61,21 @@ function Gantt({ trace, index, procs, color }: {
             </div>
           </div>
         </div>
+        {/*
+          ⚠️ 「运行」那一格**不是一个颜色**：正在跑的格子会被染成**该进程自己的色**
+          （第 45 行那个 inline background），所以图上同时有蓝、绿、橙……
+          原来的图例只摆了一个色块写「运行」，于是用户 2026-09-08 说：
+          「几个甘特图颜色块（除蓝色以外）不太明白什么意思」—— 蓝的能对上图例，别的对不上。
+          现在把每个进程的色块都列出来，并写明它跟左边那一列进程名同色。
+        */}
         <div className="legend">
-          <span><i className="run" />运行</span>
-          <span><i className="wait" />就绪等待</span>
+          <span className="glegrun">
+            {procs.map(p => (
+              <i key={p.id} className="run" style={{ background: color(p.id) }} title={`${p.id} 正在运行`} />
+            ))}
+            运行（<b>一进程一色</b>，同左列）
+          </span>
+          <span><i className="wait" />就绪等待（在排队，没轮到）</span>
           <span><i className="done" />已完成</span>
           <span><i className="idle" />未到达</span>
         </div>

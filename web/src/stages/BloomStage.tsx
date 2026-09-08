@@ -1,9 +1,16 @@
-/** 舞台：布隆过滤器 —— m 位 bit 数组，插入点亮 k 位，查询看 k 位是否全 1 */
+/**
+ * 舞台：布隆过滤器 —— m 位 bit 数组，插入点亮 k 位，查询看 k 位是否全 1
+ *
+ * 2026-09-08 补了**最要紧的那一块**。用户：「实验区没有说单词怎么映射到位图的索引位置」。
+ * 原来屏幕上只有一句「哈希到 3 个位 [4, 11, 19]」—— 那三个数是这个实验唯一的机关
+ * （假阳性就是"两个词恰好撞到同几个位"），却从天上掉下来。
+ * 现在把 `word → 揉成一个整数 → mod m → 位号` 一行行摊出来，能对着算。
+ */
 import type { BloomState } from '@engine/kernels/bloom.ts'
 import type { StageProps } from '../types.ts'
 
 export function BloomStage({ state }: StageProps<BloomState>) {
-  const { m, k, bits, op, word, idx, verdict, falsePositive, members, phase } = state
+  const { m, k, bits, op, word, idx, hashes, verdict, falsePositive, members, phase } = state
   const touched = new Set(idx)
   return (
     <div className="card">
@@ -15,12 +22,33 @@ export function BloomStage({ state }: StageProps<BloomState>) {
           <div className="scdk"><span className="scdn">{members.join(' ')}</span><span className="scdl">已插入</span></div>
         </div>
 
+        {/* 单词 → 位号：这一屏的机关就在这三行上 */}
+        {hashes.length > 0 && (
+          <div className="blmhash">
+            <div className="blmhh">
+              <b>{word}</b> 怎么变成 {k} 个位号：每个哈希从自己的<b>种子</b>出发，
+              把单词一个字符一个字符揉进去（<code>x ← x×31 + 字符码</code>），最后对 m={m} 取余
+            </div>
+            {hashes.map((h, j) => (
+              <div key={j} className="blmhr">
+                <span className="blmhk">h{'₁₂₃₄₅'[j] ?? j + 1}</span>
+                <span className="blmhs">种子 0x{h.seed.toString(16)}</span>
+                <span className="blmha">揉完 = {h.raw.toLocaleString('en-US')}</span>
+                <span className="blmhm">mod {m}</span>
+                <span className={`blmhp ${op === 'add' ? 'add' : 'probe'}`}>位 {h.pos}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* bit 数组 */}
         <div className="blmwrap">
           <div className="blmbits">
+            {/*  位号印在格子上：上面刚算出「位 20」，得能一眼找到它是哪一格，
+                 不然那条推算链到最后一步又断了。 */}
             {bits.map((b, i) => (
               <div key={i} className={`blmbit ${b ? 'on' : ''} ${touched.has(i) ? (op === 'add' ? 'add' : 'probe') : ''}`}>
-                {b ? 1 : 0}
+                <i className="blmno-i">{i}</i>{b ? 1 : 0}
               </div>
             ))}
           </div>

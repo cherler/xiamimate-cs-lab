@@ -392,7 +392,11 @@ function FloatDiagram() {
         <div className="gd-lane">
           <div className="gd-card t"><h4>S = 0</h4><p>符号位 0 → <em>正数</em></p></div>
           <div className="gd-card i"><h4>E = 10000000₂ = 128</h4><p>128 − 127 = <em>1</em> → 乘 2¹</p></div>
-          <div className="gd-card o"><h4>M = 100…0</h4><p>1.M = <em>1.5</em>（1.100…=1.5）</p></div>
+          {/*  用户 2026-09-08：「对 M 的解释，应该写 1 + 2^-1 = 1.5；不然看不懂 1.5 怎么来的」。
+               原来写的是「1.M = 1.5（1.100…=1.5）」—— 把结论重复了一遍，等于没解释：
+               二进制小数点后第一位的权是 2⁻¹，这一步不写出来，1.100₂ 到 1.5 之间就是断的。 */}
+          <div className="gd-card o"><h4>M = 100…0</h4>
+            <p>1.M = 1.100…₂<br />= 1 + 1×2⁻¹ = 1 + 0.5 = <em>1.5</em></p></div>
         </div>
         <div className="gd-formula" style={{ marginTop: 10 }}>
           (−1)<sup>0</sup> × <span className="fo">1.5</span> × 2<sup>1</sup> = <b>+3.0</b>

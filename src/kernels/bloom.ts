@@ -27,6 +27,25 @@ function h(str: string, seed: number): number {
 }
 const posOf = (w: string) => SEEDS.map(s => h(w, s))
 
+/**
+ * 把「一个单词怎么变成几个位号」摊开。
+ *
+ * 用户 2026-09-08：「实验区没有说单词怎么映射到位图的索引位置」。原来屏幕上只有一句
+ * 「哈希到 3 个位 [4, 11, 19]」—— 那三个数从天上掉下来，它是**这个实验唯一的机关**，
+ * 却恰恰没画。这里把每个哈希函数的**种子、揉完的整数、除以 m 的余数**都吐进状态里，
+ * 于是屏幕上那三个位号是**能对着算一遍**的，不是断言。
+ *
+ * 揉法就是最普通的多项式滚动哈希：x ← x·31 + 字符码（从各自的种子出发），
+ * 最后 mod m。三个哈希"不同"只差在种子不同 —— 这也是真实实现的常见做法
+ * （一个哈希配不同种子，而不是真写 k 个函数）。
+ */
+export type HashTrace = { seed: number; raw: number; pos: number }
+const traceOf = (w: string): HashTrace[] => SEEDS.map(s => {
+  let x = s >>> 0
+  for (const c of w) x = (x * 31 + c.charCodeAt(0)) >>> 0
+  return { seed: s, raw: x, pos: x % M }
+})
+
 export type BloomState = {
   i: number
   step: number
@@ -36,6 +55,8 @@ export type BloomState = {
   op: 'add' | 'query' | ''
   word: string
   idx: number[]              // 本次触碰的 k 个位
+  /** 这 k 个位号是怎么算出来的（种子 → 揉出的整数 → mod m）—— 让位号可核对 */
+  hashes: HashTrace[]
   verdict: '' | 'set' | '可能在' | '一定不在'
   truth: boolean             // 该词是否真的插过
   falsePositive: boolean
@@ -45,7 +66,7 @@ export type BloomState = {
 }
 
 export const BLOOM_VISIBLE = [
-  'step', 'm', 'k', 'bits', 'op', 'word', 'idx', 'verdict', 'truth', 'falsePositive', 'members', 'phase', 'log',
+  'step', 'm', 'k', 'bits', 'op', 'word', 'idx', 'hashes', 'verdict', 'truth', 'falsePositive', 'members', 'phase', 'log',
 ] as const
 
 type Frame = Omit<BloomState, 'i'>
@@ -63,7 +84,7 @@ export const bloomKernel: Kernel<BloomState> = {
       const idx = posOf(w)
       idx.forEach(i => { bits[i] = 1 })
       frames.push({
-        step: step++, m: M, k: K, bits: bits.slice(), op: 'add', word: w, idx,
+        step: step++, m: M, k: K, bits: bits.slice(), op: 'add', word: w, idx, hashes: traceOf(w),
         verdict: 'set', truth: true, falsePositive: false, members: MEMBERS.slice(), phase: 'insert',
         log: `插入 **${w}**：哈希到 3 个位 [${idx.join(', ')}]，全部置 1。（插入=点亮 k 个位）`,
       })
@@ -76,7 +97,7 @@ export const bloomKernel: Kernel<BloomState> = {
       const truth = MEMBERS.includes(w)
       const fp = allSet && !truth
       frames.push({
-        step: step++, m: M, k: K, bits: bits.slice(), op: 'query', word: w, idx,
+        step: step++, m: M, k: K, bits: bits.slice(), op: 'query', word: w, idx, hashes: traceOf(w),
         verdict: allSet ? '可能在' : '一定不在', truth, falsePositive: fp, members: MEMBERS.slice(), phase: 'query',
         log: `查询 **${w}**：看它的 3 个位 [${idx.join(', ')}] → ` +
           (allSet
@@ -87,7 +108,7 @@ export const bloomKernel: Kernel<BloomState> = {
 
     const fpWord = QUERIES.find(w => { const idx = posOf(w); return idx.every(i => bits[i] === 1) && !MEMBERS.includes(w) })
     frames.push({
-      step, m: M, k: K, bits: bits.slice(), op: '', word: '', idx: [], verdict: '', truth: false, falsePositive: false,
+      step, m: M, k: K, bits: bits.slice(), op: '', word: '', idx: [], hashes: [], verdict: '', truth: false, falsePositive: false,
       members: MEMBERS.slice(), phase: 'done',
       log: `插了 ${MEMBERS.length} 个词、查了 ${QUERIES.length} 个。规律:**有一位是 0 → 一定不在**(绝不漏报)；` +
         `**全是 1 → 可能在**——可能真在，也可能是撞位造成的**假阳性**(如 ${fpWord})。` +
@@ -96,7 +117,7 @@ export const bloomKernel: Kernel<BloomState> = {
     })
 
     const base0: Frame = {
-      step: -1, m: M, k: K, bits: new Array(M).fill(0), op: '', word: '', idx: [], verdict: '',
+      step: -1, m: M, k: K, bits: new Array(M).fill(0), op: '', word: '', idx: [], hashes: [], verdict: '',
       truth: false, falsePositive: false, members: MEMBERS.slice(), phase: 'insert', log: '',
     }
 

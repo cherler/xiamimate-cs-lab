@@ -247,6 +247,9 @@
 .legend span{display:flex;gap:5px;align-items:center}
 .legend i{width:11px;height:11px;border-radius:2px;display:block}
 .legend i.run{background:var(--p1)}
+/*  甘特图的「运行」是一排色块（每进程一个），挨着排、跟后面的文字留一点气口 */
+.glegrun{gap:3px !important}
+.glegrun i.run:last-of-type{margin-right:4px}
 .legend i.wait{background:var(--wan-soft)}
 .legend i.done{background:#45B39A1a}
 .legend i.idle{background:var(--sunk-2);border:1px solid var(--line)}
@@ -998,9 +1001,22 @@
 /* ═══ KMP ═══ */
 .ptab.kmp td.cmp{border-color:var(--f-tag);color:var(--f-tag)}
 .ptab.kmp td.work{background:#F0B42920;color:var(--now);border-color:#F0B42966;font-weight:700}
+/*  `.look` = 失配这一刻算法正在查的那一格。整屏只此一处用 --hit 的实心底，
+    因为它要跟底下对齐图上那个红色失配位遥相呼应 —— 这两块之间的那根线就靠它 */
+.ptab.kmp td.look, .ptab.kmp th.look{background:#45B39A26;color:var(--hit);
+  border-color:#45B39A88;font-weight:700}
+/*  卡内分段标题：①次序 + 一句话说明这一块是干什么的 */
+.kmpsec{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;margin:0 0 7px;
+  font-size:var(--t-ui);color:var(--faint)}
+.kmpsec:not(:first-child){margin-top:11px;padding-top:10px;border-top:1px solid var(--line)}
+.kmpsec b{font-size:var(--t-body);color:var(--ink)}
+.kmpsec.off{color:var(--faint);font-style:italic}
+/*  匹配还没开始那几步（正在求 next）：对齐图整块压暗，别让人以为它在说什么 */
+.kmpalign.waiting{opacity:.4}
 .kmpwhy{margin:11px 0 0;font-size:var(--t-body);color:var(--dim)}
 .kmpwhy b{font-family:var(--mono);color:var(--now)}
-.kmpalign{font-family:var(--mono);min-width:min-content;margin-bottom:12px}
+/*  底下的 12px 是给原来那块读数留的间距 —— 读数搬去右栏之后就成了纯空白，收掉 */
+.kmpalign{font-family:var(--mono);min-width:min-content;margin-bottom:2px}
 .karow{display:flex;gap:2px;align-items:center;margin-bottom:3px}
 .kalab{min-width:64px;font-size:var(--t-ui);color:var(--faint);text-align:right;padding-right:7px}
 .kach{min-width:22px;text-align:center;font-size:var(--t-body);padding:4px 0;border-radius:3px;
@@ -3089,11 +3105,31 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 /* 布隆过滤器 */
 .blmwrap { display:flex; flex-direction:column; align-items:center; gap:8px; margin:10px 0; }
 .blmbits { display:grid; grid-template-columns:repeat(12, 1fr); gap:4px; width:min(360px,84vw); }
-.blmbit { aspect-ratio:1/1; display:flex; align-items:center; justify-content:center; font-size:11px;
+.blmbit { position:relative; aspect-ratio:1/1; display:flex; align-items:center; justify-content:center; font-size:11px;
   border-radius:4px; background:var(--panel); border:1px solid var(--line); color:var(--faint); transition:all .25s; }
 .blmbit.on { background:color-mix(in srgb,var(--now) 22%,var(--panel)); color:var(--ink); border-color:color-mix(in srgb,var(--now) 40%,var(--line)); }
 .blmbit.add { outline:2px solid var(--now); outline-offset:1px; }
 .blmbit.probe { outline:2px solid var(--hit); outline-offset:1px; }
+/*  单词 → 位号的推算（这一屏的机关），一行一个哈希 */
+.blmhash { margin:10px auto 0; width:min(560px,94%); display:flex; flex-direction:column; gap:4px;
+  padding:9px 11px; border:1px solid var(--line); border-radius:6px; background:var(--sunk-1); }
+.blmhh { font-size:var(--t-ui); color:var(--faint); line-height:1.7; margin-bottom:2px; }
+.blmhh b { color:var(--ink); font-family:var(--mono); }
+.blmhh code { font-family:var(--mono); color:var(--f-tag); background:var(--panel);
+  border:1px solid var(--line); border-radius:3px; padding:0 4px; }
+.blmhr { display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  font-family:var(--mono); font-size:var(--t-ui); color:var(--dim); }
+.blmhk { color:var(--f-idx); font-weight:700; min-width:18px; }
+.blmhs { color:var(--faint); }
+.blmha { color:var(--ink); }
+.blmhm { color:var(--faint); }
+.blmhp { margin-left:auto; padding:1px 8px; border-radius:9px; font-weight:700;
+  border:1px solid var(--line); background:var(--panel); }
+.blmhp.add { color:var(--now); border-color:color-mix(in srgb,var(--now) 45%,var(--line)); }
+.blmhp.probe { color:var(--hit); border-color:color-mix(in srgb,var(--hit) 45%,var(--line)); }
+/*  格子左上角那个小位号：算出「位 20」之后要能一眼找到它 */
+.blmno-i { position:absolute; top:1px; left:3px; font-style:normal; font-size:8px;
+  line-height:1; color:var(--faint); opacity:.75; font-family:var(--mono); }
 .blmyes { color:var(--hit); }
 .blmno { color:var(--dim); }
 .blmfp { color:var(--miss); }
