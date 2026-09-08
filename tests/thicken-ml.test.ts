@@ -44,6 +44,7 @@ import { lowrankKernel, type LowRankState } from '../src/kernels/lowrank.ts'
 import { ragKernel, type RagState } from '../src/kernels/rag.ts'
 import { ganKernel, type GanState } from '../src/kernels/gan.ts'
 import { perceptronKernel, type PerceptronState } from '../src/kernels/perceptron.ts'
+import { pagerankKernel, type PageRankState } from '../src/kernels/pagerank.ts'
 
 let failures = 0
 const ok = (m: string) => console.log(`  ✅ ${m}`)
@@ -354,6 +355,54 @@ console.log('\n【逻辑回归：正则真的在压权重，异或真的分不�
   !xor.separable && xor.acc < sep.acc - 0.15
     ? ok(`异或准确率 ${(xor.acc * 100).toFixed(0)}%，可分档 ${(sep.acc * 100).toFixed(0)}% —— 一条直线切不开异或`)
     : bad(`异或 ${(xor.acc * 100).toFixed(0)}% vs 可分 ${(sep.acc * 100).toFixed(0)}% —— 差距不足以说明"线性不可分"`)
+}
+
+// ═══ PageRank：阻尼系数是为两个坑存在的 ═══════════════════
+console.log('\n【PageRank：悬挂节点会漏 rank，蜘蛛陷阱会吃光 rank】')
+{
+  const all = (p: P) => (run(pagerankKernel.compile(doc('pagerank', p)), 40) as PageRankState[]).filter(s => s.iter >= 0)
+  const go = (p: P) => last(run(pagerankKernel.compile(doc('pagerank', p)), 40) as PageRankState[])
+  const OK = '正常', DANG = '有悬挂节点（D 不链出去）', TRAP = '有蜘蛛陷阱（C 只链自己）'
+
+  /*  ① 正常图上总和必须**精确等于 1**（每轮只是重新分配）。
+      这条是全屏的锚：内部不舍入、只在显示时舍入，就是为了它 —— 逐项舍入再相加会显示成 1.003。 */
+  const norm = all({ graph: OK, d: 85, fix: '不处理' })
+  norm.every(s => Math.abs(s.total - 1) < 1e-9)
+    ? ok(`正常图：每一轮的 Σrank 都精确等于 1（${norm.length} 帧）—— rank 只是重新分配，不增不减`)
+    : bad(`正常图的总和不是 1：${[...new Set(norm.map(s => s.total))].join(' / ')}`)
+
+  //  ② 老口径守住：正常图收敛后 C 最高、D 最低
+  const nf = go({ graph: OK, d: 85, fix: '不处理' })
+  nf.ranked[0].name === 'C' && last(nf.ranked).name === 'D'
+    ? ok(`正常图排名 ${nf.ranked.map(x => `${x.name}(${x.r})`).join(' > ')} —— C 最高、D 最低，跟老版本一致`)
+    : bad(`排名变了：${nf.ranked.map(x => x.name).join('>')}`)
+
+  /*  ③ 悬挂节点**不处理**时总和必须一路漏；**均分修复**后回到 1。
+      少了"总和"这一栏，这件事从各页 rank 上完全看不出来（都在变小，像还没收敛）。 */
+  const leak = go({ graph: DANG, d: 85, fix: '不处理' })
+  const fixed = go({ graph: DANG, d: 85, fix: '均分给所有页' })
+  leak.leaked && leak.total < 0.85 && !fixed.leaked && Math.abs(fixed.total - 1) < 1e-9
+    ? ok(`悬挂节点：不处理时 Σrank 漏到 ${leak.total}，均分修复后精确回到 ${fixed.total}`)
+    : bad(`漏/修没演出来：不处理 ${leak.total}（leaked=${leak.leaked}）、修复后 ${fixed.total}`)
+
+  //  ④ 总和必须**单调往下漏**（不是抖出来的）
+  const seq = all({ graph: DANG, d: 100, fix: '不处理' }).map(s => s.total)
+  seq.every((v, k) => k === 0 || v <= seq[k - 1] + 1e-9) && last(seq) < seq[0]
+    ? ok(`d=1、不处理：Σrank 单调下漏 ${seq[0]} → ${last(seq)}`)
+    : bad(`总和不是单调漏的：${seq.join(' / ')}`)
+
+  /*  ⑤ 蜘蛛陷阱：d=1（完全不跳转）时必须**吃光**，d=0.85 时吃不干净。
+      这一条就是"阻尼系数为什么存在"的全部证据。 */
+  const trapHard = go({ graph: TRAP, d: 100, fix: '不处理' })
+  const trapSoft = go({ graph: TRAP, d: 85, fix: '不处理' })
+  trapHard.absorbed > 0.99 && trapSoft.absorbed < trapHard.absorbed && trapSoft.absorbed > 0.5
+    ? ok(`蜘蛛陷阱：d=1 时 C 吃掉 ${(trapHard.absorbed * 100).toFixed(0)}%（其余全 0），d=0.85 时只吃 ${(trapSoft.absorbed * 100).toFixed(0)}% —— 阻尼就是为这个存在的`)
+    : bad(`陷阱那档不对：d=1 吃 ${trapHard.absorbed}、d=0.85 吃 ${trapSoft.absorbed}`)
+
+  //  ⑥ 自检：正常图上既不漏也没有陷阱（否则③⑤的对照不干净）
+  !nf.leaked && nf.absorbed === 0 && nf.danglers.length === 0 && nf.trapped.length === 0
+    ? ok('自检：正常图既没有悬挂节点也没有陷阱 —— ③⑤两条的对照是干净的')
+    : bad(`正常图也有毛病：漏=${nf.leaked}、陷阱吃=${nf.absorbed}、悬挂=${nf.danglers}`)
 }
 
 // ═══ 感知机：收敛定理的前提，和"它不记得最好的那次" ═══════

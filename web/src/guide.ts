@@ -6192,29 +6192,54 @@ export const GUIDES: Record<string, Guide> = {
       hook: '一个网页重不重要，看有多少重要的网页指向它。',
       what: '这一屏讲的是**PageRank**：Google 早期用来给网页排序的算法，也是「图上的重要性怎么定义」这类问题的样板。它的定义是循环的：**一个网页重不重要，取决于有多少重要的网页指向它**。要知道甲重不重要，得先知道指向甲的乙重不重要 —— 看起来是死循环。解法是不管三七二十一先给所有人打相同的分，然后**让每个页面把自己的分数平分给它指向的人**，收一轮、再分一轮，反复几十次，分数会自己稳定下来。',
       terms: '**出链 / 入链**：这个页面指向别人的链接，和别人指向它的链接。\u3000**分数传递**：每一轮，一个页面把自己的分数**平均分给它指向的所有页面**。所以出链越多，每一条传出去的分越少 —— 这天然抑制了「到处乱链」的刷分行为。\u3000**迭代收敛**：反复传递直到分数不再明显变化。数学上这是在求一个转移矩阵的主特征向量，**收敛性由马尔可夫链的性质保证**。\u3000**阻尼系数 d（通常 0.85）**：模拟「用户有 15% 的概率不点链接、直接随机跳到另一个页面」。**没有它，分数会被几个互相指来指去的页面吸干**（这类结构叫「蜘蛛陷阱」），而且没有入链的页面永远是 0 分。\u3000**悬挂节点**：没有任何出链的页面。它会吞掉分数，所以要特殊处理（通常当作指向所有页面）。\u3000**后来的用途**：反欺诈（识别刷单团伙）、论文影响力、推荐系统里的物品重要性、甚至蛋白质网络分析 —— **它早已不只是搜索排序算法**。',
-      watch: '看每一轮分数怎么流动、几轮之后稳定下来。改一条链接的指向再走一遍，影响会顺着图扩散出去。',
+      watch: '盯 **Σrank** 那一栏 —— 正常时它**精确等于 1**（每轮只是重新分配）。换成**有悬挂节点**：D 收了 rank 却不往外给，总和一路漏到 **0.787**；把「悬挂节点」拨到"均分给所有页"，立刻回到 1。再换成**有蜘蛛陷阱**、把 d 拧到 100%：C 把 rank **吃到 100%**，其余全是 0 —— **这就是阻尼系数存在的理由**。',
     },
     step: (s: never) => {
-      const st = s as { phase: string; iter: number; rank: number[]; nodes: string[]; ranked: { name: string; r: number }[]; d: number }
+      const st = s as { phase: string; iter: number; rank: number[]; nodes: string[]
+        ranked: { name: string; r: number }[]; d: number
+        total?: number; leaked?: boolean; absorbed?: number
+        danglers?: string[]; trapped?: string[]; fixDangling?: boolean }
+      //  ⚠️ 补厚字段可选读：老快照没有 total/leaked，读不到就按老口径讲。
+      const sum = st.total !== undefined ? `，**总和 ${st.total}**` : ''
       return [
-        { k: '本步输入', v: st.iter === 0 && st.phase !== 'done' ? '4 个网页,初始 rank 各 0.25' : st.phase === 'done' ? '各页 rank 已稳定' : `第 ${st.iter} 轮的 rank` },
-        { k: '判定规则', v: `一个页面的重要性 = 有多少、多重要的页面链到它(链接=投票,重要页面的票更值钱)。**幂迭代**:每页把 rank **平分**给它链出的页面,收方求和,再混入随机跳转(阻尼 d=${st.d})。反复迭代到收敛。` },
-        { k: '本步结果', v: st.phase === 'done' ? `收敛排名 **${st.ranked.map(x => x.name).join(' > ')}**——${st.ranked[0].name} 最高(最多、最重要的页面链它)。`
-            : st.iter === 0 ? '每页起点都一样。'
-            : `${st.nodes.map((n, k) => `${n}=${st.rank[k]}`).join('、')};重要性在页面间流动、逐渐稳定。` },
+        { k: '本步输入', v: st.iter === 0 && st.phase !== 'done' ? '4 个网页，初始 rank 各 0.25'
+            : st.phase === 'done' ? '跑完 8 轮' : `第 ${st.iter} 轮的 rank` },
+        { k: '判定规则', v: `一个页面的重要性 = 有多少、多重要的页面链到它。**幂迭代**：每页把 rank **平分**给它链出的页面，`
+            + `收方求和，再混入随机跳转（阻尼 d=${st.d}）。`
+            + (st.danglers?.length ? `　⚠️ 但 **${st.danglers.join('、')} 没有出链** —— 它收到的 rank 无处可去。` : '')
+            + (st.trapped?.length ? `　⚠️ 而 **${st.trapped.join('、')} 只链自己** —— 走进去就出不来。` : '') },
+        { k: '本步结果', v: st.phase === 'done'
+            ? (st.leaked
+              ? `排名 ${st.ranked.map(x => x.name).join(' > ')}，可**总和只剩 ${st.total}** —— `
+                + `${st.danglers?.join('、')} 有进无出，rank **一路漏掉了**。把「悬挂节点」拨到"均分给所有页"就能补上。`
+              : (st.absorbed ?? 0) > 0.5
+                ? `**${st.trapped?.join('、')} 吃掉了 ${((st.absorbed ?? 0) * 100).toFixed(0)}% 的 rank**`
+                  + `${st.d >= 1 ? '（d=1 完全不跳转，随机上网者进去就出不来）' : ''}。`
+                  + `　这就是**蜘蛛陷阱**，也是阻尼系数存在的理由。`
+                : `排名 **${st.ranked.map(x => x.name).join(' > ')}**${sum} —— ${st.ranked[0].name} 最高（最多、最重要的页面链它）。`)
+            : st.iter === 0 ? '每页起点都一样，总和 1。'
+              : `${st.nodes.map((n, k) => `${n}=${st.rank[k]}`).join('、')}${sum}；重要性在页面间流动。` },
       ]
     },
     verdict: (s: never) => {
-      const st = s as { phase: string; iter: number; ranked: { name: string }[] }
-      return st.phase === 'done' ? `${st.ranked[0].name} 胜` : st.iter === 0 ? '初始' : `第${st.iter}轮`
+      const st = s as { phase: string; iter: number; ranked: { name: string }[]
+        leaked?: boolean; total?: number; absorbed?: number }
+      if (st.phase !== 'done') return st.iter === 0 ? '初始' : `第${st.iter}轮`
+      if (st.leaked) return `漏到 ${st.total}`
+      if ((st.absorbed ?? 0) > 0.5) return `陷阱吃 ${((st.absorbed ?? 0) * 100).toFixed(0)}%`
+      return `${st.ranked[0].name} 胜`
     },
     read: [
       { at: '读数', is: '当前迭代轮、最高的页面、最高 rank。', anchor: '.scdim' },
       { at: '图+条', is: '节点越大=rank 越高;箭头=链接(投票)。每轮把 rank 平分给链出页,重要性流动、几轮收敛。', anchor: '.prwrap' },
     ],
     try: [
-      { act: '按「下一步」迭代', watch: '每轮重要性顺箭头流动、重新分配;节点大小实时变。' },
-      { act: '看谁胜出', watch: 'C 被最多、最重要的页面链到 → 收敛后 rank 最高;D 没人链 → 最低。' },
+      { act: '按「下一步」迭代', watch: '每轮重要性顺箭头流动、重新分配;节点大小实时变。C 被最多、最重要的页面链到 → rank 最高;D 没人链 → 最低。' },
+      { act: '盯住「Σrank」那一栏', watch: '正常图上它**精确等于 1** —— 每一轮 rank 只是**重新分配**,不增不减。记住这个数,下一条要用。' },
+      //  下面三条是补厚后的主菜
+      { act: '把「网页图」换成「有悬挂节点（D 不链出去）」', watch: '总和从 1 **一路漏到 0.787**。D 收了 rank 却不往外给,那一份**凭空消失**了。⚠️ 注意光看各页 rank 是发现不了的——它们都在变小,看着像"还没收敛"。**这一栏就是为这件事加的。**' },
+      { act: '再把「悬挂节点」拨到「均分给所有页」', watch: '总和立刻回到 **1**。这就是标准解法:把死胡同的 rank 摊给所有页,等于随机上网者在死胡同里**随机跳走**。' },
+      { act: '换成「有蜘蛛陷阱（C 只链自己）」，把「阻尼 d」拧到 100%', watch: 'C 把 rank **吃到 100%**、其余三页全是 **0**。d=1 意味着完全不随机跳转,随机上网者一旦点进陷阱就**永远出不来**。把 d 调回 85% 再看:它只吃掉 85%。**阻尼系数不是随手加的超参,它就是为这两个坑存在的。**' },
     ],
     terms: [],
   },

@@ -4876,30 +4876,56 @@ const pagerank: Experiment<PageRankState> = {
   subtitle: '重要性顺着链接流动，被重要页面链到的也重要',
   kernel: pagerankKernel,
   defaultDoc: { kind: 'pagerank', params: {}, entities: [], streams: [] },
-  params: [],
+  /*  2026-09-08 补厚：老版本一张写死的图、d 写死 0.85、必然收敛得漂漂亮亮。
+      可 PageRank 真正的分量在于**它要防住两件事**（悬挂节点漏 rank、蜘蛛陷阱吃光 rank），
+      而**阻尼系数 d 就是同时为这两件事存在的** —— d 写死之后，"为什么要有 d"根本没机会出现。 */
+  params: [
+    { key: 'graph', label: '网页图', kind: 'enum', options: ['正常', '有悬挂节点（D 不链出去）', '有蜘蛛陷阱（C 只链自己）'] },
+    { key: 'd', label: '阻尼 d', kind: 'number', options: [50, 85, 100], unit: '%' },
+    { key: 'fix', label: '悬挂节点', kind: 'enum', options: ['不处理', '均分给所有页'] },
+  ],
   paramsNote: `**PageRank:一个页面的重要性取决于有多少、以及多重要的页面链到它**——重要页面的投票更值钱。
 
 - **数学(幂迭代)**:每页把当前 rank 平分给它链出的页面(链接=投票),每页新 rank=各方投来之和,再混入随机跳转(阻尼 d=0.85 防死循环);反复迭代收敛,等价于随机上网者无穷点击后停在各页的概率(图上随机游走稳态)。
 - **本实验**:4 页 A/B/C/D 互链,初始各 0.25,看幂迭代每轮把重要性顺箭头流动、重新分配,几轮收敛——C 最高(三个页面链到它)、D 最低(没人链它)。每轮 rank 可手算。
 
+- **补厚补的是它要防住的两件事**（也是阻尼系数存在的理由）:
+  - **悬挂节点**(没有出链的页面:PDF、下载页、死胡同):收了 rank 却不往外给,整个图的**总和一路漏** —— 实测 Σrank 掉到 **0.787**(d=0.85)/ **0.75**(d=1)。解法是把它的 rank **均分给所有页**(等于随机上网者在死胡同里随机跳走),总和立刻回到 **1**。
+  - **蜘蛛陷阱**(一撮页面只互相链,这里用自环 C→C):随机游走进去就出不来。d=0.85 时它吃掉 **85%** 的 rank,**d=1(完全不跳转)时吃掉 100%** —— C=1、其余全 0。
+- **所以屏幕上多了 Σrank 这一栏**:正常时它**精确等于 1**(每轮只是重新分配)。少了它,悬挂节点漏 rank 从数字上**完全看不出来**——各页 rank 都在变小,看着像"还没收敛"。
+
 Google 起家算法,搜索排序/影响力分析/推荐的基石。`,
   bounds: [
-    '4 个网页 A/B/C/D 互链,初始 rank 各 0.25',
-    '每轮:每页把 rank 平分给链出页、收方求和+阻尼(可核)',
-    '几轮收敛:C 最高(0.392)、D 最低(0.038,无人链)',
-    '等价随机游走稳态;d=0.85 混入随机跳转',
+    '4 个网页 A/B/C/D，三张图可切；初始 rank 各 0.25，跑 8 轮；每轮的值都能手算核对',
+    '每轮：每页把 rank 平分给链出页、收方求和，再混入随机跳转 (1−d)/N',
+    /*  ⚠️ 这条是"总和"能当判据的前提。 */
+    'rank 内部**不舍入**，只在显示时舍入：逐项舍入再相加会让总和显示成 1.003，而这一屏正要拿"总和恒等于 1"当判据',
+    '悬挂节点的解法只做"均分给所有页"这一种；真实实现里也常用"把它当成链向所有页"，等价',
+    '蜘蛛陷阱用一个自环示意；真实的陷阱是一撮互链的页面，机制一样',
+    '只演幂迭代本身：不含个性化 PageRank、不含大规模稀疏矩阵的工程实现',
   ],
   tabs: [{ id: 'graph', label: '重要性流动' }],
   Stage: PageRankStage,
-  tone: s => (s.phase === 'done' ? { key: 'good', label: `${s.ranked[0].name} 胜` } : { key: 'idle', label: s.iter === 0 ? '初始' : `第${s.iter}轮` }),
-  metric: s => (s.phase === 'done' ? 1 : s.iter / 6),
+  tone: s => (s.phase !== 'done' ? { key: 'idle', label: s.iter === 0 ? '初始' : `第${s.iter}轮` }
+    : s.leaked ? { key: 'bad', label: `漏到 ${s.total}` }
+      : s.absorbed > 0.5 ? { key: 'bad', label: `陷阱吃 ${(s.absorbed * 100).toFixed(0)}%` }
+        : { key: 'good', label: `${s.ranked[0].name} 胜` }),
+  metric: s => (s.phase === 'done' ? 1 : s.iter / 8),
   tickLabel: s => (s.phase === 'done' ? '敛' : s.iter === 0 ? '始' : `${s.iter}`),
   whyInRail: true,
   readouts: s => [
-    { label: '迭代', value: s.phase === 'done' ? '收敛' : s.iter === 0 ? '初始' : `第 ${s.iter} 轮` },
-    { label: '排名', value: s.ranked.map(x => x.name).join(' > ') },
-    { label: '最高', value: `${s.ranked[0].name} (${s.ranked[0].r})`, tone: s.phase === 'done' ? 'good' : undefined },
-    { label: '阻尼 d', value: `${s.d}` },
+    { label: '迭代', value: s.phase === 'done' ? '跑完' : s.iter === 0 ? '初始' : `第 ${s.iter} 轮` },
+    { label: '排名', value: s.ranked.map(x => `${x.name}${x.r}`).join(' > ') },
+    /*  这一栏是补厚的重点：少了它，悬挂节点漏 rank 从数字上完全看不出来 */
+    { label: 'Σrank（该恒等于 1）', value: `${s.total}`, tone: s.leaked ? 'bad' : 'good' },
+    { label: '阻尼 d', value: `${s.d}${s.d >= 1 ? '（完全不跳转）' : ''}` },
+    ...(s.trapped.length
+      ? [{ label: `陷阱 ${s.trapped.join('')} 吃掉`, value: `${(s.absorbed * 100).toFixed(0)}%`,
+        tone: (s.absorbed > 0.5 ? 'bad' : undefined) as 'bad' | undefined }]
+      : s.danglers.length
+        ? [{ label: `悬挂节点 ${s.danglers.join('')}`, value: s.fixDangling ? '已均分修复' : '不处理（漏）',
+          tone: (s.fixDangling ? 'good' : 'bad') as 'good' | 'bad' }]
+        : [{ label: '这张图', value: '每页都有出链，没有陷阱' }]),
   ],
 }
 

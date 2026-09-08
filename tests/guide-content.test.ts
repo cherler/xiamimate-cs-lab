@@ -1066,10 +1066,14 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       b: { phase: 'done', cur: -1, agg: [], result: 0, feat: [0.333, 0.333, 0.25, 0.333, 0.5], newFeat: [0.333, 0.333, 0.25, 0.333, 0.5], pos: [], edges: [] },
     },
     pagerank: {
-      doc: { kind: 'pagerank', params: {}, entities: [], streams: [] },
-      //  A 第 1 轮迭代 · B 收敛(C 胜) —— 结论必须换一套说法
-      a: { phase: 'run', iter: 1, d: 0.85, nodes: ['A', 'B', 'C', 'D'], rank: [0.356, 0.144, 0.463, 0.038], prev: [0.25, 0.25, 0.25, 0.25], ranked: [{ name: 'C', r: 0.463 }, { name: 'A', r: 0.356 }, { name: 'B', r: 0.144 }, { name: 'D', r: 0.038 }], pos: [], edges: [] },
-      b: { phase: 'done', iter: 6, d: 0.85, nodes: ['A', 'B', 'C', 'D'], rank: [0.372, 0.2, 0.392, 0.038], prev: [0.372, 0.2, 0.392, 0.038], ranked: [{ name: 'C', r: 0.392 }, { name: 'A', r: 0.372 }, { name: 'B', r: 0.2 }, { name: 'D', r: 0.038 }], pos: [], edges: [] },
+      doc: { kind: 'pagerank', params: { graph: '有悬挂节点（D 不链出去）', d: 85, fix: '不处理' }, entities: [], streams: [] },
+      //  A 第 2 轮（总和已在漏） · B 跑完 8 轮（总和只剩 0.787）—— 结论必须换一套说法
+      a: { phase: 'run', iter: 2, rank: [0.34, 0.144, 0.266, 0.038], nodes: ['A', 'B', 'C', 'D'],
+        ranked: [{ name: 'A', r: 0.34 }, { name: 'C', r: 0.266 }, { name: 'B', r: 0.144 }, { name: 'D', r: 0.038 }],
+        d: 0.85, total: 0.787, leaked: true, absorbed: 0, danglers: ['D'], trapped: [], fixDangling: false },
+      b: { phase: 'done', iter: 8, rank: [0.29, 0.163, 0.297, 0.038], nodes: ['A', 'B', 'C', 'D'],
+        ranked: [{ name: 'C', r: 0.297 }, { name: 'A', r: 0.29 }, { name: 'B', r: 0.163 }, { name: 'D', r: 0.038 }],
+        d: 0.85, total: 0.787, leaked: true, absorbed: 0, danglers: ['D'], trapped: [], fixDangling: false },
     },
     qlearn: {
       doc: { kind: 'qlearn', params: {}, entities: [], streams: [] },
