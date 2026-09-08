@@ -6806,21 +6806,30 @@ export const GUIDES: Record<string, Guide> = {
       hook: '一张一千乘一千的表，也许只有几行是真正独立的。',
       what: '这一屏讲的是**低秩近似**：一个庞大的矩阵，**信息量可能远小于它的尺寸**。很多行其实能由少数几行组合出来 —— 这样的矩阵可以拆成两个瘦长的矩阵相乘，**存储和计算都大幅缩水，而信息几乎没丢**。这个想法在今天最有名的应用是 **LoRA**：微调大模型时不改动那个巨大的权重矩阵，**只在旁边加一对瘦矩阵去学「要改动多少」** —— 参数量降到千分之一，效果却接近全量微调。',
       terms: '**秩（rank）**：矩阵里线性无关的行（或列）的最大数量。**它才是这个矩阵真正的「信息维度」**，而不是它的行数列数。\u3000**低秩**：秩远小于矩阵的尺寸。一个 1000×1000 但秩只有 10 的矩阵，**可以拆成 1000×10 和 10×1000 两个矩阵相乘** —— 存储从一百万降到两万。\u3000**奇异值分解（SVD）**：把矩阵拆成三部分，**中间那些奇异值从大到小排列，代表各个方向上的「信息量」**。\u3000**截断 SVD**：**只保留前 k 个奇异值**，其余置零 —— 这就是最优的低秩近似（有定理保证）。屏幕上奇异值掉得多快，就说明这个矩阵有多「低秩」。\u3000**LoRA**：微调时冻结原权重 W，**只训练一对低秩矩阵 A、B，实际权重是 W + BA**。前提是「微调需要的改动量」本身是低秩的 —— **经验上确实如此**。\u3000**为什么 LoRA 这么受欢迎**：**训练时只更新千分之一的参数**（显存和算力都省），**而且推理时可以把 BA 合并进 W，不增加任何延迟**；还能一个基座模型挂多个 LoRA 随时切换。\u3000**其他应用**：推荐系统的矩阵分解、图像压缩、以及模型压缩里的权重分解。',
-      watch: '看奇异值从大到小掉得多快。只保留前几个就能还原大部分信息，那就是这个矩阵「真实的维度」。',
+      watch: '关键不在"低秩"这个数学工具，在**那条谱的形状**。陡降时留住 90% 能量只要秩 1（压缩 16×）；把「奇异值谱」拧到**平坦（随机矩阵）**，同样要 90% 就得留 21/32 的秩，压缩比只有 **0.76×** —— **小于 1，存 U、V 比直接存原矩阵还费**。所以 LoRA 能用，靠的是一个经验事实：微调时的权重更新 ΔW 谱确实陡降。',
     },
     step: (s: never) => {
-      const st = s as { phase: string; rank: number; error: number; energyPct: number; fullParams: number; lowrankParams: number }
+      const st = s as { phase: string; rank: number; error: number; energyPct: number
+        fullParams: number; lowrankParams: number
+        n?: number; spectrum?: string; ratio?: number; rFor90?: number; worthIt?: boolean }
+      //  ⚠️ 补厚字段可选读：老快照没有 spectrum/ratio，读不到就按老口径讲。
+      const d = st.n ?? 8
       return [
-        { k: '本步输入', v: st.phase === 'done' ? '秩从 1 提到 4' : `保留秩 k=${st.rank}` },
-        { k: '判定规则', v: `A=Σσ_i·u_i·v_iᵀ,信息集中在前几个大 σ。留前 k 个:用 2·d·k 个数近似 d² 个,误差=√(丢掉的σ²)(Eckart–Young 最优)。` },
+        { k: '本步输入', v: st.phase === 'done' ? `秩从 1 扫到 ${d}（谱：${st.spectrum ?? '陡降'}）` : `保留秩 k=${st.rank}` },
+        { k: '判定规则', v: `A=Σσ_i·u_i·v_iᵀ。留前 k 个：用 2·d·k 个数近似 d² 个，误差=√(丢掉的 σ²)（Eckart–Young 最优）。`
+            + `　压缩比 = d²/(2dk) = **d/(2k)** —— **k 一超过 d/2 它就小于 1**，那时候低秩近似是白忙。` },
         { k: '本步结果', v: st.phase === 'done'
-            ? `秩 2 就保 98% 能量——这就是 LoRA:低秩更新 ΔW=B·A,只训 2·d·r 参数。`
-            : `保留能量 **${st.energyPct}%**、误差 **${st.error}**;参数 ${st.fullParams} → **${st.lowrankParams}**。` },
+            ? (st.worthIt === false
+              ? `谱是平的：留住 90% 能量要秩 **${st.rFor90}/${d}**，压缩比只有 ${(d / (2 * (st.rFor90 ?? 1))).toFixed(2)}× —— **低秩帮不上忙**。`
+              : `留住 90% 能量只要秩 **${st.rFor90 ?? 1}**（压缩 ${(d / (2 * (st.rFor90 ?? 1))).toFixed(2)}×）——这就是 LoRA：只训 2·d·r 个参数。`)
+            : `保留能量 **${st.energyPct}%**、误差 **${st.error}**；参数 ${st.fullParams} → **${st.lowrankParams}**`
+              + (st.ratio !== undefined ? `（压缩 ${st.ratio}×${st.ratio < 1 ? '，**小于 1，白忙**' : ''}）。` : '。') },
       ]
     },
     verdict: (s: never) => {
-      const st = s as { phase: string; rank: number; energyPct: number }
-      return st.phase === 'done' ? '低秩=LoRA' : `k${st.rank}·${st.energyPct}%`
+      const st = s as { phase: string; rank: number; energyPct: number; ratio?: number; worthIt?: boolean; rFor90?: number }
+      if (st.phase === 'done') return st.worthIt === false ? '压不动' : `90% 只要秩 ${st.rFor90 ?? ''}`
+      return st.ratio !== undefined && st.ratio < 1 ? `k${st.rank}·白忙` : `k${st.rank}·${st.energyPct}%`
     },
     read: [
       { at: '读数', is: '秩、保留能量、重建误差、参数量。', anchor: '.scdim' },
@@ -6828,8 +6837,11 @@ export const GUIDES: Record<string, Guide> = {
       { at: '奇异值条', is: '亮=保留、暗=丢弃;大的 σ 装了大部分信息。', anchor: '.lrsig' },
     ],
     try: [
-      { act: '按「下一步」加大秩 k', watch: '右边重建越来越像原图、能量从 88% 涨到 100%。' },
-      { act: '看秩 2', watch: '只留 2 个分量就 98% 像、参数 64→32——这就是 LoRA 省参数的道理。' },
+      { act: '按「下一步」加大秩 k', watch: '右边重建越来越像原图、能量一路涨到 100%;误差正好等于被丢掉那些奇异值的平方和开根。' },
+      { act: '在「陡降」谱上看秩 1、秩 2', watch: '秩 1 就 90% 能量、秩 2 到 99.1%。d=32 时压缩 **16×**——这就是 LoRA 省参数的道理。' },
+      //  这一条是补厚后的主菜
+      { act: '把「奇异值谱」拧到「平坦（随机矩阵）」，d 拧到 32', watch: '同样要 90% 能量,秩得开到 **21/32**,压缩比只有 **0.76×**——**小于 1,存 U、V 比直接存原矩阵还费**。矩阵没变小、数学没变,变的只是谱的形状。' },
+      { act: '想清楚 LoRA 到底赢在哪', watch: '**不是"低秩"这个工具有魔法**,是一个经验事实:大模型微调时的权重更新 ΔW,它的谱确实是陡降的。谱一平,同一套数学立刻什么都省不下来——这也是为什么给 LoRA 选秩 r 要看具体任务,而不是越小越好。' },
     ],
     terms: [],
   },

@@ -40,6 +40,7 @@ import { inductionKernel, type InductionState } from '../src/kernels/induction.t
 import { scaleKernel, type ScaleState } from '../src/kernels/scale.ts'
 import { orthoKernel, type OrthoState } from '../src/kernels/ortho.ts'
 import { xentKernel, type XentState } from '../src/kernels/xent.ts'
+import { lowrankKernel, type LowRankState } from '../src/kernels/lowrank.ts'
 
 let failures = 0
 const ok = (m: string) => console.log(`  ✅ ${m}`)
@@ -350,6 +351,67 @@ console.log('\n【逻辑回归：正则真的在压权重，异或真的分不�
   !xor.separable && xor.acc < sep.acc - 0.15
     ? ok(`异或准确率 ${(xor.acc * 100).toFixed(0)}%，可分档 ${(sep.acc * 100).toFixed(0)}% —— 一条直线切不开异或`)
     : bad(`异或 ${(xor.acc * 100).toFixed(0)}% vs 可分 ${(sep.acc * 100).toFixed(0)}% —— 差距不足以说明"线性不可分"`)
+}
+
+// ═══ 低秩近似：LoRA 靠的是谱的形状，不是"低秩"本身 ═══════
+console.log('\n【低秩近似：谱一平，同一套数学什么都省不下来】')
+{
+  const all = (p: P) => (run(lowrankKernel.compile(doc('lowrank', p)), 80) as LowRankState[]).filter(s => s.phase === 'run')
+  const go = (p: P) => last(run(lowrankKernel.compile(doc('lowrank', p)), 80) as LowRankState[])
+  const SPEC = ['陡降（σ ∝ 1/i²）', '缓降（σ ∝ 1/i）', '平坦（随机矩阵）']
+
+  /*  ① 矩阵必须是**满秩**的：老版本由 4 个分量搭出来，秩到 4 误差就归零了，
+      "低秩好用"是被构造出来的。现在只有 k=d 时误差才归零。 */
+  const bad1: string[] = []
+  for (const spectrum of SPEC) for (const size of [8, 32]) {
+    const seq = all({ spectrum, size })
+    const zeros = seq.filter(s => s.error < 1e-6).map(s => s.rank)
+    if (zeros.length !== 1 || zeros[0] !== size) bad1.push(`${spectrum}/d=${size}：误差在秩 ${zeros.join(',')} 归零`)
+  }
+  bad1.length === 0 ? ok('六种组合的矩阵都是满秩：只有 k=d 时重建误差才归零（不是搭出来的低秩矩阵）')
+    : bad(bad1.join(' / '))
+
+  //  ② Eckart–Young：重建误差必须等于被丢掉那些奇异值的平方和开根
+  const bad2: string[] = []
+  for (const spectrum of SPEC) {
+    for (const s of all({ spectrum, size: 8 })) {
+      const dropped = Math.sqrt(s.sigmas.slice(s.rank).reduce((a, v) => a + v * v, 0))
+      if (Math.abs(s.error - dropped) > 1e-2) bad2.push(`${spectrum}/k=${s.rank}：误差 ${s.error} vs √(丢掉的σ²) ${dropped.toFixed(3)}`)
+    }
+  }
+  bad2.length === 0 ? ok('每一档每个 k：重建误差都等于 √(被丢掉的 σ²) —— Eckart–Young 就是这么写的')
+    : bad(bad2.slice(0, 3).join(' / '))
+
+  /*  ③ 这一屏的主菜：**谱一平，低秩就帮不上忙**。
+      陡降档留 90% 能量只要秩 1；平坦档要留一大半的秩，压缩比掉到 1 以下。 */
+  const steep = go({ spectrum: SPEC[0], size: 32 })
+  const flat = go({ spectrum: SPEC[2], size: 32 })
+  steep.worthIt && !flat.worthIt && steep.rFor90 <= 2 && flat.rFor90 > 32 * 0.5
+    ? ok(`d=32：陡降谱留 90% 能量只要秩 ${steep.rFor90}（压缩 ${(32 / (2 * steep.rFor90)).toFixed(1)}×）；平坦谱要秩 ${flat.rFor90}，压缩只有 ${(32 / (2 * flat.rFor90)).toFixed(2)}× —— 小于 1，白忙`)
+    : bad(`两档没拉开：陡降 rFor90=${steep.rFor90}（值得=${steep.worthIt}）、平坦 rFor90=${flat.rFor90}（值得=${flat.worthIt}）`)
+
+  //  ④ 压缩比必须恒等于 d/(2k)，且 k>d/2 时小于 1
+  const bad4 = SPEC.flatMap(spectrum => all({ spectrum, size: 32 }))
+    .filter(s => Math.abs(s.ratio - s.n / (2 * s.rank)) > 0.01 || (s.rank > s.n / 2 && s.ratio >= 1))
+  bad4.length === 0 ? ok('压缩比逐格等于 d/(2k)，且 k 超过 d/2 时一律小于 1')
+    : bad(`压缩比不对：${bad4.slice(0, 2).map(s => `k=${s.rank} ratio=${s.ratio}`).join(' / ')}`)
+
+  //  ⑤ 能量必须单调涨到 100%，误差单调降到 0
+  const bad5: string[] = []
+  for (const spectrum of SPEC) {
+    const seq = all({ spectrum, size: 8 })
+    const e = seq.map(s => s.energyPct), r = seq.map(s => s.error)
+    if (!e.every((v, k) => k === 0 || v >= e[k - 1]) || Math.abs(last(e) - 100) > 1e-6) bad5.push(`${spectrum}：能量 ${e.join('/')}`)
+    if (!r.every((v, k) => k === 0 || v <= r[k - 1])) bad5.push(`${spectrum}：误差不单调`)
+  }
+  bad5.length === 0 ? ok('三种谱：保留能量单调涨到 100%、重建误差单调降到 0')
+    : bad(bad5.slice(0, 2).join(' / '))
+
+  //  ⑥ 自检：三种谱在 k=2 时的能量必须**明显拉开**，否则"谱的形状决定一切"就没凭据
+  const at2 = SPEC.map(spectrum => all({ spectrum, size: 32 }).find(s => s.rank === 2)!.energyPct)
+  at2[0] > at2[1] && at2[1] > at2[2] && at2[0] - at2[2] > 40
+    ? ok(`自检：k=2 时三种谱的保留能量 ${at2.join('% / ')}% —— 拉开 ${(at2[0] - at2[2]).toFixed(0)} 个点，形状确实决定一切`)
+    : bad(`三种谱在 k=2 时差不多：${at2.join(' / ')}`)
 }
 
 // ═══ 交叉熵·困惑度：PPL 不能跨词表比；一个词能绑架整句 ═══

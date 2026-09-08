@@ -1167,10 +1167,12 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       b: { phase: 'done', angleDeg: 180, dot: -6, cosSim: -1, proj: -2, magA: 3, magB: 2 },
     },
     lowrank: {
-      doc: { kind: 'lowrank', params: {}, entities: [], streams: [] },
-      //  A 秩 1(88%、误差 5.48) · B 秩 4(100% 还原) —— 结论必须换一套说法
-      a: { phase: 'run', rank: 1, error: 5.477, energyPct: 87.7, fullParams: 64, lowrankParams: 16 },
-      b: { phase: 'done', rank: 4, error: 0, energyPct: 100, fullParams: 64, lowrankParams: 64 },
+      doc: { kind: 'lowrank', params: { spectrum: '平坦（随机矩阵）', size: 8 }, entities: [], streams: [] },
+      //  A 秩 2（只 63.6% 能量） · B 满秩（压缩比 0.5×，白忙）—— 结论必须换一套说法
+      a: { phase: 'run', rank: 2, n: 8, error: 16.528, energyPct: 63.6, fullParams: 64, lowrankParams: 32,
+        spectrum: '平坦（随机矩阵）', ratio: 2, rFor90: 6, rFor99: 8, worthIt: false },
+      b: { phase: 'done', rank: 8, n: 8, error: 0, energyPct: 100, fullParams: 64, lowrankParams: 128,
+        spectrum: '平坦（随机矩阵）', ratio: 0.5, rFor90: 6, rFor99: 8, worthIt: false },
     },
     editdist: {
       doc: { kind: 'editdist', params: {}, entities: [], streams: [] },

@@ -5539,31 +5539,50 @@ const lowrank: Experiment<LowRankState> = {
   title: '低秩近似·LoRA',
   subtitle: '为什么"低秩"能省参数还不太掉精度',
   kernel: lowrankKernel,
-  defaultDoc: { kind: 'lowrank', params: {}, entities: [], streams: [] },
-  params: [],
+  defaultDoc: { kind: 'lowrank', params: { spectrum: '陡降（σ ∝ 1/i²）', size: 8 }, entities: [], streams: [] },
+  /*  2026-09-08 补厚：老版本的矩阵**由 4 个奇异分量搭出来**，秩本来就只有 4 ——
+      于是"低秩近似很好用"是**被构造出来的**，不是被验证出来的。
+      现在矩阵满秩，谱的形状做成旋钮：谱一平，同一套数学立刻什么都省不下来。 */
+  params: [
+    { key: 'spectrum', label: '奇异值谱', kind: 'enum', options: ['陡降（σ ∝ 1/i²）', '缓降（σ ∝ 1/i）', '平坦（随机矩阵）'] },
+    { key: 'size', label: '矩阵大小 d', kind: 'number', options: [8, 32] },
+  ],
   paramsNote: `**任何矩阵能拆成一串奇异分量叠加:A=Σσ_i·u_i·v_iᵀ,σ 从大到小**。信息集中在前几个大 σ 上。
 
 - **低秩近似**:只留前 k 个(A_k)就用 2·d·k 个数近似原来的 d² 个;Eckart–Young 保证 A_k 是所有秩-k 矩阵里最接近 A 的,误差(Frobenius)=√(Σ_{i>k}σ_i²)=被丢掉的奇异值。
 - **这就是 LoRA**:微调不改整块 d×d 权重,而是加低秩更新 ΔW=B·A(秩 r≪d),只训 2·d·r 参数——省显存/算力、能存多套技能包。
 - **同源**:图像压缩、PCA、推荐降维底子也是它。
-- **本实验**:8×8 矩阵由 4 个奇异分量搭成(σ=10,5,2,1),秩 1→4 看误差 5.48→0、能量 88%→100%。`,
+- **能不能用,全看那条谱的形状**(这是补厚补上的旋钮,矩阵现在**满秩**):
+  - **陡降**(σ∝1/i²):留住 90% 能量只要秩 **1**,d=32 时压缩 **16×**——低秩近似大杀四方。
+  - **缓降**(σ∝1/i):要秩 3,压缩 5.3×。
+  - **平坦**(随机矩阵):要秩 **21/32**,压缩比只有 **0.76×**——**小于 1,存 U、V 比直接存原矩阵还费,等于白忙**。
+- 所以 **LoRA 能用,靠的不是"低秩"这个数学工具有魔法,而是一个经验事实:大模型微调时的权重更新 ΔW,它的谱确实是陡降的**。谱一平,同一套数学什么都省不下来。`,
   bounds: [
-    '8×8 矩阵 = 4 个奇异分量叠加(σ=[10,5,2,1])',
-    '秩 k=1→4,重建 A_k=Σ_{i≤k}σ_i u_i v_iᵀ(可核)',
-    '误差=√(丢掉的σ²)、保留能量=√(留下σ²)/‖A‖;参数 2·d·k vs d²',
-    '奇异分量用确定性正交向量构造;未跑真实 SVD 分解算法',
+    'd×d 矩阵（d=8 或 32），由 **d 个**奇异分量按给定的谱搭成 —— **满秩**，不是搭出来的低秩矩阵',
+    '秩 k 从 1 扫到 d；重建 A_k=Σ_{i≤k}σ_i u_i v_iᵀ，误差=√(丢掉的 σ²)（Eckart–Young），逐格可核',
+    /*  ⚠️ 这条是这一屏最该带走的东西。 */
+    '压缩比 = d²/(2dk) = d/(2k)：**k 超过 d/2 就小于 1**，存 U、V 比直接存原矩阵还费',
+    '"平坦谱"用一条平缓的线近似随机方阵的奇异值分布，不是真去抽随机矩阵做 SVD',
+    '奇异分量用确定性正交向量构造（Gram-Schmidt），不跑真实 SVD 算法；秩、误差、能量都是按定义现算的',
+    '不建模 LoRA 的其它细节：秩之外还有 α 缩放、放在哪几层、初始化方式，都不在范围内',
   ],
   tabs: [{ id: 'recon', label: '低秩重建' }],
   Stage: LowRankStage,
-  tone: s => (s.phase === 'done' ? { key: 'good', label: '100% 还原' } : s.rank > 0 ? { key: s.energyPct > 95 ? 'good' : 'idle', label: `${s.energyPct}%` } : { key: 'idle', label: '' }),
+  tone: s => (s.phase === 'done' ? (s.worthIt ? { key: 'good', label: `90% 只要秩 ${s.rFor90}` } : { key: 'bad', label: '压不动' })
+    : s.rank > 0 ? { key: s.ratio < 1 ? 'bad' : s.energyPct > 95 ? 'good' : 'idle', label: `${s.energyPct}%` }
+      : { key: 'idle', label: '' }),
   metric: s => (s.rank > 0 ? s.energyPct / 100 : 0),
   tickLabel: s => (s.phase === 'done' ? '毕' : s.rank > 0 ? `k${s.rank}` : '0'),
   whyInRail: true,
   readouts: s => [
-    { label: '保留秩 k', value: s.rank > 0 ? `${s.rank}` : '0' },
+    { label: '保留秩 k', value: s.rank > 0 ? `${s.rank} / ${s.n}` : `0 / ${s.n}` },
     { label: '保留能量', value: s.rank > 0 ? `${s.energyPct}%` : '—', tone: s.energyPct > 95 ? 'good' : undefined },
     { label: '重建误差', value: s.rank > 0 ? `${s.error}` : '—' },
-    { label: '参数', value: `${s.lowrankParams}/${s.fullParams}` },
+    /*  压缩比小于 1 就是白忙 —— 这一栏是"低秩到底省没省"的唯一判据 */
+    { label: '参数 / 压缩比', value: s.rank > 0 ? `${s.lowrankParams} vs ${s.fullParams}（${s.ratio}×）` : `— / ${s.fullParams}`,
+      tone: s.rank > 0 ? (s.ratio < 1 ? 'bad' : 'good') : undefined },
+    { label: '要 90% 能量，秩得开到', value: `${s.rFor90}（压缩 ${(s.n / (2 * s.rFor90)).toFixed(2)}×）`,
+      tone: s.worthIt ? 'good' : 'bad' },
   ],
 }
 
