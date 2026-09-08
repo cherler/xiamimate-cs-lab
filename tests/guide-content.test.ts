@@ -1076,10 +1076,15 @@ console.log('\n【「这一步为什么」真的在跟着走】')
            mse: 0.144, wOls: 2.223, bOls: 0.916, diverged: false },
     },
     pp: {
-      doc: { kind: 'pp', params: { micro: 4 }, entities: [], streams: [] },
-      //  A t0 注入(只 1 卡忙) · B 走完(气泡 43%) —— 结论必须换一套说法
-      a: { phase: 'run', stages: 4, micro: 4, t: 0, totalTime: 7, busy: [0, -1, -1, -1], util: 57, bubblePct: 43 },
-      b: { phase: 'done', stages: 4, micro: 4, t: 6, totalTime: 7, busy: [-1, -1, -1, 3], util: 57, bubblePct: 43 },
+      doc: { kind: 'pp', params: { micro: 4, stages: 4, overhead: 20 }, entities: [], streams: [] },
+      /*  A t0 注入(只 1 卡忙) · B 走完 —— 结论必须换一套说法。
+          2026-09-08 补厚：多了每微批开销、真实总时长、甜点 M、峰值激活。 */
+      a: { phase: 'run', stages: 4, micro: 4, t: 0, totalTime: 7, busy: [0, -1, -1, -1], util: 57, bubblePct: 43,
+           overhead: 0.02, realTime: 1.89, bestM: 16, bestMTheory: 12.2, peakActs: 4, peak1f1b: 4,
+           mCurve: [[1, 4.08], [4, 1.89], [16, 1.5675], [64, 2.3869]] },
+      b: { phase: 'done', stages: 4, micro: 4, t: 6, totalTime: 7, busy: [-1, -1, -1, 3], util: 57, bubblePct: 43,
+           overhead: 0.02, realTime: 1.89, bestM: 16, bestMTheory: 12.2, peakActs: 4, peak1f1b: 4,
+           mCurve: [[1, 4.08], [4, 1.89], [16, 1.5675], [64, 2.3869]] },
     },
     ep: {
       doc: { kind: 'ep', params: { gpus: 4 }, entities: [], streams: [] },

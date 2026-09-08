@@ -4920,16 +4920,25 @@ const pp: Experiment<PPState> = {
   title: '流水线并行 PP',
   subtitle: '按层切到多卡，用微批填掉流水线气泡',
   kernel: ppKernel,
-  defaultDoc: { kind: 'pp', params: { micro: 4 }, entities: [], streams: [] },
+  defaultDoc: { kind: 'pp', params: { micro: 4, stages: 4, overhead: 20 }, entities: [], streams: [] },
+  /*  2026-09-08 补厚：G 原来**写死 4**，可气泡公式 (G−1)/(M+G−1) 两个变量都在里面，
+      锁住 G 等于把公式一半锁住了。另外老结论写着「M 有甜点」，而模型里**没有每个微批的开销**，
+      时长永远是 M+G−1、M 越大越好 —— 甜点根本不存在。加上开销 c 之后它才真的出现，
+      而且能求导：M* = √((G−1)/c)（实测曲线最低点跟它对得上）。 */
   params: [
-    { key: 'micro', label: '微批数', kind: 'number', options: [1, 2, 4, 8] },
+    { key: 'micro', label: '微批数 M', kind: 'number', options: [1, 2, 4, 8, 16, 32] },
+    { key: 'stages', label: '流水级数 G', kind: 'number', options: [2, 4, 8], unit: '张卡' },
+    { key: 'overhead', label: '每微批开销', kind: 'number', options: [5, 20, 50], unit: '‰' },
   ],
   paramsNote: '模型太大放不下一张卡:除切头(TP)、切专家(EP),还能按层切——连续几层放一卡,做成 G 级流水线(卡0算前几层→…→卡G-1算最后几层)。只喂一个 batch 时它一级级往下走,同一时刻只有 1 张卡干活、其余在等,利用率仅 1/G、大量流水线气泡。解法:把 batch 切成 M 个微批首尾衔接流进来,稳态时 G 卡同时各处理一个微批,气泡只剩开头注入+结尾排空,占比 (G−1)/(M+G−1)——微批越多气泡越小。代价:微批太碎单次算量太碎划不来,M 有甜点。这就是 GPipe/1F1B 流水线调度的核心。本实验 G=4 级、M 个微批,逐时刻看调度表哪格在算、哪格是气泡。',
   bounds: [
-    'G=4 级流水线,M 个微批(1/2/4/8)',
-    '调度 sched[s][t]=微批 (t−s) 若有效否则气泡(可核)',
-    '总时长 M+G−1、气泡占比 (G−1)/(M+G−1)、利用率随 M 升',
-    '简化 forward-only;真实 1F1B 还交织反向、省显存',
+    'G 级流水线（2/4/8 张卡）、M 个微批；调度 sched[s][t]=微批 (t−s) 若有效否则气泡，可手数',
+    '格数 M+G−1、气泡占比 (G−1)/(M+G−1)、利用率随 M 升 —— 这几个都能手算核对',
+    /*  ⚠️ 老版本只写「利用率随 M 升」，于是"M 越大越好"，跟结论里那句"M 有甜点"自相矛盾。
+        真实总时长得算上每个微批的固定开销。 */
+    '真实总时长 = (M+G−1)·(1/M+c)：M 太小气泡多、M 太大开销 c 被乘太多次，**中间有最优 M\*=√((G−1)/c)**',
+    '峰值激活显存：GPipe 要留 M 份、1F1B 只要 ≈G 份 —— 两种调度气泡一样，差别在显存',
+    '**调度表本身仍是 forward-only 的 GPipe 形态**：这里没有模拟 1F1B 的前后向交织，只把它的显存结论算出来',
   ],
   tabs: [{ id: 'sched', label: '流水调度' }],
   Stage: PPStage,
@@ -4938,10 +4947,15 @@ const pp: Experiment<PPState> = {
   tickLabel: s => (s.phase === 'done' ? '毕' : `t${s.t + 1}`),
   whyInRail: true,
   readouts: s => [
-    { label: '微批数 M', value: `${s.micro}` },
-    { label: '总时长', value: `${s.totalTime}` },
+    { label: '微批 M / 级数 G', value: `${s.micro} / ${s.stages}` },
+    { label: '格数', value: `${s.totalTime}（=M+G−1）` },
     { label: '利用率', value: `${s.util}%`, tone: s.util >= 60 ? 'good' : undefined },
     { label: '气泡', value: `${s.bubblePct}%`, tone: s.bubblePct > 50 ? 'bad' : undefined },
+    /*  这三条是补厚加的：光看气泡会得出"M 越大越好"，而真实时长是 U 形的 */
+    { label: '真实总时长', value: `${s.realTime}（含每微批 ${(s.overhead * 100).toFixed(1)}% 开销）`,
+      tone: s.micro === s.bestM ? 'good' : undefined },
+    { label: '最优微批数', value: `M*=${s.bestM}（连续解 √((G−1)/c)=${s.bestMTheory}）` },
+    { label: '峰值激活', value: `GPipe ${s.peakActs} 份｜1F1B ${s.peak1f1b} 份` },
   ],
 }
 

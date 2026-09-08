@@ -45,9 +45,47 @@ export function PPStage({ state }: StageProps<PPState>) {
           </div>
         </div>
 
+        {/*  ── 甜点曲线（2026-09-08 加）──
+             光看气泡会得出"M 越大越好"，而老结论里偏偏写着"M 有甜点" —— 自相矛盾。
+             真相是：真实总时长 = (M+G−1)·(1/M+c)，是条 **U 形**曲线，最低点就是甜点。
+             这条曲线现算，最低点标出来，旁边写着连续解 √((G−1)/c)。 */}
+        <div className="mlwrap">
+          <p className="gbsec"><b>微批不是越多越好</b>
+            <span>纵轴=真实总时长 (M+G−1)·(1/M+c)；每个微批有固定开销 c，所以 M 太大反而更慢</span></p>
+          <svg className="ppcurve" viewBox="0 0 100 100" preserveAspectRatio="none">
+            {(() => {
+              const cv = state.mCurve
+              const hi = Math.max(...cv.map(c => c[1])) * 1.05
+              const lo = Math.min(...cv.map(c => c[1])) * 0.95
+              const X = (i: number) => i / (cv.length - 1) * 100
+              const Y = (v: number) => 100 - (v - lo) / (hi - lo) * 88 - 6
+              return <>
+                <path d={cv.map(([, v], i) => `${i ? 'L' : 'M'}${X(i).toFixed(1)} ${Y(v).toFixed(1)}`).join(' ')}
+                  className="ppcline" fill="none" vectorEffect="non-scaling-stroke" />
+                {cv.map(([m, v], i) => (
+                  <circle key={m} cx={X(i)} cy={Y(v)}
+                    r={m === state.bestM ? 2.6 : m === micro ? 2.2 : 1.1}
+                    className={m === state.bestM ? 'ppbest' : m === micro ? 'ppnow' : 'ppdot'} />
+                ))}
+              </>
+            })()}
+          </svg>
+          <div className="orcap">
+            {state.mCurve.map(([m, v]) => `M=${m}:${v.toFixed(2)}`).join('　')}
+            　·　最低点 <b>M={state.bestM}</b>（连续解 √((G−1)/c)={state.bestMTheory}）
+          </div>
+        </div>
+
         {phase === 'done'
-          ? <p className="scnote">{G} 级流水线、{micro} 个微批:利用率 <b>{util}%</b>、气泡 <b>{bubblePct}%</b>。只喂 1 个 batch 时同时只有 1 张卡干活(气泡 (G−1)/G=75%);<b>把 batch 切成 M 个微批</b>首尾衔接地流进来,稳态时 {G} 张卡同时各算一个,气泡只剩开头注入 + 结尾排空,占比 <b>(G−1)/(M+G−1)</b>——微批越多越小。调「micro」看气泡缩小(但微批太碎也划不来,M 有甜点)。这就是 GPipe/1F1B 流水线调度的核心。</p>
-          : <p className="scnote" style={{ opacity: .85 }}>{t < G - 1 ? '开头「注入」:后面的卡还没轮到、在空等——这就是气泡。' : '中段「满载」:每张卡都在算一个微批,流水线跑满了。'}微批越多,注入/排空占比越小。</p>}
+          ? <p className="scnote">{G} 级流水线、{micro} 个微批：利用率 <b>{util}%</b>、气泡 <b>{bubblePct}%</b>（=(G−1)/(M+G−1)）。
+            只喂 1 个 batch 时同时只有 1 张卡干活；<b>把 batch 切成 M 个微批</b>首尾衔接地流进来，
+            稳态时 {G} 张卡同时各算一个，气泡只剩开头注入 + 结尾排空。
+            　但<b>不是越多越好</b>：算上每个微批 {(state.overhead * 100).toFixed(1)}% 的固定开销，
+            真实总时长是条 <b>U 形</b>曲线，最低点在 <b>M={state.bestM}</b>
+            （连续解 M*=√((G−1)/c)={state.bestMTheory}）—— 这个"甜点"是<b>算出来的</b>，不是一句"太碎也划不来"。
+            　另一半代价在<b>显存</b>：GPipe 要同时留着 <b>{state.peakActs}</b> 份微批的激活等反向，
+            1F1B 只需 <b>{state.peak1f1b}</b> 份（≈级数 G）—— 两种调度气泡一样，差别在这儿。</p>
+          : <p className="scnote" style={{ opacity: .85 }}>{t < G - 1 ? '开头「注入」：后面的卡还没轮到、在空等 —— 这就是气泡。' : '中段「满载」：每张卡都在算一个微批，流水线跑满了。'}微批越多，注入/排空占比越小 —— 但底下那条曲线会告诉你多到什么程度就亏了。</p>}
       </div>
     </div>
   )
