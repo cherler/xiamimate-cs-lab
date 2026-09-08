@@ -217,15 +217,32 @@ EXP0 = await p.evaluate(() => document.querySelector('.nav button')?.textContent
  * 手写的那份跟注册表顺序错位过两次（插入新实验时位置不同就整体串号），
  * 每次都要花时间才认出是名单过期而不是应用坏了。
  */
-const EXPS = await p.evaluate(() =>
+const ALL_ENTRIES = await p.evaluate(() =>
   [...document.querySelectorAll('.nav button')].map(b => ({
     label: b.querySelector('span:last-child')?.textContent ?? '',
     idx: b.querySelector('.n')?.textContent ?? '',
   })))
 
-console.log(`\n【1】${EXPS.length} 个实验都能起来，且各自的舞台不同`)
-for (const [i, e] of EXPS.entries()) {
-  await p.click(`.nav button >> nth=${i}`)
+/*  ⚠️ **软件库词条不是实验，别拿实验的尺子量它。**
+    2026-09-08：这一套长期红着 18 项，其中 **14 项是同一个根因** ——
+    目录里那批「软件库与框架」条目（Linux 内核 / GCC / GDB / QEMU / Wireshark /
+    nginx / Redis / SQLite / Git / Docker / xv6 / curl）**按设计就没有内核**：
+    没有舞台、没有步、没有讲解浮层、没有引导图入口。
+    可【1】【13】【14】三组都把它们当实验查，于是每跑一次就固定红 14 条。
+
+    后果不是"多几条红"，是**真的回归会被淹掉**：这次为了确认补厚有没有引入问题，
+    我得把 18 条逐条读完才敢下结论 —— **常年红着的判据等于没有判据**。
+    （跟这套里另外两处教训同源：判据要看退出码；判据不该跑在碰巧停下的那一页上。）
+
+    所以按内容类型分流：软件库条目只查"点得开、有标题、有正文"，
+    不查步数/舞台/讲解浮层/引导图入口。 */
+const isLib = e => /·\s*(操作系统内核|GNU 编译器套件|GNU 调试器|整机模拟器|网络抓包分析|高性能 Web 服务器|内存数据结构服务器|嵌入式数据库|分布式版本控制|容器|教学操作系统|网络客户端)$/.test(e.label)
+const LIBS = ALL_ENTRIES.filter(isLib)
+const EXPS = ALL_ENTRIES.filter(e => !isLib(e))
+
+console.log(`\n【1】${EXPS.length} 个实验都能起来，且各自的舞台不同（另有 ${LIBS.length} 个软件库词条，单独查）`)
+for (const e of EXPS) {
+  await p.click(`.nav button >> nth=${ALL_ENTRIES.indexOf(e)}`)
   await p.waitForTimeout(200)
   /*  ⚠️ 先走一步再量。
       2026-09-07 起，进页面默认停在**第 0 步「还没开始」**（初始态：空缓存、原始数组），
@@ -242,10 +259,27 @@ for (const [i, e] of EXPS.entries()) {
     : bad(`${e.label} 起不来：标题「${s.title}」 步数 ${s.ticks} 边界栏 ${!!s.bounds}`)
 }
 
+//  软件库词条：只查"点得开、有标题、有正文"——它们本来就没有舞台和步
+{
+  const wrong = []
+  for (const e of LIBS) {
+    const i = ALL_ENTRIES.indexOf(e)
+    await p.click(`.nav button >> nth=${i}`); await p.waitForTimeout(180)
+    const s = await p.evaluate(() => ({
+      title: document.querySelector('.exphead h1')?.textContent ?? '',
+      len: document.querySelector('.col.main')?.innerText.length ?? 0,
+    }))
+    if (s.title !== e.label || s.len < 80) wrong.push(`${e.label}（标题「${s.title}」正文 ${s.len} 字）`)
+  }
+  wrong.length === 0
+    ? ok(`${LIBS.length} 个软件库词条都点得开、标题对得上、正文不空（它们没有舞台和步，这是设计如此）`)
+    : bad(`软件库词条有问题：${wrong.join('、')}`)
+}
+
 // 舞台必须真的不同 —— 不能几个实验长一个样
 const stageSigs = []
 for (let i = 0; i < EXPS.length; i++) {
-  await p.click(`.nav button >> nth=${i}`); await p.waitForTimeout(180)
+  await p.click(`.nav button >> nth=${ALL_ENTRIES.indexOf(EXPS[i])}`); await p.waitForTimeout(180)
   await stepOne()   //  第 0 步摆的是同一张起点卡,不走这一步会判成"所有舞台长得一样"
   stageSigs.push(await p.evaluate(() => {
     //  认舞台自己的容器，不靠"中列第几张卡片"猜 ——
@@ -1033,14 +1067,16 @@ const pageToEnd = async () => {
 }
 
 // ═══ 13 · 讲解浮层：锚点要落得下，点哪讲哪 ═══
-console.log('\n【13】讲解浮层：30 个实验的锚点都落得下，点哪讲哪')
+console.log('\n【13】讲解浮层：每个实验的锚点都落得下，点哪讲哪（软件库词条不在此列）')
 {
   /*  第 1 组把它收起来了，这里请回来。
       ⚠️ **展开动作要放在切实验之后**，不能只在循环外做一次：
       讲解浮层在第 0 步整个不挂载（它的锚点是打在活舞台上的，第 0 步那儿摆的是起点卡）。
       循环外那一下如果正好赶上第 0 步，`.guide-fab` 根本不存在，点击被 catch 吞掉，
       于是**后面 49 个实验全部报「没有讲解浮层」** —— 红的是判据自己的时序，不是浮层坏了。 */
-  const names = await p.$$eval('.nav button', bs => bs.map(b => b.textContent.trim()))
+  //  ⚠️ 软件库词条按设计没有讲解浮层（它们不是实验）—— 理由见【1】那段长注释
+  const names = (await p.$$eval('.nav button', bs => bs.map(b => b.textContent.trim())))
+    .filter(n => !isLib({ label: n.replace(/^\d+\s*/, '') }))
   const broken = []
   let cardTotal = 0
   for (const name of names) {
@@ -2059,7 +2095,9 @@ console.log('\n【16e】实验引导图「看懂这一屏」')
   //  30 张全铺完了：每个实验都得有入口，点开都得是一张画了东西的引导图。
   //  （原来只有 Cache 一张，靠"没登记的没有入口"自检；现在全登记了，改成逐个走一遍。）
   {
-    const names = await p.$$eval('.nav button', bs => bs.map(b => b.textContent.trim().replace(/^\d+\s*/, '')))
+    //  ⚠️ 软件库词条按设计没有引导图（它们不是实验），别拿这把尺子量 —— 理由见【1】那段长注释
+    const names = (await p.$$eval('.nav button', bs => bs.map(b => b.textContent.trim().replace(/^\d+\s*/, ''))))
+      .filter(n => !isLib({ label: n }))
     const holes = []
     for (const name of names) {
       await nav(name); await p.waitForTimeout(140)
@@ -2074,7 +2112,7 @@ console.log('\n【16e】实验引导图「看懂这一屏」')
       const x = await p.$('.gd-x'); if (x) { await x.click(); await p.waitForTimeout(90) }
     }
     holes.length === 0
-      ? ok(`30 个实验的引导图逐个开过：都有入口、弹层至少 2 节 + 头 + 底部流程带`)
+      ? ok(`${names.length} 个实验的引导图逐个开过：都有入口、弹层至少 2 节 + 头 + 底部流程带（软件库词条不在此列）`)
       : bad(`引导图有缺：\n     ${holes.join('\n     ')}`)
   }
 
