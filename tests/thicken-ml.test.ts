@@ -37,6 +37,7 @@ import { quantKernel, type QuantState } from '../src/kernels/quant.ts'
 import { rnnKernel, type RNNState } from '../src/kernels/rnn.ts'
 import { lstmKernel, type LSTMState } from '../src/kernels/lstm.ts'
 import { inductionKernel, type InductionState } from '../src/kernels/induction.ts'
+import { scaleKernel, type ScaleState } from '../src/kernels/scale.ts'
 
 let failures = 0
 const ok = (m: string) => console.log(`  ✅ ${m}`)
@@ -347,6 +348,63 @@ console.log('\n【逻辑回归：正则真的在压权重，异或真的分不�
   !xor.separable && xor.acc < sep.acc - 0.15
     ? ok(`异或准确率 ${(xor.acc * 100).toFixed(0)}%，可分档 ${(sep.acc * 100).toFixed(0)}% —— 一条直线切不开异或`)
     : bad(`异或 ${(xor.acc * 100).toFixed(0)}% vs 可分 ${(sep.acc * 100).toFixed(0)}% —— 差距不足以说明"线性不可分"`)
+}
+
+// ═══ √d 缩放：方差是量出来的，梯度是画出来的 ═══════════
+console.log('\n【√d 缩放：不缩放没梯度、÷d 没选择性、÷√d 两头都要】')
+{
+  const all = (p: P) => (run(scaleKernel.compile(doc('scale', p)), 20) as ScaleState[]).filter(s => s.d > 0)
+  const NONE = '不缩放', SQ = '÷√d（正解）', OVER = '÷d（缩过头）'
+
+  /*  ① Var(Q·K)=d 必须是**量出来**的：实测方差要贴着 d。
+      老版本这条是写进去的（logit 直接取 base×√d），根本没在验证定理。 */
+  const vs = all({ scale: NONE }).map(s => ({ d: s.d, v: s.variance }))
+  vs.every(x => Math.abs(x.v / x.d - 1) < 0.15)
+    ? ok(`实测 Var(Q·K) 逐档贴着 d：${vs.map(x => `${x.d}→${x.v}`).join('、')}（抽 200 对随机向量数出来的）`)
+    : bad(`方差对不上 d：${vs.map(x => `${x.d}/${x.v}`).join(' ')}`)
+
+  //  ② 不缩放：d 越大越塌，且**梯度单调掉**（这是补厚补上的那一栏）
+  const nn = all({ scale: NONE })
+  const jac = nn.map(s => s.jac), mx = nn.map(s => s.maxU)
+  jac.every((v, k) => k === 0 || v <= jac[k - 1]) && mx.every((v, k) => k === 0 || v >= mx[k - 1]) && jac[0] / last(jac) > 10
+    ? ok(`不缩放：最大概率 ${mx.map(v => `${(v * 100).toFixed(0)}%`).join('→')}，梯度 ${jac.join('→')}（掉 ${(jac[0] / last(jac)).toFixed(0)} 倍）`)
+    : bad(`不缩放没演出"越大越塌"：最大概率 ${mx.join('/')}，梯度 ${jac.join('/')}`)
+
+  //  ③ ÷√d：熵和梯度必须**几乎不随 d 变** —— 这是这一屏的正解
+  const sq = all({ scale: SQ })
+  const sj = sq.map(s => s.jac), se = sq.map(s => s.entU)
+  Math.max(...sj) / Math.min(...sj) < 1.3 && Math.max(...se) / Math.min(...se) < 1.3
+    ? ok(`÷√d：梯度 ${Math.min(...sj)}~${Math.max(...sj)}、熵 ${Math.min(...se)}~${Math.max(...se)} bit —— 跨 256 倍的 d 几乎不动`)
+    : bad(`÷√d 没稳住：梯度 ${sj.join('/')}、熵 ${se.join('/')}`)
+
+  /*  ④ ÷d（缩过头）走到另一头：分布趋近**均匀**（最大概率→1/n、熵→log2(n)），
+      有梯度但**没有选择性**。两种失败正好是一对。 */
+  const ov = last(all({ scale: OVER }))
+  const n = ov.unscaled.length
+  Math.abs(ov.maxU - 1 / n) < 0.03 && Math.abs(ov.entU - Math.log2(n)) < 0.02 && ov.jac > last(jac) * 10
+    ? ok(`÷d：最大概率 ${(ov.maxU * 100).toFixed(0)}%≈1/${n}、熵 ${ov.entU}≈log₂${n}，梯度 ${ov.jac} 比不缩放大 ${(ov.jac / last(jac)).toFixed(0)} 倍 —— 有梯度但没选择性`)
+    : bad(`÷d 那档没走到均匀：最大概率 ${ov.maxU}、熵 ${ov.entU}、梯度 ${ov.jac}`)
+
+  //  ⑤ 三档的**排序**必须一致：不缩放最尖、÷d 最平、÷√d 居中
+  const lastOf = (m: string) => last(all({ scale: m }))
+  const [a1, b1, c1] = [lastOf(NONE).maxU, lastOf(SQ).maxU, lastOf(OVER).maxU]
+  a1 > b1 && b1 > c1
+    ? ok(`d=1024 时三档的最大概率：不缩放 ${(a1 * 100).toFixed(0)}% > ÷√d ${(b1 * 100).toFixed(0)}% > ÷d ${(c1 * 100).toFixed(0)}%`)
+    : bad(`三档排序不对：${a1} / ${b1} / ${c1}`)
+
+  /*  ⑥ 自检：这些统计量必须是**多次抽样的平均**才有单调性。
+      拿单次抽样重算一遍，②的单调性应该保不住 —— 这条把"为什么要平均"钉成一个会红的对照。 */
+  const single = nn.map(s => Math.max(...softmaxOf(s.rawLogits)))
+  !single.every((v, k) => k === 0 || v >= single[k - 1])
+    ? ok(`自检：只看单次抽样，最大概率是 ${single.map(v => `${(v * 100).toFixed(0)}%`).join('→')} —— **不单调**，所以必须对多次抽样取平均`)
+    : bad('自检没成立：单次抽样居然也单调，那"要平均"这条理由就站不住')
+}
+//  自检用的小工具（跟内核里那个同式）
+function softmaxOf(xs: number[]): number[] {
+  const m = Math.max(...xs)
+  const es = xs.map(x => Math.exp(x - m))
+  const s2 = es.reduce((a, b) => a + b, 0)
+  return es.map(e => e / s2)
 }
 
 // ═══ 归纳头：它不是记忆，是一条现场执行的规则 ═══════════

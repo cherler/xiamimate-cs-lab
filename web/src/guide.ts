@@ -7269,30 +7269,48 @@ export const GUIDES: Record<string, Guide> = {
       hook: '模型做大，能力是平滑变强还是突然开窍？',
       what: '这一屏讲的是**缩放定律（Scaling Law）**：模型规模、数据量、算力三者跟模型能力之间的定量关系。它的重要性在于**让「花多少钱能得到多强的模型」变成一件可以预算的事** —— 在小模型上测出几个点，就能外推出大模型的表现，不用真的先烧一遍钱。基本结论是：损失随着规模按**幂律**平滑下降，在对数坐标下几乎是一条直线。而某些任务的准确率看起来是「突然开窍」的，那多半是指标太粗造成的错觉。',
       terms: '**幂律**：损失 ≈ 常数 × 规模^(−α)。在双对数坐标下画出来是直线，所以才能外推。\u3000**三个变量**：参数量 N、训练数据量 D、算力 C。三者大致满足 C ≈ 6·N·D（每个参数每个 token 前向加反向约 6 次浮点运算）。\u3000**最优配比**：给定算力预算，参数和数据该怎么分？早期的模型普遍**训练不足** —— 参数堆得很大，数据没喂够。后来的实验表明两者应大致等比例放大，**同样算力下，小一点但训得更久的模型反而更强**。这直接改变了整个行业的做法。\u3000**涌现能力**：某些任务的准确率在规模跨过某点后陡增。一部分是真的，一部分是**指标造成的错觉** —— 多步推理题「全对才算对」，能力在平滑增长时，正确率看起来就像突然起飞。换成连续指标（比如对数似然），曲线又变平滑了。\u3000**数据墙**：高质量文本是有限的。当 D 涨不动时，这条定律的外推就不再成立 —— 这是目前这条路线的主要疑问。',
-      watch: '看损失随规模的下降曲线（对数坐标下接近直线），再对比某个任务准确率的跳变。两条曲线说的是同一件事的不同侧面。',
+      /*  ⚠️ 这一条原来写的是"看损失随规模的下降曲线…"——那是 **Scaling Laws**（模型规模与损失的幂律），
+          跟这一屏的 **√d 缩放**（注意力分数除以 √d_k）根本是两回事，明显是串台了。2026-09-08 改写。 */
+      watch: '盯**梯度**那一栏。d 越大，不缩放的 softmax 越塌成 one-hot，它的雅可比就越接近 0 —— d=1024 时只剩 0.0121，而 ÷√d 那档稳在 0.38。**这跟 sigmoid 饱和之后 tanh′→0 是同一件事**。再试试 ÷d（缩过头）：那一档有梯度，却分不出哪个 key 更相关。',
     },
     step: (s: never) => {
-      const st = s as { phase: string; d: number; sqrtd: number; variance: number; entU: number; entS: number; maxU: number }
+      const st = s as { phase: string; d: number; sqrtd: number; variance: number; entU: number; entS: number; maxU: number
+        varTheory?: number; jac?: number; jacRef?: number; mode?: string; divisor?: number }
+      //  ⚠️ 补厚字段可选读：老快照没有 jac/mode，读不到就按老口径（不缩放 vs ÷√d）讲。
+      const md = st.mode ?? '不缩放'
       return [
-        { k: '本步输入', v: st.phase === 'done' ? '维度从 4 扫到 1024' : `维度 d=${st.d}` },
-        { k: '判定规则', v: `Q\u00b7K 是 d 个 i.i.d. 乘积之和 → 方差=d、标准差 \u221ad。不缩放 softmax(base\u00d7\u221ad)；\u00f7\u221ad 后 softmax(base)。` },
+        { k: '本步输入', v: st.phase === 'done' ? `维度从 4 扫到 1024（这一档：${md}）` : `维度 d=${st.d}，除以 ${st.divisor ?? 1}` },
+        { k: '判定规则', v: `Q·K 是 **d 个 i.i.d. 乘积之和** → 方差 = d、标准差 = √d。`
+            + `　这一屏的方差是**抽 200 对随机向量当场数出来的**${st.varTheory ? `（实测 ${st.variance} / 理论 ${st.varTheory}）` : ''}，不是写进去的。` },
         { k: '本步结果', v: st.phase === 'done'
-            ? `d 越大，不缩放的熵越塌向 0（一头独大、梯度消失）；\u00f7\u221ad 熵恒 **${st.entS}**。所以要除以 \u221ad_k。`
-            : `方差=**${st.variance}**、\u221ad=${st.sqrtd.toFixed(1)}。不缩放最大概率 **${(st.maxU * 100).toFixed(1)}%**、熵 **${st.entU}**${st.maxU > 0.9 ? '（塌成 one-hot）' : ''}；\u00f7\u221ad 熵 ${st.entS}（不变）。` },
+            ? (md === '不缩放'
+              ? `d 越大熵越塌向 0、最大概率越接近 100%${st.jac !== undefined ? `，**梯度从 0.335 掉到 ${st.jac}**` : ''}——**有选择性但没梯度**。`
+              : md.startsWith('÷√d')
+                ? `熵和梯度**完全不随 d 变**${st.jac !== undefined ? `（梯度稳在 ${st.jac}）` : ''}——这就是要除 √d_k 的全部理由。`
+                : `摊成均匀（最大概率 ${(st.maxU * 100).toFixed(0)}%≈1/4、熵到顶）——**有梯度但没选择性**。`)
+            : `方差=**${st.variance}**、√d=${st.sqrtd.toFixed(1)}。最大概率 **${(st.maxU * 100).toFixed(1)}%**、熵 **${st.entU}** bit`
+              + (st.jac !== undefined ? `、**梯度 ${st.jac}**` : '')
+              + (st.maxU > 0.9 ? '（塌成 one-hot，梯度快没了）' : st.maxU < 0.32 ? '（摊成均匀，分不出高下）' : '') + `。` },
       ]
     },
     verdict: (s: never) => {
-      const st = s as { phase: string; d: number; maxU: number }
-      return st.phase === 'done' ? '\u00f7\u221ad 稳' : `d=${st.d} \u00b7 最大 ${(st.maxU * 100).toFixed(0)}%`
+      const st = s as { phase: string; d: number; maxU: number; jac?: number }
+      if (!st.d) return ''
+      if (st.maxU > 0.9) return `塌成 one-hot`
+      if (st.maxU < 0.32) return `摊成均匀`
+      return `d=${st.d}·最大 ${(st.maxU * 100).toFixed(0)}%`
     },
     read: [
       { at: '维度读数', is: 'd、方差=d、标准差 \u221ad。', anchor: '.scdim' },
-      { at: '不缩放（红）', is: 'softmax(base\u00d7\u221ad)，d 大就塌成一根到顶的 one-hot。', anchor: '.sccol.bad' },
-      { at: '\u00f7\u221ad（绿）', is: 'softmax(base)，四根一直“软”、不随 d 变。', anchor: '.sccol.good' },
+      { at: '左边那栏（本档缩放）', is: '按你选的缩放算出来的 softmax;下面印着熵、最大概率、**梯度**。', anchor: '.sccol.bad' },
+      { at: '÷√d（绿）', is: '参照:softmax(base),四根一直"软"、不随 d 变。', anchor: '.sccol.good' },
     ],
     try: [
-      { act: '按「下一步」把 d 从 4 加到 1024', watch: '不缩放那边逐步塌成 one-hot（熵→0、最大→100%）；\u00f7\u221ad 那边纹丝不动。' },
-      { act: '对比两边的熵', watch: '不缩放熵一路降到 0（梯度要消失）；\u00f7\u221ad 熵恒定——这就是为什么要除 \u221ad。' },
+      { act: '按「下一步」把 d 从 4 加到 1024（缩放留在"不缩放"）', watch: '实测方差 4.4→930.7,对着理论 4→1024——**Var(Q·K)=d 是量出来的**。同时 softmax 逐步塌成 one-hot:最大概率 65%→99.2%、熵 1.195→0.029。' },
+      //  下面两条是补厚补上的重点
+      { act: '盯住「梯度（softmax 雅可比）」那一栏', watch: 'd 从 4 到 1024,它从 0.335 掉到 **0.0121**。softmax 一饱和,雅可比 ∂p_i/∂z_j = p_i(δ_ij−p_j) 就整个塌向 0——**这跟 sigmoid 饱和后 tanh′→0 是同一件事**,跟「反向传播」「RNN」说的是同一个机制。"梯度消失"不再是一句话,是一个数。' },
+      { act: '把「缩放」拨到「÷√d（正解）」', watch: '熵稳在 ~1.5 bit、梯度稳在 ~0.38,**完全不随 d 变**。方差被永远拉回 1,这就是那句 "scale by 1/√d_k" 的全部理由。' },
+      { act: '再拨到「÷d（缩过头）」', watch: '走到另一头:最大概率掉到 26%(≈1/4)、熵到顶 2.0 bit——**有梯度(0.433)却没有选择性**,注意力等于没在注意。**两种失败正好是一对**:不缩放没梯度、÷d 没选择性。' },
     ],
     terms: [],
   },

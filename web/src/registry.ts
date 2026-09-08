@@ -3534,32 +3534,48 @@ const scale: Experiment<ScaleState> = {
   title: '\u221ad 缩放',
   subtitle: '为什么注意力要除以 \u221ad_k',
   kernel: scaleKernel,
-  defaultDoc: { kind: 'scale', params: {}, entities: [], streams: [] },
-  params: [],
+  defaultDoc: { kind: 'scale', params: { scale: '不缩放' }, entities: [], streams: [] },
+  /*  2026-09-08 补厚：老版本欠着两笔。① Var(Q·K)=d 是**写**进去的（logit 直接取 base×√d），
+      于是这个实验其实没在验证那条定理。② 结语写着"梯度也跟着消失"，可屏幕上**没有任何梯度**。 */
+  params: [
+    { key: 'scale', label: '缩放', kind: 'enum', options: ['不缩放', '÷√d（正解）', '÷d（缩过头）'] },
+  ],
   paramsNote: `**为什么注意力要除以 √d_k**:不是玄学,是统计的必然。Q·K 是 d 个乘积之和;设每维独立、均值0方差1,则每个乘积方差1、d 个相加 → Var(Q·K)=d(方差可加,就是大数定理那套 i.i.d. 累加)。
 
 - **不除会崩**:logit 标准差~√d,d 一大最相关的 key 就把别人甩开 √d 倍,softmax 塌成近似 one-hot(熵→0、一头独大),梯度也消失、训不动。
 - **除以 √d_k**:把方差拉回1、softmax 重新"软"。
-- 这就是《Attention Is All You Need》里"scale by 1/√d_k"的原因。`,
+- 这就是《Attention Is All You Need》里"scale by 1/√d_k"的原因。
+- **方差是量出来的**:每个 d 上另抽 200 对随机向量做内积、当场数方差(实测 4.4／15.3／66.2／251.7／930.7,对着 4/16/64/256/1024)。
+- **梯度也摆上了屏幕**:softmax 的雅可比 ∂p_i/∂z_j = p_i(δ_ij−p_j),取其范数。不缩放时 d 从 4 到 1024,它从 0.335 掉到 **0.0121**——**softmax 一饱和,雅可比就整个塌向 0,跟 sigmoid 饱和后 tanh′→0 是同一件事**(见「反向传播」「RNN」)。
+- **两种失败是一对**:不缩放→塌成 one-hot,**有选择性但没梯度**;÷d(缩过头)→摊成均匀(熵到顶 2.0 bit、最大概率 26%≈1/4),**有梯度但没选择性**。÷√d 两头都要:熵稳在 ~1.5 bit、雅可比稳在 ~0.38,**完全不随 d 变**。`,
   bounds: [
-    '4 个 key 的真实相似度固定 base=[1.5,1,0.5,0]（理解成缩放后该有的 logit）',
-    '维度 d 逐步取 4→16→64→256→1024；原始 Q\u00b7K ≈ base\u00d7\u221ad',
-    'Var(Q\u00b7K)=d（每维单位方差、i.i.d. 累加，精确可核）',
-    '不缩放熵随 d 单调降→0；÷\u221ad 后=softmax(base)，与 d 无关、恒定',
+    '4 个 key、相似度系数固定 base=[1.5,1,0.5,0]；维度 d 取 4→16→64→256→1024',
+    '**真的抽 Q、K 向量做内积**（每维 N(0,1)，把 q 的方向按 base 比例掺进 k）—— logit 不是写进去的',
+    'Var(Q·K) 另抽 200 对纯随机向量当场数出来，跟理论值 d 并排印着',
+    '梯度 = softmax 雅可比 ∂p_i/∂z_j = p_i(δ_ij−p_j) 的 Frobenius 范数',
+    /*  ⚠️ 这条别删：单次抽样看不出趋势，不是机制不对，是噪声跟信号同量级。 */
+    '熵/最大概率/雅可比都是 **64 次独立抽样的平均**：单抽一次时噪声与信号同量级（两者都 ∝√d），最大概率会在 94.8%→88.7%→100%→76.1% 之间乱跳',
+    '只演一个查询、一层、无训练：这里量的是"softmax 还剩多少梯度"，不是真的在训一个注意力',
   ],
   tabs: [{ id: 'cmp', label: '不缩放 vs \u00f7\u221ad' }],
   Stage: ScaleStage,
-  tone: s => (s.phase === 'done' ? { key: 'good', label: '\u00f7\u221ad 稳' }
-    : s.maxU > 0.9 ? { key: 'bad', label: '塌成 one-hot' } : { key: 'idle', label: `d=${s.d}` }),
-  metric: s => (s.d && s.entS ? Math.max(0, Math.min(1, s.entU / s.entS)) : 0),
+  tone: s => (!s.d ? { key: 'idle', label: '' }
+    : s.maxU > 0.9 ? { key: 'bad', label: '塌成 one-hot' }
+      : s.maxU < 0.32 ? { key: 'bad', label: '摊成均匀' }
+        : { key: 'good', label: `d=${s.d} 稳` }),
+  metric: s => (s.d ? Math.max(0, Math.min(1, s.jac / 0.44)) : 0),
   tickLabel: s => (s.phase === 'done' ? '毕' : s.d ? `d${s.d}` : '0'),
   whyInRail: true,
   readouts: s => [
-    { label: '维度 d', value: s.d ? `${s.d}` : '—' },
-    { label: 'Q\u00b7K 方差', value: s.d ? `${s.variance}` : '—' },
-    { label: '不缩放 熵', value: s.d ? `${s.entU} bit` : '—', tone: s.entU < 0.3 ? 'bad' : undefined },
-    { label: '不缩放 最大', value: s.d ? `${(s.maxU * 100).toFixed(1)}%` : '—', tone: s.maxU > 0.9 ? 'bad' : undefined },
-    { label: '\u00f7\u221ad 熵', value: `${s.entS} bit`, tone: 'good' },
+    { label: '维度 d', value: s.d ? `${s.d}（除以 ${s.divisor}）` : '—' },
+    /*  实测方差跟理论值并排 —— 这一栏是"Var(Q·K)=d"从"写进去"变成"量出来"的地方 */
+    { label: 'Q·K 方差（实测 / 理论）', value: s.d ? `${s.variance} / ${s.varTheory}` : '—' },
+    { label: '最大概率', value: s.d ? `${(s.maxU * 100).toFixed(1)}%` : '—',
+      tone: s.maxU > 0.9 ? 'bad' : s.maxU < 0.32 ? 'bad' : 'good' },
+    { label: '熵', value: s.d ? `${s.entU} bit` : '—', tone: s.entU < 0.3 ? 'bad' : undefined },
+    /*  这一栏是补厚补上的重点："梯度也跟着消失"从一句话变成一个数 */
+    { label: '梯度（softmax 雅可比）', value: s.d ? `${s.jac}` : '—',
+      tone: s.d ? (s.jac < 0.05 ? 'bad' : 'good') : undefined },
   ],
 }
 

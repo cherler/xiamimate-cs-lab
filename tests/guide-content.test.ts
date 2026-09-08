@@ -1250,10 +1250,12 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       b: { phase: 'done', step: 1, weights: [0.993, 0.002, 0.002, 0.002], best: 0, matchBits: 8, converged: true },
     },
     scale: {
-      doc: { kind: 'scale', params: {}, entities: [], streams: [] },
-      //  A d=4 还软 · B d=1024 不缩放塌成 one-hot（熵→0）—— 结论必须换一套说法
-      a: { phase: 'run', d: 4, sqrtd: 2, variance: 4, entU: 1.367, entS: 1.796, maxU: 0.6439 },
-      b: { phase: 'done', d: 1024, sqrtd: 32, variance: 1024, entU: 0, entS: 1.796, maxU: 1 },
+      doc: { kind: 'scale', params: { scale: '不缩放' }, entities: [], streams: [] },
+      //  A d=4（还没塌） · B d=1024（塌成 one-hot、梯度只剩 0.0121）—— 结论必须换一套说法
+      a: { phase: 'run', d: 4, sqrtd: 2, variance: 4.4, varTheory: 4, entU: 1.195, entS: 1.796,
+        maxU: 0.6503, jac: 0.3346, jacRef: 0.4278, mode: '不缩放', divisor: 1 },
+      b: { phase: 'done', d: 1024, sqrtd: 32, variance: 930.7, varTheory: 1024, entU: 0.029, entS: 1.796,
+        maxU: 0.9915, jac: 0.0121, jacRef: 0.4278, mode: '不缩放', divisor: 1 },
     },
     engine: {
       doc: { kind: 'engine', params: { pool: 4 }, entities: [], streams: [] },
