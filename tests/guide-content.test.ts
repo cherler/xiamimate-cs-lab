@@ -1121,10 +1121,14 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       b: { phase: 'done', n: 32768, d: 64, ratio: 512, kvMem: 4194304, stateMem: 4160, crossoverN: 64 },
     },
     condnum: {
-      doc: { kind: 'condnum', params: {}, entities: [], streams: [] },
-      //  A κ=1(一步到位) · B κ=50(116 步之字形) —— 结论必须换一套说法
-      a: { phase: 'run', kappa: 1, steps: 1, rate: 0 },
-      b: { phase: 'done', kappa: 50, steps: 116, rate: 0.961 },
+      doc: { kind: 'condnum', params: { dir: '最坏方向', precond: '不预处理' }, entities: [], streams: [] },
+      //  A κ=1(一步到位、放大 1×) · B κ=200(461 步、放大 200×) —— 结论必须换一套说法
+      a: { phase: 'run', kappa: 1, kappaEff: 1, steps: 1, rate: 0, amp: 1, ampCap: 1,
+        dirMode: '最坏方向', precond: '不预处理', stepsSoFar: [[1, 1]], ampSoFar: [[1, 1]] },
+      b: { phase: 'done', kappa: 200, kappaEff: 200, steps: 461, rate: 0.99, amp: 200, ampCap: 200,
+        dirMode: '最坏方向', precond: '不预处理',
+        stepsSoFar: [[1, 1], [5, 12], [20, 47], [50, 116], [200, 461]],
+        ampSoFar: [[1, 1], [5, 5], [20, 20], [50, 50], [200, 200]] },
     },
     maxent: {
       doc: { kind: 'maxent', params: {}, entities: [], streams: [] },

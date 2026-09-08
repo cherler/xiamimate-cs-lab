@@ -5200,30 +5200,47 @@ const condnum: Experiment<CondNumState> = {
   title: '条件数',
   subtitle: '为什么"病态"的问题又慢又难算',
   kernel: condnumKernel,
-  defaultDoc: { kind: 'condnum', params: {}, entities: [], streams: [] },
-  params: [],
+  defaultDoc: { kind: 'condnum', params: { dir: '最坏方向', precond: '不预处理' }, entities: [], streams: [] },
+  /*  2026-09-08 补厚：老版本只演了"优化那张脸"（收敛步数），
+      而 ‖Δx‖/‖x‖ ≤ κ·‖Δb‖/‖b‖ 才是条件数的**定义式** —— 那张脸屏幕上一点都看不见。 */
+  params: [
+    { key: 'dir', label: '扰动方向', kind: 'enum', options: ['最坏方向', '随便一个方向'] },
+    { key: 'precond', label: '预处理', kind: 'enum', options: ['不预处理', '对角缩放 (Jacobi)'] },
+  ],
   paramsNote: `**条件数 κ = 最大曲率/最小曲率(二次型 = 最大特征值/最小特征值),衡量问题多"病态"**。
 
 - **几何**:κ=1(正圆碗)梯度直指谷底、一步到位;κ 大(细长椭圆)梯度几乎垂直于通往谷底的方向、只能之字形慢挪。
 - **收敛**:梯度下降每步误差最多缩 (κ−1)/(κ+1)——κ 越大越接近 1、越慢;所以要预处理/归一化/Adam 把 κ 拉回接近 1。数值上 κ 大还意味着解对噪声极敏感(病态方程组)。这是「梯度下降」那条的深层解释。
-- **本实验**:L=x²+κy²、从 (1,1) 出发,κ 取 1→5→20→50,收敛步数 1→12→47→116、轨迹从直线一步变成剧烈之字形。`,
+- **两张脸是同一个数**:
+  - **优化的脸**——收敛步数 1→12→47→116→461(κ=1/5/20/50/200)。
+  - **数值的脸**——解 Ax=b 时 b 上的相对误差被放大到 **κ 倍**传给 x:**‖Δx‖/‖x‖ ≤ κ·‖Δb‖/‖b‖**,这才是条件数的定义式。最坏方向上实测**正好顶到 κ**(1/5/20/50/200,一位不差);随便挑个方向只有 0.43——**κ 是上界,不是每次都发生**。
+- **预处理不是万能的**:这里的 A 是**旋转过的**(主轴不平行坐标轴)。对角缩放只能修"各维尺度不一"那部分病态,修不了"方向相关"那部分——κ=200 只降到 150。"归一化一下就好了"是不成立的。`,
   bounds: [
-    '损失 L=x²+κ·y²、起点 (1,1)、稳定学习率 1/(1+κ)',
-    'κ 取 1→5→20→50;每步 θ←θ−lr·∇L',
-    '收敛步数 1→12→47→116、收敛率 (κ−1)/(κ+1)(可核)',
-    '二次型示意;真实损失面局部也近似二次',
+    'A = Rᵀ·diag(1, κ)·R（主轴转 30°），所以 κ(A) 精确等于轴上标的那个 κ，可手核',
+    'κ 取 1/5/20/50/200；优化那张脸：L=xᵀAx、起点 (1,1)、步长 1/(λmax+λmin)，收敛率 (κ−1)/(κ+1)',
+    '数值那张脸：解 Ax=b，扰动 b 后重解，量 ‖Δx‖/‖x‖ ÷ ‖Δb‖/‖b‖',
+    /*  这条是"为什么没做扰动幅度旋钮"的答案，免得下次有人再加一个没用的旋钮。 */
+    '扰动幅度不做旋钮：线性系统里放大倍数跟扰动大小无关，做出来是个不动的旋钮',
+    '二次型 / 2×2 示意；真实损失面只在局部近似二次，大型稀疏矩阵的条件数估计另有算法',
+    '预处理只演对角缩放（Jacobi）；不完全 Cholesky、多重网格等更强的预处理不在范围内',
   ],
   tabs: [{ id: 'zigzag', label: '椭圆+轨迹' }],
   Stage: CondNumStage,
-  tone: s => (s.phase === 'done' ? { key: 'bad', label: `${s.steps} 步` } : s.kappa === 1 ? { key: 'good', label: '一步到位' } : s.kappa > 0 ? { key: s.kappa >= 20 ? 'bad' : 'idle', label: `κ=${s.kappa}` } : { key: 'idle', label: '' }),
+  tone: s => (s.phase === 'done' ? { key: 'bad', label: `${s.steps} 步 / 放大 ${+s.amp.toPrecision(4)}×` }
+    : s.kappa === 1 ? { key: 'good', label: '一步到位' }
+      : s.kappa > 0 ? { key: s.kappa >= 20 ? 'bad' : 'idle', label: `κ=${s.kappa}` } : { key: 'idle', label: '' }),
   metric: s => (s.kappa > 0 ? Math.max(0, Math.min(1, 1 - s.rate)) : 0),
   tickLabel: s => (s.phase === 'done' ? '毕' : s.kappa > 0 ? `κ${s.kappa}` : '0'),
   whyInRail: true,
   readouts: s => [
-    { label: '条件数 κ', value: s.kappa > 0 ? `${s.kappa}` : '—' },
-    { label: '收敛步数', value: s.kappa > 0 ? `${s.steps}` : '—', tone: s.kappa >= 20 ? 'bad' : s.kappa === 1 ? 'good' : undefined },
-    { label: '每步误差缩', value: s.kappa > 0 ? `${s.rate}` : '—' },
-    { label: '碗形', value: s.kappa === 1 ? '正圆' : s.kappa > 0 ? `扁 ${s.kappa}:1` : '—' },
+    { label: '条件数 κ', value: s.kappa > 0 ? (s.kappaEff === s.kappa ? `${s.kappa}` : `${s.kappa} → ${s.kappaEff}`) : '—' },
+    { label: '优化：收敛步数', value: s.kappa > 0 ? `${s.steps}（每步缩 ${s.rate}）` : '—',
+      tone: s.kappa >= 20 ? 'bad' : s.kappa === 1 ? 'good' : undefined },
+    /*  这一栏是补厚补上的另半边：条件数的定义式就长这样 */
+    /*  两个数并排比 —— 必须同一个格式化，否则会印出"151 / 上界 150.5"这种自相矛盾的话 */
+    { label: '数值：误差放大', value: s.kappa > 0 ? `${+s.amp.toPrecision(4)}× / 上界 ${+s.ampCap.toPrecision(4)}` : '—',
+      tone: s.kappa > 0 ? (s.amp > 10 ? 'bad' : 'good') : undefined },
+    { label: '碗形', value: s.kappa === 1 ? '正圆' : s.kappa > 0 ? `扁 ${s.kappaEff}:1` : '—' },
   ],
 }
 

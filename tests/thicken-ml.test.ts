@@ -30,6 +30,7 @@ import { graddescKernel, type GradDescState } from '../src/kernels/graddesc.ts'
 import { pcaKernel, type PCAState } from '../src/kernels/pca.ts'
 import { backpropKernel, type BackpropState } from '../src/kernels/backprop.ts'
 import { residualKernel, type ResidualState } from '../src/kernels/residual.ts'
+import { condnumKernel, type CondNumState } from '../src/kernels/condnum.ts'
 
 let failures = 0
 const ok = (m: string) => console.log(`  ✅ ${m}`)
@@ -340,6 +341,53 @@ console.log('\n【逻辑回归：正则真的在压权重，异或真的分不�
   !xor.separable && xor.acc < sep.acc - 0.15
     ? ok(`异或准确率 ${(xor.acc * 100).toFixed(0)}%，可分档 ${(sep.acc * 100).toFixed(0)}% —— 一条直线切不开异或`)
     : bad(`异或 ${(xor.acc * 100).toFixed(0)}% vs 可分 ${(sep.acc * 100).toFixed(0)}% —— 差距不足以说明"线性不可分"`)
+}
+
+// ═══ 条件数：同一个数的两张脸 ═══════════════════════════
+console.log('\n【条件数：走得慢，和算不准，是同一个 κ】')
+{
+  const all = (p: P) => (run(condnumKernel.compile(doc('condnum', p)), 60) as CondNumState[]).filter(s => s.phase === 'run')
+
+  /*  ① 最坏方向上，实测误差放大必须**正好等于 κ** —— 不等式 ‖Δx‖/‖x‖ ≤ κ·‖Δb‖/‖b‖
+      在这个方向上取等号。这条是全实验最硬的一个核对点。 */
+  const worst = all({ dir: '最坏方向', precond: '不预处理' })
+  const off = worst.map(s => Math.abs(s.amp / s.kappaEff - 1))
+  Math.max(...off) < 1e-6
+    ? ok(`最坏方向：误差放大逐档等于 κ（${worst.map(s => s.amp).join(' / ')}），不等式取到等号`)
+    : bad(`最坏方向没顶到 κ：${worst.map(s => `κ=${s.kappa} 放大 ${s.amp}`).join(' / ')}`)
+
+  //  ② 随便一个方向：放大必须**远小于** κ —— κ 是上界，不是每次都发生
+  const any = all({ dir: '随便一个方向', precond: '不预处理' })
+  const big = any.filter(s => s.kappa >= 20)
+  big.every(s => s.amp < s.kappaEff / 10)
+    ? ok(`随便一个方向：κ=20/50/200 时放大只有 ${big.map(s => s.amp).join(' / ')} —— κ 是上界，不是每次都会发生`)
+    : bad(`随便方向的放大没跟 κ 拉开：${big.map(s => `${s.amp}/${s.kappaEff}`).join(' ')}`)
+
+  //  ③ 两张脸必须**一起**变坏：步数和放大都随 κ 单调上升
+  const st = worst.map(s => s.steps), ap = worst.map(s => s.amp)
+  st.every((v, k) => k === 0 || v > st[k - 1]) && ap.every((v, k) => k === 0 || v > ap[k - 1])
+    ? ok(`κ 递增时两张脸同步变坏：步数 ${st.join('→')}，放大 ${ap.join('→')}`)
+    : bad(`有一张脸没跟着变坏：步数 ${st.join('/')}，放大 ${ap.join('/')}`)
+
+  //  ④ 收敛率必须等于 (κ−1)/(κ+1)，用的是**实际**的 κ（预处理后会变）
+  const bad4 = worst.filter(s => Math.abs(s.rate - (s.kappaEff - 1) / (s.kappaEff + 1)) > 1e-3)
+  bad4.length === 0 ? ok('各档收敛率都等于 (κ−1)/(κ+1)（用的是预处理之后的实际 κ）')
+    : bad(`收敛率对不上：${bad4.map(s => `κ=${s.kappa} rate=${s.rate}`).join(' / ')}`)
+
+  /*  ⑤ 预处理有用、但**不是万能**。这条钉住两头：κ 确实降了，而且**没降到 1**。
+      矩阵是转了 30° 的，对角缩放修不了"方向相关"那部分病态 —— 少了这一条，
+      屏幕上就成了"归一化一下就好了"。 */
+  const raw = all({ dir: '最坏方向', precond: '不预处理' }).filter(s => s.kappa === 200)[0]
+  const jac = all({ dir: '最坏方向', precond: '对角缩放 (Jacobi)' }).filter(s => s.kappa === 200)[0]
+  jac.kappaEff < raw.kappaEff && jac.kappaEff > 10 && jac.steps < raw.steps
+    ? ok(`对角缩放：κ=200 只降到 ${jac.kappaEff}、步数 ${raw.steps}→${jac.steps} —— 有用，但远不是万能`)
+    : bad(`预处理那一档不对：κ ${raw.kappaEff}→${jac.kappaEff}、步数 ${raw.steps}→${jac.steps}`)
+
+  //  ⑥ 结语里那两条序列必须是**本次跑出来的**（老版本是三个写死的数拼一个现算的）
+  const fin = last(run(condnumKernel.compile(doc('condnum', { dir: '最坏方向', precond: '不预处理' })), 60) as CondNumState[])
+  fin.stepsSoFar.length === worst.length && fin.stepsSoFar.every(([k, v], i) => k === worst[i].kappa && v === worst[i].steps)
+    ? ok(`结语用的序列跟逐帧实测逐个对上（${fin.stepsSoFar.map(([k, v]) => `κ${k}:${v}`).join(' ')}）—— 没有写死的数`)
+    : bad('结语里的序列跟实际跑出来的对不上')
 }
 
 // ═══ 残差：差别只有那个 +1，而它不是万能的 ═══════════════
