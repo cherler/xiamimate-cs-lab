@@ -5576,17 +5576,26 @@ const clt: Experiment<CltState> = {
   title: '中心极限定理',
   subtitle: '平的均匀分布，一平均就长成钟形',
   kernel: cltKernel,
-  defaultDoc: { kind: 'clt', params: {}, entities: [], streams: [] },
-  params: [],
+  defaultDoc: { kind: 'clt', params: { dist: '均匀 U[0,1]', trials: 20000 }, entities: [], streams: [] },
+  /*  2026-09-08 补厚：原来只有均匀一种分布、一个旋钮都没有，于是 CLT 最要紧的两件事说不出来 ——
+      ① 它**要求方差有限**（柯西违背它，平均多少个都还是柯西）；
+      ② **"m 要多大"取决于原分布有多偏**（实测同样 m=32，均匀已 −0.03、伯努利 p=0.05 还有 0.44）。 */
+  params: [
+    { key: 'dist', label: '原始分布', kind: 'enum',
+      options: ['均匀 U[0,1]', '指数（偏）', '伯努利 p=0.05（极偏）', '柯西（方差发散）'] },
+    { key: 'trials', label: '试验次数', kind: 'number', options: [5000, 20000] },
+  ],
   paramsNote: `**中心极限定理(CLT):不管原始分布长什么样(只要方差有限),把 m 个 i.i.d. 样本平均,当 m 增大,均值的分布越来越接近高斯(正态)**。均值 std 按 1/√m 缩(接大数定理)。
 
 - **为何高斯无处不在**:任何"许多小随机因素相加"的量天然趋向高斯——权重初始化、噪声假设、误差项、注意力打分的近似分析。
 - **本实验**:用最不像高斯的均匀分布 U[0,1](平的),把 m 取 1→2→4→8→32;每个 m 跑 T=20000 次,把标准化均值 z=(mean−0.5)/(σ/√m) 做直方图、叠标准正态曲线,看它从平顶长成钟形。`,
   bounds: [
-    '原始分布=均匀 U[0,1](均值0.5、σ=1/√12)，最不像高斯',
-    'm 逐步取 1→2→4→8→32；每个 m 跑 T=20000 次独立试验，可复现',
-    '样本 std≈σ/√m(∝1/√m)、超额峰度→0(均匀=−1.2，高斯=0)、直方图贴合正态(均可核)',
-    '只看均值分布的形状与集中；未建模一般分布的收敛速率(Berry–Esseen)',
+    '四种原始分布可切；m 逐步取 1→2→4→8→32，每个 m 跑若干次独立试验，可复现',
+    /*  ⚠️ 老版本写「超额峰度→0」是**无条件**的 —— 而 CLT 的前提正是方差有限。 */
+    '**方差有限时**超额峰度才→0、std 才≈σ/√m；柯西方差发散，平均多少个都还是柯西（实测峰度停在数千）',
+    '收敛快慢跟原分布的偏度有关：实测 m=32 时均匀 −0.03、指数 0.3、伯努利 p=0.05 还有 0.44',
+    '柯西那一档的 σ 只是画 z 用的尺度，它没有真正的标准差',
+    '只看均值分布的形状与集中；未建模一般分布的收敛速率界（Berry–Esseen）',
   ],
   tabs: [{ id: 'hist', label: '标准化直方图' }],
   Stage: CltStage,
@@ -5599,7 +5608,11 @@ const clt: Experiment<CltState> = {
     { label: '平均样本数 m', value: s.m ? `${s.m}（×${s.trials}）` : '—' },
     { label: '均值 std', value: s.m ? `${s.std}` : '—' },
     { label: '理论 σ/√m', value: s.m ? `${s.theoStd}` : '—' },
-    { label: '超额峰度', value: s.m ? `${s.exKurt}` : '—', tone: s.m && s.exKurt > -0.2 ? 'good' : undefined },
+    /*  离 0 越近越像高斯。柯西那一档它会停在几千 —— 定理的前提就藏在这个数里 */
+    { label: '超额峰度', value: s.m ? `${s.exKurt}（0=高斯）` : '—',
+      tone: !s.finiteVar ? 'bad' : s.m && Math.abs(s.exKurt) < 0.2 ? 'good' : undefined },
+    { label: '方差有限吗', value: s.finiteVar ? '有限 → 定理成立' : '发散 → 定理不适用',
+      tone: s.finiteVar ? 'good' : 'bad' },
   ],
 }
 

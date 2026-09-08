@@ -1195,10 +1195,10 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       b: { phase: 'done', trueIdx: 5, trueWord: 'mat', pTrue: 0.95, surprise: 0.074, ce: 0.677, perplexity: 1.599, ppUniform: 8 },
     },
     clt: {
-      doc: { kind: 'clt', params: {}, entities: [], streams: [] },
+      doc: { kind: 'clt', params: { dist: '均匀 U[0,1]', trials: 20000 }, entities: [], streams: [] },
       //  A m=1 就是均匀本身（平顶、峰度 −1.2） · B m=32 长成钟形（峰度→0）—— 结论必须换一套说法
-      a: { phase: 'run', m: 1, trials: 20000, std: 0.2889, theoStd: 0.2887, exKurt: -1.205 },
-      b: { phase: 'done', m: 32, trials: 20000, std: 0.0516, theoStd: 0.051, exKurt: -0.031 },
+      a: { dist: '均匀 U[0,1]', finiteVar: true, kurtCurve: [[1, -1.2], [32, -0.03]], phase: 'run', m: 1, trials: 20000, std: 0.2889, theoStd: 0.2887, exKurt: -1.205 },
+      b: { dist: '均匀 U[0,1]', finiteVar: true, kurtCurve: [[1, -1.2], [32, -0.03]], phase: 'done', m: 32, trials: 20000, std: 0.0516, theoStd: 0.051, exKurt: -0.031 },
     },
     lln: {
       doc: { kind: 'lln', params: { target: '蒙特卡洛估 π', trials: 200 }, entities: [], streams: [] },
