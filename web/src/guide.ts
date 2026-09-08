@@ -5107,31 +5107,43 @@ export const GUIDES: Record<string, Guide> = {
       hook: '能分开两类的线有无数条，挑哪一条？',
       what: '这一屏讲的是**支持向量机（SVM）**：在深度学习之前，它是分类任务上最强的方法之一。能把两类分开的直线有无数条，SVM 的独到之处是**挑离两边都最远的那一条** —— 中间那条「街」修得越宽，来了新样本越不容易越界。真正决定这条线的只有紧贴街边的那几个样本（**支持向量**），其余样本挪一挪，线纹丝不动。再加上**核技巧**，它还能处理直线分不开的数据。',
       terms: '**间隔（margin）**：决策边界到最近样本的距离，也就是那条「街」的宽度。SVM 的目标就是**最大化它**。\u3000**支持向量**：**恰好落在间隔边界上的那几个样本**。只有它们参与决定边界的位置，这也是模型能存得很小的原因。\u3000**硬间隔 / 软间隔**：硬间隔要求所有样本都分对，但**数据里有噪声时根本无解**。软间隔允许少数样本越界，用参数 **C** 控制容忍程度 —— C 大表示不容忍（容易过拟合），C 小表示宽容（容易欠拟合）。\u3000**核技巧（kernel trick）**：直线分不开时，把数据映射到更高维再切一刀。**妙的是不必真的算出高维坐标** —— 只要能算出「两点在高维里的内积」就够了。常用的有多项式核和 RBF（高斯）核。\u3000**为什么后来被神经网络取代**：核方法的计算量随样本数**平方甚至立方**增长，几十万样本以上就跑不动；而且核函数要人工选。**但在小样本、高维数据上，SVM 至今仍然很能打。**',
-      watch: '看哪几个样本贴在间隔边界上。拖动一个非支持向量的点，决策边界不动；拖动支持向量，整条线立刻跟着变。',
+      watch: '这条线是**解出来**的：从一个故意选歪的方向起步，被目标函数一步步推正、把街撑开。走完看读数条最后一栏 —— 把所有非支持向量**删掉重解**，边界只差 0.05°：真的只有那几个点说了算。',
     },
     step: (s: never) => {
-      const st = s as { phase: string; margin: number; supportVectors: number[]; isMax: boolean }
+      const st = s as { phase: string; margin: number; supportVectors: number[]; isMax: boolean
+        step?: number; obj?: number; hinge?: number; wrong?: number; inside?: number
+        points?: unknown[]; svOnlyTilt?: number; cTag?: string; kind?: string }
+      //  ⚠️ 补厚字段可选读：老快照只有 phase/margin/supportVectors。
+      const nPts = st.points?.length
+      const width = (2 * st.margin).toFixed(2)
       return [
-        { k: '本步输入', v: st.phase === 'done' ? '对比随便一条 vs SVM' : ({ setup: '两类线性可分', naive: '随便一条分开的线', svm: 'SVM 最大间隔' } as Record<string, string>)[st.phase] },
-        { k: '判定规则', v: `SVM 找最大间隔:两类间想象最宽的"街道",正中那条是边界。街只由紧贴街边的"支持向量"定住。` },
+        { k: '本步输入', v: st.phase === 'done' ? `收敛（${st.cTag ?? '软间隔'}）` : `第 ${st.step ?? 0} 轮求解` },
+        { k: '判定规则', v: `最小化 **½λ‖w‖² + 平均 hinge**：前一项要街宽（‖w‖ 小），后一项要每个点都站在街外——`
+            + `**两个愿望在打架，C 决定谁说了算**。街宽就是 2/‖w‖，支持向量 = 贴着街边或站进街里的点。` },
         { k: '本步结果', v: st.phase === 'done'
-            ? `SVM 间隔 **${st.margin}** > 随便那条 0.5,只由 **${st.supportVectors.length}** 个支持向量定边界——泛化最稳。`
-            : st.phase === 'naive' ? `贴着一类、间隔只 **0.5**,离一类太近、泛化差。`
-            : st.phase === 'svm' ? `边界居中、间隔 **${st.margin}**(街最宽),**${st.supportVectors.length}** 个支持向量高亮。`
-            : `能分开的线无数条,哪条最好?` },
+            ? `街宽 **${width}**${nPts ? `，${nPts} 个点里 **${st.supportVectors.length}** 个是支持向量` : ''}`
+              + `${st.wrong !== undefined ? `，分错 ${st.wrong} 个` : ''}。`
+              + (st.svOnlyTilt !== undefined
+                ? `　把其余点**全删掉**、只拿支持向量重解，边界只差 **${st.svOnlyTilt}°**——真的只有它们说了算。` : '')
+            : `街宽 **${width}**，目标 J=**${st.obj ?? '—'}**${st.hinge !== undefined ? `（hinge ${st.hinge}）` : ''}，`
+              + `支持向量 ${st.supportVectors.length} 个。` },
       ]
     },
     verdict: (s: never) => {
-      const st = s as { phase: string; margin: number }
-      return st.phase === 'done' || st.phase === 'svm' ? `间隔 ${st.margin}` : st.phase === 'naive' ? '间隔窄' : '?'
+      const st = s as { phase: string; margin: number; wrong?: number; obj?: number }
+      if (st.phase !== 'done') return st.obj !== undefined ? `J=${st.obj}` : `间隔 ${st.margin}`
+      return st.wrong ? `错 ${st.wrong} 个` : `街宽 ${(2 * st.margin).toFixed(2)}`
     },
     read: [
       { at: '读数', is: '哪条边界、间隔、支持向量数、泛化。', anchor: '.scdim' },
-      { at: '散点图', is: '两类点;橙线=边界;虚线=街边;浅色=间隔街道;黑圈=支持向量。', anchor: '.mlplot' },
+      { at: '散点图', is: '两类点(红/蓝);粗实线=决策边界 w·x+b=0;两条虚线=街沿 w·x+b=±1;**套圈的是支持向量**;淡掉的点离街很远、对边界毫无影响。', anchor: '.mlplot' },
     ],
     try: [
-      { act: '走 随便一条 → SVM 两步', watch: '随便那条贴着一类(间隔 0.5);SVM 居中、街最宽(间隔 1)。' },
-      { act: '看支持向量', watch: '最宽的街只由紧贴街边的 4 个点定住,其余点再远都不影响边界。' },
+      { act: '一步步走完求解', watch: '起步方向是**故意选歪的**;看那条线怎么被目标函数推正、街怎么撑开,目标 J 一路降。' },
+      //  这一条是本实验最硬的一个现场证明
+      { act: '走到最后，看「只留支持向量重解」那一栏', watch: '把 20 个点里的十几个非支持向量**全删掉**、只拿剩下几个重解一遍,边界只差 **0.05°**——"支持向量"这个名字就是这么来的,也是 SVM 能只记住少数点的原因。' },
+      { act: '把「数据形状」换成「有重叠（线性不可分）」，再拧 C', watch: '这份数据**怎么画线都会错几个**。C=0.1 街宽 3.17、15 个点站进街里;C=10 街被挤到 1.89。**没有正确答案,只有取舍**——这就是软间隔那个旋钮在干的事。' },
+      { act: '换成「有一个离群点」，C 从 0.1 拧到 10', watch: 'C=0.1 时算法**主动放弃**那个点、街宽 2.63;C=10 时为了把它也分对,街被挤到 **0.61**(干净数据的基准是 1.60)——**一个点绑架了全部 21 个点**。软间隔就是为这种点存在的。' },
     ],
     terms: [],
   },

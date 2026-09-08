@@ -3733,31 +3733,53 @@ const svm: Experiment<SVMState> = {
   title: '支持向量机 SVM',
   subtitle: '分两类不够，要找"最宽的那条街"',
   kernel: svmKernel,
-  defaultDoc: { kind: 'svm', params: {}, entities: [], streams: [] },
-  params: [],
+  defaultDoc: { kind: 'svm', params: { data: '清爽可分', c: 1 }, entities: [], streams: [] },
+  /*  2026-09-08 补厚：老版本把边界限制成一条**竖线**、间隔取两类最内侧点的中点。
+      可 SVM 的全部难处就在于**找那个方向** —— 方向被写死之后，它演的其实不是 SVM。
+      现在换成真求解（次梯度下降解 ½λ‖w‖²+平均 hinge），方向自己转出来。 */
+  params: [
+    { key: 'data', label: '数据形状', kind: 'enum', options: ['清爽可分', '有重叠（线性不可分）', '有一个离群点'] },
+    /*  ⚠️ 没有 C=100 这一档，是**量过之后拿掉的**：λ=1/(100n) 时次梯度法两万四千轮
+        仍没解完，"只留支持向量重解"会差出 5~31°（其余档全在 0.04° 以内）。
+        再加迭代要百万量级、每帧都算不动。宁可不给这一档，也不给一个我担保不了的数。 */
+    { key: 'c', label: '软间隔 C', kind: 'number', options: [0.1, 1, 10] },
+  ],
   paramsNote: `**SVM 在无数条分界线里挑最大间隔的那条**。两类线性可分时能分开的直线有无数条,逻辑回归随便找一条,SVM 让"街道"最宽。
 
 - **为什么最宽**:两类之间想象一条尽量宽的"街道",正中间那条线是边界;边界离两边都最远、容错最大、泛化最好。
 - **只记支持向量**:最宽的街只由紧贴街边的几个点(支持向量)定住,其余点再远都不影响。
 - **线性不可分**:用核函数把点映到高维再找最大间隔。
-- **本实验**:两类各 5 点,先看一条随便分开的线(贴一类、间隔 0.5),再看 SVM 最大间隔线(居中、间隔 1),4 个支持向量高亮。`,
+- **本实验是真求解**:对 J(w,b)=½λ‖w‖²+(1/n)Σmax(0,1−yᵢ(w·xᵢ+b)) 做次梯度下降(λ=1/(C·n))。**方向从一个故意选歪的起点自己转过来**,街宽 2/‖w‖ 自己长出来。
+- **"只有少数几个点说了算"是现场证明的**:把所有非支持向量**删掉重解**,得到的边界跟原来差 **0.05° 以内**——这就是"支持向量"这个名字的来历。
+- **软间隔 C 是个取舍旋钮**:C 小→街宽、容忍几个点站进街里;C 大→硬要每个点都分对、街被挤窄。
+- **一个离群点能绑架全场**:数据里埋了一个刚越过边界的 A 类点。C=0.1 时算法放弃它、街宽 2.63;C=10 时为了把它也分对,街被挤到 **0.61**(干净数据的基准是 1.60)——**一个点让间隔缩了六成**。软间隔就是为这种点存在的。
+- **旋钮只给到 C=10**:C 再大,这个次梯度求解器两万四千轮也解不完,"只留支持向量重解"就会差出几十度。宁可不给那一档,也不给一个担保不了的数。`,
   bounds: [
-    '两类各 5 个线性可分点',
-    '间隔=最近点到边界的距离;支持向量=最内侧点(可核)',
-    'SVM 间隔 1 > 随便那条 0.5;只由 4 个支持向量定边界',
-    '演示线性可分;核函数(非线性)只在文字里点到',
+    '两类各 10 个 2D 点（离群点那档 21 个）；真实分界方向**刻意不轴对齐**（法向 (1,0.6)），方向必须由求解器找出来',
+    '解 J=½λ‖w‖²+(1/n)Σ hinge，λ=1/(C·n)；街宽=2/‖w‖，支持向量 = yᵢf(xᵢ)≤1 的点',
+    /*  ⚠️ 这两条是实测逼出来的，别当成实现细节删掉。 */
+    '步长用 1/(λt) 并把 ‖w‖ 投影到 1/√λ 以内（Pegasos）：常数步长在 C 大时跑几千轮都不收敛',
+    '屏幕上跟的是**历史最好目标值**：次梯度法不是下降法，直接显示当前点那个数会上下晃',
+    '只做线性 SVM：核函数（RBF/多项式）不在范围内，SMO / 对偶形式也不在',
+    '离群点的位置（法向 +0.4）是扫出来的：放太深会被任何 C 直接放弃，"硬间隔被拽歪"就演不出来',
+    'C 只给到 10：更大的 C 这个求解器在可接受的迭代数内解不完，给出的数担保不了',
   ],
   tabs: [{ id: 'margin', label: '最大间隔' }],
   Stage: SVMStage,
-  tone: s => (s.phase === 'done' || s.phase === 'svm' ? { key: 'good', label: `间隔 ${s.margin}` } : s.phase === 'naive' ? { key: 'bad', label: '间隔窄 0.5' } : { key: 'idle', label: '无数条?' }),
-  metric: s => (s.isMax ? 1 : s.phase === 'naive' ? 0.4 : 0),
-  tickLabel: s => (s.phase === 'done' ? '毕' : ({ setup: '设', naive: '随便', svm: 'SVM' } as Record<string, string>)[s.phase] ?? '0'),
+  tone: s => (s.phase === 'done'
+    ? (s.wrong === 0 ? { key: 'good', label: `街宽 ${(2 * s.margin).toFixed(2)}` } : { key: 'bad', label: `错 ${s.wrong} 个` })
+    : { key: 'idle', label: s.step >= 0 ? `J=${s.obj}` : '' }),
+  metric: s => (s.step >= 0 ? Math.max(0, Math.min(1, 1 - s.obj)) : 0),
+  tickLabel: s => (s.phase === 'done' ? '毕' : `${s.step}`),
   whyInRail: true,
   readouts: s => [
-    { label: '边界', value: s.phase === 'setup' ? '?' : s.phase === 'naive' ? '随便一条' : '最大间隔' },
-    { label: '间隔', value: s.phase === 'setup' ? '—' : `${s.margin}`, tone: s.isMax ? 'good' : s.phase === 'naive' ? 'bad' : undefined },
-    { label: '支持向量', value: s.supportVectors.length ? `${s.supportVectors.length} 个` : '—' },
-    { label: '泛化', value: s.isMax ? '最稳' : s.phase === 'naive' ? '差' : '—', tone: s.isMax ? 'good' : undefined },
+    { label: '街宽 2/‖w‖', value: s.step >= 0 ? `${(2 * s.margin).toFixed(3)}` : '—', tone: s.phase === 'done' ? 'good' : undefined },
+    { label: '目标 J', value: s.step >= 0 ? `${s.obj}（hinge ${s.hinge}）` : '—' },
+    { label: '支持向量', value: `${s.supportVectors.length} / ${s.points.length} 个` },
+    { label: '分错', value: `${s.wrong} 个（准确率 ${(s.acc * 100).toFixed(0)}%）`, tone: s.wrong > 0 ? 'bad' : 'good' },
+    /*  这一栏是"只有少数几个点说了算"的现场证明，只有收敛后才有意义 */
+    ...(s.phase === 'done' ? [{ label: '只留支持向量重解', value: `边界差 ${s.svOnlyTilt}°`,
+      tone: (s.svOnlyTilt < 1 ? 'good' : 'bad') as 'good' | 'bad' }] : []),
   ],
 }
 

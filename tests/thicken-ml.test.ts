@@ -31,6 +31,7 @@ import { pcaKernel, type PCAState } from '../src/kernels/pca.ts'
 import { backpropKernel, type BackpropState } from '../src/kernels/backprop.ts'
 import { residualKernel, type ResidualState } from '../src/kernels/residual.ts'
 import { condnumKernel, type CondNumState } from '../src/kernels/condnum.ts'
+import { svmKernel, type SVMState } from '../src/kernels/svm.ts'
 
 let failures = 0
 const ok = (m: string) => console.log(`  ✅ ${m}`)
@@ -341,6 +342,62 @@ console.log('\n【逻辑回归：正则真的在压权重，异或真的分不�
   !xor.separable && xor.acc < sep.acc - 0.15
     ? ok(`异或准确率 ${(xor.acc * 100).toFixed(0)}%，可分档 ${(sep.acc * 100).toFixed(0)}% —— 一条直线切不开异或`)
     : bad(`异或 ${(xor.acc * 100).toFixed(0)}% vs 可分 ${(sep.acc * 100).toFixed(0)}% —— 差距不足以说明"线性不可分"`)
+}
+
+// ═══ SVM：真求解，而且只有几个点说了算 ═══════════════════
+console.log('\n【SVM：方向是解出来的；支持向量删掉别的点也照样定住这条街】')
+{
+  const t = (p: P) => run(svmKernel.compile(doc('svm', p)), 80) as SVMState[]
+  const go = (p: P) => last(t(p))
+  const DATA = ['清爽可分', '有重叠（线性不可分）', '有一个离群点']
+  const CS = [0.1, 1, 10]
+
+  /*  ① 全实验最硬的一条：把所有**非**支持向量删掉重解，边界必须几乎不动。
+      这也是"C 只给到 10"的理由 —— C=100 时求解器解不完，这条会红。 */
+  const tilts = DATA.flatMap(data => CS.map(c => ({ data, c, tilt: go({ data, c }).svOnlyTilt })))
+  tilts.every(x => x.tilt < 1)
+    ? ok(`9 种组合：只留支持向量重解，边界最大只差 ${Math.max(...tilts.map(x => x.tilt))}° —— 真的只有那几个点说了算`)
+    : bad(tilts.filter(x => x.tilt >= 1).map(x => `${x.data}/C=${x.c}：差 ${x.tilt}°`).join(' / '))
+
+  //  ② 目标函数必须逐帧不升（迭代数是几何级数增长的，best-so-far 保证单调）
+  const badObj: string[] = []
+  for (const data of DATA) for (const c of CS) {
+    const objs = t({ data, c }).filter(s => s.phase === 'run').map(s => s.obj)
+    if (!objs.every((v, k) => k === 0 || v <= objs[k - 1] + 1e-9)) badObj.push(`${data}/C=${c}`)
+  }
+  badObj.length === 0 ? ok('9 种组合：目标 J 逐帧不升（次梯度法本身不是下降法，靠 best-so-far 保住）')
+    : bad(`这些组合的 J 反弹了：${badObj.join('、')}`)
+
+  //  ③ 方向必须是**解出来**的：起步那一帧跟收敛后差很多（否则等于写死了答案）
+  const seq = t({ data: '清爽可分', c: 1 }).filter(s => s.phase === 'run')
+  const ang = (s: SVMState) => Math.atan2(s.w2, s.w1) * 180 / Math.PI
+  Math.abs(ang(seq[0]) - ang(last(seq))) > 15 && last(seq).margin > seq[0].margin * 2
+    ? ok(`方向确实转过来了：${ang(seq[0]).toFixed(1)}° → ${ang(last(seq)).toFixed(1)}°，街宽 ${(2 * seq[0].margin).toFixed(2)} → ${(2 * last(seq).margin).toFixed(2)}`)
+    : bad(`起步和收敛差不多（${ang(seq[0]).toFixed(1)}° vs ${ang(last(seq)).toFixed(1)}°）—— 那"方向是解出来的"就没凭据`)
+
+  //  ④ C 越大街越窄（软间隔那个取舍）——三种数据都要成立
+  const badC: string[] = []
+  for (const data of DATA) {
+    const w = CS.map(c => go({ data, c }).margin)
+    if (!w.every((v, k) => k === 0 || v <= w[k - 1] + 1e-9)) badC.push(`${data}：${w.map(v => (2 * v).toFixed(2)).join(' / ')}`)
+  }
+  badC.length === 0
+    ? ok(`C=0.1/1/10 时街宽单调变窄（清爽 ${CS.map(c => (2 * go({ data: '清爽可分', c }).margin).toFixed(2)).join('→')}）`)
+    : bad(`C 变大街反而变宽：${badC.join(' / ')}`)
+
+  /*  ⑤ 离群点那档的主菜：C 小放弃它、街最宽；C 大为它一个点把街挤掉一大半。
+      离群点的落点是扫出来的 —— 放太深任何 C 都会放弃它，这条就红了。 */
+  const soft = go({ data: '有一个离群点', c: 0.1 })
+  const hard = go({ data: '有一个离群点', c: 10 })
+  const clean = go({ data: '清爽可分', c: 10 })
+  soft.wrong === 1 && hard.wrong === 0 && hard.margin < clean.margin * 0.5
+    ? ok(`离群点：C=0.1 放弃它（错 1、街宽 ${(2 * soft.margin).toFixed(2)}）；C=10 为它一个点把街挤到 ${(2 * hard.margin).toFixed(2)}，干净数据的基准是 ${(2 * clean.margin).toFixed(2)}`)
+    : bad(`离群点那档没演出取舍：软 错${soft.wrong}/宽${(2 * soft.margin).toFixed(2)}，硬 错${hard.wrong}/宽${(2 * hard.margin).toFixed(2)}，基准 ${(2 * clean.margin).toFixed(2)}`)
+
+  //  ⑥ 重叠那档必须**真的分不开**：任何 C 都错几个
+  const ov = CS.map(c => go({ data: '有重叠（线性不可分）', c }).wrong)
+  ov.every(v => v > 0) ? ok(`重叠档三种 C 都分不干净（错 ${ov.join(' / ')} 个）—— "线性不可分"不是嘴上说的`)
+    : bad(`重叠档居然有 C 能全分对：${ov.join(' / ')}`)
 }
 
 // ═══ 条件数：同一个数的两张脸 ═══════════════════════════

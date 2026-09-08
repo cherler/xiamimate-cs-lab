@@ -862,10 +862,14 @@ console.log('\n【「这一步为什么」真的在跟着走】')
         recErr: 0.196, lam2: 0.1961, sep1: 0, sep2: 0, hasClass: false, scaled: false, stdized: false },
     },
     svm: {
-      doc: { kind: 'svm', params: {}, entities: [], streams: [] },
-      //  A 随便一条(间隔窄) · B 完成(SVM 最大间隔) —— 结论必须换一套说法
-      a: { phase: 'naive', margin: 0.5, supportVectors: [], isMax: false },
-      b: { phase: 'done', margin: 1, supportVectors: [0, 1, 5, 6], isMax: true },
+      doc: { kind: 'svm', params: { data: '清爽可分', c: 1 }, entities: [], streams: [] },
+      //  A 第 3 轮(还在转) · B 收敛(街宽 1.598、3 个支持向量) —— 结论必须换一套说法
+      a: { phase: 'run', step: 3, margin: 0.63, obj: 0.2716, hinge: 0.19, wrong: 0, inside: 6,
+        supportVectors: [0, 1, 2, 4, 6, 9], isMax: false, cTag: 'C=1', kind: '清爽可分',
+        points: new Array(20).fill(0) },
+      b: { phase: 'done', step: 30, margin: 0.799, obj: 0.0392, hinge: 0, wrong: 0, inside: 1,
+        supportVectors: [3, 8, 15], isMax: true, cTag: 'C=1', kind: '清爽可分', svOnlyTilt: 0,
+        points: new Array(20).fill(0) },
     },
     gbdt: {
       doc: { kind: 'gbdt', params: { lr: 50, rounds: 8, shape: '阶梯' }, entities: [], streams: [] },
