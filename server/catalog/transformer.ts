@@ -5,7 +5,7 @@
 //  doc 与 web/src/registry.ts 里该实验的 defaultDoc 逐字一致。
 import { attentionKernel } from '../../src/kernels/attention.ts'
 import { dotsimKernel } from '../../src/kernels/dotsim.ts'
-import { forwardKernel } from '../../src/kernels/forward.ts'
+import { forwardKernel, FWD_CACHE, FWD_DECODE } from '../../src/kernels/forward.ts'
 import { hopfieldKernel } from '../../src/kernels/hopfield.ts'
 import { inductionKernel } from '../../src/kernels/induction.ts'
 import { llmSizeKernel } from '../../src/kernels/llmsize.ts'
@@ -81,7 +81,9 @@ export const TRANSFORMER_ENTRIES: CatalogEntry[] = [
   //  ── 内积=相似度 ──────────────────────────────────
   {
     id: 'dotsim', title: '内积=相似度', kernel: dotsimKernel as Kernel<unknown>,
-    doc: { kind: 'dotsim', params: {}, entities: [], streams: [] },
+    /*  2026-09-09 补厚：老版本是 2 维、5 个手挑角度，而正文写着「高维近正交」——
+        2 维里那句话根本不成立。现在维度是旋钮，随机向量的余弦分布是抽出来的。 */
+    doc: { kind: 'dotsim', params: { dim: 64, score: '原始内积 a·b' }, entities: [], streams: [] },
     facts: [
       {
         id: 'dot_at_0', label: '同向时内积', kind: 'number',
@@ -119,17 +121,69 @@ export const TRANSFORMER_ENTRIES: CatalogEntry[] = [
         },
         distractors: () => ['内积衡量两个向量的长度差', '内积总是非负，正好当权重', '内积等于两向量的欧氏距离'],
       },
+      {
+        /*  ⭐ 补厚的落点①：「高维近正交」是抽出来的，而且在低维是**假的** */
+        id: 'high_dim_ortho', label: '"随机方向几乎正交"在几维成立', kind: 'choice', genre: 'concept',
+        ask: '"随便抓两个方向，内积几乎总是接近 0"——这句话在几维空间里成立?',
+        compute: t => {
+          const o = last(t).ortho as { d: number; sd: number; theory: number; bigFrac: number }[]
+          return {
+            answer: '得高维才成立 —— 低维时两个随机方向常常挨得很近',
+            step: t.length - 1,
+            evidence: `实测（每档抽 2000 对）：${o.map(x => `d=${x.d} 标准差 ${x.sd}（理论 1/√d=${x.theory}）、|余弦|>0.5 占 ${(x.bigFrac * 100).toFixed(1)}%`).join('；')}`,
+          }
+        },
+        distractors: a => [a,
+          '任何维度都成立 —— 随机取的两个方向本来就毫无关系',
+          '只在二维三维成立 —— 维度一高向量就都挤到一起去了',
+          '跟维度无关 —— 取决于向量的长度分布怎么取',
+        ].filter(o => o !== a).slice(0, 3),
+      },
+      {
+        /*  ⚠️ 计数题要自带数据 */
+        id: 'ortho_sd_512', label: 'd=512 时随机方向余弦的标准差', kind: 'number', genre: 'count',
+        ask: '实测（每档抽 2000 对随机向量）余弦的标准差是：d=2 → 0.703、d=8 → 0.357、d=64 → 0.124、d=512 → ?。'
+          + '理论值是 1/√d。**d=512 那一档实测是多少**（填小数点后三位，如 0.703 填 0.703）?',
+        compute: t => {
+          const o = last(t).ortho as { d: number; sd: number; theory: number }[]
+          const x = o.find(y => y.d === 512)!
+          return { answer: String(x.sd), step: t.length - 1, evidence: `理论 1/√512 = ${x.theory}，实测 ${x.sd}` }
+        },
+        distractors: numDistractors,
+      },
+      {
+        /*  ⭐ 补厚的落点②：内积同时编码长度和夹角 —— 检索里的长文档偏置 */
+        id: 'length_bias', label: '为什么检索要先归一化', kind: 'choice', genre: 'concept',
+        ask: '拿 query 去打一堆文档向量,用**原始内积**排名会出什么问题?',
+        compute: t => {
+          const d = last(t).docs as { name: string; mag: number; cos: number; rankDot: number; rankCos: number }[]
+          const d1 = d.find(x => x.name.startsWith('D1'))!
+          return {
+            answer: '会系统性偏爱模长大的向量 —— 方向准但短的会被压下去',
+            step: t.length - 1,
+            evidence: `实测：方向最准的 D1（余弦 ${d1.cos}、模长 ${d1.mag}）按余弦排第 ${d1.rankCos}，`
+              + `按原始内积却只排第 ${d1.rankDot}；按内积排第一的是「${last(t).topDot}」`,
+          }
+        },
+        distractors: a => [a,
+          '会偏爱模长小的向量 —— 短向量的内积数值更稳定',
+          '不会有问题 —— 内积和余弦排出来的名次本来就一样',
+          '会让负相关的文档排到前面 —— 内积可以是负数',
+        ].filter(o => o !== a).slice(0, 3),
+      },
     ],
   },
 
-  //  ── 完整前向拼装 ──────────────────────────────────
+  //  ── 完整前向拼装：decode 一步不算 decode ──────────
   {
     id: 'forward', title: '完整前向拼装', kernel: forwardKernel as Kernel<unknown>,
-    doc: { kind: 'forward', params: {}, entities: [], streams: [] },
+    /*  2026-09-09 补厚：老版本只跑了一步、只有贪心 —— 而正文写着"每次 decode"和"→ 采样"。
+        现在连续跑 4 步、加了 KV 缓存对照和温度采样。 */
+    doc: { kind: 'forward', params: { cache: FWD_CACHE[1], decode: FWD_DECODE[0] }, entities: [], streams: [] },
     facts: [
       {
-        id: 'predicted_token', label: '前向预测的下一个 token', kind: 'choice',
-        ask: '把零件串成一次完整前向后，模型贪心预测的下一个 token 是哪个？',
+        id: 'predicted_token', label: '前向预测的下一个 token', kind: 'choice', genre: 'concept',
+        ask: '把零件串成一次完整前向后，模型贪心预测的下一个 token 是哪个?',
         compute: t => {
           const f = last(t)
           return { answer: String(f.predicted), step: t.length - 1, evidence: ev(f) }
@@ -137,76 +191,168 @@ export const TRANSFORMER_ENTRIES: CatalogEntry[] = [
         distractors: (answer, t) => strs(last(t), 'vocab').filter(x => x !== answer),
       },
       {
-        id: 'stage_count', label: '前向链分几段', kind: 'number',
-        ask: '本实验把一次前向推理拆成了几段（stage）来逐段展示？',
+        /*  ⚠️ 计数题要自带数据 */
+        id: 'kv_saving', label: 'KV 缓存省了多少次乘加', kind: 'number', genre: 'count',
+        ask: '连续 decode 4 步。**不用 KV 缓存**（每步把全部位置的 K/V 重算一遍）一共 416 次乘加，'
+          + '**用 KV 缓存**（只算新来的那一个）一共 344 次。**省了多少次**？',
         compute: t => {
           const f = last(t)
-          return { answer: String(t.filter(x => x.phase === 'run').length), step: t.length - 1, evidence: ev(f) }
+          return { answer: String(Number(f.macWithout) - Number(f.macWith)), step: t.length - 1,
+            evidence: `不用缓存 ${f.macWithout}、用缓存 ${f.macWith}` }
         },
         distractors: numDistractors,
       },
       {
-        id: 'rmsnorm_count', label: '前向链里归一化出现几次', kind: 'number',
-        ask: '这条前向链里，RMSNorm 归一化一共出现了几次？',
-        compute: t => {
-          const s = fi(t, f => f.phase === 'run' && String(f.stageName).includes('RMSNorm'))
-          return { answer: String(t.filter(x => x.phase === 'run' && String(x.stageName).includes('RMSNorm')).length), step: s, evidence: ev(t[s]) }
-        },
-        distractors: numDistractors,
-      },
-      {
-        id: 'optimize_relation', label: 'KV缓存/Flash 与前向链的关系', kind: 'choice',
-        ask: 'KV 缓存、FlashAttention、量化、连续批处理这些推理优化，和这条前向链是什么关系？',
+        /*  ⭐ 补厚的落点①："优化"这个词的意思 */
+        id: 'what_is_optimization', label: '"优化"这个词的意思', kind: 'choice', genre: 'concept',
+        ask: 'KV 缓存把这条链的算量从 416 次乘加降到 344 次。**凭什么说它是"优化"而不是"换了个算法"**?',
         compute: t => {
           const f = last(t)
-          return { answer: '它们都在加速这同一条前向链，不改变预测结果', step: t.length - 1, evidence: ev(f) }
+          return {
+            answer: '因为输出一个字都没变 —— 两条路的逐步 logits 逐位相同',
+            step: t.length - 1,
+            evidence: `实测：文本${f.sameOut ? '一样' : '不一样'}、逐步 logits ${f.sameLogits ? '逐位相同' : '对不上'}；`
+              + `算量 ${f.macWithout} → ${f.macWith}`,
+          }
         },
-        distractors: () => ['它们替换掉了链里的注意力这一段', '它们只在训练阶段起作用', '它们会改变最终预测的 token'],
+        distractors: a => [a,
+          '因为它算得更快 —— 只要速度上去了就是优化',
+          '因为它省了显存 —— 缓存下来的 K/V 比重算占的空间小',
+          '因为它是论文里公认的做法 —— 大家都这么叫',
+        ].filter(o => o !== a).slice(0, 3),
+      },
+      {
+        /*  ⭐ 补厚的落点②：单个种子说明不了温度有没有用 */
+        id: 'temp_needs_sampling', label: '怎么看出温度起了作用', kind: 'choice', genre: 'concept',
+        ask: '把解码方式从贪心换成温度采样 T=0.7 和 T=1.5，屏幕上两档生成的文本**一模一样**。'
+          + '这说明温度没起作用吗?',
+        compute: t => {
+          const dc = last(t).decodeCmp as { name: string; text: string; differ: number }[]
+          return {
+            answer: '说明不了 —— 单个种子碰巧抽到同一条，得抽很多个种子看比例',
+            step: t.length - 1,
+            evidence: `抽 200 个种子量"跟贪心不一样"的比例：${dc.map(x => `${x.name} ${(x.differ * 100).toFixed(0)}%`).join('、')}`,
+          }
+        },
+        distractors: a => [a,
+          '说明没起作用 —— 两个温度输出一样，那这个旋钮就是摆设',
+          '说明温度只影响概率不影响采样结果 —— argmax 挑的还是同一个',
+          '说明词表太小 —— 换个大词表两个温度就分得开了',
+        ].filter(o => o !== a).slice(0, 3),
+      },
+      {
+        id: 'optimize_relation', label: 'KV缓存/Flash 与前向链的关系', kind: 'choice', genre: 'concept',
+        ask: 'KV 缓存、FlashAttention、量化、连续批处理这些推理优化，和这条前向链是什么关系?',
+        compute: t => ({
+          answer: '它们都在加速这同一条链，而且不改变预测结果',
+          step: t.length - 1,
+          evidence: '这一屏拿 KV 缓存验了一遍：算量降了，逐步 logits 逐位相同',
+        }),
+        distractors: a => [a,
+          '它们把链里的注意力那一段整个替换掉了，换成别的算子',
+          '它们只在训练阶段起作用，推理的时候用不上',
+          '它们会让预测出来的 token 变得更准一些',
+        ].filter(o => o !== a).slice(0, 3),
       },
     ],
   },
 
-  //  ── 注意力=联想记忆（Hopfield）─────────────────────
+  //  ── 注意力=联想记忆（Hopfield）：温度、吸引域、容量 ────
   {
     id: 'hopfield', title: '注意力=联想记忆', kernel: hopfieldKernel as Kernel<unknown>,
-    doc: { kind: 'hopfield', params: {}, entities: [], streams: [] },
+    /*  2026-09-09 补厚：β/翻转位数/模式数三个都做成了旋钮，正文里那三句话
+        （β 大→精确、落进吸引域就被拉回、容量随维度指数级）现在都是抽出来的数。 */
+    doc: { kind: 'hopfield', params: { beta: 6, flip: 2 }, entities: [], streams: [] },
     facts: [
       {
-        id: 'flipped_bits', label: '初始 query 残缺几位', kind: 'number',
+        id: 'flipped_bits', label: '初始 query 残缺几位', kind: 'number', genre: 'count',
         ask: '实验里的 query 是把存储模式 P0 翻转了几位（残缺几位）当作输入？',
-        compute: t => {
-          const f = t[0]
-          const p0 = (f.patterns as number[][])[0]
-          return { answer: String(p0.length - Number(f.matchBits)), step: 0, evidence: ev(f) }
-        },
+        compute: t => ({ answer: String(t[0].flip), step: 0, evidence: `翻了 ${t[0].flip} 位，共 ${t[0].n} 位` }),
         distractors: numDistractors,
       },
       {
-        id: 'final_match_bits', label: '收敛后与 P0 相同的位数', kind: 'number',
-        ask: '反复检索收敛后，query 与存储模式 P0 相同的位数是多少（共 8 位）？',
-        compute: t => {
-          const f = last(t)
-          return { answer: String(Number(f.matchBits)), step: t.length - 1, evidence: ev(f) }
-        },
+        /*  ⚠️ 计数题要自带数据 */
+        id: 'basin_edge', label: '吸引域的边界在翻几位', kind: 'number', genre: 'count',
+        ask: '随机翻 f 位、每档重采样 200 次，量"还回得到**原模式**"的比例，实测是：'
+          + '翻 0 位 100%、翻 1 位 100%、翻 2 位 63%、翻 3 位 42%、翻 4 位 14%。'
+          + '**正确率还在 90% 以上的最大翻转位数**是多少？',
+        compute: t => ({ answer: String(last(t).basinEdge), step: t.length - 1,
+          evidence: `吸引域：${(last(t).basin as { flip: number; ok: number }[]).map(x => `翻${x.flip}位 ${(x.ok * 100).toFixed(0)}%`).join('、')}` }),
         distractors: numDistractors,
       },
       {
-        id: 'converged_weight_shape', label: '收敛后权重形态', kind: 'choice',
-        ask: '检索收敛后，对 4 个存储模式的注意力权重呈什么形态？',
+        /*  ⭐ 补厚的落点①：β 是那个把行为整个改掉的旋钮 */
+        id: 'beta_role', label: 'β 调小会怎样', kind: 'choice', genre: 'concept',
+        ask: '把 softmax 的锐度 β（=1/温度）从 6 调到 0.5，检索会变成什么样?',
         compute: t => {
-          const s = fi(t, f => f.phase === 'run' && f.converged === true)
-          return { answer: 'one-hot（几乎全部权重压在 P0 上）', step: s, evidence: ev(t[s]) }
+          const bs = last(t).betaSweep as { beta: number; maxW: number; basin2: number; cap16: number }[]
+          const lo = bs[0], hi = bs[bs.length - 1]
+          return {
+            answer: '权重压不出 one-hot，输出变成几个模式的加权平均 —— 谁也不是',
+            step: t.length - 1,
+            evidence: `实测最大权重 β=${lo.beta} 时 ${lo.maxW}、β=${hi.beta} 时 ${hi.maxW}；`
+              + `抽样下 β=${lo.beta} 翻 2 位只有 ${(lo.basin2 * 100).toFixed(0)}% 回得去、存 16 个只认得出 ${(lo.cap16 * 100).toFixed(0)}%`,
+          }
         },
-        distractors: () => ['均匀分布（每个模式各约 25%）', '权重全部为 0', '在 P0 和 P1 之间平分'],
+        distractors: a => [a,
+          '检索会更准 —— 温度高意味着搜索得更充分，不容易卡在局部',
+          '完全不影响结果 —— softmax 是单调的，argmax 挑的还是同一个',
+          '会收敛得更快 —— 权重差距小，迭代几步就稳定下来了',
+        ].filter(o => o !== a).slice(0, 3),
       },
       {
-        id: 'attention_essence', label: '注意力的本质', kind: 'choice',
-        ask: '这个实验想说明注意力的本质是什么？',
+        /*  ⭐ 补厚的落点②：那个栽过的口径问题 */
+        id: 'basin_criterion', label: '吸引域该怎么量', kind: 'choice', genre: 'concept',
+        ask: '量吸引域时，把 query 翻 f 位，然后判"回忆对不对"。**该拿什么当正确答案**?',
         compute: t => {
-          const f = last(t)
-          return { answer: '按内容寻址的联想记忆（一次注意力=一步 Hopfield 检索）', step: t.length - 1, evidence: ev(f) }
+          const bs = last(t).basin as { flip: number; ok: number; okNear: number }[]
+          return {
+            answer: '回到**原来那个**模式 —— 拿"汉明最近"当正确，曲线根本不下降',
+            step: t.length - 1,
+            evidence: `两个口径实测：回原模式 ${bs.map(x => `${(x.ok * 100).toFixed(0)}%`).join('/')}；`
+              + `回汉明最近 ${bs.map(x => `${(x.okNear * 100).toFixed(0)}%`).join('/')} —— 后者几乎不随翻转位数变`,
+          }
         },
-        distractors: () => ['一种给向量排序的算法', '把 query 归一化成单位长度的操作', '统计 token 出现频率的计数器'],
+        distractors: a => [a,
+          '回到汉明距离最近的那个模式 —— 那才是客观上"应该"检索到的',
+          '回到权重最高的那个模式 —— 算法自己认定哪个就是哪个',
+          '只要收敛到某个存储模式就算对 —— 回到哪个不重要',
+        ].filter(o => o !== a).slice(0, 3),
+      },
+      {
+        /*  ⭐ 补厚的落点③：容量随维度 */
+        id: 'capacity_dim', label: '容量跟维度什么关系', kind: 'choice', genre: 'concept',
+        ask: '存 M 个随机模式、翻 1 位当 query，问"还认得出原来那个吗"。维度从 8 加到 16，容量怎么变?',
+        compute: t => {
+          const cap = last(t).cap as { n: number; row: { m: number; ok: number }[] }[]
+          const edge = (c: typeof cap[number]) => { const g = c.row.filter(x => x.ok >= 0.9); return g.length ? g[g.length - 1].m : 0 }
+          return {
+            answer: '涨得比维度快得多 —— 维度翻一倍，能存的翻的不止一倍',
+            step: t.length - 1,
+            evidence: `实测 N=${cap[0].n}：${cap[0].row.map(x => `M=${x.m} ${(x.ok * 100).toFixed(0)}%`).join('、')}；`
+              + `N=${cap[1].n}：${cap[1].row.map(x => `M=${x.m} ${(x.ok * 100).toFixed(0)}%`).join('、')}。`
+              + `撑到 90% 的最大 M：${edge(cap[0])} → ${edge(cap[1])}`,
+          }
+        },
+        distractors: a => [a,
+          '跟维度成正比 —— 维度翻一倍，能存的也就翻一倍',
+          '跟维度无关 —— 能存多少只取决于模式之间的相似度',
+          '维度越高反而越少 —— 高维空间里向量更容易互相干扰',
+        ].filter(o => o !== a).slice(0, 3),
+      },
+      {
+        id: 'attention_essence', label: '注意力的本质', kind: 'choice', genre: 'concept',
+        ask: '这个实验想说明注意力的本质是什么?',
+        compute: t => ({
+          answer: '按内容寻址的联想记忆 —— 一次注意力就是一步 Hopfield 检索',
+          step: t.length - 1,
+          evidence: 'weights = softmax(β·query·keys)、output = Σ weights·patterns，把 output 当新 query 再来一次',
+        }),
+        distractors: a => [a,
+          '一种给向量按相关性排序的算法，输出的是排好序的下标',
+          '把 query 归一化成单位长度、消除模长影响的一步预处理',
+          '统计每个 token 在上下文里出现了多少次的计数器',
+        ].filter(o => o !== a).slice(0, 3),
       },
     ],
   },

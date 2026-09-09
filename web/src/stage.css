@@ -4089,6 +4089,14 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .wvres{fill:none;stroke:var(--hit);stroke-width:1}
 /*  共现 / PPMI 表：列数跟着上下文词走 */
 .qsrow.wvco{grid-template-columns:repeat(8,1fr)}
+/*  线性注意力补厚：两条注意力分布并排 —— "尖锐"这件事得看得见 */
+.labar.sm{fill:var(--now)}
+.labar.lin{fill:var(--dim);opacity:.75}
+.labar.tgt{stroke:var(--hit);stroke-width:.6}
+.lasm{color:var(--now)!important}
+.lalin{color:var(--dim)!important}
+/*  Hopfield 容量表：列数跟着 M 的档数走 */
+.qsrow.hfcap{grid-template-columns:repeat(7,1fr)}
 
 /* LSTM 门控 */
 .lstmwrap { display:flex; flex-direction:column; align-items:center; gap:10px; margin:14px 0; }

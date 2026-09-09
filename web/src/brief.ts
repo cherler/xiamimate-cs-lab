@@ -2117,19 +2117,46 @@ export const BRIEFS: Record<string, Brief> = {
       opts: ['只改这条前向链的速度，不改结果', '会让输出更准或更好'],
     },
     tasks: [
-      { act: '一步步点"下一步"走完 10 段', watch: '同一个向量在每段被改写：归一化拉尺度、注意力融入上下文、FFN 变换、残差叠加，最后变成 logits' },
-      { act: '走到最后看词表概率条', watch: 'logits 过 softmax 成概率，最高的「鱼」被选中 —— 这就是模型吐出下一个字的瞬间' },
+      { act: '看末帧第一张表最后一行',
+        watch: '不用缓存 **416** 次乘加、用缓存 **344** 次（省 17%）—— 而两条路的文本和**逐步 logits 都一样**' },
+      { act: '把「解码方式」在三档之间切', param: '解码方式',
+        watch: '⚠️ T=0.7 和 T=1.5 在这个种子上碰巧抽出同一条 —— 得看"抽 200 个种子"那一列：0% / 56% / 82%' },
     ],
     verdict: ({ trace }) => {
-      const s = last<{ phase?: string; predicted?: string; probs?: number[]; seq?: string[] }>(trace)
+      /*  ⚠️ 老版本只报"预测出一个 token"。而正文写着"每次 **decode**"和"→ **采样**"——
+          补厚后连续跑了 4 步、加了 KV 缓存对照和温度采样，真正该报的是这两句话的兑现。 */
+      const s = last<{
+        phase?: string; predicted?: string; probs?: number[]; seq?: string[]
+        gen?: { step: number; token: string; mac: number }[]
+        genText?: string; macWith?: number; macWithout?: number
+        sameOut?: boolean; sameLogits?: boolean
+        decodeCmp?: { name: string; text: string; differ: number }[]
+      }>(trace)
       if (!s || s.phase !== 'done' || !s.predicted) return null
       const probs = s.probs ?? []
       const bi = probs.length ? probs.reduce((b, p, i, a) => (p > a[b] ? i : b), 0) : -1
       const pct = bi >= 0 ? Math.round(probs[bi] * 100) : 0
+      const save = (s.macWithout ?? 1) - (s.macWith ?? 0)
+      const savePct = ((save / (s.macWithout || 1)) * 100).toFixed(0)
+      const dc = s.decodeCmp ?? []
       return {
         pick: 0,
-        say: `「${(s.seq ?? []).join('')}」走完整条前向链，softmax 后预测下一个 token 是「**${s.predicted}**」（${pct}%）。`,
-        why: `这条 embed→RMSNorm→注意力→残差→FFN→残差→norm→LM头→softmax→采样 的链，就是每步 decode 真正跑的东西。KV 缓存、FlashAttention、量化、连续批处理、投机解码，优化的都是它的速度，都不改变这个结果 —— 这就是把前面所有零件拼成一台机器的样子。`,
+        say: `「${(s.seq ?? []).join('')}」走完整条前向链，softmax 后这一步是「**${s.predicted}**」（${pct}%）。`
+          + `　⭐ **而一步不叫 decode** —— 连续跑 ${s.gen?.length} 步：「**${s.genText}**」。`
+          + `　⭐ **KV 缓存**：${s.macWithout} → ${s.macWith} 次乘加（省 ${savePct}%），`
+          + `而两条路的文本${s.sameOut ? '**一样**' : '⚠️ **不一样**'}、逐步 logits ${s.sameLogits ? '**逐位相同**' : '⚠️ **对不上**'}。`,
+        why: `这条 embed→RMSNorm→注意力→残差→FFN→残差→norm→LM头→softmax→采样 的链，`
+          + `就是**每一步 decode 真正跑的东西**。`
+          + `**而"优化"这个词的意思，这一屏给了一个能自己验的实例**：KV 缓存省掉 ${savePct}% 的算量，`
+          + `**答案却一个字都没变**（逐步 logits 逐位相同）。**一旦答案变了，那就不是优化，是换了个模型。**`
+          + `（这里序列才 2+4 个 token 所以只省 ${savePct}%；真实推理上下文动辄几千几万，`
+          + `**每步重算全部 K/V 完全不可行 —— KV 缓存不是优化，是前提**。）`
+          + (dc.length
+            ? `　还有"采样"那句话：老版本代码里只有 argmax，现在三档并排 ——`
+              + `抽 200 个种子看"跟贪心不一样"的比例：${dc.map(x => `${x.name.slice(0, 6)} ${(x.differ * 100).toFixed(0)}%`).join('、')}，`
+              + `**温度越高跑偏越多**。⚠️ 单个种子看不出来（T=0.7 和 T=1.5 碰巧抽出同一条）。`
+            : '')
+          + `KV 缓存、FlashAttention、量化、连续批处理、投机解码，优化的都是这条链。`,
       }
     },
   },
@@ -4016,20 +4043,47 @@ export const BRIEFS: Record<string, Brief> = {
       + '本实验:序列 A B C D A B C D A B C,用 trigram(前 2 个→下一个)建表。你会看到表里「A B」→C、「B C」→D…;查询当前 2-gram「B C」→ O(1) 命中 → 预测 D。'
       + '看懂这条,你就明白了为什么它和**归纳头**是"一体两面":两者目标一样(回头找"上次它之后是什么"),但机制相反——归纳头是**学出来的软注意力**(表达力强但贵),Engram 是**显式的非参数化查表**(便宜但只会精确匹配),二者互补。这就是"n-gram 记忆增强 Transformer",也是长上下文里省算力的一条实用路子。',
     guess: {
-      q: '序列 …A B C D A B C，用 trigram 记忆表查当前「B C」，预测下一个是？',
-      opts: ['D（表里 B C→D，O(1) 查表命中）', '需要跑一遍注意力才知道'],
+      q: 'n-gram 记忆表把 n 调大（比如从 2 调到 5），预测会怎样？',
+      opts: ['命中的时候更准，但**越来越容易 miss** —— n 大了前缀就没见过了', '一直更准 —— 看的上下文越长，预测越可靠'],
     },
     tasks: [
-      { act: '一步步走', watch: '建表 → 取当前 2-gram「B C」→ O(1) 命中 → 复制出 D' },
-      { act: '对比归纳头', watch: '同是"回头找上次它之后"，但这是便宜查表、不是贵的注意力' },
+      { act: '「带噪周期」上把 n 从 2 调到 5', param: 'n（几元组）',
+        watch: '命中率 71%→29%、而歧义率 25%→0% —— **n 越大越 miss、n 越小越歧义**' },
+      { act: '看评测表最右那一列（只看最近 6 个的基线）',
+        watch: '带噪 n=3：查表 44% vs 窗口 25%;⚠️ 但**完美周期那档两条线一样齐**，那条序列演不出这件事' },
     ],
     verdict: ({ trace }) => {
-      const s = last<{ stage?: string; prediction?: string; queryKey?: string; matchCount?: number }>(trace)
+      /*  ⚠️ 老版本只报"查表命中、预测出 D"—— 而那是完美周期序列上的**必然结果**。
+          补厚后真正该报的是那对权衡和窗口对照。 */
+      const s = last<{
+        stage?: string; prediction?: string; queryKey?: string; matchCount?: number
+        seqName?: string; ngram?: number; window?: number; hit?: boolean; variants?: number
+        rows?: { n: number; hitRate: number; ambRate: number; acc: number; winAcc: number }[]
+        row?: { hitRate: number; ambRate: number; acc: number; winAcc: number }
+      }>(trace)
       if (!s || s.stage !== 'done') return null
+      const rows = s.rows ?? []
+      const gap = rows.reduce((a, x) => ((x.acc - x.winAcc) > (a.acc - a.winAcc) ? x : a), rows[0])
+      const lo = rows[0], hi = rows[rows.length - 1]
       return {
         pick: 0,
-        say: `查表「${s.queryKey}」→ **${s.prediction}**（历史 ${s.matchCount} 次）：一次 O(1) 查表补全重复模式，没动注意力。`,
-        why: `n-gram 记忆把"精确复制"从贵的注意力卸载到便宜的查表,O(1)、不受窗口限制。它和归纳头目标像但机制相反(软注意力 vs 显式查表),互补——这就是 n-gram 记忆增强 Transformer。`,
+        say: (s.hit
+          ? `查表「${s.queryKey}」→ **${s.prediction}**（历史 ${s.matchCount} 次`
+            + ((s.variants ?? 1) > 1 ? `，⚠️ 但这个前缀后面跟过 ${s.variants} 种）` : `）`)
+          : `查「${s.queryKey}」→ ⚠️ **miss**，这个前缀没见过`)
+          + `。　⭐ **整条序列逐位置评测**（${s.seqName}，n=${s.ngram}）：`
+          + `命中率 ${((s.row?.hitRate ?? 0) * 100).toFixed(0)}%、命中里 ${((s.row?.ambRate ?? 0) * 100).toFixed(0)}% 有歧义 `
+          + `→ 准确率 **${((s.row?.acc ?? 0) * 100).toFixed(0)}%**，而只看最近 ${s.window} 个的基线是 `
+          + `**${((s.row?.winAcc ?? 0) * 100).toFixed(0)}%**。`,
+        why: `n-gram 记忆把"精确复制重复模式"从贵的注意力**卸载**到便宜的 O(1) 查表上，而且**不受注意力窗口限制**。`
+          + `**但这一屏也让你看清它贵在哪**：表会 **miss**（前缀没见过）、会**歧义**（同一个前缀跟过好几种），`
+          + `而且这对毛病**此消彼长** —— n=${lo?.n} 命中 ${((lo?.hitRate ?? 0) * 100).toFixed(0)}% 但歧义 ${((lo?.ambRate ?? 0) * 100).toFixed(0)}%，`
+          + `n=${hi?.n} 歧义降到 ${((hi?.ambRate ?? 0) * 100).toFixed(0)}% 可命中只剩 ${((hi?.hitRate ?? 0) * 100).toFixed(0)}%。`
+          + (gap && gap.acc - gap.winAcc > 0.05
+            ? `　"不受窗口限制"也有对照了：n=${gap.n} 时查表 ${(gap.acc * 100).toFixed(0)}% vs 窗口基线 ${(gap.winAcc * 100).toFixed(0)}%。`
+            : `　⚠️ 不过**这一档演不出"不受窗口限制"**：序列周期短、窗口够得着，两条线一样齐。换条序列再看。`)
+          + `它和归纳头目标像但机制相反（学出来的软注意力 vs 显式非参数化查表）——`
+          + `**Engram 只会照抄见过的，一旦 miss 或歧义就得把活交回给注意力。这才是"互补"的意思。**`,
       }
     },
   },
@@ -4040,21 +4094,46 @@ export const BRIEFS: Record<string, Brief> = {
       + '本实验固定 d=64,把 N 从 64 拉到 32768。你会看到 softmax 的算量曲线(N²)陡峭飙升,线性(N)缓缓上抬;右边 KV 缓存条一路膨胀到 4M,线性状态条纹丝不动稳在 4K。交叉点在 N=d:N 短时 softmax 反而省(线性的 d² 常数占上风),N 一长线性完胜(N=32768 时算量差 512×、显存差 1000×)。'
       + '看懂这条,你就明白了 Mamba、RWKV、GLA 这些"线性/状态空间"模型为什么能吃超长上下文、为什么它们的推理是常数显存;代价是 φ 只是 softmax 的近似,拿一点精度换来了算量和显存的量级优势。它坐在注意力和 KV 缓存之上,是长上下文推理绕不开的一条路。',
     guess: {
-      q: '序列 N 拉到很长(远超头维度 d),softmax vs 线性注意力,谁的算量和显存更省?',
-      opts: ['线性完胜(算量 O(N)、显存恒定)', 'softmax 更省(矩阵一次算完)'],
+      q: '正文里说线性注意力"拿**一点**精度换算量与显存"。真算一遍，丢掉的主要是什么？',
+      opts: ['不只是精度——**丢的是"尖锐"**：softmax 能把权重几乎全压到一个 token 上，线性压不上去', '就是一点数值误差，输出跟 softmax 差不了多少'],
     },
     tasks: [
-      { act: '按「下一步」拉长 N', watch: '红线(N²)越翘越高、蓝线(N)缓;KV 缓存条一直长、线性状态不动' },
-      { act: '看 N=32768', watch: '算量差 512×、KV 4M vs 状态 4K' },
+      { act: '把「任务」换成「一个键明显对准（检索）」', param: '任务',
+        watch: 'N=64 时 softmax 给目标 key **1.0** 的权重（熵 0.004），线性只给 **0.034**（熵 5.933）' },
+      { act: '看末帧「两句话各验一遍」那张表',
+        watch: '结合律：两种乘法顺序输出差 **0**、算量差 **16 倍**——**这才是那句话的证据**' },
     ],
     verdict: ({ trace }) => {
-      const s = last<{ phase?: string; ratio?: number; kvMem?: number; stateMem?: number }>(trace)
+      /*  ⚠️ 老版本只报公式值（ratio/kvMem）。补厚后两种注意力都真算了，
+          真正该报的是**代价**：误差多大、尖锐度丢了多少。 */
+      const s = last<{
+        phase?: string; d?: number; taskName?: string; target?: number
+        row?: { err: number; smMax: number; linMax: number; smEnt: number; linEnt: number; smHit: number; linHit: number }
+        rows?: { n: number; err: number; smMax: number; linMax: number; smHit: number; linHit: number }[]
+        big?: { n: number; ratio: number; kvMem: number; stateMem: number }[]
+        formulaOK?: boolean; assocErr?: number; assocMacFast?: number; assocMacNaive?: number
+        recErr?: number; stateSize?: number
+      }>(trace)
       if (!s || s.phase !== 'done') return null
-      const f = (x: number) => x >= 1e6 ? (x/1e6).toFixed(1)+'M' : (x/1e3).toFixed(0)+'K'
+      const f = (x: number) => x >= 1e6 ? (x / 1e6).toFixed(1) + 'M' : (x / 1e3).toFixed(0) + 'K'
+      const big = s.big?.[(s.big?.length ?? 1) - 1]
+      const at64 = s.rows?.find(x => x.n === 64)
+      const isRetrieve = (s.taskName ?? '').startsWith('一个键')
       return {
         pick: 0,
-        say: `N=32768:softmax O(N²) 算量与 KV 缓存 ${f(s.kvMem!)} 都爆;线性靠结合律算量差 **${s.ratio}×**、状态恒定 ${f(s.stateMem!)}。`,
-        why: `线性注意力用结合律先算 φ(K)ᵀV 的 d×d 固定状态,算量 O(N)、显存恒定、解码变 RNN 式递推——告别膨胀 KV 缓存。代价是 φ 近似 softmax。这是 Mamba/RWKV 吃超长上下文的底。`,
+        say: `N=${big?.n} 时 softmax 的 O(N²) 算量和 KV 缓存 ${f(big?.kvMem ?? 0)} 都爆；`
+          + `线性靠结合律算量差 **${big?.ratio}×**、状态恒定 ${f(big?.stateMem ?? 0)}。`
+          + `　⭐ **但真算一遍才看得到代价**：输出相对误差 **${s.row?.err}**`
+          + (isRetrieve && at64
+            ? `；而 N=64 那档 q₀ 对准的那个 key，softmax 给 **${at64.smHit}**、线性只给 **${at64.linHit}**。`
+            : `；最大注意力权重 softmax ${s.row?.smMax} vs 线性 ${s.row?.linMax}。`),
+        why: `线性注意力用**结合律**先算 φ(K)ᵀV 那个 d×d 固定状态，算量 O(N)、显存恒定、解码变 RNN 式递推 ——`
+          + `**这两句话这一屏都验过了**：两种乘法顺序输出差 ${s.assocErr}（同一个答案）而算量差 `
+          + `${Math.round((s.assocMacNaive ?? 1) / (s.assocMacFast ?? 1))} 倍；逐 token 递推跟一次性算的差 ${s.recErr}，状态固定 ${s.stateSize} 个数。`
+          + `　**而代价不是"一点精度"**：输出相对误差实测就有 ${s.rows?.[0].err}~${s.rows?.[(s.rows?.length ?? 1) - 1].err}，`
+          + `**更要紧的是丢掉了"尖锐"** —— softmax 里的 exp 是个放大器，能把权重几乎全压到一个 token 上，`
+          + `φ(q)·φ(k) 归一化后平坦得多。**"在上下文里精确检索一条信息"正是它打不过 softmax 的地方。**`
+          + `这是 Mamba/RWKV 那一路吃超长上下文的底，也是它们反复要加门控、加衰减去补的那个洞。`,
       }
     },
   },
@@ -4173,20 +4252,41 @@ export const BRIEFS: Record<string, Brief> = {
       + '本实验固定 |a|=3、|b|=2,让夹角 θ 从 0°转到 180°:内积 6→4.24→0→−4.24→−6,余弦 1→0.71→0→−0.71→−1。图里能看到内积就等于 |a| 乘上"b 在 a 上的投影"——b 越倒向 a,投影越长、内积越大。'
       + '看懂这条,你就明白了注意力为什么用 Q·K 打分:query 和 key 越"方向一致"(语义相关),内积越大、softmax 后权重越高;无关的方向内积≈0(正接「高维近正交」——随机方向几乎正交、点积≈0)。检索、推荐、词向量类比(king−man+woman≈queen),底层都是这把"内积=相似度"的尺子。',
     guess: {
-      q: '两个向量正交(夹角 90°)时,它们的内积是多少?',
-      opts: ['0(正交=不相关)', '最大(垂直=最不同=最大)'],
+      q: '"随便抓两个方向，内积几乎总是接近 0"——这句话在几维空间里成立？',
+      opts: ['得高维才成立：d=2 时有 66% 的机会余弦超过 0.5，d=64 时是 0%', '任何维度都成立：随机两个方向本来就没关系'],
     },
     tasks: [
-      { act: '按「下一步」转 b', watch: '同向内积最大→90°为 0→反向最负;投影段跟着变' },
-      { act: '盯 90°那步', watch: '正交时内积=0=不相关' },
+      { act: '把「维度 d」从 2 调到 512', param: '维度 d',
+        watch: '角度那张图一点不变,可**随机方向余弦的标准差从 0.703 掉到 0.044**（=1/√d）;|余弦|>0.5 的比例从 65.7% 掉到 0.0%' },
+      { act: '看末帧那张检索排名表',
+        watch: '按内积第一是 D2(长·方向一般)、按余弦第一是 D1(短·方向最准)——**而 D1 按内积只排第 5**' },
     ],
     verdict: ({ trace }) => {
-      const s = last<{ phase?: string; dot?: number; cosSim?: number }>(trace)
+      /*  ⚠️ 老版本只报角度那几个数。补厚后这一屏真正的两句话是：
+          ①「高维近正交」是抽出来的（而且在 2 维里是**假的**）；
+          ②「内积 = 相似度」要先把长度处理掉。 */
+      const s = last<{
+        phase?: string; dot?: number; cosSim?: number; dim?: number
+        ortho?: { d: number; n: number; sd: number; theory: number; bigFrac: number }[]
+        orthoNow?: { n: number; sd: number; theory: number; bigFrac: number }
+        docs?: { name: string; rankDot: number; rankCos: number }[]
+        topDot?: string; topCos?: string
+      }>(trace)
       if (!s || s.phase !== 'done') return null
+      const d1 = s.docs?.find(x => x.name.startsWith('D1'))
+      const lowD = s.ortho?.[0]
       return {
         pick: 0,
-        say: `θ 从 0°→180°:内积 6→0(正交)→−6、余弦 1→0→−1——方向越一致内积越大。`,
-        why: `内积 a·b=|a||b|cosθ,长度固定时纯量方向一致度。这就是注意力用 Q·K 打分的根据:相关方向内积大、softmax 权重高;无关方向内积≈0(接高维近正交)。`,
+        say: `θ 从 0°→180°：内积 6→0（正交）→−6、余弦 1→0→−1 —— 方向越一致内积越大。`
+          + `　⭐ 另抽 ${s.orthoNow?.n} 对随机向量：d=${s.dim} 时余弦标准差 **${s.orthoNow?.sd}**（理论 1/√d=${s.orthoNow?.theory}），`
+          + `|余弦|>0.5 的只占 **${((s.orthoNow?.bigFrac ?? 0) * 100).toFixed(1)}%**；`
+          + `而 d=${lowD?.d} 时是 **${((lowD?.bigFrac ?? 0) * 100).toFixed(0)}%**。`,
+        why: `内积 a·b = |a||b|cosθ，长度固定时纯量方向一致度。这就是注意力用 Q·K 打分的根据。`
+          + `**但那句"无关方向内积≈0"有个前提：得高维。** 实测标准差跟 1/√d 逐档对得上，`
+          + `而**在 2 维里"随机方向几乎正交"是假的** —— 老版本这一屏就是 2 维的。`
+          + `　**还有一件事：内积同时编码长度和夹角。** 按原始内积排第一的是「${s.topDot}」、按余弦是「${s.topCos}」，`
+          + (d1 ? `方向最准的 D1 按内积只排第 ${d1.rankDot} —— **原始内积系统性偏爱模长大的**（"长文档偏置"）。` : '')
+          + `所以「内积 = 相似度」要加一个前提：**长度得先处理掉**，那就是余弦。`,
       }
     },
   },
@@ -4466,20 +4566,45 @@ export const BRIEFS: Record<string, Brief> = {
       + '本实验存 4 个 8 位 ±1 的近正交模式(当"记忆")，query = 第 0 个模式**翻了 2 位**(残缺输入)。反复检索：残缺的 query 一步就被"清理"回完整的 P0，检索权重从分散收敛到 one-hot(认定=P0)。'
       + '这就是注意力能"从上下文回忆相关信息"的底——不是死记，是**按内容检索**；而存储容量随维度指数级，正对上「高维近正交」那条。看懂它，你就知道了注意力为什么能"记住"和"提取"。',
     guess: {
-      q: '给注意力一个残缺的 query(和某个存储模式差 2 位)，反复检索会怎样？',
-      opts: ['被"回忆"回完整的那个模式', '越检索越乱'],
+      q: '"query 只要落进吸引域就被拉回完整模式"——那个吸引域有多大？',
+      opts: ['得抽样量：这一屏实测翻 1 位还 100% 回得去，翻 4 位只剩 14%', '只要不是翻掉一半以上的位，都能回得去'],
     },
     tasks: [
-      { act: '按「下一步」做检索', watch: '红框位翻回来、query 与 P0 从 6/8 变 8/8；权重收敛到 one-hot' },
-      { act: '盯"最像 P?"和权重', watch: '残缺 query 最像 P0，检索把它拉回完整 P0——按内容的联想回忆' },
+      { act: '把 β 调到 0.5', param: 'softmax 锐度 β',
+        watch: '最大权重只有 **0.355**、输出是几个模式的加权平均;⚠️ 但屏幕上这个 query 照样回得去 —— **得看抽样那两列**' },
+      { act: '看吸引域表的两列',
+        watch: '回到**原模式**那列会塌（100/100/63/42/14%），回到**汉明最近**那列一直很高 —— 两个口径说的是两件事' },
     ],
     verdict: ({ trace }) => {
-      const s = last<{ phase?: string; matchBits?: number; best?: number }>(trace)
+      /*  ⚠️ 老版本只报"回忆回了 P0"。补厚后三个旋钮都在，真正该报的是那三个**条件**。 */
+      const s = last<{
+        phase?: string; matchBits?: number; best?: number; n?: number; beta?: number; flip?: number
+        truth?: number; right?: boolean; maxW?: number; onehot?: boolean; basinEdge?: number
+        betaSweep?: { beta: number; maxW: number; basin2: number; cap16: number }[]
+        basin?: { flip: number; ok: number; okNear: number }[]
+        cap?: { n: number; row: { m: number; ok: number }[] }[]
+      }>(trace)
       if (!s || s.phase !== 'done') return null
+      const edgeOf = (c?: { row: { m: number; ok: number }[] }) => {
+        const g = (c?.row ?? []).filter(x => x.ok >= 0.9)
+        return g.length ? g[g.length - 1].m : 0
+      }
+      const b0 = s.betaSweep?.[0]
+      const lastB = s.basin?.[(s.basin?.length ?? 1) - 1]
       return {
         pick: 0,
-        say: `残缺 query 几步检索就回忆回完整的 **P${s.best}**（与 P0 相同 ${s.matchBits}/8 位、权重 one-hot）。`,
-        why: `注意力=联想记忆：一次注意力就是一步 Hopfield 检索，query 落进某个记忆的吸引域就被拉回完整模式。这是注意力能"从上下文回忆相关信息"的底，容量随维度指数级。`,
+        say: `残缺 query（翻了 ${s.flip} 位）几步检索就回忆回 **P${s.best}**，真值是 **P${s.truth}** —— ${s.right ? '对上了' : '对不上'}；`
+          + `最大权重 **${s.maxW}**（${s.onehot ? 'one-hot，精确检索' : '分散，软混合'}）。`
+          + `　⭐ **而这一屏真正要说的是三个条件**：吸引域边界在**翻 ${s.basinEdge} 位**`
+          + `（翻 ${lastB?.flip} 位只剩 ${((lastB?.ok ?? 0) * 100).toFixed(0)}%）；`
+          + `容量 N=${s.cap?.[0].n} 撑到 M=${edgeOf(s.cap?.[0])}、N=${s.cap?.[1].n} 撑到 M=${edgeOf(s.cap?.[1])}。`,
+        why: `**注意力 = 联想记忆**：一次注意力就是一步 Hopfield 检索（weights = softmax(β·query·keys)、output = Σ weights·patterns）。`
+          + `**但它有三个条件，老版本三个都写死了、只能靠嘴说：**`
+          + `**① 温度决定它是精确检索还是糊成一团** —— β=${b0?.beta} 时最大权重才 ${b0?.maxW}，`
+          + `抽样下翻 2 位只有 ${((b0?.basin2 ?? 0) * 100).toFixed(0)}% 回得去、存 16 个模式只认得出 ${((b0?.cap16 ?? 0) * 100).toFixed(0)}%；`
+          + `**② 残缺到一定程度就回不去了** —— 吸引域是抽 200 次量出来的，不是一句话；`
+          + `**③ 能记住多少取决于维度** —— 维度翻一倍容量翻的可不止一倍，这正对上「高维近正交」那一屏。`
+          + `这是注意力能"从上下文回忆相关信息"的底，也是"注意力头在做检索"这个说法的数学根据。`,
       }
     },
   },

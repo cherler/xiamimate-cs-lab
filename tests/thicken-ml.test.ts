@@ -62,6 +62,11 @@ import { totKernel, TOT_EVALS, TOT_PUZZLES, type ToTState } from '../src/kernels
 import { qlearnKernel, QL_ALGOS, type QLearnState } from '../src/kernels/qlearn.ts'
 import { gcnKernel, GCN_GRAPHS, GCN_AGGS, GCN_LAYERS, type GcnState } from '../src/kernels/gcn.ts'
 import { wordvecKernel, WV_CORPUS, WV_DIMS, type WordVecState } from '../src/kernels/wordvec.ts'
+import { dotsimKernel, type DotSimState } from '../src/kernels/dotsim.ts'
+import { linattnKernel, LIN_PHIS, LIN_TASKS, type LinAttnState } from '../src/kernels/linattn.ts'
+import { hopfieldKernel, type HopfieldState } from '../src/kernels/hopfield.ts'
+import { engramKernel, ENGRAM_SEQS, type EngramState } from '../src/kernels/engram.ts'
+import { forwardKernel, FWD_CACHE, FWD_DECODE, type ForwardState } from '../src/kernels/forward.ts'
 
 let failures = 0
 const ok = (m: string) => console.log(`  ✅ ${m}`)
@@ -3439,6 +3444,463 @@ console.log('\n【词向量：坐标是学出来的，不是摆出来的】')
       ? ok(`自检：只看"最近邻是不是王后"有 ${naive}/${all.length} 档算成功；`
         + `加上"跟第二名差多少"这一条，只剩 ${strict} 档 —— **同一组数据，两种判法差 ${naive - strict} 档**`)
       : bad(`自检失败：只看排第一 ${naive}、加差距后 ${strict}（共 ${all.length}）`)
+  }
+}
+
+/*  ═══════════════════════════════════════════════════════════════
+    内积 = 相似度 —— 老版本是 **2 维、5 个手挑角度**，而正文写着
+    「无关方向内积≈0（**高维近正交**）」和「内积同时编码**长度**和**夹角**」。
+    2 维里第一句是**假的**，第二句因为长度写死从来没打过架。 */
+console.log('\n【内积=相似度：高维近正交，以及长度这个坑】')
+{
+  const fin = (params: Record<string, unknown>) => {
+    const m = dotsimKernel.compile({ kind: 'dotsim', params, entities: [], streams: [] } as never)
+    let st: DotSimState | null = null
+    for (let i = 0; i < 50; i++) { const r = m.step(st); if (!r) break; st = r.state }
+    return st!
+  }
+  const base = fin({ dim: 64 })
+
+  /*  ① **角度那几个数跟维度无关** —— 两个向量只张成一个平面。
+      这一条要钉住，不然"维度旋钮"看着像在改画面。 */
+  {
+    const a = fin({ dim: 2 }), b = fin({ dim: 512 })
+    a.dot === b.dot && a.cosSim === b.cosSim && a.proj === b.proj
+      ? ok(`d=2 和 d=512 下角度扫描的数**逐个相同**（内积 ${a.dot}、余弦 ${a.cosSim}）—— `
+        + `两个向量不管在几维都只张成一个平面。**维度影响的是随机向量那一批**`)
+      : bad(`角度那几个数跟着维度变了：${a.dot}/${a.cosSim} vs ${b.dot}/${b.cosSim}`)
+  }
+
+  /*  ② ⭐ **补厚的落点①：「高维近正交」是抽出来的，而且实测跟 1/√d 对得上。**
+      ⚠️ 判据要逐档比**实测**和**理论**，不能只看"随维度变小" —— 那样公式对不对就没验。 */
+  {
+    const bad2: string[] = []
+    for (const r of base.ortho) {
+      if (Math.abs(r.sd - r.theory) > r.theory * 0.06) bad2.push(`d=${r.d}：实测 ${r.sd} vs 理论 ${r.theory}`)
+      if (Math.abs(r.mean) > 0.05) bad2.push(`d=${r.d}：均值 ${r.mean} 不接近 0`)
+    }
+    bad2.length === 0
+      ? ok(`随机向量余弦的标准差逐档跟 **1/√d** 对得上（每档抽 ${base.ortho[0].n} 对）：`
+        + base.ortho.map(r => `d=${r.d} 实测 ${r.sd}/理论 ${r.theory}`).join('　')
+        + ` —— **不是拿公式代替测量**`)
+      : bad(bad2.slice(0, 3).join(' / '))
+  }
+
+  /*  ③ ⭐ **"随机方向几乎正交"在低维是假的。**
+      这一条才是补厚真正补上的那句 —— 老版本就是 2 维的。 */
+  {
+    const lo = base.ortho.find(r => r.d === 2)!
+    const hi = base.ortho[base.ortho.length - 1]
+    lo.bigFrac > 0.5 && hi.bigFrac < 0.01
+      ? ok(`d=2 时随便抓两个方向有 **${(lo.bigFrac * 100).toFixed(1)}%** 的机会 |余弦|>0.5 —— `
+        + `**"随机方向几乎正交"在低维是假的**；而 d=${hi.d} 时这个比例是 ${(hi.bigFrac * 100).toFixed(1)}%`)
+      : bad(`低维/高维没拉开：d=2 ${lo.bigFrac}、d=${hi.d} ${hi.bigFrac}`)
+  }
+
+  /*  ④ ⭐ **补厚的落点②：原始内积偏爱模长大的向量。**
+      两个排名的第一名必须不是同一个，而且方向最准的那个要被压下去。 */
+  {
+    const s = base
+    const d1 = s.docs.find(x => x.name.startsWith('D1'))!
+    const bestCos = s.docs.reduce((a, x) => (x.cos > a.cos ? x : a))
+    s.topDot !== s.topCos && d1.rankCos === 1 && d1.rankDot >= 4 && bestCos.name === d1.name
+      ? ok(`按原始内积第一是「${s.topDot}」、按余弦第一是「${s.topCos}」；`
+        + `**方向最准的 D1（余弦 ${d1.cos}、模长 ${d1.mag}）按内积只排第 ${d1.rankDot}** —— `
+        + `**原始内积系统性偏爱模长大的**（"长文档偏置"）`)
+      : bad(`长度偏置没演出来：内积第一 ${s.topDot}、余弦第一 ${s.topCos}、D1 内积排 ${d1.rankDot}`)
+  }
+
+  /*  ⑤ **内积确实 = 模长 × 余弦** —— 那张表的三列必须自洽。 */
+  {
+    const bad2 = base.docs.filter(x => Math.abs(x.dot - x.mag * x.cos) > 0.002)
+    bad2.length === 0
+      ? ok(`检索表三列自洽：内积 = 模长 × 余弦，${base.docs.length} 行都对得上（query 取的是单位向量）`)
+      : bad(`表算错了：${bad2.map(x => `${x.name} ${x.dot}≠${x.mag}×${x.cos}`).join(' / ')}`)
+  }
+
+  /*  ⑥ 自检：这一套判据得会红。
+      ⚠️ 拿**炸过的那件事**自检 —— 只看"正交时内积是 0"，2 维和 512 维一模一样，
+      "高维近正交"这句话在那条判据下**永远是绿的**。 */
+  {
+    const a = fin({ dim: 2 }), b = fin({ dim: 512 })
+    const naiveSame = a.dot === b.dot                    // 只看角度：两档没差别
+    const realDiff = Math.abs(a.orthoNow.sd - b.orthoNow.sd) > 0.5
+    naiveSame && realDiff
+      ? ok(`自检：只看角度扫描，d=2 和 d=512 **一模一样**（内积都是 ${a.dot}）——`
+        + `"高维近正交"在那条判据下永远绿。只有量随机向量才分得出来：标准差 ${a.orthoNow.sd} vs ${b.orthoNow.sd}`)
+      : bad(`自检失败：角度相同=${naiveSame}、随机向量有差别=${realDiff}`)
+  }
+}
+
+/*  ═══════════════════════════════════════════════════════════════
+    线性注意力 —— 老版本是**纯公式算术**：只有 2N²d 和 2Nd² 两个式子在换 N，
+    **一次注意力都没算过**。而正文写着「φ 是近似、拿**一点精度**换算量」
+    「利用**结合律**」「解码变成 **RNN 式递推**」—— 三句都没兑现。 */
+console.log('\n【线性注意力：代价不只是"一点误差"】')
+{
+  const fin = (params: Record<string, unknown>) => {
+    const m = linattnKernel.compile({ kind: 'linattn', params, entities: [], streams: [] } as never)
+    let st: LinAttnState | null = null
+    for (let i = 0; i < 50; i++) { const r = m.step(st); if (!r) break; st = r.state }
+    return st!
+  }
+  const [T_RANDOM, T_RETRIEVE] = LIN_TASKS
+  const base = fin({ task: T_RETRIEVE, phi: LIN_PHIS[0] })
+
+  /*  ① ⭐ **公式先跟实测对账** —— 核对过才敢往大 N 外推。
+      ⚠️ 这一条是「测量确认过的公式，不是拿公式代替测量」那条纪律的落点。 */
+  {
+    const bad2 = base.rows.filter(r => r.smMac !== r.smFormula || r.linMac !== r.linFormula)
+    bad2.length === 0 && base.formulaOK
+      ? ok(`${base.rows.length} 档上**真数出来的乘加次数**跟公式 2N²d / 2Nd² 逐档一模一样：`
+        + base.rows.map(r => `N=${r.n} ${r.smMac}/${r.linMac}`).join('　')
+        + ` —— **核对过才敢往 N=32768 外推**`)
+      : bad(`公式跟实测对不上：${bad2.map(r => `N=${r.n} ${r.smMac}≠${r.smFormula}`).join(' / ')}`)
+  }
+
+  /*  ② ⭐ **"一点精度"是个数，而且不小。**
+      老版本这句话从来没被检验过。 */
+  {
+    const errs = base.rows.map(r => r.err)
+    Math.min(...errs) > 0.2
+      ? ok(`输出的相对误差实测 ${Math.min(...errs)} ~ ${Math.max(...errs)}（N=${base.rows.map(r => r.n).join('/')}）—— `
+        + `**正文里那句"拿一点精度换算量"，"一点"就是这个数。这可不叫一点**`)
+      : bad(`误差量级不对：${errs.join(' / ')}`)
+  }
+
+  /*  ③ ⭐ **真正丢的是"尖锐"** —— 这比"误差 x%"说明问题得多。
+      softmax 的最大权重必须显著高于线性，熵必须显著低。 */
+  {
+    const bad2 = base.rows.filter(r => !(r.smMax > r.linMax * 2 && r.smEnt < r.linEnt))
+    bad2.length === 0
+      ? ok(`每一档 softmax 都比线性**尖锐得多**：`
+        + base.rows.map(r => `N=${r.n} 最大权重 ${r.smMax} vs ${r.linMax}（熵 ${r.smEnt} vs ${r.linEnt}）`).join('　')
+        + ` —— **softmax 里的 exp 是个放大器**`)
+      : bad(`尖锐度没拉开：${bad2.map(r => `N=${r.n} ${r.smMax}/${r.linMax}`).join(' / ')}`)
+  }
+
+  /*  ④ **检索档：softmax 压得上去，线性压不上去。**
+      ⚠️ 而且要跟「随机键值」那档对照 —— 不然量的是"线性注意力"这四个字，不是"检索"。 */
+  {
+    const ret = fin({ task: T_RETRIEVE, phi: LIN_PHIS[0] })
+    const rnd = fin({ task: T_RANDOM, phi: LIN_PHIS[0] })
+    const r64 = ret.rows.find(r => r.n === 64)!
+    r64.smHit > 0.9 && r64.linHit < 0.1 && rnd.rows.every(r => r.smHit === 0)
+      ? ok(`检索档 N=64：q₀ 对准的那个 key，softmax 给 **${r64.smHit}**、线性只给 **${r64.linHit}** —— `
+        + `差 ${Math.round(r64.smHit / Math.max(1e-9, r64.linHit))} 倍。`
+        + `而「随机键值」那档没有目标 key（命中列全 0）—— **对照组在，量的是"检索"不是"线性"两个字**`)
+      : bad(`检索那一课没演出来：命中 ${r64.smHit}/${r64.linHit}、随机档 ${rnd.rows[0].smHit}`)
+  }
+
+  /*  ⑤ ⭐ **"利用结合律"验一遍** —— 两种乘法顺序同一个答案、算量差一大截。 */
+  {
+    const s = base
+    s.assocErr < 1e-9 && s.assocMacNaive > s.assocMacFast * 8
+      ? ok(`结合律：φ(Q)(φ(K)ᵀV) 和 (φ(Q)φ(K)ᵀ)V 输出相对差 **${s.assocErr}**（同一个答案），`
+        + `而乘加次数 **${s.assocMacFast}** vs **${s.assocMacNaive}**（差 ${Math.round(s.assocMacNaive / s.assocMacFast)} 倍）`
+        + ` —— **这才是那句话的证据**`)
+      : bad(`结合律没验住：差 ${s.assocErr}、算量 ${s.assocMacFast}/${s.assocMacNaive}`)
+  }
+
+  /*  ⑥ ⭐ **"RNN 式递推"验一遍** —— 逐 token 更新固定状态，结果该一样。 */
+  {
+    const s = base
+    s.recErr < 1e-9 && s.stateSize === s.d * s.d + s.d
+      ? ok(`RNN 式递推：逐 token 更新固定状态，结果跟一次性算的相对差 **${s.recErr}**（一样）；`
+        + `状态是 d²+d = **${s.stateSize}** 个数，**跟 N 无关** —— 告别膨胀的 KV 缓存`)
+      : bad(`递推没验住：差 ${s.recErr}、状态 ${s.stateSize} vs d²+d=${s.d * s.d + s.d}`)
+  }
+
+  /*  ⑦ 自检：这一套判据得会红。
+      ⚠️ 拿**炸过的那件事**自检 —— 老版本只有公式，而公式在两种 φ 下**一模一样**：
+      "换 φ 会怎样"在那套口径下根本量不出来。 */
+  {
+    const a = fin({ task: T_RETRIEVE, phi: LIN_PHIS[0] })
+    const b = fin({ task: T_RETRIEVE, phi: LIN_PHIS[1] })
+    const sameFormula = a.rows.every((r, k) => r.smFormula === b.rows[k].smFormula && r.linFormula === b.rows[k].linFormula)
+    const diffReal = a.rows.some((r, k) => Math.abs(r.linMax - b.rows[k].linMax) > 0.01)
+    sameFormula && diffReal
+      ? ok(`自检：换 φ 之后**公式值一个不变**（老版本屏幕上就只有这些数）——`
+        + `那套口径下"换 φ 会怎样"永远量不出来。只有真算才分得开：`
+        + `N=64 线性最大权重 ${a.rows[3].linMax}（${LIN_PHIS[0].slice(0, 3)}）vs ${b.rows[3].linMax}（${LIN_PHIS[1].slice(0, 4)}）`)
+      : bad(`自检失败：公式相同=${sameFormula}、真算有差别=${diffReal}`)
+  }
+}
+
+/*  ═══════════════════════════════════════════════════════════════
+    注意力 = 联想记忆 —— 检索本身上一轮就是真算的，但**三个旋钮一个都没有**：
+    β 写死 6、翻转位数写死 2、只存 4 个模式一个维度。于是正文里
+    「β 大→精确、β 小→软混合」「落进**吸引域**就被拉回」「容量随维度**指数级**」
+    这三句话**全靠嘴说**。 */
+console.log('\n【注意力=联想记忆：温度、吸引域、容量】')
+{
+  const fin = (params: Record<string, unknown>) => {
+    const m = hopfieldKernel.compile({ kind: 'hopfield', params, entities: [], streams: [] } as never)
+    let st: HopfieldState | null = null
+    for (let i = 0; i < 50; i++) { const r = m.step(st); if (!r) break; st = r.state }
+    return st!
+  }
+  const base = fin({ beta: 6, flip: 2 })
+
+  /*  ① ⭐ **β 是"精确检索 vs 软混合"的那个旋钮** —— 最大权重必须随 β 单调爬上去。 */
+  {
+    const bs = base.betaSweep
+    const mono = bs.every((x, k) => k === 0 || x.maxW >= bs[k - 1].maxW)
+    mono && bs[0].maxW < 0.5 && bs[bs.length - 1].maxW > 0.95
+      ? ok(`最大权重随 β 单调爬升：${bs.map(x => `β=${x.beta} ${x.maxW}`).join('　')} —— `
+        + `**β 小压不出 one-hot（输出是几个模式的加权平均），β 大一步到位**`)
+      : bad(`β 没起作用：${bs.map(x => `${x.beta}:${x.maxW}`).join(' ')}`)
+  }
+
+  /*  ② ⭐ ⚠️ **单个例子说明不了旋钮有没有用。**
+      屏幕上那个 query 碰巧四档 β 都回得去 —— 判据必须钉在**抽样**那两列上。 */
+  {
+    const bs = base.betaSweep
+    const allRight = bs.every(x => x.right)          // 屏幕上那个 query：四档全过
+    const lo = bs[0], hi = bs[bs.length - 1]
+    allRight && lo.cap16 < hi.cap16 / 2 && lo.basin2 < hi.basin2
+      ? ok(`屏幕上那**一个** query 四档 β **全都回得去**（所以它说明不了什么）；`
+        + `而抽样量出来：β=${lo.beta} 翻 2 位 ${(lo.basin2 * 100).toFixed(0)}%、存 16 个 ${(lo.cap16 * 100).toFixed(0)}%，`
+        + `β=${hi.beta} 是 ${(hi.basin2 * 100).toFixed(0)}% 和 ${(hi.cap16 * 100).toFixed(0)}% —— **旋钮有没有用得抽样才看得出来**`)
+      : bad(`抽样口径没拉开：单例全过=${allRight}、低 β ${lo.basin2}/${lo.cap16}、高 β ${hi.basin2}/${hi.cap16}`)
+  }
+
+  /*  ③ ⭐ **吸引域真的会塌** —— 翻得越多回得去的越少，而且是单调的。
+      ⚠️ 这一条是口径改对之后才成立的：第一版拿"回到汉明最近"当正确，曲线根本不下降。 */
+  {
+    const b = base.basin
+    const mono = b.every((x, k) => k === 0 || x.ok <= b[k - 1].ok + 1e-9)
+    mono && b[0].ok >= 0.99 && b[b.length - 1].ok < 0.3
+      ? ok(`吸引域随翻转位数**单调塌下去**：${b.map(x => `翻${x.flip}位 ${(x.ok * 100).toFixed(0)}%`).join('　')}`
+        + `　边界在翻 **${base.basinEdge}** 位`)
+      : bad(`吸引域没塌：${b.map(x => `${x.flip}:${x.ok}`).join(' ')}`)
+  }
+
+  /*  ④ ⚠️ **两个口径说的是两件事** —— "回原模式"塌下去、"回汉明最近"不塌。
+      这一条钉的正是我栽过的那个坑：只用第二列的话曲线是平的，吸引域根本演不出来。 */
+  {
+    const b = base.basin
+    const near = b.map(x => x.okNear)
+    const nearFlat = Math.max(...near) - Math.min(...near) < 0.5
+    const okDrop = b[0].ok - b[b.length - 1].ok > 0.6
+    nearFlat && okDrop
+      ? ok(`两个口径分得开：「回**原模式**」从 ${(b[0].ok * 100).toFixed(0)}% 塌到 ${(b[b.length - 1].ok * 100).toFixed(0)}%，`
+        + `而「回**汉明最近**那个」一直在 ${(Math.min(...near) * 100).toFixed(0)}~${(Math.max(...near) * 100).toFixed(0)}% —— `
+        + `**说明它没乱来，是 query 真的离开那片地方了**。第一版只用后者，曲线不下降、吸引域一点没演出来`)
+      : bad(`两个口径没分开：回原模式 ${b[0].ok}→${b[b.length - 1].ok}、回最近 ${near.join('/')}`)
+  }
+
+  /*  ⑤ ⭐ **容量随维度** —— N=8 会崩、N=16 撑得住。 */
+  {
+    const [c8, c16] = base.cap
+    const edge = (c: typeof c8) => { const g = c.row.filter(x => x.ok >= 0.9); return g.length ? g[g.length - 1].m : 0 }
+    c8.row[c8.row.length - 1].ok < 0.5 && c16.row[c16.row.length - 1].ok > 0.9 && edge(c16) > edge(c8)
+      ? ok(`容量随维度：N=${c8.n} 到 M=${c8.row[c8.row.length - 1].m} 只剩 **${(c8.row[c8.row.length - 1].ok * 100).toFixed(0)}%**，`
+        + `而 N=${c16.n} 还有 **${(c16.row[c16.row.length - 1].ok * 100).toFixed(0)}%**；撑到 90% 的最大 M：`
+        + `**${edge(c8)} → ${edge(c16)}** —— **维度翻一倍，容量翻的可不止一倍**`)
+      : bad(`容量没拉开：N=8 末档 ${c8.row[c8.row.length - 1].ok}、N=16 末档 ${c16.row[c16.row.length - 1].ok}`)
+  }
+
+  /*  ⑥ **"回忆对了吗"是独立真值** —— truth 必须来自汉明距离，不是 Hopfield 的输出。 */
+  {
+    const s = fin({ beta: 6, flip: 3 })
+    const q = s.query0
+    let bd = Infinity, bi = -1
+    s.patterns.forEach((p, i) => {
+      const dist = p.reduce((acc, x, k) => acc + (x === q[k] ? 0 : 1), 0)
+      if (dist < bd) { bd = dist; bi = i }
+    })
+    s.truth === bi && s.truthDist === bd
+      ? ok(`真值是**另算的汉明最近**：翻 3 位的 query 离 P${bi} 最近（距 ${bd}），跟状态里的 truth=${s.truth}/dist=${s.truthDist} 对得上 —— **不问 Hopfield 自己**`)
+      : bad(`真值口径不对：算出来 P${bi}(距 ${bd})、状态里 P${s.truth}(距 ${s.truthDist})`)
+  }
+
+  /*  ⑦ 自检：这一套判据得会红。
+      ⚠️ 拿**炸过的那件事**自检 —— 只看"屏幕上这个 query 回没回去"，四档 β 全过，
+      "β 有没有用"在那条判据下永远是绿的。 */
+  {
+    const bs = base.betaSweep
+    const naive = bs.filter(x => x.right).length
+    const strict = bs.filter(x => x.cap16 >= 0.5).length
+    naive === bs.length && strict < bs.length
+      ? ok(`自检：只看"屏幕上这个 query 回没回去"，${bs.length} 档 β **全都算成功**；`
+        + `换成抽样的容量命中率（≥50%），只剩 ${strict} 档 —— **同一组配置，两种判法结论差 ${bs.length - strict} 档**`)
+      : bad(`自检失败：单例过 ${naive}/${bs.length}、抽样过 ${strict}/${bs.length}`)
+  }
+}
+
+/*  ═══════════════════════════════════════════════════════════════
+    Engram / n-gram 记忆 —— 老版本用的是一条**完美周期**序列、n 写死 3，
+    **查表必然命中、预测必然对，一次失败都演不出来**。而 n-gram 最经典的那对毛病
+    （会 miss、会歧义）全被那条序列绕过去了，「不受窗口限制」也没有对照组。 */
+console.log('\n【Engram：它便宜在哪、又贵在哪】')
+{
+  const fin = (params: Record<string, unknown>) => {
+    const m = engramKernel.compile({ kind: 'engram', params, entities: [], streams: [] } as never)
+    let st: EngramState | null = null
+    for (let i = 0; i < 50; i++) { const r = m.step(st); if (!r) break; st = r.state }
+    return st!
+  }
+  const [S_PERIOD, S_NOISY, S_TEXT] = ENGRAM_SEQS
+  const noisy = fin({ seq: S_NOISY, n: 3 })
+
+  /*  ① ⭐ **n 越大越容易 miss** —— 命中率必须随 n 单调下降。 */
+  {
+    const r = noisy.rows
+    const mono = r.every((x, k) => k === 0 || x.hitRate <= r[k - 1].hitRate + 1e-9)
+    mono && r[0].hitRate - r[r.length - 1].hitRate > 0.3
+      ? ok(`命中率随 n **单调下降**：${r.map(x => `n=${x.n} ${(x.hitRate * 100).toFixed(0)}%`).join('　')} —— `
+        + `**n 越大越容易 miss**（前缀没见过）`)
+      : bad(`命中率没随 n 掉：${r.map(x => `${x.n}:${x.hitRate}`).join(' ')}`)
+  }
+
+  /*  ② ⭐ **n 越小越容易歧义** —— 这一半跟 ① 是此消彼长的。
+      ⚠️ 只量 ① 的话会得出"n 越小越好"的错结论。 */
+  {
+    const r = noisy.rows
+    r[0].ambRate > 0.2 && r[r.length - 1].ambRate < 0.05
+      /*  ⚠️ 措辞得跟数对得上：实测是 25/33/17/0 —— **两头拉开**，中间并不单调。
+          写"随 n 单调降下去"就跟旁边印的数打架了。 */
+      ? ok(`歧义率两头拉得很开：${r.map(x => `n=${x.n} ${(x.ambRate * 100).toFixed(0)}%`).join('　')}`
+        + `（中间不单调，但 n=${r[0].n} 的 ${(r[0].ambRate * 100).toFixed(0)}% 对 n=${r[r.length - 1].n} 的 ${(r[r.length - 1].ambRate * 100).toFixed(0)}%）—— `
+        + `**n 越小越容易歧义**（同一个前缀跟过好几种）。**跟 ① 此消彼长，只看一头会得出反的结论**`)
+      : bad(`歧义没演出来：${r.map(x => `${x.n}:${x.ambRate}`).join(' ')}`)
+  }
+
+  /*  ③ **完美周期序列上这对毛病全看不见** —— 这正是老版本的盲区。 */
+  {
+    const p = fin({ seq: S_PERIOD, n: 3 })
+    p.rows.every(x => x.ambRate === 0) && p.rows.every(x => x.hitRate > 0.75)
+      ? ok(`完美周期序列上**歧义率恒为 0、命中率全在 ${(Math.min(...p.rows.map(x => x.hitRate)) * 100).toFixed(0)}% 以上** —— `
+        + `**那对权衡在这条序列上一点都看不见**，而老版本用的就是它`)
+      : bad(`完美周期档不像"必然命中"：歧义 ${p.rows.map(x => x.ambRate).join('/')}、命中 ${p.rows.map(x => x.hitRate).join('/')}`)
+  }
+
+  /*  ④ ⭐ **"不受窗口限制"有了对照组** —— 非周期序列上查表要明显强过窗口基线。 */
+  {
+    const bad2: string[] = []
+    for (const sq of [S_NOISY, S_TEXT]) {
+      const s = fin({ seq: sq, n: 3 })
+      if (!(s.row.acc > s.row.winAcc + 0.05)) bad2.push(`${sq}：查表 ${s.row.acc} vs 窗口 ${s.row.winAcc}`)
+    }
+    bad2.length === 0
+      ? ok(`非周期序列上查表明显强过只看最近 ${noisy.window} 个的基线：`
+        + [S_NOISY, S_TEXT].map(sq => { const s = fin({ seq: sq, n: 3 })
+          return `${sq.slice(0, 4)} ${(s.row.acc * 100).toFixed(0)}% vs ${(s.row.winAcc * 100).toFixed(0)}%` }).join('　')
+        + ` —— **远处的 n-gram 查表拿得到、窗口够不着**`)
+      : bad(bad2.join(' / '))
+  }
+
+  /*  ⑤ ⭐ ⚠️ **而完美周期那条序列上两条线一样齐 —— 它演不出这件事。**
+      「量不到就说量不到」：判据要钉住这个"演不出来"，不然屏幕上那段话就没有依据。 */
+  {
+    const p = fin({ seq: S_PERIOD, n: 3 })
+    Math.abs(p.row.acc - p.row.winAcc) < 0.02
+      ? ok(`完美周期序列上查表 ${(p.row.acc * 100).toFixed(0)}% vs 窗口基线 ${(p.row.winAcc * 100).toFixed(0)}% —— `
+        + `**一样齐**。周期只有 4、窗口有 ${p.window}，该抄的就在窗口里。`
+        + `**那条序列根本演不出"不受窗口限制"** —— 屏幕上直说，不硬凑`)
+      : bad(`完美周期档两条线没打平：${p.row.acc} vs ${p.row.winAcc}`)
+  }
+
+  /*  ⑥ **逐位置评测不许偷看未来** —— 位置 i 只能拿 tokens[0..i) 建表。
+      拿一个"表里已经含了答案"的假实现对照：那样准确率会顶到 100%。 */
+  {
+    const s = fin({ seq: S_TEXT, n: 5 })
+    s.row.hitRate === 0 && s.row.acc === 0
+      ? ok(`自然文本 + n=5：命中率 **0%**、准确率 **0%** —— 长前缀在非周期序列上几乎必然 miss。`
+        + `**如果偷看了未来（拿整条序列建表再回头预测），这一档不可能是 0**`)
+      : bad(`n=5 在自然文本上不该有命中：命中 ${s.row.hitRate}、准确 ${s.row.acc}`)
+  }
+
+  /*  ⑦ 自检：这一套判据得会红。
+      ⚠️ 拿**炸过的那件事**自检 —— 老版本只看最后一个位置，而那个位置在完美周期上必然命中。 */
+  {
+    const p = fin({ seq: S_PERIOD, n: 3 })
+    const t = fin({ seq: S_TEXT, n: 5 })
+    p.hit && !t.hit && p.row.ambRate === 0
+      ? ok(`自检：只看最后一个位置的话，完美周期档**必然命中**（老版本就是只看那一个）；`
+        + `而自然文本 n=5 那档最后一个位置 **miss** —— **同一套代码，换条序列就演出了失败**`)
+      : bad(`自检失败：周期档命中=${p.hit}、文本档命中=${t.hit}`)
+  }
+}
+
+/*  ═══════════════════════════════════════════════════════════════
+    完整前向拼装 —— 前向本身是真算的，但**只跑了一次、只有贪心**。
+    而正文写着「→ softmax → **采样**」（代码里只有 argmax）和
+    「这就是每次 **decode** 真正跑的链 —— KV 缓存/Flash/量化，优化的都是它」
+    （decode 只跑了一步，一个优化都没演）。 */
+console.log('\n【完整前向拼装：一步不叫 decode，优化 = 省算量不改答案】')
+{
+  const fin = (params: Record<string, unknown>) => {
+    const m = forwardKernel.compile({ kind: 'forward', params, entities: [], streams: [] } as never)
+    let st: ForwardState | null = null
+    for (let i = 0; i < 50; i++) { const r = m.step(st); if (!r) break; st = r.state }
+    return st!
+  }
+  const base = fin({ cache: FWD_CACHE[1], decode: FWD_DECODE[0] })
+
+  /*  ① **连续 decode 了好几步** —— 老版本只跑一步。 */
+  {
+    base.gen.length >= 4 && base.genText.length > base.seq.join('').length
+      ? ok(`连续 decode **${base.gen.length}** 步：「${base.seq.join('')}」→「**${base.genText}**」`
+        + `（${base.gen.map(g => `${g.step}:${g.token}`).join('　')}）—— **一步不叫 decode**`)
+      : bad(`没连续跑：${base.gen.length} 步、文本 ${base.genText}`)
+  }
+
+  /*  ② ⭐ **KV 缓存：省算量。** 用缓存的乘加次数必须显著少于不用。 */
+  {
+    const s = base
+    s.macWith < s.macWithout && (s.macWithout - s.macWith) / s.macWithout > 0.1
+      ? ok(`KV 缓存省算量：不用 **${s.macWithout}** 次乘加 → 用缓存 **${s.macWith}** 次`
+        + `（省 ${((1 - s.macWith / s.macWithout) * 100).toFixed(0)}%，真数出来的）`)
+      : bad(`缓存没省：${s.macWithout} → ${s.macWith}`)
+  }
+
+  /*  ③ ⭐ ⚠️ **而"优化"的前提是输出不能变。**
+      这一条才是整屏的骨头：只量②的话，一个把答案改了的"优化"也能过。 */
+  {
+    const s = base
+    s.sameOut && s.sameLogits
+      ? ok(`两条路**输出一模一样**：文本都是「${s.genText}」，而且**每一步的 logits 逐位相同** —— `
+        + `**同一个答案、更少的算量，这才叫优化，不是"换了个算法"**`)
+      : bad(`两条路结果不一致：文本一样=${s.sameOut}、logits 一样=${s.sameLogits}`)
+  }
+
+  /*  ④ **两个旋钮互不干扰** —— 用不用缓存不该影响生成的文本。 */
+  {
+    const a = fin({ cache: FWD_CACHE[0], decode: FWD_DECODE[0] })
+    const b = fin({ cache: FWD_CACHE[1], decode: FWD_DECODE[0] })
+    a.genText === b.genText && a.macWith === b.macWith && a.macWithout === b.macWithout
+      ? ok(`换"用不用缓存"这个旋钮，生成的文本**一点没变**（都是「${a.genText}」）—— 它只改算量，不改答案`)
+      : bad(`缓存旋钮改了输出：${a.genText} vs ${b.genText}`)
+  }
+
+  /*  ⑤ ⭐ **"采样"那句话兑现了** —— 温度真的把输出改掉。
+      ⚠️ 但**单个种子说明不了**：T=0.7 和 T=1.5 在默认种子上碰巧抽出同一条。
+      所以判据钉在**抽 200 个种子**那一列上。 */
+  {
+    const dc = base.decodeCmp
+    const [g, t07, t15] = dc
+    const sameSeed = t07.text === t15.text        // 单个种子：两档碰巧一样
+    g.differ === 0 && t07.differ > 0.3 && t15.differ > t07.differ
+      ? ok(`温度真的在起作用（抽 200 个种子看"跟贪心不一样"的比例）：`
+        + `贪心 **${(g.differ * 100).toFixed(0)}%**、T=0.7 **${(t07.differ * 100).toFixed(0)}%**、`
+        + `T=1.5 **${(t15.differ * 100).toFixed(0)}%** —— **温度越高跑偏越多**。`
+        + (sameSeed ? `　⚠️ 而这**一个**种子上 T=0.7 和 T=1.5 碰巧抽出同一条（都是「${t07.text}」）—— **单个种子看不出来**` : ''))
+      : bad(`温度没量到：贪心 ${g.differ}、T0.7 ${t07.differ}、T1.5 ${t15.differ}`)
+  }
+
+  /*  ⑥ 自检：这一套判据得会红。
+      ⚠️ 拿**炸过的那件事**自检 —— 只看"这一个种子生成了什么"，T=0.7 和 T=1.5 一模一样，
+      "温度有没有用"在那条判据下会被判成"没用"。 */
+  {
+    const dc = base.decodeCmp
+    const naiveSame = dc[1].text === dc[2].text          // 单个种子：看不出差别
+    const realDiff = Math.abs(dc[2].differ - dc[1].differ) > 0.15
+    naiveSame && realDiff
+      ? ok(`自检：只看这一个种子，T=0.7 和 T=1.5 生成的**一模一样**（都是「${dc[1].text}」）——`
+        + `那条判据下会得出"温度没用"。抽 200 个种子才分得开：${(dc[1].differ * 100).toFixed(0)}% vs ${(dc[2].differ * 100).toFixed(0)}%`)
+      : bad(`自检失败：单种子一样=${naiveSame}、抽样有差别=${realDiff}`)
   }
 }
 

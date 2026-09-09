@@ -4535,39 +4535,68 @@ export const GUIDES: Record<string, Guide> = {
       terms: '**嵌入（embedding）**：把 token 编号换成一个向量。这张表是学出来的，意思相近的词向量也相近。\u3000**Transformer 块**：模型的基本积木，一层的顺序是**归一化 → 自注意力 → 残差相加 → 归一化 → 前馈网络 → 残差相加**。几十上百层就是把这个块叠起来，每层参数各不相同。\u3000**前馈网络（FFN）**：块里的另一半，先把维度升高四倍再降回来。注意力负责「词与词之间交换信息」，FFN 负责「每个词各自加工自己」—— 分工明确。**模型的大部分参数其实在 FFN 里，不在注意力里**。\u3000**残差相加**：把这一层的输入原样加回输出上。有了它，几十层的梯度才传得回去，否则深层根本训不动。\u3000**归一化**：把向量拉回统一尺度，让训练稳定。现代模型放在每个子层**之前**（Pre-LN），比放在之后更好训。\u3000**词表投影（lm_head）**：最后一步，把向量乘上一个 d×词表大小的矩阵，得到每个候选词的分数（logits），再交给 softmax 和采样。\u3000**逐字生成**：模型一次只产出一个 token，然后把它接回输入重新跑一遍。所以生成 100 个字就要跑 100 次前向 —— 这也是 KV 缓存存在的理由。',
       watch: '跟着一个位置的向量走完全程，看它在每一层之后变成什么。残差那条捷径很关键 —— 没有它，几十层的梯度传不回去。',
     },
+    /*  ⚠️ 老版本只有 stage/vec/logits。补厚后加了连续 decode、KV 缓存对照、解码方式对照。 */
     step: (s: never) => {
-      const st = s as { phase: string; stageIdx: number; stageName: string; stageLink: string; vec: number[]; attn: number[] | null; predicted: string | null; seq: string[]; probs: number[] | null; detail: string }
+      const st = s as {
+        phase: string; stageIdx: number; stageName: string; stageLink: string; detail: string
+        seq: string[]; vec: number[]; attn: number[] | null; logits: number[] | null
+        probs: number[] | null; predicted: string | null
+        cacheName: string; decodeName: string
+        gen: { step: number; token: string; mac: number }[]
+        genText: string; macWith: number; macWithout: number; sameOut: boolean; sameLogits: boolean
+        decodeCmp: { name: string; text: string; differ: number }[]
+      }
       return [
-        { k: '本步输入',
-          v: st.phase === 'done' ? `序列「${st.seq.join('')}」走完整条前向` : `${st.stageName}` },
-        { k: '判定规则',
-          v: st.stageLink && st.stageLink !== '—'
-            ? `这一段就是**${st.stageLink}**那个实验做的事，用真实向量跑一遍。${st.detail}`
-            : `${st.detail || '把上一段的输出接着往下算。'}` },
-        { k: '本步结果',
-          v: st.phase === 'done'
-            ? `预测下一个 token「**${st.predicted}**」。这条 embed→注意力→FFN→norm→采样 的链，就是每步 decode 真正跑的东西 —— 之前所有优化都在加速它。`
-            : st.attn ? `注意力权重 [${st.attn.join('、')}]，末向量 [${st.vec.join('、')}]。`
-              : st.predicted ? `softmax 后贪心取最大 → 预测「${st.predicted}」。`
-                : `末向量 [${st.vec.join('、')}]，进入下一段。` },
+        { k: '本步输入', v: st.stageIdx < 0 ? `序列「${st.seq.join('')}」（KV 缓存：${st.cacheName}，解码：${st.decodeName}）`
+          : st.phase === 'done' ? `走完一次前向` : `${st.stageName}` },
+        { k: '判定规则', v: `一次前向 = embed → RMSNorm → 自注意力 → 残差 → RMSNorm → FFN → 残差 → 末层 RMSNorm → LM 头 → softmax → 采样。`
+          + `每一段都对应前面一个实验（这一段：**${st.stageLink}**）。`
+          + `⚠️ **而 decode 是要反复跑的** —— 一步不叫 decode。` },
+        { k: '本步结果', v: st.phase === 'done'
+          ? `⭐ **连续 decode ${st.gen.length} 步**：「${st.seq.join('')}」→「**${st.genText}**」`
+            + `（${st.gen.map(g => `${g.step}:${g.token}`).join('　')}）\n\n`
+            + `⭐ **KV 缓存**：不用 **${st.macWithout}** 次乘加 → 用缓存 **${st.macWith}** 次`
+            + `（省 ${((1 - st.macWith / st.macWithout) * 100).toFixed(0)}%），`
+            + `而两条路的文本${st.sameOut ? '**一样**' : '⚠️ **不一样**'}、逐步 logits ${st.sameLogits ? '**逐位相同 ✓**' : '⚠️ **对不上**'}。`
+            + `**同一个答案、更少的算量 —— 这才叫优化。**\n\n`
+            + `⭐ **解码方式**（抽 200 个种子看"跟贪心不一样"的比例）：`
+            + st.decodeCmp.map(x => `${x.name.slice(0, 6)} ${(x.differ * 100).toFixed(0)}%`).join('　')
+            + ` —— **温度越高跑偏越多**。⚠️ 单个种子看不出来（T=0.7 和 T=1.5 碰巧抽出同一条）。`
+          : st.stageIdx < 0 ? '待开始。'
+            : `${st.detail}`
+              + (st.vec.length ? `　向量 [${st.vec.join(', ')}]` : '')
+              + (st.attn ? `　注意力权重 [${st.attn.join(', ')}]` : '')
+              + (st.probs ? `　概率 [${st.probs.join(', ')}] → 「${st.predicted}」` : '') },
       ]
     },
     verdict: (s: never) => {
-      const st = s as { phase: string; stageIdx: number; predicted: string | null; stageName: string }
-      return st.phase === 'done' ? `一次前向 → 预测「${st.predicted}」`
-        : `第 ${st.stageIdx + 1}/10 段 · ${st.stageName.replace(/^[①-⑩]\s*/, '')}`
+      const st = s as { phase: string; stageIdx: number; genText: string; macWith: number; macWithout: number }
+      if (st.phase === 'done') return `${st.genText}（省 ${st.macWithout - st.macWith}）`
+      return st.stageIdx >= 0 ? `第${st.stageIdx + 1}段` : '起点'
     },
     read: [
-      { at: '顶部序列→预测', is: '输入序列在左，走完流水后右边出现预测的下一个 token。', anchor: '.fwhdr' },
-      { at: '流水段带', is: '10 段流水，当前段高亮、已过的变绿。', anchor: '.fwflow' },
-      { at: '当前段详情', is: '本段的真实向量；注意力段有权重、末尾有词表概率。', anchor: '.fwdetail' },
+      { at: '读数', is: '当前段、对应的实验、这一步预测/采样出的 token、**连续 decode 出来的几步**、**KV 缓存省了多少**、**两条路输出一样吗**。', anchor: '.scdim' },
+      { at: '流水与向量', is: '十段流水，当前段高亮;下面是这一段末尾的真实向量、注意力权重、logits/概率。', anchor: '.fwwrap' },
+      { at: 'decode + KV 缓存表', is: '连续 4 步各生成了什么、各花多少乘加;合计那行是**用缓存 vs 不用**的对照。', anchor: '.qsscale' },
+      { at: '解码方式表', is: '贪心 / T=0.7 / T=1.5 各生成了什么，以及**抽 200 个种子**里"跟贪心不一样"的比例。', anchor: '.qsscale' },
     ],
     try: [
-      { act: '一步步点"下一步"走完 10 段', watch: '向量在每段被改写：归一化拉尺度、注意力融入上下文、FFN 变换、残差叠加，最后变成 logits。' },
-      { act: '走到最后看词表概率', watch: 'logits 过 softmax 成概率，最高的那个词被选中 —— 这就是模型"吐"出下一个字的瞬间。' },
+      { act: '看末帧第一张表最后一行',
+        watch: '**不用缓存 416 次乘加、用缓存 344 次**（省 17%）—— 而两条路生成的文本一样、**每一步的 logits 逐位相同**。'
+          + '**同一个答案、更少的算量，这才叫优化，不是"换了个算法"。**一旦答案变了，那就是换了个模型。' },
+      { act: '想一下这里为什么只省 17%',
+        watch: '序列才 2+4 个 token。真实推理里上下文动辄几千几万，**每步重算全部 K/V 完全不可行** ——'
+          + '**KV 缓存不是优化，是前提。**' },
+      { act: '把「解码方式」在三档之间切', param: '解码方式',
+        watch: '⚠️ **T=0.7 和 T=1.5 在这个种子上碰巧抽出同一条** —— 得看右边那一列（抽 200 个种子）：'
+          + '贪心 **0%**、T=0.7 **56%**、T=1.5 **82%**。**单个种子说明不了温度有没有用。**' },
+      { act: '逐段走一遍，注意每段旁边的"对应实验"',
+        watch: '归一化 = RMSNorm 那一屏、注意力 = 缩放点积+掩码那一屏、FFN = MoE 那屏的稠密版、采样 = 采样解码那一屏。'
+          + '**这条链就是推理引擎每一步 decode 真正跑的东西** —— 之前所有优化，优化的都是它。' },
     ],
-    terms: ['fwpass', 'softmaxdef', 'contbatch'],
+    terms: [],
   },
+
   rmsnorm: {
     question: 'Transformer 每层前都要归一化，RMSNorm 到底做了什么，为什么比 LayerNorm 更受欢迎？',
     plain: {
@@ -7106,35 +7135,71 @@ export const GUIDES: Record<string, Guide> = {
       terms: '**n-gram**：连续 n 个 token 组成的片段。**它是最古老的语言模型形式**（在神经网络之前统治了几十年）。\u3000**查表 vs 注意力**：查表**又快又准但不会泛化**（没见过的组合完全无能为力）；注意力**能泛化但每次都要重新计算**。**两者是互补的，不是替代关系。**\u3000**旁路（side path）**：不改动主干网络，**在旁边加一条通路，结果按某个权重混合进去**。好处是可以在已训练好的模型上加装。\u3000**命中率**：**决定这条旁路值不值的关键指标**。命中的多半是高频固定搭配 —— **也正是注意力最不需要费力气的部分**。\u3000**跟 RAG 的区别**：**RAG 检索的是外部文档、注入到提示词里；这里查的是模型内部的 token 模式、直接影响输出分布**。一个在输入侧，一个在输出侧。\u3000**为什么值得关注**：**这类「把便宜的手段和昂贵的手段组合起来」的思路，在推理优化里到处都是** —— 投机解码（小模型猜、大模型验）也是同一个套路。',
       watch: '看哪些位置命中了这张表、哪些落回注意力。命中率高的往往是高频的固定搭配。',
     },
+    /*  ⚠️ 老版本只有 table/queryKey/prediction。补厚后加了 seqName、命中/歧义、
+        逐位置评测和窗口基线。 */
     step: (s: never) => {
-      const st = s as { stage: string; ngram: number; table: unknown[]; queryKey: string; prediction: string; matchCount: number }
-      const nm: Record<string, string> = { id: '看任务', build: '建 n-gram 表', lookup: 'O(1) 查表', predict: '复制预测', done: '完成' }
+      const st = s as {
+        stage: string; seq: string[]; seqName: string; ngram: number; window: number
+        table: { key: string; next: string; count: number }[]
+        queryKey: string; prediction: string; matchCount: number
+        variants: number; hit: boolean; winHit: boolean; winPred: string
+        rows: { n: number; hitRate: number; ambRate: number; acc: number; winAcc: number; winHitRate: number }[]
+        row: { n: number; hitRate: number; ambRate: number; acc: number; winAcc: number; winScan: number }
+      }
+      const gap = st.rows.reduce((a, x) => ((x.acc - x.winAcc) > (a.acc - a.winAcc) ? x : a), st.rows[0])
       return [
-        { k: '本步输入', v: st.stage === 'done' ? `序列走完` : `阶段:${nm[st.stage]}（${st.ngram}-gram）` },
-        { k: '判定规则', v: `把出现过的 n-gram 存成「前 ${st.ngram - 1} 个→下一个」表;用当前 ${st.ngram - 1}-gram **O(1) 查表**拿到历次它后面跟的 token。不受注意力窗口限制。` },
-        { k: '本步结果', v: st.stage === 'done'
-            ? `查表补全出 **${st.prediction}**——把"精确复制"从贵的注意力卸载到便宜的表。`
-            : st.stage === 'build' ? `建好 **${st.table.length}** 个前缀的表(O(1) 可查)。`
-            : st.stage === 'lookup' ? `当前 2-gram「${st.queryKey}」命中(历史 ${st.matchCount} 次)。`
-            : st.stage === 'predict' ? `表里「${st.queryKey}」→ **${st.prediction}**,一次查表搞定。`
-            : `准备用 n-gram 记忆表补全下一个 token。` },
+        { k: '本步输入', v: st.stage === 'id' ? `序列 ${st.seq.join(' ')}（${st.seqName}），问下一个 token`
+          : st.stage === 'build' ? `整条序列，n=${st.ngram}`
+            : `当前 ${st.ngram - 1}-gram「${st.queryKey}」` },
+        { k: '判定规则', v: `把出现过的 n-gram 存成「前 ${st.ngram - 1} 个 → 下一个」的表，推理时 **O(1) 查表**。`
+          + `⚠️ 表有两个毛病：**会 miss**（前缀没见过）、**会歧义**（同一个前缀后面跟过好几种）——`
+          + `而且 **n 越大越 miss、n 越小越歧义**。` },
+        { k: '本步结果', v: st.stage === 'id' ? `准备建表。`
+          : st.stage === 'build' ? `建出 **${st.table.length}** 条表项。`
+            : st.stage === 'lookup'
+              ? (st.hit
+                ? `查「${st.queryKey}」→ **命中**（历史出现 ${st.matchCount} 次`
+                  + (st.variants > 1 ? `，⚠️ **后面跟过 ${st.variants} 种（歧义）**）` : `）`)
+                : `查「${st.queryKey}」→ ⚠️ **miss**，这个前缀没见过。`)
+              : st.stage === 'predict'
+                ? (st.hit ? `预测 **${st.prediction}**（×${st.matchCount}），一次查表搞定。` : `**给不出预测** —— 得交回给注意力。`)
+                : `**整条序列逐位置评测**（每个位置只拿它之前的历史建表）：`
+                  + st.rows.map(x => `n=${x.n} 命中${(x.hitRate * 100).toFixed(0)}%/歧义${(x.ambRate * 100).toFixed(0)}%/准确${(x.acc * 100).toFixed(0)}%`).join('　')
+                  + `\n\n⭐ **窗口基线对照**（只看最近 ${st.window} 个）：`
+                  + (gap.acc - gap.winAcc > 0.05
+                    ? `差得最多的是 n=${gap.n}（**${(gap.acc * 100).toFixed(0)}%** vs ${(gap.winAcc * 100).toFixed(0)}%）——`
+                      + `**远处的 n-gram 查表拿得到、窗口够不着**。`
+                    : `⚠️ **这一档两条线一样齐** —— 周期短、窗口够得着，`
+                      + `**这条序列演不出"不受窗口限制"**。换成带噪或自然文本再看。`) },
       ]
     },
     verdict: (s: never) => {
-      const st = s as { stage: string; prediction: string }
-      return st.stage === 'done' ? `→ ${st.prediction}` : st.prediction ? `查到 ${st.prediction}` : st.stage
+      const st = s as { stage: string; hit: boolean; prediction: string; row: { acc: number } }
+      if (st.stage === 'done') return st.hit ? `准确率 ${(st.row.acc * 100).toFixed(0)}%` : 'miss'
+      return { id: '识别', build: '建表', lookup: st.hit ? '命中' : 'miss', predict: st.prediction || 'miss' }[st.stage] ?? '—'
     },
     read: [
-      { at: '读数', is: '粒度、表项数、查询前缀、预测。', anchor: '.scdim' },
-      { at: '序列', is: '末尾 n−1 个 token(高亮)= 查询前缀;命中后补出预测。', anchor: '.egseq' },
-      { at: 'n-gram 表', is: '每行「前缀→下一个×次数」;命中行高亮。', anchor: '.egtable' },
+      { at: '读数', is: 'n、查询前缀、预测（**miss 会直说**、**歧义会标出跟过几种**）、**整条序列上的命中率/歧义率**、以及**查表 vs 窗口基线**的准确率。', anchor: '.scdim' },
+      { at: '序列与表', is: '序列末尾高亮的是查询前缀;表里命中的那一行标出来。', anchor: '.egwrap' },
+      { at: '评测表', is: '各档 n 的命中率、歧义率、预测准确率，以及**只看最近 6 个 token**的基线。', anchor: '.qsscale' },
     ],
     try: [
-      { act: '一步步走', watch: '建表 → 取当前 2-gram「B C」→ O(1) 命中 → 复制出 D。' },
-      { act: '对比归纳头', watch: '同是"回头找上次它之后是什么",但这是便宜的显式查表,不是贵的注意力。' },
+      { act: '把「序列」换成「带噪周期」，再把 n 从 2 调到 5', param: 'n（几元组）',
+        watch: '**命中率 71%→29%，而歧义率 25%→0%** —— **n 越大越容易 miss、n 越小越容易歧义**。'
+          + '这对权衡是 n-gram 的老问题，**老版本那条完美周期序列一点都看不出来**（歧义率恒为 0）。' },
+      { act: '看评测表最右那一列（窗口基线）',
+        watch: '带噪周期 n=3：查表 **44%** vs 只看最近 6 个的 **25%**；n=5 是 14% vs **0%** ——'
+          + '**远处出现过的 n-gram，查表拿得到、窗口基线够不着**。这就是"不受注意力窗口限制"的证据。' },
+      { act: '⚠️ 换回「完美周期」再看那一列', param: '序列',
+        watch: '**两条线一样齐（82% vs 82%）** —— 周期只有 4、窗口有 6，该抄的就在窗口里。'
+          + '**这条序列根本演不出"不受窗口限制"**，而老版本用的就是它。**量不到就说量不到。**' },
+      { act: '换成「自然一点的文本」、n=5', param: '序列',
+        watch: '**命中率 0%** —— 长前缀在非周期序列上几乎必然 miss。'
+          + 'Engram **只会照抄见过的**，一旦 miss 就得把活交回给注意力 —— **这才是"二者互补"的意思**。' },
     ],
     terms: [],
   },
+
   linattn: {
     question: '上下文越长，注意力算量和 KV 缓存就越顶不住——线性注意力怎么解？',
     plain: {
@@ -7143,32 +7208,68 @@ export const GUIDES: Record<string, Guide> = {
       terms: '**平方复杂度的来源**：注意力矩阵是 n×n 的，**这是标准注意力一切长文本困难的根源**。\u3000**结合律换序**：**线性注意力的数学核心** —— 标准做法是 (Q·Kᵀ)·V（先得到 n×n 的大矩阵），**换成 Q·(Kᵀ·V) 之后，中间那个矩阵只有 d×d**（d 是维度，跟序列长无关）。算出来不完全等价，但形式上就是这一步换序。\u3000**去掉 softmax**：**换序的前提** —— softmax 卡在 Q·Kᵀ 之后，有它就没法结合律换序。所以线性注意力要用别的（可分解的）相似度函数代替。\u3000**固定大小的状态**：Kᵀ·V 那个 d×d 矩阵，**可以理解成「把全部历史压缩进去的记忆」** —— 这一点跟 RNN 的隐藏状态非常像。\u3000**代价**：**固定容量意味着信息必然有损**。需要精确回忆某个远处词的任务（大海捞针）上，它明显不如标准注意力。\u3000**推理时的优势**：**可以像 RNN 那样一步一步递推，不需要 KV 缓存** —— 显存恒定，这在超长上下文时非常诱人。\u3000**当下的路线**：Mamba、RWKV、以及各种「线性 + 少量标准注意力层」的混合结构 —— **用少数几层标准注意力补上精确检索的能力**。',
       watch: '对比同样序列长度下两者的计算量和显存。长度拉到几万时差距是几十倍 —— 但要看清它在精确检索类任务上丢了什么。',
     },
+    /*  ⚠️ 老版本只有 ratio/kvMem 那几个公式值。补厚后每档都真算了两种注意力，
+        状态里有误差、尖锐度、结合律和递推的验证结果。 */
     step: (s: never) => {
-      const st = s as { phase: string; n: number; d: number; ratio: number; kvMem: number; stateMem: number; crossoverN: number }
-      const f = (x: number) => x >= 1e9 ? (x/1e9).toFixed(1)+'G' : x >= 1e6 ? (x/1e6).toFixed(1)+'M' : x >= 1e3 ? (x/1e3).toFixed(0)+'K' : `${x}`
+      const st = s as {
+        phase: string; n: number; d: number; phiName: string; taskName: string; target: number
+        row: { n: number; smMac: number; linMac: number; smFormula: number; linFormula: number
+          err: number; smMax: number; linMax: number; smEnt: number; linEnt: number; smHit: number; linHit: number }
+        rows: { n: number; err: number; smMax: number; linMax: number }[]
+        big: { n: number; ratio: number; kvMem: number; stateMem: number }[]
+        formulaOK: boolean; assocErr: number; assocMacFast: number; assocMacNaive: number
+        recErr: number; stateSize: number; crossoverN: number
+      }
+      const r = st.row
+      const bigLast = st.big[st.big.length - 1]
+      const isRetrieve = st.taskName.startsWith('一个键')
       return [
-        { k: '本步输入', v: st.phase === 'done' ? 'N 从 64 拉到 32768' : `序列长度 N=${st.n}` },
-        { k: '判定规则', v: `softmax 算 N×N=O(N²)、KV 缓存 O(N);线性用结合律先算 φ(K)ᵀV 的 d×d 状态→算量 O(N)、状态固定 O(d²)。` },
+        { k: '本步输入', v: st.n > 0 ? `序列 **N=${st.n}**（头维度 d=${st.d}，核函数 ${st.phiName}）` : `按「下一步」逐档拉长序列` },
+        { k: '判定规则', v: `标准注意力先算 N×N 的注意力矩阵（**O(N²)**）；线性注意力用**结合律**先算 φ(K)ᵀ·V 那个 **d×d 状态**（**O(N·d²)**）。`
+          + `⚠️ **这一屏每档都把两种都真算了一遍** —— 老版本只有两个公式在换 N，一次注意力都没算过。` },
         { k: '本步结果', v: st.phase === 'done'
-            ? `长序列线性完胜:算量差 **${st.ratio}×**、KV 缓存 ${f(st.kvMem)} vs 恒定状态 ${f(st.stateMem)}——告别膨胀 KV。`
-            : `算量差 **${st.ratio}×**、KV 缓存 ${f(st.kvMem)}(随 N 长) vs 状态 ${f(st.stateMem)}(恒定)${st.n <= st.d ? '（N≤d，softmax 还更省）' : ''}。` },
+          ? `**"一点精度"是个数**：相对误差 ${st.rows.map(x => x.err).join(' / ')}（N=${st.rows.map(x => x.n).join('/')}）—— **这不叫"一点"**。\n\n`
+            + `⭐ **而真正丢的是"尖锐"**：最大权重 softmax ${r.smMax} vs 线性 **${r.linMax}**，熵 ${r.smEnt} vs ${r.linEnt}。`
+            + (isRetrieve ? `　q₀ 对准的第 ${st.target} 个 key，softmax 给 **${r.smHit}**、线性只给 **${r.linHit}**。` : '')
+            + `\n\n**结合律**验过：两种乘法顺序输出差 ${st.assocErr}（同一个答案），算量 ${st.assocMacFast} vs ${st.assocMacNaive}。`
+            + `**RNN 递推**验过：差 ${st.recErr}，状态固定 ${st.stateSize} 个数。`
+            + `　公式跟实测${st.formulaOK ? '**逐档对得上 ✓**' : '⚠️ 对不上'}，才敢外推到 N=${bigLast.n}（算量差 ${bigLast.ratio}×）。`
+          : st.n > 0
+            ? `算量实测 ${r.smMac} / ${r.linMac}（公式 ${r.smFormula} / ${r.linFormula}${r.smMac === r.smFormula ? '，**对得上**' : '，⚠️ 对不上'}）。`
+              + `　**输出相对误差 ${r.err}**；最大注意力权重 softmax ${r.smMax} vs 线性 **${r.linMax}**（熵 ${r.smEnt} vs ${r.linEnt}）。`
+              + (isRetrieve ? `　目标 key #${st.target}：${r.smHit} vs ${r.linHit}。` : '')
+            : '待开始。' },
       ]
     },
     verdict: (s: never) => {
-      const st = s as { phase: string; n: number; ratio: number }
-      return st.phase === 'done' ? `省 ${st.ratio}×` : `N${st.n}·${st.ratio}×`
+      const st = s as { phase: string; n: number; row: { err: number; smMax: number; linMax: number } }
+      if (st.phase === 'done') return `尖锐度 ${st.row.smMax}→${st.row.linMax}`
+      return st.n > 0 ? `N=${st.n} 误差${st.row.err}` : '起点'
     },
     read: [
-      { at: '读数', is: 'N、算量差、KV 缓存 vs 线性状态。', anchor: '.scdim' },
-      { at: '算量曲线', is: '红=softmax O(N²) 陡、蓝=线性 O(N) 缓;竖虚线=交叉点 N=d。', anchor: '.laplot' },
-      { at: '显存条', is: 'KV 缓存随 N 长、线性状态恒定 d×d。', anchor: '.lamem' },
+      { at: '读数', is: '序列长度、**输出的相对误差**（正文里那句"一点精度"）、**最大注意力权重**（softmax vs 线性）、乘加次数。', anchor: '.scdim' },
+      { at: '注意力分布', is: 'q₀ 那一行的两条分布并排：蓝=softmax、灰=线性。**越尖锐熵越小**;检索档里目标 key 那一根描了边。', anchor: '.bncurvewrap' },
+      { at: '真算过的那几档', is: '每档的相对误差、最大权重、熵、给目标 key 的权重。', anchor: '.qsscale' },
+      { at: '两句话各验一遍', is: '"利用结合律"和"RNN 式递推"——输出差多少、算量/显存各是多少。', anchor: '.qsscale' },
     ],
     try: [
-      { act: '按「下一步」拉长 N', watch: '红线(N²)越翘越高、蓝线(N)缓;KV 缓存条一直长、线性状态条不动。' },
-      { act: '看 N=32768', watch: '算量差 512×、KV 缓存 4M vs 状态 4K——长上下文的关键。' },
+      { act: '停在任意一档，看「输出的相对误差」', param: '任务',
+        watch: '实测 **0.47 ~ 0.79** —— 正文里写的是"拿**一点**精度换算量与显存"。**这可不叫"一点"。**'
+          + '老版本这一屏一次注意力都没算过，所以那句话从来没被检验过。' },
+      { act: '把「任务」换成「一个键明显对准（检索）」', param: '任务',
+        watch: 'q₀ 特意对准了某个 key。**N=64 时 softmax 给它 1.0 的权重（熵 0.004），线性只给 0.034（熵 5.933）** ——'
+          + '**softmax 里的 exp 是个放大器，能把注意力几乎全压到一个 token 上；线性压不上去。**'
+          + '"在上下文里精确检索一条信息"正是它打不过 softmax 的地方。' },
+      { act: '看末帧「两句话各验一遍」那张表',
+        watch: '**结合律**：两种乘法顺序输出差 0（同一个答案），算量 16384 vs 262144（差 16 倍）——**这才是那句话的证据**。'
+          + '**RNN 递推**：结果一样，状态固定 72 个数、跟 N 无关。' },
+      { act: '看外推表上面那行小字',
+        watch: '大 N 那几档**没有真算**，用的是公式 —— **但那两个式子先拿真数出来的乘加次数逐档核对过**。'
+          + '**测量确认过的公式，不是拿公式代替测量。**' },
     ],
     terms: [],
   },
+
   condnum: {
     question: '同一套梯度下降,为什么有的问题一步到位、有的却要爬几百步?',
     plain: {
@@ -7342,31 +7443,63 @@ export const GUIDES: Record<string, Guide> = {
       terms: '**点积**：对应位相乘再求和。**它同时包含了「方向像不像」和「两个向量有多长」两重信息** —— 这既是它的信息量也是它的问题。\u3000**余弦相似度**：点积除以两个向量的模长，**等价于两个向量夹角的余弦**。取值在 −1 到 1 之间，只反映方向。\u3000**归一化之后两者等价**：**这是工程上的关键一点** —— 如果向量库存的都是**已归一化**的向量，**那么点积就等于余弦** —— 于是可以用最快的矩阵乘法一次算完几百万个比较。所以实用系统几乎都在入库时归一化。\u3000**欧氏距离**：另一种度量。**在归一化之后，欧氏距离和余弦相似度是单调等价的**（距离越小余弦越大），所以排序结果一致。\u3000**什么时候不该归一化**：**当向量长度本身有含义时**。比如用词频向量表示文档，长度反映文档长短；或者某些推荐场景里，向量的模长编码了「热度」。\u3000**高维的反直觉**：维度很高时，**随机的两个向量几乎必然接近正交（余弦接近 0）** —— 所以高维空间里「有点像」是很罕见的信号，这也是嵌入检索能奏效的原因之一。',
       watch: '对比归一化前后的排序结果。不归一化时，长向量会无理由地排在前面 —— 那正是检索质量下降的常见原因。',
     },
+    /*  ⚠️ 老版本只有角度那几个数。补厚后加了维度、随机向量的余弦分布、检索排名对照。 */
     step: (s: never) => {
-      const st = s as { phase: string; angleDeg: number; dot: number; cosSim: number; proj: number; magA: number; magB: number }
+      const st = s as {
+        phase: string; angleDeg: number; dot: number; cosSim: number; proj: number
+        magA: number; magB: number; dim: number; scoreName: string
+        ortho: { d: number; n: number; mean: number; sd: number; theory: number; bigFrac: number }[]
+        orthoNow: { d: number; n: number; sd: number; theory: number; bigFrac: number }
+        docs: { name: string; mag: number; cos: number; dot: number; rankDot: number; rankCos: number }[]
+        topDot: string; topCos: string
+      }
+      const started = st.angleDeg >= 0
+      const d1 = st.docs.find(x => x.name.startsWith('D1'))
       return [
-        { k: '本步输入', v: st.phase === 'done' ? 'θ 从 0° 转到 180°' : `夹角 θ=${st.angleDeg}°` },
-        { k: '判定规则', v: `内积 a·b=|a||b|cosθ,长度固定时纯量方向一致度:同向最大、正交=0、反向最负。÷|a||b| 就是余弦相似度。` },
+        { k: '本步输入', v: started ? `夹角 θ=**${st.angleDeg}°**（|a|=${st.magA}、|b|=${st.magB}，维度 d=${st.dim}）` : '固定 a，让 b 从同向转到反向' },
+        { k: '判定规则', v: `**a·b = |a||b|cosθ**，也等于 |a| × (b 在 a 上的投影)。长度固定时它就纯粹量"方向多一致"。`
+          + `⚠️ **这张图跟维度无关** —— 两个向量不管在几维空间里都只张成一个平面。**维度影响的是随机向量之间的关系。**` },
         { k: '本步结果', v: st.phase === 'done'
-            ? `内积 6→0(正交)→−6、余弦 1→0→−1——方向越一致内积越大。这就是 Q·K 打分。`
-            : `a·b = ${st.magA}×${st.magB}×cos${st.angleDeg}° = **${st.dot}**,余弦 **${st.cosSim}**${st.angleDeg === 90 ? '(正交=不相关)' : ''}。` },
+          ? `θ 走完一圈：内积 ${st.magA * st.magB} → **0**（正交）→ −${st.magA * st.magB}。\n\n`
+            + `⭐ 另抽 ${st.orthoNow.n} 对随机向量：d=${st.dim} 时余弦标准差 **${st.orthoNow.sd}**（理论 1/√d=${st.orthoNow.theory}），`
+            + `|余弦|>0.5 的只占 **${(st.orthoNow.bigFrac * 100).toFixed(1)}%**。`
+            + `而 d=2 时这个比例是 **${(st.ortho[0].bigFrac * 100).toFixed(0)}%** —— **"随机方向几乎正交"在低维是假的**。\n\n`
+            + `⭐ 检索排名：按内积第一是「${st.topDot}」，按余弦第一是「${st.topCos}」`
+            + (d1 ? `——方向最准的 D1 按内积只排第 **${d1.rankDot}**。**原始内积偏爱模长大的**。` : '。')
+          : started
+            ? `a·b = ${st.magA}×${st.magB}×${st.cosSim} = **${st.dot}**，余弦 ${st.cosSim}；投影 ${st.proj}。`
+              + (st.angleDeg === 90 ? `　**正交 = 内积 0 = 毫无关系。** 记住这个 0。` : '')
+            : '待转动。' },
       ]
     },
     verdict: (s: never) => {
-      const st = s as { phase: string; angleDeg: number; dot: number }
-      return st.phase === 'done' ? '方向=相似' : `${st.angleDeg}°·${st.dot}`
+      const st = s as { phase: string; angleDeg: number; dot: number; dim: number; orthoNow: { sd: number } }
+      if (st.phase === 'done') return `σ=${st.orthoNow.sd}（d=${st.dim}）`
+      return st.angleDeg < 0 ? '起点' : `${st.angleDeg}°→${st.dot}`
     },
     read: [
-      { at: '读数', is: '夹角、内积、余弦相似度。', anchor: '.scdim' },
-      { at: '几何图', is: 'a(灰)固定、b(蓝)转角;红段=b 在 a 上的投影,内积=|a|×投影。', anchor: '.dsplot' },
-      { at: '余弦尺', is: '▲ 在 −1(反向)…+1(同向)之间。', anchor: '.dsmtrack' },
+      { at: '读数', is: '夹角、内积、余弦，以及**这个维度下随机方向余弦的标准差**（跟理论 1/√d 并排）和 **|余弦|>0.5 的比例**。', anchor: '.scdim' },
+      { at: '向量图', is: 'a 固定、b 转角;虚线是 b 尖到 a 的垂线，a 上那一段就是投影。⚠️ **这张图跟维度无关**。', anchor: '.dsplot' },
+      { at: '高维近正交表', is: '各档维度抽 2000 对随机向量量出来的余弦分布：均值、**实测标准差**、**理论 1/√d**、|余弦|>0.5 的比例。', anchor: '.qsscale' },
+      { at: '检索排名表', is: '6 个文档向量按**原始内积**和按**余弦**各排一次名 —— 名次不一样的那几行标了色。', anchor: '.qsscale' },
     ],
     try: [
-      { act: '按「下一步」转 b', watch: '同向内积最大→转到 90°内积为 0→反向最负;投影段跟着变。' },
-      { act: '盯 90°那步', watch: '正交时内积=0=不相关——这正是注意力里无关 token 权重低的道理。' },
+      { act: '把「维度 d」从 2 一路调到 512', param: '维度 d',
+        watch: '**上面那张角度图一点不变**（两个向量只张成一个平面），可随机方向余弦的标准差从 **0.703** 一路掉到 **0.044** ——'
+          + '刚好是 **1/√d**。**|余弦|>0.5 的比例从 65.7% 掉到 0.0%。**' },
+      { act: '停在 d=2 想一件事', param: '维度 d',
+        watch: '**"随机方向几乎正交"在 2 维里是假的** —— 随便抓两个方向，有 66% 的机会余弦超过 0.5。'
+          + '老版本这一屏就是 2 维的，而正文里写着"高维近正交" —— **那句话从来没发生过**。' },
+      { act: '看末帧那张检索排名表',
+        watch: '按原始内积排第一的是 **D2**（长·方向一般），按余弦排第一的是 **D1**（短·方向最准）——'
+          + '**而 D1 按内积只排第 5**。原始内积会系统性偏爱模长大的向量，这就是**"长文档偏置"**。' },
+      { act: '把「打分口径」换成余弦', param: '打分口径',
+        watch: '长度被除掉了，排名就只看方向。**"内积 = 相似度"要加一个前提：长度得先处理掉。**'
+          + '实践中的向量检索普遍是先归一化再算内积 —— 那就是余弦。' },
     ],
     terms: [],
   },
+
   lowrank: {
     question: '为什么微调大模型能只训一小撮参数(LoRA)、还不太掉效果?',
     plain: {
@@ -7851,31 +7984,73 @@ export const GUIDES: Record<string, Guide> = {
       terms: '**能量函数**：网络的每个状态对应一个能量值。**演化过程必定让能量单调下降** —— 所以它一定会停下来，这是它最漂亮的性质。\u3000**吸引子**：能量的局部极小点。**存进去的每个模式都被塑造成一个吸引子**（一个坑）。\u3000**联想记忆**：给一个残缺的输入，**系统自动收敛到最近的那个吸引子** —— 也就是「补全」。这跟按地址取数据的普通内存是完全不同的检索方式。\u3000**容量极限**：**大约 0.14N 个模式**（N 是神经元数）。存太多就会互相干扰。\u3000**伪吸引子**：**存多了之后最典型的故障** —— 出现一些**从来没存进去过的坑**，回忆时落进去，就「想起」了一个根本不存在的东西。\u3000**跟注意力的联系**：**这是它今天重新受关注的原因** —— 现代 Hopfield 网络的更新规则**在数学形式上跟 Transformer 的注意力高度相似**。可以把注意力理解成一种「一步完成的联想检索」：用 query 去唤起存储在 key-value 里的内容。\u3000**局限**：容量小、只能存二值模式、**而且是全连接的**（N 个神经元要 N² 个权重）。它的意义更多在概念上。',
       watch: '存进几个模式后喂一个带噪版本，看状态怎么一步步收敛。存得越多，收敛到错误模式的概率越大。',
     },
+    /*  ⚠️ 老版本只有 weights/matchBits 那几个数。补厚后加了 β 扫描、吸引域、容量。 */
     step: (s: never) => {
-      const st = s as { phase: string; step: number; weights: number[]; best: number; matchBits: number; converged: boolean }
+      const st = s as {
+        phase: string; step: number; beta: number; flip: number; n: number
+        weights: number[]; best: number; truth: number; truthDist: number
+        matchBits: number; onehot: boolean; converged: boolean; right: boolean; maxW: number
+        betaSweep: { beta: number; maxW: number; right: boolean; basin2: number; cap16: number }[]
+        basin: { flip: number; ok: number; okNear: number }[]
+        basinEdge: number
+        cap: { n: number; row: { m: number; ok: number }[] }[]
+      }
+      const edgeOf = (c: { row: { m: number; ok: number }[] }) => {
+        const g = c.row.filter(x => x.ok >= 0.9)
+        return g.length ? g[g.length - 1].m : 0
+      }
+      const b0 = st.betaSweep[0], b3 = st.betaSweep[st.betaSweep.length - 1]
       return [
-        { k: '本步输入', v: st.phase === 'done' ? '检索收敛' : `第 ${st.step < 0 ? 0 : st.step} 步检索` },
-        { k: '判定规则', v: `一步 Hopfield = 一次注意力：权重=softmax(β·query·keys)，output=Σ权重·记忆，取符号当新 query 再来。β 大→精确检索。` },
+        { k: '本步输入', v: st.step <= 0 ? `4 个 ${st.n} 位模式当"记忆"；query = 模式 0 **翻了 ${st.flip} 位**（β=${st.beta}）` : `第 ${st.step} 步的 query` },
+        { k: '判定规则', v: `一次注意力 = 一步 Hopfield 检索：**weights = softmax(β·query·keys)**，**output = Σ weights·patterns**，取符号当新 query。`
+          + `⚠️ **"回忆对了吗"对着另算的真值判**（离 query 汉明最近的那个模式），**不问它自己**。` },
         { k: '本步结果', v: st.phase === 'done'
-            ? `残缺 query 被“回忆”回完整 P0，权重收敛到 one-hot——注意力就是按内容检索的联想记忆。`
-            : `最像 **P${st.best}**（${(st.weights[st.best] * 100).toFixed(0)}%），query 与 P0 相同 **${st.matchBits}/8** 位${st.converged ? '——已回忆出完整 P0、权重 one-hot' : st.matchBits < 8 ? '（还残缺）' : ''}。` },
+          ? `认定 **P${st.best}**，真值 **P${st.truth}**（距 ${st.truthDist}）—— **${st.right ? '对 ✓' : '错 ✗'}**；`
+            + `最大权重 **${st.maxW}**（${st.onehot ? 'one-hot' : '分散'}）。\n\n`
+            + `⭐ **β 扫描**：${st.betaSweep.map(x => `β=${x.beta} 权重${x.maxW}`).join('　')}。`
+            + `⚠️ 屏幕上这个 query **四档都回得去**，得看抽样：β=${b0.beta} 翻 2 位只有 ${(b0.basin2 * 100).toFixed(0)}%、`
+            + `存 16 个只认得出 ${(b0.cap16 * 100).toFixed(0)}%；β=${b3.beta} 是 ${(b3.basin2 * 100).toFixed(0)}% 和 ${(b3.cap16 * 100).toFixed(0)}%。\n\n`
+            + `⭐ **吸引域**（抽 200 次）：${st.basin.map(x => `翻${x.flip}位 ${(x.ok * 100).toFixed(0)}%`).join('　')} —— **边界在翻 ${st.basinEdge} 位**。\n\n`
+            + `⭐ **容量**：N=${st.cap[0].n} 撑到 M=${edgeOf(st.cap[0])}，N=${st.cap[1].n} 撑到 M=${edgeOf(st.cap[1])} —— **维度翻一倍，容量翻的不止一倍**。`
+          : `权重 [${st.weights.map(w => (w * 100).toFixed(0) + '%').join(', ')}]，最像 **P${st.best}**（${(st.maxW * 100).toFixed(0)}%）；`
+            + `query 和真值模式 P${st.truth} 相同 **${st.matchBits}/${st.n}** 位。`
+            + (st.converged ? `　✅ **回忆出来了**，权重收敛到 one-hot。`
+              : st.onehot ? `　权重已是 one-hot，query 还差 ${st.n - st.matchBits} 位。`
+                : `　⚠️ **权重还很分散** —— 这时候输出是几个模式的**加权平均**，谁也不是。`) },
       ]
     },
     verdict: (s: never) => {
-      const st = s as { phase: string; best: number; matchBits: number }
-      return st.phase === 'done' ? '回忆出 P0' : `P${st.best} \u00b7 ${st.matchBits}/8`
+      const st = s as { phase: string; step: number; converged: boolean; truth: number; maxW: number }
+      if (st.phase !== 'done') return `第${st.step}步`
+      return st.converged ? `回忆出 P${st.truth}` : `最大权重 ${st.maxW}`
     },
     read: [
-      { at: '存储的记忆', is: '4 个 8 位模式(蓝=+1 红=-1)当 keys；被检索到的高亮。', anchor: '.hfmem' },
-      { at: '当前 query', is: '红框标出和 P0 不一致的位；随检索一步步清理回 P0。', anchor: '.hfquery' },
-      { at: '检索权重', is: 'softmax(β·query·keys)，收敛到 one-hot=认定某个记忆。', anchor: '.hfweights' },
+      { at: '读数', is: 'β、**最大权重**（one-hot 还是分散）、**认定的模式 vs 另算的真值**、query 相同位数、**吸引域边界**。', anchor: '.scdim' },
+      { at: '记忆与权重', is: '4 个存储模式 + 当前 query（红框=不一致的位）+ 检索权重条。', anchor: '.hfrow' },
+      { at: 'β 扫描表', is: '四档 β 的最大权重、屏幕上这个 query 回不回得去、以及**抽样**出来的吸引域和容量命中率。', anchor: '.qsscale' },
+      { at: '吸引域表', is: '翻 f 位、抽 200 次。**两列口径不一样**：回到**原模式**（吸引域，会塌）vs 回到**汉明最近**那个（一直高）。', anchor: '.qsscale' },
+      { at: '容量表', is: 'N=8 和 N=16 各存 M 个随机模式的命中率 —— 崩溃点怎么随维度挪。', anchor: '.qsscale' },
     ],
     try: [
-      { act: '按「下一步」做一次检索', watch: '红框位翻回来、query 与 P0 从 6/8 变 8/8；权重从分散收敛到 one-hot。' },
-      { act: '盯"最像 P?"', watch: '残缺 query 一开始就最像 P0，检索把它拉回完整的 P0——这就是按内容的联想回忆。' },
+      { act: '把 β 调到 0.5', param: 'softmax 锐度 β',
+        watch: '**最大权重只有 0.355** —— softmax 压不出尖锐的选择，输出是几个模式的加权平均、取符号之后**谁也不是**。'
+          + '⚠️ 但**屏幕上这个 query 照样回得去** —— 得看抽样那两列：翻 2 位只有 **32%**、存 16 个模式只认得出 **8%**。'
+          + '**单个例子说明不了旋钮有没有用。**' },
+      { act: '把「query 翻几位」从 1 调到 3', param: 'query 翻几位',
+        watch: '看吸引域那张表：翻 0/1 位 **100%**、翻 2 位 63%、翻 4 位只剩 **14%** —— **边界在翻 1 位**。'
+          + '"落进吸引域就被拉回完整模式"这句话，**吸引域到底多大是抽出来的**。' },
+      { act: '盯吸引域表的两列想一件事',
+        watch: '第一列（回到**原模式**）塌下去，第二列（回到**汉明最近**那个）还很高 ——'
+          + '**说明它没乱来，是 query 真的已经离开那片地方了。** ⚠️ 这个口径栽过一次：'
+          + '第一版只用第二列当"正确"，曲线 100/100/83/88/84 **根本不下降**，"吸引域"一点没演出来。' },
+      { act: '看容量那张表',
+        watch: '**N=8 到 M=64 只剩 29%，而 N=16 全程 100%** —— **维度翻一倍，容量翻的可不止一倍**。'
+          + '这正是"现代 Hopfield 容量随维度指数增长"，也正对上**「高维近正交」**那一屏：'
+          + '维度一高，随机模式几乎互相垂直，塞得下的就多得多。' },
     ],
     terms: [],
   },
+
   scale: {
     question: '注意力为什么要除以 \u221ad_k？',
     plain: {

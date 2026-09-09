@@ -14,7 +14,7 @@ import { engineKernel } from '../../src/kernels/engine.ts'
 import { epKernel } from '../../src/kernels/ep.ts'
 import { dpattnKernel } from '../../src/kernels/dpattn.ts'
 import { flashdecodeKernel } from '../../src/kernels/flashdecode.ts'
-import { engramKernel } from '../../src/kernels/engram.ts'
+import { engramKernel, ENGRAM_SEQS } from '../../src/kernels/engram.ts'
 import { last, numDistractors, type CatalogEntry, type Kernel } from '../catalog-shared.ts'
 
 export const LLM_INFER_A_ENTRIES: CatalogEntry[] = [
@@ -338,48 +338,84 @@ export const LLM_INFER_A_ENTRIES: CatalogEntry[] = [
     ],
   },
 
-  // ═══ Engram · n-gram 记忆 ════════════════════════════
+  // ═══ Engram · n-gram 记忆：它便宜在哪、又贵在哪 ═══════
   {
     id: 'engram',
     title: 'Engram · n-gram 记忆',
     kernel: engramKernel as Kernel<unknown>,
-    doc: { kind: 'engram', params: {}, entities: [], streams: [] },
+    /*  2026-09-09 补厚：老版本用的是完美周期序列、n 写死 3 —— 查表必然命中、预测必然对。
+        老那几条 fact 全建立在"必然命中"上（"预测的下一个 token 是哪个"）。整批重写。 */
+    doc: { kind: 'engram', params: { seq: ENGRAM_SEQS[1], n: 3 }, entities: [], streams: [] },
     facts: [
       {
-        id: 'engram-pred',
-        label: 'trigram 查表预测的下一个 token',
-        ask: '用 trigram 记忆表查当前 2-gram,预测的下一个 token 是哪个?',
-        kind: 'choice',
-        compute: t => { const f = last(t); return { answer: String(f.prediction), step: t.length - 1, evidence: `查询前缀「${String(f.queryKey)}」历史出现 ${String(f.matchCount)} 次,表里 → ${String(f.prediction)}` } },
-        distractors: (answer) => ['A', 'B', 'C', 'D'].filter(x => x !== answer).slice(0, 3),
-      },
-      {
-        id: 'engram-match',
-        label: '查询前缀在历史里的出现次数',
-        ask: '当前 2-gram 前缀在历史序列里出现过几次?',
-        kind: 'number',
-        compute: t => { const f = last(t); return { answer: String(f.matchCount), step: t.length - 1, evidence: `前缀「${String(f.queryKey)}」→ ${String(f.prediction)}` } },
+        id: 'engram-table', label: 'n-gram 记忆表的表项数', kind: 'number', genre: 'count',
+        ask: '扫完序列建好的 n-gram 表里有几个表项（不同的「前缀→下一个」组合）?',
+        compute: t => { const f = last(t)
+          return { answer: String((f.table as unknown[]).length), step: t.length - 1,
+            evidence: `序列 ${(f.seq as string[]).join(' ')}，n=${f.ngram}` } },
         distractors: numDistractors,
       },
       {
-        id: 'engram-table',
-        label: 'trigram 记忆表的表项数',
-        ask: '扫完序列建好的 trigram 表里有几个表项?',
-        kind: 'number',
-        compute: t => { const f = last(t); return { answer: String((f.table as unknown[]).length), step: t.length - 1, evidence: String(f.log ?? '') } },
+        /*  ⚠️ 计数题要自带数据 */
+        id: 'engram-hit-n5', label: 'n=5 时的命中率', kind: 'number', genre: 'count',
+        ask: '在「带噪周期」序列上逐位置评测（每个位置只拿它之前的历史建表），实测命中率是：'
+          + 'n=2 → 71%、n=3 → 56%、n=4 → 40%、n=5 → ?。**n=5 那一档的命中率是多少**（填百分数的整数部分）?',
+        compute: t => {
+          const rows = last(t).rows as { n: number; hitRate: number }[]
+          const x = rows.find(r => r.n === 5)!
+          return { answer: String(Math.round(x.hitRate * 100)), step: t.length - 1,
+            evidence: `命中率：${rows.map(r => `n=${r.n} ${(r.hitRate * 100).toFixed(0)}%`).join('、')}` }
+        },
         distractors: numDistractors,
       },
       {
-        id: 'engram-vs-induction',
-        label: 'Engram 与归纳头的机制差别',
+        /*  ⭐ 补厚的落点①：n-gram 那对此消彼长的毛病 */
+        id: 'engram-tradeoff', label: 'n 调大调小各有什么毛病', kind: 'choice', genre: 'concept',
+        ask: 'n-gram 记忆表的 n 调大或调小，各会带来什么问题?',
+        compute: t => {
+          const rows = last(t).rows as { n: number; hitRate: number; ambRate: number; acc: number }[]
+          return {
+            answer: 'n 大了容易 miss（前缀没见过），n 小了容易歧义（跟过好几种）',
+            step: t.length - 1,
+            evidence: `实测：${rows.map(r => `n=${r.n} 命中 ${(r.hitRate * 100).toFixed(0)}%、歧义 ${(r.ambRate * 100).toFixed(0)}%`).join('；')}`,
+          }
+        },
+        distractors: a => [a,
+          'n 大了会变慢，n 小了会变快 —— 只是速度上的取舍，准确率一样',
+          'n 大了表更小，n 小了表更大 —— 只影响内存占用，不影响预测',
+          'n 怎么调都一样 —— 只要那个模式出现过，多长的前缀都查得到',
+        ].filter(o => o !== a).slice(0, 3),
+      },
+      {
+        /*  ⭐ 补厚的落点②：那条演不出来的序列 */
+        id: 'engram-window-null', label: '哪条序列演不出"不受窗口限制"', kind: 'choice', genre: 'concept',
+        ask: '要证明 n-gram 记忆"不受注意力窗口限制"，得跟一个只看最近几个 token 的基线比。'
+          + '**在什么样的序列上这件事根本演不出来**?',
+        compute: t => ({
+          answer: '周期比窗口还短的序列 —— 该抄的就在窗口里，查表没占到便宜',
+          step: t.length - 1,
+          evidence: '实测：完美周期（周期 4）序列上，查表和只看最近 6 个 token 的基线都是 82%，两条线一样齐',
+        }),
+        distractors: a => [a,
+          '完全随机的序列 —— 什么模式都没有，两边都预测不出来',
+          '很长的序列 —— 表太大了，查表反而变慢',
+          '词表很小的序列 —— 候选太少，随便猜都能猜中',
+        ].filter(o => o !== a).slice(0, 3),
+      },
+      {
+        id: 'engram-vs-induction', label: 'Engram 与归纳头的机制差别', kind: 'choice', genre: 'concept',
         ask: 'Engram 的 n-gram 记忆和 Transformer 的"归纳头"机制上有什么不同?',
-        kind: 'choice',
-        compute: t => { const f = last(t); return { answer: 'Engram 是显式的非参数化查表(O(1)、便宜、不受注意力窗口限制);归纳头是学出来的软注意力(贵)。目标像但机制相反、互补', step: t.length - 1, evidence: `表 ${(f.table as unknown[]).length} 项,查「${String(f.queryKey)}」O(1) 命中 ${String(f.matchCount)} 次 → ${String(f.prediction)}` } },
-        distractors: () => [
-          '两者都是学出来的注意力,只是 Engram 层数更少',
-          'Engram 用 O(N²) 打分、归纳头用 O(1) 查表,正好相反',
-          'Engram 会随训练更新权重,归纳头是固定查表',
-        ],
+        compute: t => ({
+          answer: 'Engram 是显式的非参数化查表，归纳头是学出来的软注意力',
+          step: t.length - 1,
+          evidence: '目标像（都在回头找"上次它之后是什么"），但一个 O(1) 便宜、一个 O(N) 贵；'
+            + 'Engram 只会照抄见过的，miss 或歧义时就得把活交回给注意力 —— 这才是"互补"',
+        }),
+        distractors: a => [a,
+          '两者都是学出来的注意力，只是 Engram 的层数更少一些',
+          'Engram 用 O(N²) 打分、归纳头用 O(1) 查表，正好反过来',
+          'Engram 会随着训练更新权重，而归纳头是固定的查表',
+        ].filter(o => o !== a).slice(0, 3),
       },
     ],
   },

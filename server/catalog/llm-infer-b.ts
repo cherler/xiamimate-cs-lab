@@ -10,7 +10,7 @@
  */
 import { kvcacheKernel } from '../../src/kernels/kvcache.ts'
 import { kvoffloadKernel } from '../../src/kernels/kvoffload.ts'
-import { linattnKernel } from '../../src/kernels/linattn.ts'
+import { linattnKernel, LIN_PHIS, LIN_TASKS } from '../../src/kernels/linattn.ts'
 import { pagedKernel } from '../../src/kernels/paged.ts'
 import { ppKernel } from '../../src/kernels/pp.ts'
 import { radixKernel } from '../../src/kernels/radix.ts'
@@ -135,64 +135,101 @@ export const LLM_INFER_B_ENTRIES: CatalogEntry[] = [
     ],
   },
 
-  // ── 线性注意力 ───────────────────────────────────────
+  // ── 线性注意力：代价不只是"一点误差" ───────────────────
   {
     id: 'linattn',
     title: '线性注意力',
     kernel: linattnKernel as Kernel<unknown>,
-    doc: { kind: 'linattn', params: {}, entities: [], streams: [] },
+    /*  2026-09-09 补厚：老版本是纯公式算术（只有 2N²d / 2Nd² 在换 N），一次注意力都没算过。
+        老那几条 fact 全建立在 `ratio`/`stateMem` 这些公式值上，而 d 从 64 改成了 8、
+        大 N 挪进了外推表。整批重写。 */
+    doc: { kind: 'linattn', params: { phi: LIN_PHIS[0], task: LIN_TASKS[1] }, entities: [], streams: [] },
     facts: [
       {
-        id: 'flops_ratio', label: 'N=32768 时 softmax 与线性注意力的算量倍数',
-        ask: '头维度 d=64、序列 N 拉到 32768 时，标准 softmax 注意力的算量是线性注意力的多少倍?',
-        kind: 'number',
+        /*  ⚠️ 计数题要自带数据 */
+        id: 'flops_ratio', label: 'N=32768 时两种注意力的算量倍数', kind: 'number', genre: 'count',
+        ask: '头维度 d=8。标准注意力算量 2N²d、线性注意力 2Nd²，所以倍数 = N/d。'
+          + '序列 N 拉到 **32768** 时，标准 softmax 注意力的算量是线性注意力的多少倍?',
         compute: t => {
-          const f = last(t)
-          return { answer: String(f.ratio), step: t.length - 1, evidence: String(f.log ?? '') }
+          const big = last(t).big as { n: number; ratio: number }[]
+          const x = big[big.length - 1]
+          return { answer: String(x.ratio), step: t.length - 1, evidence: `N=${x.n}、d=8 → 倍数 ${x.ratio}` }
         },
         distractors: numDistractors,
       },
       {
-        id: 'state_mem', label: '线性注意力恒定状态的大小 d²+d',
-        ask: '线性注意力用一个固定大小的状态概括全部历史，这个状态占多大(d²+d，d=64)?',
-        kind: 'number',
+        /*  ⭐ 补厚的落点①："一点精度"是个数 */
+        id: 'how_much_error', label: '"一点精度"到底是多少', kind: 'choice', genre: 'concept',
+        ask: '正文常说线性注意力"拿**一点**精度换算量与显存"。把两种注意力都真算一遍，输出的相对误差大概是什么量级?',
         compute: t => {
-          const f = last(t)
-          return { answer: String(f.stateMem), step: t.length - 1, evidence: String(f.log ?? '') }
+          const rows = last(t).rows as { n: number; err: number }[]
+          return {
+            answer: '几十个百分点 —— 那可不叫"一点"',
+            step: t.length - 1,
+            evidence: `实测相对误差：${rows.map(r => `N=${r.n} 时 ${r.err}`).join('、')}`,
+          }
         },
-        distractors: numDistractors,
+        distractors: a => [a,
+          '千分之几 —— 数值上几乎看不出差别，可以当成等价',
+          '百分之几 —— 略有偏差，但对下游任务没有影响',
+          '要看序列长度 —— N 越短误差越大，N 长了就收敛到 0',
+        ].filter(o => o !== a).slice(0, 3),
       },
       {
-        id: 'crossover', label: 'softmax 与线性注意力的交叉点 N',
-        ask: '短序列 softmax 更省、长序列线性完胜，两者的交叉点在 N 等于多少?',
-        kind: 'number',
+        /*  ⭐ 补厚的落点②：真正丢的是"尖锐" */
+        id: 'lost_sharpness', label: '线性注意力真正丢掉的是什么', kind: 'choice', genre: 'concept',
+        ask: '除了数值误差，线性注意力相比 softmax 注意力**真正丢掉的能力**是什么?',
         compute: t => {
-          const f = last(t)
-          return { answer: String(f.crossoverN), step: t.length - 1, evidence: `交叉点 N=d=${String(f.crossoverN)}` }
+          const rows = last(t).rows as { n: number; smMax: number; linMax: number; smEnt: number; linEnt: number; smHit: number; linHit: number }[]
+          const r = rows.find(x => x.n === 64)!
+          return {
+            answer: '把注意力尖锐地压到一个 token 上的能力 —— 分布平坦得多',
+            step: t.length - 1,
+            evidence: `实测 N=64：softmax 最大权重 ${r.smMax}（熵 ${r.smEnt}），线性只有 ${r.linMax}（熵 ${r.linEnt}）；`
+              + `q₀ 特意对准的那个 key，softmax 给 ${r.smHit}、线性只给 ${r.linHit}`,
+          }
         },
-        distractors: numDistractors,
+        distractors: a => [a,
+          '处理长序列的能力 —— 序列一长它就记不住早期的 token 了',
+          '并行训练的能力 —— 它只能像 RNN 那样一步步串行地算',
+          '区分不同位置的能力 —— 它把序列当成一个无序的集合',
+        ].filter(o => o !== a).slice(0, 3),
       },
       {
-        id: 'mechanism', label: '线性注意力把 O(N²) 压成 O(N) 的关键手法',
+        id: 'mechanism', label: '把 O(N²) 压成 O(N) 的关键手法', kind: 'choice', genre: 'concept',
         ask: '线性注意力靠什么把算量从 O(N²) 降到 O(N)、显存降到恒定?',
-        kind: 'choice',
         compute: t => {
           const f = last(t)
           return {
-            answer: '利用矩阵乘法结合律，先算 φ(K)ᵀ·V 得到一个 d×d 状态，再让 φ(Q) 去乘它',
+            answer: '结合律：先算 φ(K)ᵀ·V 得到一个 d×d 状态，再让 φ(Q) 去乘',
             step: t.length - 1,
-            evidence: `N=${String(f.n)} 时算量差 ${String(f.ratio)}×、状态恒定 ${String(f.stateMem)}`,
+            evidence: `实测两种乘法顺序输出相对差 ${f.assocErr}（同一个答案），`
+              + `而乘加次数 ${f.assocMacFast} vs ${f.assocMacNaive}；状态固定 ${f.stateSize} 个数`,
           }
         },
-        distractors: () => [
-          '稀疏化 N×N 注意力矩阵，只保留少数高分项',
-          '直接丢弃远距离 token 的 K/V',
-          '对 Q 做低秩分解以减小矩阵规模',
-        ],
+        distractors: a => [a,
+          '稀疏化 N×N 的注意力矩阵，只保留分数最高的少数几项',
+          '直接把距离太远的 token 的 K/V 丢掉，只留最近的一段',
+          '对 Q 做低秩分解，把矩阵的规模先降下来再算',
+        ].filter(o => o !== a).slice(0, 3),
+      },
+      {
+        /*  ⭐ 「测量确认过的公式」这条纪律也出成题 */
+        id: 'formula_checked', label: '外推那张表凭什么可信', kind: 'choice', genre: 'concept',
+        ask: 'N=32768 那几档**没有真算**，用的是公式 2N²d / 2Nd²。这一屏凭什么敢这么外推?',
+        compute: t => ({
+          answer: '先在小 N 上把真数出来的乘加次数跟公式逐档核对过',
+          step: t.length - 1,
+          evidence: `N=8/16/32/64/128 五档上，实测乘加次数跟公式${last(t).formulaOK ? '一模一样' : '对不上'}`,
+        }),
+        distractors: a => [a,
+          '公式是从论文里抄的，论文已经证明过了，不用再核',
+          '大 N 真算太慢，只能相信公式 —— 这一步没有办法验证',
+          '因为算量本来就是定义出来的，跟实现怎么写没关系',
+        ].filter(o => o !== a).slice(0, 3),
       },
     ],
   },
-
   // ── PagedAttention ───────────────────────────────────
   {
     id: 'paged',
