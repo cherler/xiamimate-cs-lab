@@ -5453,31 +5453,57 @@ export const GUIDES: Record<string, Guide> = {
       hook: '怎么快速判断「这两个人是不是一伙的」？',
       what: '这一屏讲的是**并查集**：一个专门回答「这两个东西现在是不是一伙的」的极简数据结构。它只支持两个操作：**合并**两伙人，**查询**两个人是否同伙。看起来朴素，但用途极广：Kruskal 求最小生成树时判断「加这条边会不会成环」、判断网络连通性、图像里的连通区域标记、甚至编译器的类型推导。它的神奇之处在于：加上两个简单优化之后，**单次操作的均摊代价几乎是常数**（严格说是反阿克曼函数，小于 5）。',
       terms: '**代表元（根）**：每一伙推一个人当代表。判断同伙就是看两人的代表是不是同一个。\u3000**查找（find）**：顺着父指针一路往上走到根。\u3000**合并（union）**：让一伙的根认另一伙的根当父亲。\u3000**路径压缩**：**第一个关键优化** —— 每次 find 走过的路上，把沿途所有节点**直接挂到根名下**。下次再查这些人就是一步到位。屏幕上那一下「把长链拍扁」画的就是它。\u3000**按秩（或按大小）合并**：**第二个关键优化** —— 合并时**让小的一伙认大的当爹**，避免树越长越高。\u3000**两个优化必须一起用**：只用其中一个，复杂度是 O(log n)；两个都用才降到近乎常数。\u3000**它不支持什么**：**没法拆伙**。并查集只能合并不能分离 —— 需要「撤销」的场景得用别的结构（比如可撤销并查集或 LCT）。这也是为什么很多题会把「删边」倒过来变成「加边」来做。',
-      watch: '看路径压缩那一下怎么把长链拍扁。压缩之后再查同一个人，一步到位。',
+      watch: '默认档**两个优化都关着**、序列是最坏的那条。盯读数里的「find 累计爬了几步」—— 树深只是表象，那个数才是代价。走完看底下那张表：n=256 时它要爬 **32640 步**、树深 **255**、增长指数 **2.03**（也就是 O(n²)）；而任意打开一个优化立刻掉到 **509 步、树深 1**。',
     },
+    /*  ⚠️ 2026-09-09 补厚：新增 findSteps / maxDepth / slope / scale 等。
+        `st.xxx ?? …` 是给旧快照的兜底。 */
     step: (s: never) => {
-      const st = s as { phase: string; act: string; a: number; b: number; ra: number; rb: number; root: number; path: number[]; comps: number; depths: number[] }
+      const st = s as { phase: string; act: string; a: number; b: number; ra: number; rb: number
+                        root: number; path: number[]; comps: number; depths: number[]
+                        findSteps?: number; maxDepth?: number; slope?: number; degraded?: boolean
+                        totalSteps?: number; finalDepth?: number; n?: number
+                        unionKind?: string; compress?: string; seq?: string
+                        scale?: { unionKind: string; compress: string; slope: number; rows: { n: number; steps: number; depth: number }[] }[] }
+      const byRank = !!st.unionKind?.startsWith('按秩')
+      const doC = st.compress !== '不压缩'
       return [
-        { k: '本步输入', v: st.act === 'union' ? `union(${st.a},${st.b})` : st.act === 'find' ? `find(${st.a}):要认根` : st.act === 'compress' ? `find(${st.a}) 的路径 ${st.path.join('→')}` : `已并成 ${st.comps} 团` },
-        { k: '判定规则', v: `每个元素顺**父指针**爬到**根**,根=集团代表。union=把两人的根挂一起、并成一棵树;"是不是一伙"就看**根同不同**;路径压缩=find 到根后把沿途点直接挂根下、拍平长链。` },
+        { k: '本步输入', v: st.act === 'union' ? `union(${st.a},${st.b})`
+          : st.act === 'find' || st.act === 'compress' ? `find(${st.a})：要认根`
+            : `已并成 ${st.comps} 团` },
+        { k: '判定规则', v: `每个元素顺**父指针**爬到**根**，根 = 集团代表。` +
+          `合并按「${byRank ? '**按秩**：矮的挂高的，从源头不让树长高' : '**朴素**：谁在前挂谁，不看谁高谁矮'}」；` +
+          `${doC ? 'find 到根后把沿途的点**全部直挂根下**，事后拍平长链。' : '**不压缩** —— 爬过的链下次还得再爬一遍。'}` },
         { k: '本步结果', v: st.act === 'union'
-            ? (st.ra === st.rb ? `根都是 ${st.ra},本就一伙,不用并。` : `根 ${st.ra}≠根 ${st.rb} → 挂到一起,连通分量降到 ${st.comps}。`)
-            : st.act === 'find' ? `顺链爬 ${[...st.path, st.root].join('→')} 到根 **${st.root}**,爬了 ${st.path.length} 步。`
-            : st.act === 'compress' ? `把 ${st.path.join('、')} 全直挂根 ${st.root},最深链塌到 **${Math.max(...st.depths)}**。`
-            : `6 次 union 并成 **1** 团,find 认根、压缩拍平——均摊近乎 O(1)。` },
+          ? (st.ra === st.rb ? `根都是 ${st.ra}，本就一伙，不用并。`
+            : `根 ${st.ra} ≠ 根 ${st.rb} → 挂到一起，连通分量降到 ${st.comps}${st.maxDepth !== undefined ? `，最大树深 ${st.maxDepth}` : ''}。`)
+          : st.act === 'find' ? `顺链爬到根 **${st.root}**，爬了 ${st.path.length} 步${st.findSteps !== undefined ? `（累计 ${st.findSteps} 步）` : ''}。`
+            : st.act === 'compress' ? `爬到根 **${st.root}** 之后把 ${st.path.join('、')} 全直挂根下，最大树深塌到 **${st.maxDepth ?? Math.max(...st.depths)}**。`
+              : st.totalSteps === undefined ? `并成 **${st.comps}** 团，find 认根、压缩拍平。`
+                : `全程 find 累计爬了 **${st.totalSteps}** 步，最终最大树深 **${st.finalDepth}**。` },
+        ...(st.phase === 'done' && st.slope !== undefined
+          ? [{ k: '这说明什么', v: st.degraded
+            ? `实测增长指数 **${st.slope.toFixed(2)}** —— 这是 **O(n²)**，不是"近乎 O(1)"。朴素合并把树长成了一条链，每次 find 都从底爬到顶。**"并查集很快"的前提是两个优化至少上一个。**`
+            : `实测增长指数 **${st.slope.toFixed(2)}**，接近线性 —— 摊到 n 次操作上每次是常数级。注意不是"每次 find 都一步到根"：${doC ? '压缩是**事后**拍平，第一次爬那条链的钱照付；' : ''}${byRank ? '按秩合并是从**源头**不让树长高；' : ''}**均摊**才是常数。` }]
+          : []),
       ]
     },
     verdict: (s: never) => {
-      const st = s as { phase: string; act: string; comps: number; path: number[] }
-      return st.phase === 'done' ? `${st.comps} 团` : st.act === 'find' ? `爬 ${st.path.length} 步` : `${st.comps} 团`
+      const st = s as { phase: string; act: string; comps: number; path: number[]
+                        totalSteps?: number; slope?: number; degraded?: boolean }
+      if (st.phase !== 'done') return st.act === 'find' || st.act === 'compress' ? `爬 ${st.path.length} 步` : `${st.comps} 团`
+      if (st.totalSteps === undefined) return `${st.comps} 团`
+      return st.degraded ? `n^${st.slope} 退化` : `${st.totalSteps} 步`
     },
     read: [
-      { at: '读数', is: '连通分量数、本步操作、最深链长。', anchor: '.scdim' },
-      { at: '节点', is: '大数=编号、↑=父指针、深N=到根几步、顶部色条=所属集团(同色一伙)。', anchor: '.ufrow' },
+      { at: '读数', is: '连通分量数、本步操作、最深链长，以及 **find 累计爬了几步**（树深只是表象，这个数才是代价）和**实测增长指数**。', anchor: '.scdim' },
+      { at: '森林', is: '每个虚线框 = 一个集合（一棵树），框头那个数是这棵树的**根**。union 把两棵树接起来、find 顺边爬到根、路径压缩把爬过的点直接挂到根下。', anchor: '.ufforest' },
+      { at: '规模表', is: '四种组合各在 n=8…256 上跑一遍同一串操作（只计数不出帧）。"均摊近乎 O(1)"和"朴素退化成 n²"都在这四行上。', anchor: '.qsscale' },
     ],
     try: [
-      { act: '按「下一步」做 union', watch: '两棵树并成一棵、连通分量数一路减到 1。' },
-      { act: '看 find(0) + 压缩', watch: '顺链爬到根,再把沿途点直挂根下——最深链从 4 塌到 1。' },
+      { act: '默认档（两个优化都关、最坏序列）走完', watch: '树长成一条链，n=256 时要爬 **32640 步**、增长指数 **2.03** —— 这是 O(n²)。' },
+      { act: '把「路径压缩」打开', watch: '掉到 **509 步、树深 1**，指数 1.05 —— 差 **64 倍**。' },
+      { act: '改成把「合并方式」换成按秩、压缩关掉', watch: '同样是 509 步 —— **两个优化各自都够用**，但一个是事后拍平、一个是源头不让长高。' },
+      { act: '把「操作序列」换成「两两归并」、按秩 + 不压缩', watch: '树深不再是 1，而是 **8 = log₂256** —— 那才是按秩合并真正的深度。另两条序列上的"深度 1"是序列的巧合，不是算法的性质。' },
     ],
     terms: [],
   },

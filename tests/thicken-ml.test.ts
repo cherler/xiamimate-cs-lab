@@ -50,6 +50,7 @@ import { quicksortKernel, QS_DATA, QS_PIVOTS, QS_PARTS, QS_SCALE_NS, type QuickS
 import { dtreeKernel, DT_DATA, DT_IMPURITY, DT_DEPTHS, type DTreeState } from '../src/kernels/dtree.ts'
 import { recsysKernel, RS_SCENES, RS_DIMS, RS_LAMBDAS, type RecSysState } from '../src/kernels/recsys.ts'
 import { astarKernel, ASTAR_MAPS, ASTAR_WEIGHTS, ASTAR_HEURISTICS, type AStarState } from '../src/kernels/astar.ts'
+import { unionfindKernel, UF_UNIONS, UF_COMPRESS, UF_SEQS, UF_SCALE_NS, type UnionFindState } from '../src/kernels/unionfind.ts'
 
 let failures = 0
 const ok = (m: string) => console.log(`  ✅ ${m}`)
@@ -2032,6 +2033,122 @@ console.log('\n【A* 寻路：把"h 不高估就保证最优"验到每一格】'
     s.optimal
       ? ok('自检：均匀代价的「一堵墙」图上 w=5 照样找到最优路 —— 上面那条"走冤枉路"量的确实是沼泽档独有的，不是恒真')
       : bad(`自检失败：均匀代价图上 w=5 也走了冤枉路（代价 ${s.pathLen}、最优 ${s.optimalLen}）`)
+  }
+}
+
+// ═══ 并查集：「均摊近乎 O(1)」是有前提的 ═══════════════════
+console.log('\n【并查集：不上优化时它是 O(n²)】')
+{
+  const go = (p: P) => run(unionfindKernel.compile(doc('unionfind', p)), 400) as UnionFindState[]
+  const fin = (p: P) => last(go(p))
+  const [NAIVE, RANK] = UF_UNIONS
+  const [OFF, ON] = UF_COMPRESS
+  const [CHAIN, RANDOM, PAIR] = UF_SEQS
+
+  /*  ① **底线**：不管哪一档，跑完都得真的并成一团，而且每个点顺父指针一定爬得到根
+      （不成环、不指向自己以外的自己）。不验这条，后面所有步数比较都是空的。 */
+  const broken: string[] = []
+  for (const seq of UF_SEQS) for (const union of UF_UNIONS) for (const compress of UF_COMPRESS) {
+    const s = fin({ union, compress, seq })
+    if (s.comps !== 1) { broken.push(`${seq}/${union}/${compress}：跑完还剩 ${s.comps} 个分量`); continue }
+    for (let x = 0; x < s.n; x++) {
+      let cur = x, hops = 0
+      while (s.parent[cur] !== cur && hops <= s.n) { cur = s.parent[cur]; hops++ }
+      if (hops > s.n) { broken.push(`${seq}/${union}/${compress}：从 ${x} 爬不到根（成环了）`); break }
+    }
+  }
+  broken.length === 0
+    ? ok(`${UF_SEQS.length * UF_UNIONS.length * UF_COMPRESS.length} 种组合跑完都并成 1 个分量，且每个点都爬得到根（没有环）`)
+    : bad(broken.slice(0, 3).join(' / '))
+
+  /*  ② **主菜**：朴素 + 不压缩 + 最坏序列必须是平方级，且树深正好等于 n−1（一条链）。
+      "并查集很快"这句话的前提，就靠这一条撑着。 */
+  {
+    const s = fin({ union: NAIVE, compress: OFF, seq: CHAIN })
+    const rows = s.scale.find(x => x.unionKind === NAIVE && x.compress === OFF)!.rows
+    const badRows = rows.filter(r => r.depth !== r.n - 1)
+    s.degraded && s.slope > 1.9 && badRows.length === 0
+      ? ok(`朴素 + 不压缩 + 最坏序列：${UF_SCALE_NS.length} 个 n 上树深都正好是 n−1（一条链），实测增长指数 ${s.slope} —— 这是 O(n²)`)
+      : bad(`没演出退化：指数 ${s.slope}，树深不对的有 ${badRows.length} 行`)
+  }
+
+  /*  ③ **任一个优化都够用**：三条序列上，只要开一个，指数就掉到 1.5 以下、步数降到不足 1/10。
+      两个都要求 —— 只说"变快了"没意义，得同时是"不再是平方级"。 */
+  const cure: string[] = []
+  for (const seq of UF_SEQS) {
+    const base = fin({ union: NAIVE, compress: OFF, seq })
+    const baseBig = last(base.scale.find(x => x.unionKind === NAIVE && x.compress === OFF)!.rows).steps
+    for (const [u, c, tag] of [[RANK, OFF, '只按秩'], [NAIVE, ON, '只压缩'], [RANK, ON, '两个都上']] as const) {
+      const g = fin({ union: u, compress: c, seq })
+      if (g.degraded) cure.push(`${seq}/${tag}：指数 ${g.slope}，仍是平方级`)
+      const big = last(g.scale.find(x => x.unionKind === u && x.compress === c)!.rows).steps
+      //  链式序列上差 64 倍，另两条序列没那么夸张 —— 只要求"明显更省"
+      if (seq === CHAIN && !(big < baseBig / 10)) cure.push(`${seq}/${tag}：n=256 只降到 ${big}（原 ${baseBig}）`)
+      if (!(big <= baseBig)) cure.push(`${seq}/${tag}：${big} 步反而多过朴素+不压缩的 ${baseBig}`)
+    }
+  }
+  cure.length === 0
+    ? ok('三条序列 × 三种"至少开一个优化"的组合：全部不再是平方级，且链式序列上步数降到不足 1/10')
+    : bad(cure.slice(0, 3).join(' / '))
+
+  /*  ④ **按秩合并的树深真的是 log n** —— 但只在「两两归并」那条序列上量得到。
+      另两条序列上它恒等于 1，那是**序列的巧合**（union 的一边永远是个单点）。
+      两面都钉：不钉后半句的话，屏幕上"按秩合并 = 深度 1"这个错觉没人拦。 */
+  {
+    const s = fin({ union: RANK, compress: OFF, seq: PAIR })
+    const rows = s.scale.find(x => x.unionKind === RANK && x.compress === OFF)!.rows
+    const wrong = rows.filter(r => r.depth !== Math.log2(r.n))
+    const flat = [CHAIN, RANDOM].map(q => fin({ union: RANK, compress: OFF, seq: q }))
+    const flatRows = flat.map(f => last(f.scale.find(x => x.unionKind === RANK && x.compress === OFF)!.rows).depth)
+    wrong.length === 0 && flatRows.every(d => d === 1)
+      ? ok(`按秩合并 + 两两归并：${rows.length} 个 n 上树深都**正好等于 log₂n**（n=256 时是 8）；而另两条序列上它恒等于 1 —— 那是序列的巧合，不是算法的性质`)
+      : bad(`树深对不上：两两归并有 ${wrong.length} 行不等于 log₂n，另两条序列的深度是 ${flatRows.join('/')}`)
+  }
+
+  /*  ⑤ **路径压缩之后树深必须真的塌到 1** —— "事后拍平"这句话的实测版。 */
+  const flatten: string[] = []
+  for (const seq of UF_SEQS) for (const union of UF_UNIONS) {
+    const s = fin({ union, compress: ON, seq })
+    if (s.finalDepth !== 1) flatten.push(`${seq}/${union}：压缩之后最终树深还是 ${s.finalDepth}`)
+    const rows = s.scale.find(x => x.unionKind === union && x.compress === ON)!.rows
+    if (rows.some(r => r.depth !== 1)) flatten.push(`${seq}/${union}：规模表里有 n 的树深不是 1`)
+  }
+  flatten.length === 0
+    ? ok('打开路径压缩后，六种组合在所有 n 上的最终树深**都是 1** —— 爬过的链被一次拍平')
+    : bad(flatten.slice(0, 3).join(' / '))
+
+  /*  ⑥ **union 内部的 find 也计入总步数** —— 不计的话按秩合并会白占便宜。
+      验法：按秩 + 不压缩 + 两两归并，树深是 log n，那么总步数必须**明显多于** n
+      （每次 union 里的两次 find 都要爬）。若只统计显式 find，这个数会小得多。 */
+  {
+    const s = fin({ union: RANK, compress: OFF, seq: PAIR })
+    const rows = s.scale.find(x => x.unionKind === RANK && x.compress === OFF)!.rows
+    const big = last(rows)
+    big.steps > big.n * 2
+      ? ok(`按秩 + 不压缩 + 两两归并：n=${big.n} 时累计 ${big.steps} 步 > 2n —— union 内部那两次 find 确实记在账上了`)
+      : bad(`总步数 ${big.steps} 只有 n=${big.n} 的 ${(big.steps / big.n).toFixed(1)} 倍 —— union 里的 find 好像没计入`)
+  }
+
+  /*  ⑦ **这个实验量不到的那一格，得如实承认。** 课本说"只用一个优化是 O(log n)、
+      两个都用才近乎常数"，而这张表上开一个和开两个几乎一模一样。
+      判据不去要求"两个更快"（那会红，而红的是规模不够），改成**钉住"确实分不出来"** ——
+      哪天换了更大的 n 真分出来了，这条会红，那正是该改文案的时候。 */
+  {
+    const one = [fin({ union: RANK, compress: OFF, seq: CHAIN }), fin({ union: NAIVE, compress: ON, seq: CHAIN })]
+      .map(f => last(f.scale.find(x => x.unionKind === f.unionKind && x.compress === f.compress)!.rows).steps)
+    const both = last(fin({ union: RANK, compress: ON, seq: CHAIN })
+      .scale.find(x => x.unionKind === RANK && x.compress === ON)!.rows).steps
+    Math.abs(Math.min(...one) - both) < both * 0.15
+      ? ok(`量不到的一格已如实标注：开一个优化 ${one.join('/')} 步 vs 开两个 ${both} 步，n≤${last([...UF_SCALE_NS])} 上分不出来（log₂256=8、α(256)≤4，差距被常数吃掉）`)
+      : bad(`开一个(${one.join('/')})和开两个(${both})已经分得出来了 —— 屏幕上那句"这个实验量不到"该改了`)
+  }
+
+  /*  ⑧ 自检：这一套判据得会红 —— 拿"两两归并"冒充最坏序列，② 那条必须抓住。 */
+  {
+    const s = fin({ union: NAIVE, compress: OFF, seq: PAIR })
+    !s.degraded && s.finalDepth < s.n - 1
+      ? ok(`自检：两两归并序列上朴素+不压缩也没退化（指数 ${s.slope}、树深 ${s.finalDepth}）—— 上面那条量的确实是"最坏序列"，不是恒真`)
+      : bad(`自检失败：两两归并序列上也退化了（指数 ${s.slope}、树深 ${s.finalDepth}）`)
   }
 }
 

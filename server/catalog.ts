@@ -469,24 +469,62 @@ const CATALOG_CORE: CatalogEntry[] = [
     id: 'unionfind',
     title: '并查集',
     kernel: unionfindKernel as Kernel<unknown>,
-    doc: trivialDoc('unionfind'),
+    /*  2026-09-09 补厚：默认档改成**两个优化都关 + 最坏序列** —— 那才是
+        "并查集很快是有前提的"这句话唯一能被看见的地方。 */
+    doc: { kind: 'unionfind', params: { union: '朴素（谁在前挂谁）', compress: '不压缩', seq: '最坏序列（故意串成一条链）' }, entities: [], streams: [] },
     facts: [
       {
-        id: 'unions', label: '把散点并成一个分量执行的 union 次数',
-        ask: '把这些散点合并连通的过程中，一共执行了多少次 union 操作?',
-        kind: 'number',
+        id: 'first_union_comps', label: '第一次 union 后剩余连通分量数', kind: 'number', genre: 'count',
+        ask: '10 个各自独立的点，执行第一次 union(0,1) 之后，还剩几个连通分量?',
+        compute: t => ({ answer: String(t[0]!.comps), step: 0, evidence: String(t[0]!.log ?? '') }),
+        distractors: numDistractors,
+      },
+      {
+        /*  补厚的落点：不上优化时，n=256 的最坏情况要爬多少步。 */
+        id: 'worst_steps', label: '不上优化时 n=256 的累计爬树步数', kind: 'number', genre: 'count',
+        ask: '朴素合并 + 不做路径压缩，操作序列是 union(0,1)、union(1,2)… 这样串成一条链。规模表上 n=256 那一行，find 一共爬了多少步?',
         compute: t => {
-          const n = t.filter(f => f.act === 'union').length
-          return { answer: String(n), step: t.length - 1, evidence: `trace 中 act='union' 的帧数 = ${n}` }
+          const f = last(t)
+          const sc = (f.scale ?? []) as { unionKind: string; compress: string; rows: { n: number; steps: number; depth: number }[] }[]
+          const mine = sc.find(x => x.unionKind.startsWith('朴素') && x.compress === '不压缩')!
+          const big = mine.rows[mine.rows.length - 1]
+          return { answer: String(big.steps), step: t.length - 1, evidence: `n=${big.n} 时树深 ${big.depth}，实测增长指数是平方级` }
         },
         distractors: numDistractors,
       },
       {
-        id: 'first_union_comps', label: '第一次 union 后剩余连通分量数',
-        ask: '初始 7 个各自独立的点，执行第一次 union(0,1) 之后，还剩几个连通分量?',
-        kind: 'number',
-        compute: t => ({ answer: String(t[0]!.comps), step: 0, evidence: String(t[0]!.log ?? '') }),
-        distractors: numDistractors,
+        id: 'premise', label: '"均摊近乎 O(1)"是有前提的', kind: 'choice', genre: 'concept',
+        ask: '常说并查集"单次操作均摊近乎常数"。这句话对一个**只写了 find 和 union、两个优化都没做**的实现也成立吗?',
+        compute: t => {
+          const f = last(t)
+          const sc = (f.scale ?? []) as { unionKind: string; compress: string; slope: number; rows: { n: number; steps: number }[] }[]
+          const naive = sc.find(x => x.unionKind.startsWith('朴素') && x.compress === '不压缩')!
+          const good = sc.find(x => x.compress !== '不压缩')!
+          return {
+            answer: '不成立 —— 不上优化时树会长成一条链，最坏情况是 O(n²)，那句话的前提是两个优化至少上一个',
+            step: t.length - 1,
+            evidence: `实测 n=256：朴素+不压缩 ${naive.rows[naive.rows.length - 1].steps} 步（指数 ${naive.slope}），打开压缩后 ${good.rows[good.rows.length - 1].steps} 步（指数 ${good.slope}）`,
+          }
+        },
+        distractors: a => [a,
+          '成立 —— 用树加父指针表示分组这件事本身就带来了近乎常数的复杂度',
+          '成立 —— 只要元素个数固定，树的高度就有上界，爬树的代价自然是常数',
+          '不成立 —— 但原因是没有按大小合并，跟路径压缩和按秩合并都没有关系',
+        ].filter(o => o !== a).slice(0, 3),
+      },
+      {
+        id: 'two_opts', label: '两个优化治的不是同一件事', kind: 'choice', genre: 'concept',
+        ask: '按秩合并和路径压缩，都是为了不让 find 爬太久。它们的做法有什么根本区别?',
+        compute: t => ({
+          answer: '按秩合并是在合并时**从源头**不让树长高，路径压缩是 find 之后**事后**把爬过的那条链拍平',
+          step: t.length - 1,
+          evidence: '看规模表「树深」那一列：按秩合并让它从一开始就没高过（两两归并序列上正好是 log₂n），而压缩是把它一次拍到 1',
+        }),
+        distractors: a => [a,
+          '没有区别 —— 两者都是在 find 的时候修改父指针，只是修改的时机差了一步',
+          '按秩合并保证正确性、路径压缩只管速度 —— 少了前者查出来的根可能是错的',
+          '路径压缩只对查询有效、按秩合并只对合并有效 —— 各管一个操作，互不影响',
+        ].filter(o => o !== a).slice(0, 3),
       },
     ],
   },

@@ -26,7 +26,10 @@ const PAD = 6        // 树盒子内边距
 type Placed = { n: number; x: number; y: number }
 
 export function UnionFindStage({ state }: StageProps<UnionFindState>) {
-  const { n, parent, act, a, b, ra, rb, path, root, comps, depths, phase } = state
+  const {
+    n, parent, act, a, b, ra, rb, path, root, comps, depths, phase,
+    findSteps, maxDepth, unionKind, compress, seq, totalSteps, finalDepth, scale, slope, degraded,
+  } = state
   const done = phase === 'done'
 
   //  孩子表：parent[x] === x 的是根，其余挂在 parent[x] 下
@@ -46,7 +49,16 @@ export function UnionFindStage({ state }: StageProps<UnionFindState>) {
         <div className="scdim">
           <div className="scdk"><span className="scdn">{comps}</span><span className="scdl">集合个数（＝树的棵数）</span></div>
           <div className="scdk"><span className="scdn hot">{act === 'union' ? `${a}∪${b}` : act === 'find' || act === 'compress' ? `find(${a})` : '—'}</span><span className="scdl">本步操作</span></div>
-          <div className="scdk"><span className="scdn">{Math.max(...depths)}</span><span className="scdl">最深链（find 最多爬几步）</span></div>
+          <div className="scdk">
+            <span className={`scdn ${maxDepth >= n - 1 ? 'bad' : ''}`}>{maxDepth}</span>
+            <span className="scdl">最深链（find 最多爬几步）</span>
+          </div>
+          {/*  ⭐ 补厚的落点：树深只是表象，**find 一共爬了多少步**才是"快不快"的硬指标 */}
+          <div className="scdk"><span className="scdn hot">{findSteps}</span><span className="scdl">find 累计爬了几步</span></div>
+          <div className="scdk">
+            <span className={`scdn ${degraded ? 'bad' : 'good'}`}>{slope.toFixed(2)}</span>
+            <span className="scdl">实测增长指数（线性=1）</span>
+          </div>
         </div>
 
         {/*  一棵树一个盒子 —— 「哪些点是一伙的」就是"框在同一个盒子里的那些"，
@@ -60,7 +72,7 @@ export function UnionFindStage({ state }: StageProps<UnionFindState>) {
         </div>
 
         <div className="orcap">
-          {act === '' ? '按「下一步」开始：7 个点各自成树（自己就是自己的根）= 7 个集合'
+          {act === '' ? `按「下一步」开始：${n} 个点各自成树 = ${n} 个集合。合并方式「${unionKind}」、${compress}、操作序列「${seq}」`
             : act === 'union' ? (ra === rb
               ? `union(${a},${b})：${a} 和 ${b} 的根都是 ${ra}，本来就在同一棵树里 —— 不用并`
               : `union(${a},${b})：根 ${ra} ≠ 根 ${rb} → 把整棵「${ra} 树」挂到根 ${rb} 底下，两棵并成一棵`)
@@ -69,9 +81,50 @@ export function UnionFindStage({ state }: StageProps<UnionFindState>) {
                   : `并成 1 棵树 = 1 个集合；"是不是一伙"就是"爬到的根同不同"`}
         </div>
 
+        {/*  规模验证：四种组合各跑一遍同一串操作，只计数不出帧。
+             「均摊近乎 O(1)」和「朴素退化成 n²」都在这四行上，不在旁白里。 */}
+        {done && (
+          <div className="qsscale">
+            <div className="qsrow qshead"><span>合并 / 压缩</span><span>n=256 步数</span><span>树深</span><span>增长指数</span></div>
+            {scale.map(sc => {
+              const big = sc.rows[sc.rows.length - 1]
+              const mineRow = sc.unionKind === unionKind && sc.compress === compress
+              return (
+                <div className="qsrow" key={`${sc.unionKind}/${sc.compress}`}>
+                  <span>{sc.unionKind.startsWith('按秩') ? '按秩' : '朴素'} + {sc.compress === '不压缩' ? '不压缩' : '压缩'}{mineRow ? ' ◀' : ''}</span>
+                  <span className={sc.slope > 1.5 ? 'bad' : ''}>{big.steps}</span>
+                  <span className={big.depth >= big.n - 1 ? 'bad' : 'dimv'}>{big.depth}</span>
+                  <span className={sc.slope > 1.5 ? 'bad' : 'good'}>{sc.slope.toFixed(2)}</span>
+                </div>
+              )
+            })}
+            <div className="orcap">
+              同一串操作（序列「{seq}」）在 n=8…256 上各跑一遍，只计数不出帧。
+              指数 1 = 线性（<b>均摊每次操作是常数</b>），2 = O(n²)。
+            </div>
+          </div>
+        )}
+
         {done
-          ? <p className="scnote">最后只剩<b>一棵树</b>，就是一个集合。三个动作全在树上：<b>union</b> 把两棵树接起来、<b>find</b> 顺边爬到根、<b>路径压缩</b>把爬过的点直接挂到根下（长链一次拍平）。"是不是一伙"＝"根同不同"。它是 Kruskal 最小生成树、网络连通性、账号合并、图像连通域的核心零件，配路径压缩 + 按秩合并<b>均摊近乎 O(1)</b>。</p>
-          : <p className="scnote" style={{ opacity: .85 }}>每个虚线框 = 一个集合（一棵树）；框头那个数是这棵树的<b>根</b>。结点里的大数是编号、下面的小字是它到根要爬几步。</p>}
+          ? (
+            <p className="scnote">
+              n={n} 时 find 一共爬了 <b>{totalSteps}</b> 步，最终最大树深 <b>{finalDepth}</b>。
+              {degraded ? (
+                <>　⚠️ <b>这一档退化了</b>：增长指数 <b>{slope.toFixed(2)}</b>，也就是 O(n²)。
+                  朴素合并<b>不看谁高谁矮</b>，最坏序列下正好把树长成一条链，而每次 find 都要从底爬到顶。
+                  <b>"并查集很快"的前提是这两个优化至少上一个</b> —— 打开任意一个，指数立刻掉到 1 附近。</>
+              ) : (
+                <>　增长指数 <b>{slope.toFixed(2)}</b>，接近线性 —— <b>均摊下来每次操作是常数级</b>，这就是"近乎 O(1)"的实际含义。
+                  注意它不是"每次 find 都一步到根"：压缩是<b>事后</b>把爬过的链拍平（第一次爬那条链的钱照付），
+                  按秩合并是从<b>源头</b>不让树长高。摊到 n 次操作上才是常数。</>
+              )}
+              <br />
+              <b>两个优化各自都够用，但理由不同</b>：看规模表里「树深」那一列 ——
+              按秩合并让它从一开始就没高过（两两归并那条序列上正好是 log₂n），
+              路径压缩则是把它一次拍平到 1。它是 Kruskal 最小生成树、网络连通性、账号合并、图像连通域的核心零件。
+            </p>
+          )
+          : <p className="scnote" style={{ opacity: .85 }}>每个虚线框 = 一个集合（一棵树）；框头那个数是这棵树的<b>根</b>。结点里的大数是编号、下面的小字是它到根要爬几步。盯着读数里的<b>「find 累计爬了几步」</b>：树深是表象，那个数才是代价。</p>}
       </div>
     </div>
   )

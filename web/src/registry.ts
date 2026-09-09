@@ -167,7 +167,7 @@ import { binsearchKernel, type BinSearchState } from '@engine/kernels/binsearch.
 import { BinSearchStage } from './stages/BinSearchStage.tsx'
 import { nqueensKernel, type NQueensState } from '@engine/kernels/nqueens.ts'
 import { NQueensStage } from './stages/NQueensStage.tsx'
-import { unionfindKernel, type UnionFindState } from '@engine/kernels/unionfind.ts'
+import { unionfindKernel, UF_UNIONS, UF_COMPRESS, UF_SEQS, type UnionFindState } from '@engine/kernels/unionfind.ts'
 import { UnionFindStage } from './stages/UnionFindStage.tsx'
 import { heapKernel, type HeapState } from '@engine/kernels/heap.ts'
 import { HeapStage } from './stages/HeapStage.tsx'
@@ -4156,18 +4156,32 @@ const unionfind: Experiment<UnionFindState> = {
   title: '并查集',
   subtitle: '是不是一伙，只看根同不同',
   kernel: unionfindKernel,
-  defaultDoc: { kind: 'unionfind', params: {}, entities: [], streams: [] },
-  params: [],
+  defaultDoc: { kind: 'unionfind', params: { union: '朴素（谁在前挂谁）', compress: '不压缩', seq: '最坏序列（故意串成一条链）' }, entities: [], streams: [] },
+  /*  2026-09-09 补厚：老版本自己的注释里写着「按秩合并 + 路径压缩，均摊近乎 O(1)」，
+      而**按秩合并一次都没出现过**、"近乎 O(1)"也从没量过；7 个点、链深 4，
+      "长链爬很久"这件事根本疼不起来。默认档特意开在**两个优化都关掉 + 最坏序列**上。 */
+  params: [
+    { key: 'union', label: '合并方式', kind: 'enum', options: [...UF_UNIONS] },
+    { key: 'compress', label: '路径压缩', kind: 'enum', options: [...UF_COMPRESS] },
+    { key: 'seq', label: '操作序列', kind: 'enum', options: [...UF_SEQS] },
+  ],
   paramsNote: `**并查集回答"这堆元素不断两两结盟,随时问某俩是不是一伙"**。它用树表示集合:每个元素有父指针,顺着爬到根,根就是集团代表。
 
 - **三个操作**:find(x)=爬到根;union(a,b)=把两人的根挂到一起;"是不是一伙"=根同不同。
-- **路径压缩**:朴素合并会长出长链、find 爬得慢;路径压缩在 find 到根后把沿途节点直接挂到根下,链一下拍平,后续近乎 O(1)。
-- **本实验**:7 点,6 次 union 并成一团(故意长出 0←1←2←3 的链),再 find(0) 爬到根 6、路径压缩把 0/1/2/3 直挂 6 下,深度从 4 塌到 1。`,
+- **屏幕上一直印着两个数**:当前**最大树深**、以及**全程 find 累计爬了多少步**。后者才是"快不快"的硬指标 —— 树深只是它的表象。
+
+- **补厚补的是那句"均摊近乎 O(1)"—— 它现在是量出来的**:底下那张表把四种组合各在 n=8…256 上跑一遍同一串操作(只计数不出帧),最小二乘出**实测增长指数**。
+  - **朴素 + 不压缩 + 最坏序列(默认档)**:n=256 时 find 累计爬 **32640 步**、树深 **255**、指数 **2.03** —— 这就是 **O(n²)**。朴素合并**不看谁高谁矮**,最坏序列正好把树长成一条链,而每次 find 都要从底爬到顶。**"并查集很快"的前提是这两个优化至少上一个。**
+  - **任意打开一个**:立刻掉到 **509 步、树深 1、指数 1.05** —— 差 **64 倍**。
+- **两个优化各自都够用,但理由不同**:**按秩合并**从**源头**不让树长高、**路径压缩**是**事后**把爬过的链拍平。这个区别只在「两两归并」那条序列上才看得见 —— 那是按秩合并的最坏情况,n=256 时树深正好是 **8 = log₂256**,而压缩把它拍到 1。
+- ⚠️ **另两条序列上按秩合并的树深恒等于 1**,那是序列的巧合(union 的一边永远是个单点、全都直接挂到根上),**不是算法的性质**。只看那两条会以为"按秩合并 = 深度 1"。`,
   bounds: [
-    '7 个点,6 次 union 并成 1 个连通分量',
-    'union=把根挂到根下;find=顺父指针爬到根(可核)',
-    'find(0) 走 0→1→2→3→6;压缩后深度 4→1',
-    '同色=一伙;是不是一伙就看根同不同',
+    '动画跑 n=10;规模验证静默跑 n=8/16/32/64/128/256,两条路是同一份 runUF() 代码',
+    'union 内部的两次 find **也计入总步数** —— 不计的话按秩合并会白占便宜,它省下的正是这些步数',
+    '三条序列:链式 union(k,k+1) / 随机配对 / 两两归并(按秩合并的最坏情况)',
+    '增长指数 = (log n, log 累计步数) 的最小二乘斜率;> 1.5 判退化',
+    '⚠️ **量不到的一格**:课本说"只用一个优化是 O(log n)、两个都用才近乎常数",而这张表上开一个(509 步)和开两个(509 步)**一模一样** —— log₂256=8、α(256)≤4,差距被常数吃掉了。**规模不够就说量不到,别拿"看起来一样"当结论。**',
+    '未做:按大小合并(与按秩几乎等价)、可撤销并查集(并查集只能合并不能拆伙)、带权并查集(维护到根的偏移)、并行/持久化版本',
   ],
   tabs: [{ id: 'forest', label: '并树+压缩' }],
   Stage: UnionFindStage,
@@ -4177,9 +4191,12 @@ const unionfind: Experiment<UnionFindState> = {
   whyInRail: true,
   readouts: s => [
     { label: '连通分量', value: `${s.comps}` },
-    { label: '本步', value: s.act === 'union' ? `union(${s.a},${s.b})` : s.act === 'find' ? `find(${s.a})→根${s.root}` : s.act === 'compress' ? '路径压缩' : '认祖归宗' },
-    { label: '最深链', value: `${Math.max(...s.depths)}`, tone: s.act === 'compress' ? 'good' : undefined },
-    { label: '状态', value: s.comps === 1 ? '全连通' : `${s.comps} 个集团` },
+    { label: '本步', value: s.act === 'union' ? `union(${s.a},${s.b})` : s.act === 'find' ? `find(${s.a})→根${s.root}` : s.act === 'compress' ? `find(${s.a}) + 压缩` : '认祖归宗' },
+    { label: '最深链', value: `${s.maxDepth}`, tone: s.maxDepth >= s.n - 1 ? 'bad' : s.act === 'compress' ? 'good' : undefined },
+    /*  ⭐ 这一栏是补厚的落点：树深是表象，**累计爬了多少步**才是代价。 */
+    { label: 'find 累计步数', value: `${s.findSteps}` },
+    { label: '实测增长指数', value: `${s.slope.toFixed(2)}${s.degraded ? '（O(n²)）' : '（≈线性）'}`,
+      tone: s.degraded ? 'bad' : 'good' },
   ],
 }
 
