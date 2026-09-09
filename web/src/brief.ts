@@ -3058,15 +3058,34 @@ export const BRIEFS: Record<string, Brief> = {
     },
     tasks: [
       { act: '按「下一步」逐位', watch: 'base 反复平方得 a^(2^k);二进制这位是 1 就把它乘进结果' },
-      { act: '数乘法次数', watch: '3¹³ 只用 3 乘+3 平方,不是老实乘 13 次——log n vs n' },
+      { act: '数乘法次数', watch: 'n=1000 只用 15 次乘法,朴素要 999 次' },
+      { act: '走完默认档(3¹⁰⁰),看底下的真值对照', watch: '这一趟算出来的跟 BigInt 真值**不是同一个数**,而一句错都不报' },
+      { act: '把「运算」换成模乘 mod 1e9+7', watch: '⚠️ **照样错** —— 取模治的是结果太大,治不了中间量太大' },
+      { act: '再换成「模乘 · BigInt 中间量」/「矩阵乘法 · 斐波那契」', watch: '前者才对得上;后者换掉的只是"乘法"两个字,骨架一动没动' },
     ],
     verdict: ({ trace }) => {
-      const s = last<{ phase?: string; a?: number; n?: number; result?: number; mults?: number; squares?: number; picked?: number[] }>(trace)
+      const s = last<{ phase?: string; a?: number; n?: number; result?: number; mults?: number; squares?: number
+                       picked?: number[]; op?: string; truth?: string; got?: string; exact?: boolean
+                       maxInter?: number; totalOps?: number; naiveOps?: number }>(trace)
       if (!s || s.phase !== 'done') return null
-      return {
+      /*  ⚠️ truth/exact 是 2026-09-09 补厚加的。老快照没有,退回旧措辞。 */
+      if (s.truth === undefined) return {
         pick: 0,
-        say: `${s.a}^${s.n} = ${s.a}^(${(s.picked ?? []).join('+')}) = ${s.result}:只用 ${s.mults} 次乘 + ${s.squares} 次平方,朴素要 ${s.n} 次。`,
-        why: `把指数拆二进制(${s.n}=${(s.picked ?? []).join('+')}),幂就拆成对应的"平方幂"相乘;这些幂每个由上一个平方得来(log n 次)。O(log n) vs O(n)。模幂(RSA)、矩阵快速幂(线性递推)都是它;和二分查找同理——每步砍一半。`,
+        say: `${s.a}^${s.n} = ${s.result}:只用 ${s.mults} 次乘 + ${s.squares} 次平方,朴素要 ${s.n} 次。`,
+        why: `把指数拆二进制,幂就拆成对应的"平方幂"相乘;这些幂每个由上一个平方得来。O(log n) vs O(n)。`,
+      }
+      const cut = (x: string) => (x.length > 26 ? `${x.slice(0, 14)}…（${x.length} 位）` : x)
+      return {
+        pick: s.exact ? 0 : 1,
+        say: `${s.totalOps} 次乘法就算完了（朴素要 ${s.naiveOps} 次）。` +
+          (s.exact
+            ? `结果跟 BigInt 真值**逐位相同** ✓。`
+            : `**但算错了**：这一趟得到 ${cut(s.got ?? '')}，真值是 ${cut(s.truth)} —— 中间量到过 ${s.maxInter === Infinity ? '∞' : s.maxInter?.toExponential(2)}，越过了 2⁵³。`),
+        why: `**O(log n) 这件事没问题，出问题的是"数装不下"。**\n\n` +
+          `不取模的快速幂在真实场景里根本用不了：${s.a}^${s.n} 有 ${s.truth.length} 位，任何定宽整数都装不下，` +
+          `而溢出**不报错**，只是悄悄丢低位。**所以现实中永远是"模幂"，不是"幂"。**\n\n` +
+          `⚠️ 而**取了模也不够**：取模治的是结果太大，治不了中间量太大 —— 两个 10⁹ 一乘就是 10¹⁸ > 2⁵³，` +
+          `在取模之前那一次乘法就已经丢精度了。得用 __int128 / Montgomery / BigInt 护住中间量。`,
       }
     },
   },

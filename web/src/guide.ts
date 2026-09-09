@@ -5667,30 +5667,56 @@ export const GUIDES: Record<string, Guide> = {
       hook: '算 2 的 100 次方，要乘 100 次吗？',
       what: '这一屏讲的是**快速幂**：算 aⁿ 时把 n 次乘法压到 log n 次。朴素做法要乘 n 次，n 是几百位时根本算不完。快速幂的观察是：**每平方一次，指数就翻倍** —— a² 再平方是 a⁴，再平方是 a⁸……十几步就能到几千次方。剩下的按二进制位拼一拼就行。这不是什么小技巧：**RSA 加解密、Diffie-Hellman 密钥交换，核心运算全是它**。没有快速幂，公钥密码在工程上就不成立。',
       terms: '**二进制拆分**：把指数 n 写成二进制，哪一位是 1 就把对应的 a^(2ᵏ) 乘进结果。比如 a¹³ = a⁸ · a⁴ · a¹（13 = 1101₂）。\u3000**反复平方**：从 a 开始不断自乘，依次得到 a¹、a²、a⁴、a⁸……只需要 log₂n 次乘法就能把所有需要的项都准备好。\u3000**取模**：算大数幂时**每一步都要先取模再往下算**。不然中间结果会长到几百位，乘法本身就慢得不行。这也是「模幂运算」这个名字的由来。\u3000**矩阵快速幂**：同样的技巧可以用在矩阵上。斐波那契数列的第 n 项能写成一个 2×2 矩阵的 n 次方，于是**第一亿项也能在几十步内算出来**。所有线性递推数列都能这么加速。\u3000**跟公钥密码的关系**：RSA 的加密是 mᵉ mod n、解密是 cᵈ mod n，指数是几百位的大数。**每一次 HTTPS 握手背后都在跑快速幂。**',
-      watch: '看指数怎么被拆成二进制、哪些位上做了乘法。乘法次数从 n 降到 log n —— 差距随 n 指数级拉大。',
+      watch: '默认档是 **3¹⁰⁰ + 整数乘法**。走完看底下那块对照：这一趟算出来的数，跟 BigInt 独立算出来的真值 **不是同一个数** —— 而屏幕上**一句错都不报**。读数里的「最大中间量」越过 2⁵³ 的那一刻，后面的低位就已经在悄悄丢了。',
     },
+    /*  ⚠️ 2026-09-09 补厚：新增 op/truth/got/exact/maxInter/scale 等字段。
+        `st.xxx ?? …` 是给旧快照的兜底。 */
     step: (s: never) => {
-      const st = s as { phase: string; act: string; a: number; n: number; k: number; bit: number; powK: number; result: number; prevResult: number; mults: number; squares: number; picked: number[] }
+      const st = s as { phase: string; act: string; a: number; n: number; k: number; bit: number
+                        powK: number; result: number; prevResult: number; mults: number; squares: number; picked: number[]
+                        op?: string; truth?: string; got?: string; exact?: boolean
+                        maxInter?: number; overflowed?: boolean; totalOps?: number; naiveOps?: number
+                        resMat?: number[] }
+      const isMatrix = !!st.op?.startsWith('矩阵')
+      const cut = (x?: string) => (x && x.length > 24 ? `${x.slice(0, 12)}…（${x.length} 位）` : x ?? '')
       return [
-        { k: '本步输入', v: st.act === '' ? `算 ${st.a}^${st.n}` : st.act === 'done' ? `${st.a}^${st.n} 逐位处理完` : `第 ${st.k} 位 = ${st.bit},幂 ${st.a}^${2 ** st.k}=${st.powK}` },
-        { k: '判定规则', v: `把指数写成**二进制**,每一位对应一个"反复平方"得来的幂 a^(2^k)(a,a²,a⁴,a⁸…每个由上一个平方而来)。这位是 **1** 就把该幂**乘进结果**、是 **0** 就跳过。log n 位 ⇒ log n 步。` },
-        { k: '本步结果', v: st.act === 'mul' ? `这位是 1 → ${st.prevResult}×${st.powK}=${st.result}。`
-            : st.act === 'skip' ? `这位是 0 → 跳过,结果仍 ${st.result}。`
-            : st.act === 'done' ? `${st.a}^${st.n}=${st.a}^(${st.picked.join('+')})=**${st.result}**,${st.mults} 乘+${st.squares} 平方 vs 朴素 ${st.n} 乘。`
-            : `处理中。` },
+        { k: '本步输入', v: st.act === '' ? (isMatrix ? `算 F(${st.n})` : `算 ${st.a}^${st.n}`)
+          : st.act === 'done' ? `逐位处理完`
+            : `第 ${st.k} 位 = ${st.bit}` },
+        { k: '判定规则', v: `把指数写成**二进制**，每一位对应一个"反复平方"得来的幂。这位是 **1** 就把它**乘进结果**、是 **0** 就跳过。` +
+          (st.op ? `　这一档的"乘法"用的是「${st.op}」。` : '') },
+        { k: '本步结果', v: st.act === 'mul' ? `这位是 1 → 乘进结果，现在是 ${isMatrix ? st.resMat?.[1] : st.result}。`
+          : st.act === 'skip' ? `这位是 0 → 跳过，结果不变（但底数仍要平方一次，为高位备好）。`
+            : st.act === 'done' ? (st.truth === undefined
+              ? `${st.a}^${st.n}=**${st.result}**，${st.mults} 乘+${st.squares} 平方 vs 朴素 ${st.n} 乘。`
+              : `一共 ${st.totalOps} 次乘法（朴素要 ${st.naiveOps} 次）。这一趟算出来的是 **${cut(st.got)}**，BigInt 真值是 **${cut(st.truth)}**。`)
+              : `处理中。` },
+        ...(st.phase === 'done' && st.exact !== undefined
+          ? [{ k: '这说明什么', v: st.exact
+            ? (isMatrix
+              ? `跟真值**逐位相同**。注意这一档换掉的只是"乘法"两个字 —— **快速幂要的只是可结合**，跟被乘的是不是数无关。`
+              : `跟真值**逐位相同**。中间量最大到 ${st.maxInter?.toExponential(2)}，没越过 2⁵³。`)
+            : `⚠️ **算出来了，但算错了。** 中间量到过 **${st.maxInter === Infinity ? '∞' : st.maxInter?.toExponential(3)}**，越过了 2⁵³≈9×10¹⁵ —— ` +
+              `之后每一次乘法都在悄悄丢低位，**一句错都不报**。` +
+              (st.op?.startsWith('模乘 mod') ? `\n\n**注意这一档已经取模了，照样错**：取模治的是结果太大，治不了中间量太大。` : '') }]
+          : []),
       ]
     },
     verdict: (s: never) => {
-      const st = s as { phase: string; act: string; result: number; powK: number }
-      return st.phase === 'done' ? `${st.result}` : st.act === 'mul' ? `×${st.powK}` : st.act === 'skip' ? '跳过' : '逐位'
+      const st = s as { phase: string; act: string; result: number; powK: number; exact?: boolean }
+      if (st.phase !== 'done') return st.act === 'mul' ? '乘入' : st.act === 'skip' ? '跳过' : '逐位'
+      return st.exact === undefined ? `${st.result}` : (st.exact ? '算对了' : '静默算错')
     },
     read: [
-      { at: '读数', is: '要算的幂、当前结果、乘+平方次数。', anchor: '.scdim' },
-      { at: '二进制位', is: '指数拆二进制,每列一位:琥珀=当前位、绿✓=是1且已乘入、每列标 a^(2^k)。', anchor: '.fprow' },
+      { at: '读数', is: '要算什么、当前位、乘法次数（对照朴素要几次），以及 **跟 BigInt 真值逐位比**的结论和**最大中间量**（越过 2⁵³ 就已经在丢精度了）。', anchor: '.scdim' },
+      { at: '二进制位', is: '指数拆二进制，每列一位：琥珀=当前位、绿✓=是 1 且已乘入。', anchor: '.fprow' },
+      { at: '真值对照', is: '这一趟算出来的 vs BigInt 独立算出来的。**「算出来了」和「算对了」是两件事** —— 没有一个独立真值，屏幕上那串数字对不对根本无从判断。', anchor: '.qsscale' },
     ],
     try: [
-      { act: '按「下一步」逐位', watch: 'base 反复平方得 a^(2^k);二进制这位是 1 就把它乘进结果、0 就跳。' },
-      { act: '数乘法次数', watch: '3¹³ 只用 3 乘+3 平方,不是老实乘 13 次——log n vs n。' },
+      { act: '默认档（3¹⁰⁰ + 整数乘法）走完，看真值对照', watch: '两串数字**不是同一个数**，而全程一句错都不报 —— 这就是"不取模的快速幂在真实场景里用不了"。' },
+      { act: '把「运算」换成模乘 mod 1e9+7', watch: '⚠️ **照样错**。取模治的是结果太大，治不了中间量太大：两个 10⁹ 一乘就是 10¹⁸ > 2⁵³。' },
+      { act: '再换成「模乘 · BigInt 中间量」', watch: '这才对得上。真实代码里对应的是 __int128 或 Montgomery 乘法。' },
+      { act: '换成「矩阵乘法 · 斐波那契」', watch: '同一套骨架，只把"数的乘法"换成 2×2 矩阵乘法，就 O(log n) 求出了 F(n)——**快速幂要的只是可结合**。' },
     ],
     terms: [],
   },

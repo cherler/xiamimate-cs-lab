@@ -944,10 +944,14 @@ console.log('\n【「这一步为什么」真的在跟着走】')
         totalCompares: 29, totalMoves: 44, totalBuf: 12, totalPasses: 4, shapeSpread: 1.66, stable: true, hasTies: true },
     },
     fastpow: {
-      doc: { kind: 'fastpow', params: {}, entities: [], streams: [] },
-      //  A 某位=1 乘入 · B 算完 —— 结论必须换一套说法
-      a: { phase: 'run', act: 'mul', a: 3, n: 13, bitsMSB: [1, 1, 0, 1], k: 2, bit: 1, powK: 81, result: 243, prevResult: 3, mults: 2, squares: 2, picked: [1, 4] },
-      b: { phase: 'done', act: 'done', a: 3, n: 13, bitsMSB: [1, 1, 0, 1], k: 4, bit: -1, powK: -1, result: 1594323, prevResult: 1594323, mults: 3, squares: 3, picked: [1, 4, 8] },
+      /*  2026-09-09 补厚：新增 op/truth/got/exact/maxInter 等；默认档改成 3¹⁰⁰ + 整数乘法（会静默算错）。 */
+      doc: { kind: 'fastpow', params: { base: 3, exp: 100, op: '整数乘法（会溢出）' }, entities: [], streams: [] },
+      //  A 某位=1 乘入 · B 算完（而且算错了）—— 结论必须换一套说法
+      a: { phase: 'run', act: 'mul', a: 3, n: 100, bitsMSB: [1, 1, 0, 0, 1, 0, 0], k: 2, bit: 1, powK: 43046721, result: 43046721, prevResult: 1, mults: 1, squares: 2, picked: [4],
+        op: '整数乘法（会溢出）', maxInter: 43046721, overflowed: false, totalOps: 9, naiveOps: 99 },
+      b: { phase: 'done', act: 'done', a: 3, n: 100, bitsMSB: [1, 1, 0, 0, 1, 0, 0], k: 6, bit: 1, powK: -1, result: 5.153775207320113e47, prevResult: 1, mults: 3, squares: 6, picked: [4, 32, 64],
+        op: '整数乘法（会溢出）', maxInter: 5.153775207320113e47, overflowed: true, totalOps: 9, naiveOps: 99,
+        truth: '515377520732011331036461129765621272702107522001', got: '5.153775e+47', exact: false },
     },
     astar: {
       /*  2026-09-09 补厚：g 改成代价、新增 weight/optimalLen/admissible/sweep。夹具跟着换。 */

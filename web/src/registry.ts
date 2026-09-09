@@ -175,7 +175,7 @@ import { quicksortKernel, QS_DATA, QS_PIVOTS, QS_PARTS, type QuickSortState } fr
 import { QuickSortStage } from './stages/QuickSortStage.tsx'
 import { mergesortKernel, MS_DATA, MS_TIES, MS_PASSES, type MergeSortState } from '@engine/kernels/mergesort.ts'
 import { MergeSortStage } from './stages/MergeSortStage.tsx'
-import { fastpowKernel, type FastPowState } from '@engine/kernels/fastpow.ts'
+import { fastpowKernel, FP_OPS, FP_BASES, FP_EXPS, type FastPowState } from '@engine/kernels/fastpow.ts'
 import { FastPowStage } from './stages/FastPowStage.tsx'
 import { astarKernel, ASTAR_MAPS, ASTAR_WEIGHTS, ASTAR_HEURISTICS, type AStarState } from '@engine/kernels/astar.ts'
 import { AStarStage } from './stages/AStarStage.tsx'
@@ -4345,30 +4345,50 @@ const fastpow: Experiment<FastPowState> = {
   title: '快速幂',
   subtitle: '指数拆二进制，反复平方 + 挑位相乘',
   kernel: fastpowKernel,
-  defaultDoc: { kind: 'fastpow', params: {}, entities: [], streams: [] },
-  params: [],
-  paramsNote: `**快速幂用分治/二进制把 a^n 压到 O(log n)**。求 a^n 最笨是乘 n-1 次。
+  defaultDoc: { kind: 'fastpow', params: { base: 3, exp: 100, op: '整数乘法（会溢出）' }, entities: [], streams: [] },
+  /*  2026-09-09 补厚：老版本写死 3¹³ 顺顺当当算完 —— 而它自己那句
+      「快速幂是模幂(RSA)、矩阵快速幂的底子」，两样一个都没出现过。
+      更要命的是**不取模的快速幂在真实场景里根本用不了**，那件事一次都没演过。
+      默认档特意开在 3¹⁰⁰ + 整数乘法上：一进来就是个静默算错的现场。 */
+  params: [
+    { key: 'base', label: '底数 a', kind: 'number', options: [...FP_BASES] },
+    { key: 'exp', label: '指数 n', kind: 'number', options: [...FP_EXPS] },
+    { key: 'op', label: '运算', kind: 'enum', options: [...FP_OPS] },
+  ],
+  paramsNote: `**快速幂用分治/二进制把 a^n 压到 O(log n)**。求 a^n 最笨是乘 n−1 次。
 
-- **原理**:把指数写成二进制,如 13=1101₂=8+4+1,于是 a¹³=a⁸·a⁴·a¹——只用到平方得来的幂 a¹,a²,a⁴,a⁸(每个由上一个平方而来,只需 log n 次平方),再看二进制哪几位是 1,把对应幂乘起来。
-- **本实验算 3¹³**:base 反复平方 3→9→81→6561,bit0=1 取 3、bit1=0 跳、bit2=1 取 81、bit3=1 取 6561 → 3·81·6561=1594323,只用 3 乘+3 平方,朴素要 13 次。
-- **用处**:模幂(RSA)、矩阵快速幂(线性递推)的底子。`,
+- **原理**:把指数写成二进制,如 13=1101₂=8+4+1,于是 a¹³=a⁸·a⁴·a¹——只用到平方得来的幂(每个由上一个平方而来,只需 log n 次平方),再看二进制哪几位是 1,把对应幂乘起来。n=1000 只要 **15 次**乘法,朴素要 999 次。
+
+- **补厚补的是"它在真实场景里为什么不能这么用"。每一档都拿 BigInt 独立算一个真值,逐位比 —— 「算出来了」和「算对了」是两件事**:
+  - **整数乘法(默认档)**:3¹⁰⁰ 有 48 位,远超 JS 能精确表示的 2⁵³≈9×10¹⁵。屏幕上会印出一串**看着挺像回事、每一位都不对**的数字,**一句错都不报**。n=1000 时更彻底 —— 结果直接是 **Infinity**,连"一个错的数"都没剩下。
+  - **模乘 mod 1e9+7**:⚠️ **取了模照样错。** n=45 还对(中间量 1.85×10¹⁵ < 2⁵³),n=100 就错了(中间量 1.89×10¹⁷)。因为**取模治的是结果太大,治不了中间量太大**:两个 10⁹ 量级的数一乘就是 10¹⁸,**在取模之前那一次乘法就已经丢精度了**。这一环最容易被漏掉。
+  - **模乘 · BigInt 中间量**:这才对,四个 n 全部逐位吻合。真实代码里对应的是 \`__int128\`、或者 Montgomery 乘法。
+  - **矩阵乘法 · 斐波那契**:同一套"反复平方 + 挑位"的骨架,只把"数的乘法"换成 **2×2 矩阵乘法**,就 O(log n) 求出了 F(n)。**快速幂要的只是"可结合"**,跟被乘的是不是数没关系 —— 矩阵、多项式、置换、状态转移都能套。⚠️ 而**换了运算,溢出那个坑还在**:矩阵每一项是 x·y + x·y,同样撞 2⁵³,所以这一档内部**也**走 BigInt(写成 Number 的话 F(100) 会算成 687995181,真值 687995182,差 1)。`,
   bounds: [
-    '算 3¹³:指数 13=1101₂=8+4+1',
-    'base 反复平方得 a^(2^k);二进制位=1 就乘入(可核)',
-    '3·81·6561=1594323;3 乘 + 3 平方 vs 朴素 13 乘',
-    'O(log n):n=10⁹ 也才 ~30 步',
+    '底数 2/3/7 × 指数 13/45/100/1000 × 四种"乘法"',
+    '真值一律用 **BigInt 独立算**,再跟这一趟的结果逐位比;不拿算法自己的输出当判据',
+    '中间量峰值逐帧记录,跟 2⁵³−1 并排 —— 越过它就意味着已经在丢低位了',
+    '矩阵档内部走 BigInt(理由见 paramsNote),所以它演的是"换运算",不是"再演一次溢出"',
+    '未做:蒙哥马利约简的具体步骤、指数也很大时的 CRT 拆分、常数时间实现(防侧信道)',
   ],
   tabs: [{ id: 'bits', label: '逐位平方' }],
   Stage: FastPowStage,
-  tone: s => (s.phase === 'done' ? { key: 'good', label: `${s.result}` } : s.act === 'mul' ? { key: 'good', label: `×${s.powK}` } : s.act === 'skip' ? { key: 'idle', label: '跳过' } : { key: 'idle', label: `${s.a}^${s.n}` }),
+  tone: s => (s.phase === 'done'
+    ? (s.exact ? { key: 'good', label: '算对了' } : { key: 'bad', label: '静默算错' })
+    : s.act === 'mul' ? { key: 'good', label: '乘入' } : s.act === 'skip' ? { key: 'idle', label: '跳过' } : { key: 'idle', label: `${s.a}^${s.n}` }),
   metric: s => { const nb = s.bitsMSB.length; return s.phase === 'done' ? 1 : nb ? Math.min(1, (s.k + 1) / nb) : 0 },
   tickLabel: s => (s.phase === 'done' ? '毕' : s.act === 'mul' ? '乘' : s.act === 'skip' ? '跳' : '⋯'),
   whyInRail: true,
   readouts: s => [
-    { label: '要算', value: `${s.a}^${s.n}` },
+    { label: '要算', value: s.op.startsWith('矩阵') ? `F(${s.n})` : `${s.a}^${s.n}` },
     { label: '当前位', value: s.k >= 0 && s.phase !== 'done' ? `bit${s.k}=${s.bit}` : '—' },
-    { label: '结果', value: `${s.result}`, tone: s.phase === 'done' ? 'good' : undefined },
-    { label: '乘/平方', value: `${s.mults} / ${s.squares}` },
+    { label: '乘法次数', value: `${s.totalOps}（朴素要 ${s.naiveOps}）` },
+    /*  ⭐ 这两栏是补厚的落点：「算出来了」和「算对了」是两件事，
+        而分开它们的唯一办法是另拿 BigInt 算一个真值。 */
+    { label: '跟真值逐位比', value: s.phase === 'done' ? (s.exact ? '对得上 ✓' : '对不上 ✗') : '—',
+      tone: s.phase === 'done' ? (s.exact ? 'good' : 'bad') : undefined },
+    { label: '最大中间量', value: `${s.maxInter === Infinity ? '∞' : s.maxInter.toExponential(2)}（2⁵³≈9.0e15）`,
+      tone: s.overflowed ? 'bad' : undefined },
   ],
 }
 

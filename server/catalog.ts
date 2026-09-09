@@ -469,21 +469,67 @@ const CATALOG_CORE: CatalogEntry[] = [
     id: 'fastpow',
     title: '快速幂',
     kernel: fastpowKernel as Kernel<unknown>,
-    doc: trivialDoc('fastpow'),
+    /*  2026-09-09 补厚：默认档改成 3¹⁰⁰ + 整数乘法 —— 一进来就是个**静默算错**的现场，
+        而"不取模的快速幂在真实场景里用不了"才是这个算法最该被记住的一件事。 */
+    doc: { kind: 'fastpow', params: { base: 3, exp: 100, op: '整数乘法（会溢出）' }, entities: [], streams: [] },
     facts: [
       {
-        id: 'mults', label: '快速幂计算 3^13 的乘法次数',
-        ask: '用快速幂计算 3^13，需要多少次「乘法」(把某个 a^(2^k) 乘进结果)?',
-        kind: 'number',
-        compute: t => ({ answer: String(last(t).mults), step: t.length - 1, evidence: `13=1101₂，二进制里有几个 1 就乘几次；终态 mults=${last(t).mults}` }),
+        id: 'total_ops', label: '快速幂算 3^100 的乘法总次数', kind: 'number', genre: 'count',
+        ask: '用快速幂计算 3^100（100 = 1100100₂），一共要做多少次乘法（平方 + 挑位相乘）?',
+        compute: t => {
+          const f = last(t)
+          return { answer: String(f.totalOps), step: t.length - 1,
+            evidence: `${f.squares} 次平方 + ${f.mults} 次挑位相乘；朴素做法要 ${f.naiveOps} 次` }
+        },
         distractors: numDistractors,
       },
       {
-        id: 'squares', label: '快速幂计算 3^13 的平方次数',
-        ask: '用快速幂计算 3^13，需要多少次「平方」(把底数反复自乘得到 a^2、a^4、a^8…)?',
-        kind: 'number',
-        compute: t => ({ answer: String(last(t).squares), step: t.length - 1, evidence: `终态 squares=${last(t).squares}` }),
-        distractors: numDistractors,
+        id: 'silent_wrong', label: '不取模的快速幂会静默算错', kind: 'choice', genre: 'concept',
+        ask: '用 64 位整数（或 JavaScript 的 Number）跑快速幂算 3^100，会发生什么?',
+        compute: t => {
+          const f = last(t)
+          return {
+            answer: '会算出一个错的数，而且不报任何错 —— 结果有 48 位，早就超出了能精确表示的范围',
+            step: t.length - 1,
+            evidence: `实测：这一趟得到 ${f.got}，而 BigInt 算出的真值是 ${String(f.truth).slice(0, 24)}…；中间量最大到过 ${(f.maxInter as number).toExponential(2)}，而上限是 9.0e15`,
+          }
+        },
+        distractors: a => [a,
+          '会抛出一个溢出异常 —— 运行时检测到结果超出范围，于是中断计算并报错',
+          '会自动切换到高精度整数 —— 现代语言在检测到溢出时会把结果提升为大整数类型',
+          '会算出正确结果 —— 快速幂的中间结果始终不超过 a^n 本身，不存在额外的溢出风险',
+        ].filter(o => o !== a).slice(0, 3),
+      },
+      {
+        id: 'mod_not_enough', label: '取模也救不了中间量溢出', kind: 'choice', genre: 'concept',
+        ask: '把快速幂改成"每一步都对 1e9+7 取模"。这样结果就一定对了吗?',
+        compute: t => ({
+          answer: '不一定 —— 取模治的是结果太大，治不了中间量太大：两个 10⁹ 量级的数相乘就是 10¹⁸，在取模之前那一次乘法已经丢精度了',
+          step: t.length - 1,
+          evidence: '实测：模乘那一档 n=45 还对（中间量 1.85e15 < 2⁵³），n=100 就错了（中间量 1.89e17）；换成 BigInt 中间量之后四个 n 全部逐位吻合',
+        }),
+        distractors: a => [a,
+          '一定对 —— 每一步都取模之后，参与运算的数永远小于 1e9+7，不可能溢出',
+          '一定对 —— 取模是同余运算，先取模再相乘和先相乘再取模的结果在数学上完全等价',
+          '不一定 —— 但原因是 1e9+7 这个模数选得不好，换成 2 的幂次做模数就没问题了',
+        ].filter(o => o !== a).slice(0, 3),
+      },
+      {
+        /*  ⚠️ 「快速幂还能用在哪（矩阵幂）」那一条已经在 concepts-fill 的补丁包里了
+            （fastpow/matrix_pow）—— 判据「答案雷同的原理题」当场把我这条重复的抓了出来。
+            换成这个实验**独有**的一条：换了运算，溢出那个坑照样在。 */
+        id: 'matrix_also_overflows', label: '换了运算，溢出的坑还在', kind: 'choice', genre: 'concept',
+        ask: '把快速幂里的"数的乘法"换成 2×2 矩阵乘法来求斐波那契。这样就绕开溢出问题了吗?',
+        compute: t => ({
+          answer: '没绕开 —— 矩阵每一项是 x·y + x·y，两个 10⁹ 量级的数一乘还是 10¹⁸，撞的是同一个上限',
+          step: t.length - 1,
+          evidence: '实测：矩阵档内部若用 Number 写，F(100) 会算成 687995181，而真值是 687995182，差 1 且不报错；改走 BigInt 中间量后四个 n 全部逐位吻合',
+        }),
+        distractors: a => [a,
+          '绕开了 —— 矩阵的每一项都已经先取过模，所以参与运算的数不会超过模数',
+          '绕开了 —— 矩阵乘法只做加法和小数相乘，本来就不会产生特别大的中间值',
+          '不用绕 —— 斐波那契数增长很慢，即使不取模，F(1000) 也在 64 位整数范围内',
+        ].filter(o => o !== a).slice(0, 3),
       },
     ],
   },

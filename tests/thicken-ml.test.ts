@@ -52,6 +52,7 @@ import { recsysKernel, RS_SCENES, RS_DIMS, RS_LAMBDAS, type RecSysState } from '
 import { astarKernel, ASTAR_MAPS, ASTAR_WEIGHTS, ASTAR_HEURISTICS, type AStarState } from '../src/kernels/astar.ts'
 import { unionfindKernel, UF_UNIONS, UF_COMPRESS, UF_SEQS, UF_SCALE_NS, type UnionFindState } from '../src/kernels/unionfind.ts'
 import { mergesortKernel, MS_DATA, MS_TIES, MS_PASSES, MS_SCALE_NS, type MergeSortState } from '../src/kernels/mergesort.ts'
+import { fastpowKernel, FP_OPS, FP_BASES, FP_EXPS, type FastPowState } from '../src/kernels/fastpow.ts'
 
 let failures = 0
 const ok = (m: string) => console.log(`  ✅ ${m}`)
@@ -2266,6 +2267,116 @@ console.log('\n【归并排序：三句课本结论，全部改成量出来的�
     !a.hasTies && !b.hasTies && JSON.stringify(a.tags) === JSON.stringify(b.tags)
       ? ok('自检：没有重复值时，换取小规则连元素的原始下标都一模一样 —— 上面那条稳定性判据量的确实是等值元素，不是恒真')
       : bad(`自检失败：无重复值的数据上换规则竟然改变了排列（hasTies ${a.hasTies}/${b.hasTies}）`)
+  }
+}
+
+// ═══ 快速幂：算出来了 ≠ 算对了 ═══════════════════════════
+console.log('\n【快速幂：不取模的快速幂在真实场景里用不了】')
+{
+  const go = (p: P) => run(fastpowKernel.compile(doc('fastpow', p)), 200) as FastPowState[]
+  const fin = (p: P) => last(go(p))
+  const [PLAIN, MOD, BIGMOD, MATRIX] = FP_OPS
+
+  /*  ① **底线**：乘法次数必须真的是 O(log n)，而且判据自己按二进制重算一遍 ——
+      不信状态里的字段。挑位次数 = n 的二进制里 1 的个数，平方次数 = 位数 − 1。 */
+  const wrongOps: string[] = []
+  for (const base of FP_BASES) for (const exp of FP_EXPS) for (const op of FP_OPS) {
+    const s = fin({ base, exp, op })
+    const bits = exp.toString(2)
+    const ones = [...bits].filter(c => c === '1').length
+    if (s.mults !== ones) wrongOps.push(`a=${base} n=${exp} ${op}：挑位 ${s.mults} 次，而 ${exp} 的二进制有 ${ones} 个 1`)
+    if (s.squares !== bits.length - 1) wrongOps.push(`a=${base} n=${exp}：平方 ${s.squares} 次，而位数−1 = ${bits.length - 1}`)
+    if (s.naiveOps !== exp - 1) wrongOps.push(`a=${base} n=${exp}：朴素次数记成了 ${s.naiveOps}`)
+    /*  ⚠️ **规模表里"自己这一行"必须跟读数对得上。**
+        第一版 `opsFor` 每个 n 都多算一次平方（最后一位之后其实不用再平方），
+        于是表里印 10、读数印 9 —— **同一屏上两个数打架**，而两处都没报错。 */
+    const mine = s.scale.find(r => r.n === exp)
+    if (mine && mine.ops !== s.totalOps) wrongOps.push(`a=${base} n=${exp}：规模表印 ${mine.ops} 次，而读数印 ${s.totalOps} 次`)
+  }
+  wrongOps.length === 0
+    ? ok(`${FP_BASES.length * FP_EXPS.length * FP_OPS.length} 种组合：挑位次数 = 指数二进制里 1 的个数、平方次数 = 位数−1（判据自己按二进制重算的）`)
+    : bad(wrongOps.slice(0, 3).join(' / '))
+
+  /*  ② **真值必须是独立算的。** 判据自己再用 BigInt 算一遍，跟状态里那个 `truth` 对 ——
+      **判据不该拿被测对象的自我声明当证据**。 */
+  const truthBad: string[] = []
+  for (const base of FP_BASES) for (const exp of FP_EXPS) {
+    const plain = fin({ base, exp, op: PLAIN })
+    if (plain.truth !== (BigInt(base) ** BigInt(exp)).toString()) truthBad.push(`${base}^${exp} 的真值不对`)
+    const mod = fin({ base, exp, op: BIGMOD })
+    if (mod.truth !== ((BigInt(base) ** BigInt(exp)) % 1000000007n).toString()) truthBad.push(`${base}^${exp} mod 的真值不对`)
+  }
+  truthBad.length === 0
+    ? ok('屏幕上印的"BigInt 真值"，判据自己用 BigInt 独立重算过一遍，逐个对得上')
+    : bad(truthBad.slice(0, 3).join(' / '))
+
+  /*  ③ **主菜：整数乘法会静默算错。** n 一大就必须对不上真值，而且**没有任何异常** ——
+      "静默"这两个字得验：帧照样走完、phase 照样是 done。 */
+  {
+    const small = fin({ base: 3, exp: 13, op: PLAIN })
+    const big = fin({ base: 3, exp: 100, op: PLAIN })
+    const huge = fin({ base: 3, exp: 1000, op: PLAIN })
+    small.exact && !big.exact && !huge.exact && big.phase === 'done' && huge.got === 'Infinity'
+      ? ok(`整数乘法：3¹³ 对得上，3¹⁰⁰ **算错了**（得 ${big.got}，真值 ${big.truth.length} 位），3¹⁰⁰⁰ 干脆是 **Infinity** —— 全程 phase=done、一句错都不报`)
+      : bad(`静默失败没演出来：13 对=${small.exact}、100 对=${big.exact}、1000 得到 ${huge.got}`)
+  }
+
+  /*  ④ **主菜：取了模照样错。** 这一条最容易被漏掉，所以两头都钉：
+      中间量没越过 2⁵³ 的那一档必须对，越过的那一档必须错。 */
+  {
+    const okCase = fin({ base: 3, exp: 45, op: MOD })
+    const badCase = fin({ base: 3, exp: 100, op: MOD })
+    okCase.exact && !okCase.overflowed && !badCase.exact && badCase.overflowed
+      ? ok(`模乘 mod 1e9+7：n=45 中间量 ${okCase.maxInter.toExponential(2)} < 2⁵³ 所以对；n=100 中间量 ${badCase.maxInter.toExponential(2)} 越界，**取了模照样错**（得 ${badCase.got}，真值 ${badCase.truth}）`)
+      : bad(`"取模也不够"没演出来：n=45 对=${okCase.exact}/溢=${okCase.overflowed}、n=100 对=${badCase.exact}/溢=${badCase.overflowed}`)
+  }
+
+  /*  ⑤ **BigInt 中间量那一档必须全对** —— 否则"这才是对的那版"就是空话。 */
+  {
+    const bad2: string[] = []
+    for (const base of FP_BASES) for (const exp of FP_EXPS) {
+      const s = fin({ base, exp, op: BIGMOD })
+      if (!s.exact) bad2.push(`${base}^${exp}：得 ${s.got}、真值 ${s.truth}`)
+    }
+    bad2.length === 0
+      ? ok(`模乘 · BigInt 中间量：${FP_BASES.length * FP_EXPS.length} 个组合**全部逐位吻合** —— 这才是对的那一版`)
+      : bad(bad2.slice(0, 3).join(' / '))
+  }
+
+  /*  ⑥ **矩阵档：换了运算，骨架一动没动。** 乘法次数必须跟同 n 的数值档**完全一样**，
+      而且结果要对得上独立算的斐波那契。 */
+  {
+    const bad3: string[] = []
+    for (const exp of FP_EXPS) {
+      const m = fin({ base: 3, exp, op: MATRIX })
+      const num = fin({ base: 3, exp, op: BIGMOD })
+      if (m.totalOps !== num.totalOps) bad3.push(`n=${exp}：矩阵档 ${m.totalOps} 次乘法、数值档 ${num.totalOps} 次 —— 骨架不一样了`)
+      //  判据自己用朴素递推算一遍 F(n)（带模），别信实验自己的真值
+      let x = 0n, y = 1n
+      for (let t = 0; t < exp; t++) { const z = (x + y) % 1000000007n; x = y; y = z }
+      if (m.got !== x.toString()) bad3.push(`n=${exp}：矩阵档得 ${m.got}，而朴素递推算出来是 ${x}`)
+    }
+    bad3.length === 0
+      ? ok(`矩阵快速幂：四个 n 的乘法次数跟数值档**完全相同**（骨架没变，只换了"乘法"两个字），结果跟朴素递推逐个吻合`)
+      : bad(bad3.slice(0, 3).join(' / '))
+  }
+
+  /*  ⑦ **省了多少要随 n 拉大** —— "O(log n) vs O(n)"这句话得看得见趋势。 */
+  {
+    const s = fin({ base: 3, exp: 13, op: BIGMOD })
+    const ratios = s.scale.map(r => r.naive / r.ops)
+    const rising = ratios.every((v, k) => k === 0 || v > ratios[k - 1])
+    rising && ratios[ratios.length - 1] > 50
+      ? ok(`省下的倍数随 n 单调拉大：${s.scale.map(r => `n=${r.n} 省 ${(r.naive / r.ops).toFixed(1)}×`).join('，')}`)
+      : bad(`倍数没有单调拉大：${ratios.map(v => v.toFixed(1)).join('/')}`)
+  }
+
+  /*  ⑧ 自检：这一套判据得会红 —— 拿小指数冒充溢出档，③ 那条必须抓住。 */
+  {
+    const s = fin({ base: 2, exp: 13, op: PLAIN })
+    s.exact && !s.overflowed
+      ? ok(`自检：2¹³ 这种小指数下整数乘法**照样对**（中间量 ${s.maxInter.toExponential(2)} 没越界）—— 上面那条"静默算错"量的确实是溢出，不是恒真`)
+      : bad(`自检失败：2¹³ 也算错了（对=${s.exact}、溢=${s.overflowed}）`)
   }
 }
 
