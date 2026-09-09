@@ -597,38 +597,53 @@ export const DS_CLASSIC_ENTRIES: CatalogEntry[] = [
     id: 'heap',
     title: '二叉堆 / 优先队列',
     kernel: heapKernel as Kernel<unknown>,
-    doc: { kind: 'heap', params: {}, entities: [], streams: [] },
+    /*  2026-09-09 补厚：默认档改成**逐个插入 + 升序** —— 那是它最惨的一档，
+        而"建堆 O(n)"这句话没有第二种建法可比就等于没讲。 */
+    doc: { kind: 'heap', params: { data: '已经排好序', build: '逐个插入 sift-up', after: '只建堆' }, entities: [], streams: [] },
     facts: [
       {
-        id: 'build_swaps', label: '建堆阶段的下沉交换次数',
-        ask: '把乱序数组整成最大堆的建堆阶段，一共做了几次下沉交换?',
-        kind: 'number',
+        id: 'build_compares', label: '建堆阶段的比较次数', kind: 'number', genre: 'count',
+        ask: '12 个已经升序排好的数，用"逐个插入 sift-up"的办法建最大堆，建堆阶段一共比较了多少次?',
         compute: t => {
-          const n = t.filter(f => f.stage === 'build' && f.act === 'sift').length
-          return { answer: String(n), step: t.length - 1, evidence: '统计 trace 中 stage=build 且 act=sift 的帧数' }
+          const f = last(t)
+          return { answer: String(f.buildCompares), step: t.length - 1,
+            evidence: `交换 ${f.buildSwaps} 次；换成自底向上（Floyd）只要更少` }
         },
         distractors: numDistractors,
       },
       {
-        id: 'heap_top', label: '建成最大堆后的堆顶',
-        ask: '建成最大堆后，堆顶(即全体最大值)是哪个数?',
-        kind: 'choice',
-        compute: t => {
-          const f = t.find(x => x.act === 'extract')!
-          const arr = f.arr as number[]
-          return { answer: String(arr[f.sortedFrom as number]), step: t.indexOf(f), evidence: String(f.log ?? '') }
-        },
-        distractors: (answer, t) => [...new Set((t[0]!.arr as number[]).map(String))].filter(x => x !== answer).slice(0, 3),
+        /*  ⚠️「堆不是排好序的」补丁包里已有（heap/why_not_sorted），
+            判据按答案的字面相似度（0.47）抓了出来 —— 抽到两条就是同一道题问两遍。
+            换成这个实验独有的一条：**建法的选择在哪种输入上才真的要紧**。 */
+        id: 'worst_input_for_insert', label: '逐个插入最惨的是哪种输入', kind: 'choice', genre: 'concept',
+        ask: '用"逐个插入 sift-up"建最大堆。哪一种输入会让它做最多的比较?',
+        compute: t => ({
+          answer: '升序输入 —— 每个新进来的元素都是当前最大，必须一路上浮到根，每次都走满一整条路径',
+          step: t.length - 1,
+          evidence: '实测 n=512：升序 3595 次、随机 1125 次、完全逆序只要 511 次（降序输入本来就是个最大堆，一次都不用浮）',
+        }),
+        distractors: a => [a,
+          '完全逆序 —— 每个新元素都比已有的都小，得一路下沉到最底层才停',
+          '随机打乱 —— 元素位置毫无规律，平均下来上浮的距离最长',
+          '大量重复 —— 相等元素无法判断该不该继续上浮，只能一直比到根',
+        ].filter(o => o !== a).slice(0, 3),
       },
       {
-        id: 'new_top', label: '取走最大值后复原的新堆顶',
-        ask: '取走最大值、补位并下沉复原后，新堆顶(剩下的最大)是哪个数?',
-        kind: 'number',
-        compute: t => {
-          const arr = last(t).arr as number[]
-          return { answer: String(arr[0]), step: t.length - 1, evidence: String(last(t).log ?? '') }
-        },
-        distractors: numDistractors,
+        /*  ⚠️「建堆为什么是 O(n)」那一条补丁包里已经有了（heap/build_on），
+            判据当场按 实验/事实 的组合键抓出重名。换成这个实验**独有**的一条：
+            两种建法差多少，**取决于数据形状** —— 这件事只有把三档数据都扫过才知道。 */
+        id: 'gap_depends_on_data', label: '两种建法差多少取决于数据形状', kind: 'choice', genre: 'concept',
+        ask: '自底向上建堆是 O(n)、逐个插入是 O(n log n)。那么在实际数据上，后者一定慢很多吗?',
+        compute: t => ({
+          answer: '不一定 —— 差多少取决于数据形状：升序输入时差好几倍，随机时只差一点点，而完全逆序时两者一模一样',
+          step: t.length - 1,
+          evidence: '实测 n=512：升序 1006 vs 3595（差 3.6 倍）、随机 953 vs 1125（差 1.18 倍）、完全逆序 511 vs 511（降序输入本来就是个最大堆，插入一次都不用上浮）',
+        }),
+        distractors: a => [a,
+          '一定慢很多 —— 渐进复杂度差了一个 log n，规模一大差距就会稳定地拉开',
+          '一定一样快 —— 两者的比较次数只差常数因子，渐进上的 log n 在实践中量不出来',
+          '取决于元素类型 —— 比较代价大的对象上差距明显，比较整数时两者几乎相同',
+        ].filter(o => o !== a).slice(0, 3),
       },
     ],
   },
