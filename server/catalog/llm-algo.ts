@@ -26,45 +26,72 @@ export const LLM_ALGO_ENTRIES: CatalogEntry[] = [
     id: 'beam',
     title: '束搜索 Beam Search',
     kernel: beamKernel as Kernel<unknown>,
-    doc: { kind: 'beam', params: {}, entities: [], streams: [] },
+    /*  2026-09-09 补厚：默认档换成「长度偏置」+ k=4 —— 那才是束搜索最有名的毛病，
+        老那批 fact 全在夸它"胜过贪心"，而 `cands`/`greedy.seq` 的形状也换了。 */
+    doc: { kind: 'beam', params: { model: '长度偏置（k 越大输出越短）', k: 4, score: '累积概率（原始）' }, entities: [], streams: [] },
     facts: [
       {
-        id: 'beam_width', label: '束宽 k(每步保留的候选条数)',
-        ask: '束搜索每一步排序后,最多保留几条候选序列(束宽 k)继续往下走?',
-        kind: 'number',
-        compute: t => ({ answer: String(last(t).k), step: t.length - 1, evidence: `束宽 k=${last(t).k}:每步各扩一词、按累积概率排序后,只留前 k 条` }),
+        id: 'beam_width', label: '束宽 k(每步保留的候选条数)', kind: 'number', genre: 'count',
+        ask: '束搜索每一步排序后，最多保留几条候选序列(束宽 k)继续往下走?',
+        compute: t => ({ answer: String(last(t).k), step: t.length - 1, evidence: `束宽 k=${last(t).k}：每步各扩一词、排序后只留前 k 条` }),
         distractors: numDistractors,
       },
       {
-        id: 'beam_cands_step2', label: '第 2 步扩展后的候选总数',
-        ask: '第 2 步把上一步保留的 2 条候选各扩展一个词,排序前一共得到多少条候选?',
-        kind: 'number',
-        compute: t => ({ answer: String((t[1]!.cands as unknown[]).length), step: 1, evidence: String(t[1]!.log ?? '') }),
-        distractors: numDistractors,
-      },
-      {
-        id: 'beam_k1', label: 'k=1 时束搜索退化成什么',
-        ask: '把束宽 k 调成 1,束搜索就退化成了哪种解码方式?',
-        kind: 'choice',
+        id: 'beam_out_len', label: '大束宽下的输出长度', kind: 'number', genre: 'count',
+        ask: '在这张"长度偏置"的玩具模型上，束宽 k=4、按原始累积概率打分，最后选中的那条序列有几个词?',
         compute: t => {
-          const g = disp(String((last(t).greedy as { seq: string }).seq))
-          return { answer: `贪心解码——每步只保留概率最高的 1 条(k=1),本例即被锁进平庸的 ${g}`, step: t.length - 1, evidence: String(last(t).log ?? '') }
+          const f = last(t)
+          const b = f.best as { seq: string; p: number; len: number }
+          const g = f.greedy as { seq: string; p: number; len: number }
+          return { answer: String(b.len), step: t.length - 1,
+            evidence: `选中「${b.seq}」概率 ${b.p}；而贪心（k=1）给出「${g.seq}」概率 ${g.p}、长 ${g.len} 个词` }
         },
-        distractors: () => ['全搜索——枚举所有可能序列再挑最优', '随机采样——每步按概率随机抽一个词', '多数投票——采样多条独立序列后投票'],
+        distractors: numDistractors,
       },
       {
-        id: 'beam_beats_greedy', label: '束搜索为何胜过贪心',
-        ask: '本例束搜索找到的整句概率高于贪心,根本原因是什么?',
-        kind: 'choice',
+        id: 'beam_k1', label: 'k=1 时束搜索退化成什么', kind: 'choice', genre: 'concept',
+        ask: '把束宽 k 调成 1，束搜索就退化成了哪种解码方式?',
         compute: t => {
-          const b = last(t).best as { seq: string; p: number }
-          const gd = last(t).greedy as { seq: string; p: number }
+          const g = last(t).greedy as { seq: string; p: number }
+          return { answer: `贪心解码 —— 每步只留概率最高的那 1 条`, step: t.length - 1, evidence: `本例 k=1 一路走到「${g.seq}」，概率 ${g.p}` }
+        },
+        distractors: () => ['全搜索 —— 枚举所有可能的序列再挑最优', '随机采样 —— 每步按概率分布随机抽一个词', '多数投票 —— 独立采样多条序列之后投票'],
+      },
+      {
+        /*  ⭐ 补厚的落点：那句"k 越大越接近最优"在实践中是错的。
+            ⚠️「束搜索为什么偏爱短句」补丁包里已有（beam/length_bias），判据按答案相似度
+            0.55 抓了出来。这条改问**同一屏上两个数的走向**，那是只有量过才知道的事；
+            答案也压到跟干扰项同一长度 —— 否则"挑最长的就中"。 */
+        id: 'beam_k_vs_len', label: 'k 扫描上两条线的走向', kind: 'choice', genre: 'concept',
+        ask: '把束宽 k 从 1 一路调到 8，同时盯着「找到的概率」和「输出长度」这两个数。它们各自怎么走?',
+        compute: t => {
+          const f = last(t)
+          const sw = (f.kSweep ?? []) as { k: number; len: number; p: number }[]
           return {
-            answer: `贪心第一步只贪局部最高的 A、被锁进 ${disp(gd.seq)}(${gd.p});束搜索同时留着次优的 B,才发现整体更优的 ${disp(b.seq)}(${b.p})`,
-            step: t.length - 1, evidence: String(last(t).log ?? ''),
+            answer: '概率一路涨，而长度一路缩 —— 两条线是打架的',
+            step: t.length - 1,
+            evidence: `实测：k 从 ${sw[0]?.k} 到 ${sw[sw.length - 1]?.k}，概率 ${sw[0]?.p} → ${sw[sw.length - 1]?.p}，长度 ${sw[0]?.len} → ${sw[sw.length - 1]?.len} 个词`,
           }
         },
-        distractors: () => ['束搜索每一步的计算量更小,所以结果更准', '束搜索用了参数更多的语言模型', '束搜索把每个词的概率相加(而非相乘)来打分'],
+        distractors: a => [a,
+          '两个都涨 —— 搜得越宽，找到的句子既更可能也更完整详细',
+          '两个都不动 —— 束宽只影响速度，最终选中的那条序列并不会变',
+          '概率涨、长度也涨 —— 高概率的句子往往需要更多词才说得完整',
+        ].filter(o => o !== a).slice(0, 3),
+      },
+      {
+        id: 'beam_lenpen_knob', label: '长度惩罚是旋钮不是开关', kind: 'choice', genre: 'concept',
+        ask: '给束搜索加上长度归一化之后，长度偏置这个问题就解决了吗?',
+        compute: t => ({
+          answer: '要看用哪一种、力度多大 —— 有的能翻盘，有的翻不动',
+          step: t.length - 1,
+          evidence: '实测：同一个 k 下「÷ 长度」选回了长 3 个词的那条；而 GNMT 的 α=0.6 分母长 1 时是 1.00、长 3 时才 1.19，仍选那条长 1 的',
+        }),
+        distractors: a => [a,
+          '解决了 —— 除以长度之后，长短候选就在同一个尺度上了',
+          '解决了 —— 这是等价变换，不改最优解只让排序更稳',
+          '没解决 —— 它会反过来偏爱长句，问题只是换了一头',
+        ].filter(o => o !== a).slice(0, 3),
       },
     ],
   },

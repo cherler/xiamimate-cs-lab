@@ -3235,18 +3235,44 @@ export const BRIEFS: Record<string, Brief> = {
       opts: ['按累积概率排序后保留最好的 2 条，其余剪掉', '保留全部候选，最后再一起比'],
     },
     tasks: [
-      { act: '按「下一步」解码', watch: '每步 k 条各扩一词→排序→只留前 k 条(绿),其余剪掉' },
-      { act: '看末步对照', watch: '贪心第一步贪 A 被锁进 0.10,束搜索留住 B 发现 0.288——近 3 倍胜出' },
+      { act: '默认档走完，看 k 扫描表的「长度」那一列', watch: 'k=1 出「ABC」长 3 个词，k≥2 出「B」长 **1** 个词 —— 概率涨了，内容没了' },
+      { act: '把「打分」换成「长度归一化（÷ 长度）」', watch: '同一个 k 选回了「ABC」—— 长度惩罚把连乘那笔账摊平了' },
+      { act: '再换成「GNMT 长度惩罚 α=0.6」', watch: '⚠️ **还是选那条短的** —— 它温和得多，不足以翻盘' },
+      { act: '把「束宽 k」调到 1', watch: '那就是贪心 —— 它反而给出更长、更有内容的那条' },
     ],
     verdict: ({ trace }) => {
-      const s = last<{ phase?: string; best?: { seq: string; p: number }; greedy?: { seq: string; p: number }; k?: number }>(trace)
+      const s = last<{ phase?: string; k?: number; scoreKind?: string
+                       best?: { seq: string; p: number; len: number }
+                       greedy?: { seq: string; p: number; len: number }
+                       optimal?: { seq: string; p: number; len: number }
+                       topProb?: { seq: string; p: number; len: number }
+                       isOptimal?: boolean; totalSeqs?: number; shrinks?: boolean
+                       kSweep?: { k: number; len: number; p: number }[] }>(trace)
       if (!s || s.phase !== 'done') return null
-      const d = (x: string) => x.replace('·', '⟨end⟩')
-      const ratio = s.greedy && s.greedy.p > 0 ? Math.round((s.best!.p / s.greedy.p) * 10) / 10 : 0
+      const d = (x: string) => (x === '' ? '⟨空⟩' : x)
+      /*  ⚠️ optimal/shrinks 是 2026-09-09 补厚加的。老快照没有,退回旧措辞。 */
+      if (s.optimal === undefined) {
+        const ratio = s.greedy && s.greedy.p > 0 ? Math.round((s.best!.p / s.greedy.p) * 10) / 10 : 0
+        return {
+          pick: 0,
+          say: `束搜索(k=${s.k})走出 ${d(s.best!.seq)}(${s.best!.p}),比贪心高 ${ratio} 倍。`,
+          why: `整句概率=各步连乘。贪心每步只取最高易掉坑、全搜索爆炸;束搜索维护 k 条取中间。`,
+        }
+      }
+      const sw = s.kSweep ?? []
       return {
         pick: 0,
-        say: `束搜索(k=${s.k})走出 ${d(s.best!.seq)}(${s.best!.p}),比贪心 ${d(s.greedy!.seq)}(${s.greedy!.p}) 高 ${ratio} 倍——赢在同时保留了 B 那条。`,
-        why: `整句概率=各步连乘。贪心每步只取最高易掉坑(局部≠全局)、全搜索爆炸;束搜索维护 k 条、每步各扩一词按累积概率留前 k。k=1 退化成贪心、k=∞ 逼近全搜索。机器翻译/摘要/受限生成标配(配长度归一化);对照随机采样(要多样)。`,
+        say: `k=${s.k}（${s.scoreKind}）选中 **${d(s.best!.seq)}**：概率 ${s.best!.p}、**长 ${s.best!.len} 个词**；` +
+          `贪心（k=1）给 ${d(s.greedy!.seq)}（${s.greedy!.p}、长 ${s.greedy!.len}）；` +
+          `穷举全部 ${s.totalSeqs} 条序列的最优是 ${d(s.optimal.seq)} —— **${s.isOptimal ? '追平了' : '没追平'}**。`,
+        why: s.shrinks
+          ? `⚠️ **k 越大，输出越短**（${sw[0]?.len} → ${sw[sw.length - 1]?.len} 个词），而概率在涨 —— **两条线是打架的**。\n\n` +
+            `根子在目标本身：一句话的概率是各步**连乘**，每多一个词就再乘一个小于 1 的数，**越短的序列概率天生越高**。` +
+            `这张模型上概率最高的是 ${d(s.topProb?.seq ?? '')}（只有 ${s.topProb?.len} 个词）。` +
+            `**机器翻译里"beam 调大反而 BLEU 下降"就是这么来的。**\n\n` +
+            `补丁是长度惩罚 —— 但**它是个有力度的旋钮，不是开关**：「÷ 长度」能翻盘，GNMT 的 α=0.6 温和得多、在这张模型上还翻不动。`
+          : `当前口径「${s.scoreKind}」把长度偏置压住了：k 越大越接近最优，而输出长度没有随 k 变短。` +
+            `\n\n**把口径换回「累积概率（原始）」**再看 —— 那时候概率那一列在涨、长度那一列在缩，两条线打架。`,
       }
     },
   },

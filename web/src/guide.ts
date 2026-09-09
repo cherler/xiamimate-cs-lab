@@ -5926,30 +5926,59 @@ export const GUIDES: Record<string, Guide> = {
       hook: '每一步都选概率最高的词，为什么反而写不好？',
       what: '这一屏讲的是**束搜索（beam search）**：生成序列时的一种搜索策略，在机器翻译、语音识别这类**有标准答案**的任务上是主力。贪心解码每步只选概率最高的那个词，**问题是一句话的好坏不由单个词决定** —— 第一步选了个当下最顺的词，可能把整句话带进死胡同。束搜索的做法是**同时保留几条候选句子**，每步各自扩展，再从所有扩展里挑总分最高的几条留下。视野宽了，就不容易被一步之差带偏。',
       terms: '**束宽（beam size）**：同时保留几条候选。**1 就退化成贪心解码。**\u3000**扩展与剪枝**：每一步，每条候选各扩展出词表大小种可能，**从所有这些可能里再挑总分最高的 k 条留下**，其余全部丢弃。\u3000**长度偏见**：**束搜索最著名的毛病** —— 每多一个词就多乘一个小于 1 的概率，**所以长句子的总分天然更低，模型倾向于早早结束**。\u3000**长度归一化**：治上面那个 —— 把总对数概率**除以长度**（或长度的某个幂）再比较。\u3000**束宽不是越大越好**：**一个反直觉的实验结论** —— 束宽加到很大（比如 100）之后，翻译质量反而会下降。因为模型在长句上的概率估计本身有偏，**搜得越彻底，越容易找到「概率高但质量差」的退化输出**。\u3000**为什么开放式生成不用它**：写作、对话这类任务没有标准答案，**束搜索会产出高概率但乏味、重复的文本**。那些场景用采样（温度、top-p）而不是搜索。\u3000**一句话总结**：**有唯一正确答案的任务用搜索，要多样性的任务用采样。**',
-      watch: '看每一步保留了哪几条候选、哪条被淘汰。束宽调大质量略升但慢好几倍，而且到一定宽度就不再变好。',
+      watch: '走完看底下那张 **k 扫描表**，把「概率」和「长度」两列并起来看：**k 越大概率越高，而输出越短**（3 个词 → 1 个词）。这不是 bug —— 一句话的概率是各步**连乘**，每多一个词就再乘一个小于 1 的数，所以越短的序列概率天生越高。**"beam 调大反而 BLEU 下降"就是这么来的。**',
     },
+    /*  ⚠️ 2026-09-09 补厚：新增 modelName/scoreKind/optimal/isOptimal/kSweep/shrinks 等。
+        `st.xxx ?? …` 是给旧快照的兜底。 */
     step: (s: never) => {
-      const st = s as { phase: string; act: string; t: number; k: number; beamsIn: { seq: string; p: number }[]; cands: { seq: string; p: number }[]; kept: string[]; best: { seq: string; p: number }; greedy: { seq: string; p: number } }
-      const d = (x: string) => x === '' ? '⟨起⟩' : x.replace('·', '⟨end⟩')
+      const st = s as { phase: string; act: string; t: number; k: number
+                        beamsIn: { seq: string; p: number }[]; cands: { seq: string; p: number }[]; kept: string[]
+                        best: { seq: string; p: number; len?: number }; greedy: { seq: string; p: number; len?: number }
+                        scoreKind?: string; optimal?: { seq: string; p: number; len: number }
+                        topProb?: { seq: string; p: number; len: number }
+                        isOptimal?: boolean; totalSeqs?: number; shrinks?: boolean
+                        kSweep?: { k: number; len: number; p: number }[] }
+      const d = (x: string) => x === '' ? '⟨起⟩' : x
       return [
-        { k: '本步输入', v: st.act === '' ? '从起点开始' : st.phase === 'done' ? `${st.k} 条终局候选` : `第 ${st.t} 步:${st.beamsIn.length} 条候选` },
-        { k: '判定规则', v: `一句话概率=各步词概率**连乘**。维护 **k 条**候选(束宽=${st.k}),每步把每条各扩一个词、按**累积概率**排序,**只留前 k 条**继续、其余剪枝。k=1 就是贪心、k=∞ 就是全搜索。` },
-        { k: '本步结果', v: st.phase === 'done' ? `束搜索 **${d(st.best.seq)}(${st.best.p})** 胜过贪心 ${d(st.greedy.seq)}(${st.greedy.p})——留住了贪心错过的更优整句。`
-            : st.act === 'expand' ? `${st.cands.length} 候选留前 ${st.k}:${st.kept.map(d).join('、')}。`
+        { k: '本步输入', v: st.act === '' ? '从起点开始' : st.phase === 'done' ? `${st.k} 条终局候选` : `第 ${st.t} 步：${st.beamsIn.length} 条候选` },
+        { k: '判定规则', v: `一句话概率 = 各步词概率**连乘**。维护 **k=${st.k}** 条候选，每步各扩一个词、` +
+          `按${st.scoreKind && st.scoreKind !== '累积概率（原始）' ? `**${st.scoreKind}**` : '**累积概率**'}排序，**只留前 k 条**、其余剪枝。` +
+          `**k=1 就是贪心、k=∞ 就是全搜索。**` },
+        { k: '本步结果', v: st.phase === 'done'
+          ? (st.optimal === undefined
+            ? `束搜索 **${d(st.best.seq)}(${st.best.p})** 胜过贪心 ${d(st.greedy.seq)}(${st.greedy.p})。`
+            : `选中 **${d(st.best.seq)}**（概率 ${st.best.p}、长 ${st.best.len} 词）；贪心给 ${d(st.greedy.seq)}（${st.greedy.p}、长 ${st.greedy.len}）；` +
+              `穷举 ${st.totalSeqs} 条序列的最优是 ${d(st.optimal.seq)}（${st.optimal.p}）—— ${st.isOptimal ? '**追平了**' : '**没追平**'}。`)
+          : st.act === 'expand' ? `${st.cands.length} 个候选留前 ${st.k}：${st.kept.map(d).join('、')}。`
             : `扩展中。` },
+        ...(st.phase === 'done' && st.shrinks !== undefined
+          ? [{ k: '这说明什么', v: st.shrinks
+            ? `⚠️ **k 越大，输出越短**（${st.kSweep?.[0].len} → ${st.kSweep?.[st.kSweep.length - 1].len} 个词）。` +
+              `概率是各步**连乘**，每多一个词就再乘一个小于 1 的数 —— **越短的序列概率天生越高**。` +
+              `这张模型上概率最高的是 ${d(st.topProb?.seq ?? '')}（只有 ${st.topProb?.len} 个词）。` +
+              `**长度归一化正是为这件事打的补丁。**`
+            : `这一档 k 越大越接近最优，且输出长度**没有**随 k 变短 —— 当前口径「${st.scoreKind}」把长度偏置压住了。` +
+              `**把口径换回「累积概率（原始）」**就看得见那条曲线打架。` }]
+          : []),
       ]
     },
     verdict: (s: never) => {
-      const st = s as { phase: string; t: number; best: { p: number }; greedy: { p: number } }
-      return st.phase === 'done' ? `胜贪心 ${Math.round((st.best.p / (st.greedy.p || 1)) * 10) / 10}×` : `第${st.t}步`
+      const st = s as { phase: string; t: number; best: { p: number; len?: number }; greedy: { p: number }
+                        isOptimal?: boolean; shrinks?: boolean }
+      if (st.phase !== 'done') return `第${st.t}步`
+      if (st.isOptimal === undefined) return `胜贪心 ${Math.round((st.best.p / (st.greedy.p || 1)) * 10) / 10}×`
+      return st.shrinks ? `只剩 ${st.best.len} 词` : (st.isOptimal ? '追平最优' : '没追平')
     },
     read: [
-      { at: '读数', is: '束宽 k、解码步、当前最优概率。', anchor: '.scdim' },
-      { at: '候选/对照', is: '各步候选按累积概率排序、前 k 条绿✓保留其余剪掉;末步束搜索 vs 贪心对照。', anchor: '.bmwrap' },
+      { at: '读数', is: '束宽 k、解码步、当前最优概率，以及**输出长度**和**对照全搜最优**（另穷举全部序列算的真值 —— "找到最优了吗"不能问算法自己）。', anchor: '.scdim' },
+      { at: '候选/对照', is: '各步候选按分数排序、前 k 条绿✓保留其余剪掉；末步跟贪心、跟全搜最优三方对照。', anchor: '.bmwrap' },
+      { at: 'k 扫描表', is: '四个束宽各跑一遍，**「概率」和「长度」并排** —— 两条线打架的地方就是长度偏置。', anchor: '.qsscale' },
     ],
     try: [
-      { act: '按「下一步」解码', watch: '每步 k 条各扩一词→排序→只留前 k 条(绿),其余剪掉。' },
-      { act: '看末步对照', watch: '贪心第一步贪 A 被锁进 0.10,束搜索留住 B 发现 0.288——近 3 倍胜出。' },
+      { act: '默认档走完，看 k 扫描表的「长度」那一列', watch: 'k=1 出「ABC」长 3 个词，k≥2 出「B」长 **1** 个词 —— 概率涨了，内容没了。' },
+      { act: '把「打分」换成「长度归一化（÷ 长度）」', watch: '同一个 k 选回了「ABC」—— 长度惩罚把"每多一个词就乘一个小数"摊平了。' },
+      { act: '再换成「GNMT 长度惩罚 α=0.6」', watch: '⚠️ **还是选那条短的**。它的分母是 ((5+len)/6)^0.6，长 1 时 1.00、长 3 时才 1.19 —— **温和得多，不足以翻盘**。长度惩罚是个有力度的旋钮，不是开关。' },
+      { act: '把「束宽 k」调到 1', watch: '**那就是贪心** —— 它反而给出更长、更有内容的那条。搜得不准，有时候不是坏事。' },
     ],
     terms: [],
   },

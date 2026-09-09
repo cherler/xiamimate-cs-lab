@@ -183,7 +183,7 @@ import { perceptronKernel, type PerceptronState } from '@engine/kernels/perceptr
 import { PerceptronStage } from './stages/PerceptronStage.tsx'
 import { poolingKernel, type PoolState } from '@engine/kernels/pooling.ts'
 import { PoolingStage } from './stages/PoolingStage.tsx'
-import { beamKernel, type BeamState } from '@engine/kernels/beam.ts'
+import { beamKernel, BEAM_MODELS, BEAM_KS, BEAM_SCORES, type BeamState } from '@engine/kernels/beam.ts'
 import { BeamStage } from './stages/BeamStage.tsx'
 import { rnnKernel, type RNNState } from '@engine/kernels/rnn.ts'
 import { RNNStage } from './stages/RNNStage.tsx'
@@ -4570,32 +4570,52 @@ const beam: Experiment<BeamState> = {
   title: '束搜索 Beam Search',
   subtitle: '每步只留最有希望的前 k 条序列',
   kernel: beamKernel,
-  defaultDoc: { kind: 'beam', params: {}, entities: [], streams: [] },
-  params: [],
-  paramsNote: `**语言模型逐词生成,整句概率 = 各步概率连乘**。想整句概率最大,逐词贪心(每步取当前最高)常掉坑:某步的局部最优词后面接不出好句;全搜索又爆炸。束搜索折中。
+  defaultDoc: { kind: 'beam', params: { model: '长度偏置（k 越大输出越短）', k: 4, score: '累积概率（原始）' }, entities: [], streams: [] },
+  /*  2026-09-09 补厚：老版本 k 写死 2、一个模型，只演了"束搜索赢过贪心"这个漂亮结果。
+      而它自己写着「k 越大越接近最优」（**在实践中是错的**）和「配长度归一化等技巧」
+      （那个毛病一次都没出现过）—— 而那恰恰是束搜索最有名的一件事。 */
+  params: [
+    { key: 'model', label: '模型', kind: 'enum', options: [...BEAM_MODELS] },
+    { key: 'k', label: '束宽 k', kind: 'number', options: [...BEAM_KS] },
+    { key: 'score', label: '打分', kind: 'enum', options: [...BEAM_SCORES] },
+  ],
+  paramsNote: `**语言模型逐词生成,整句概率 = 各步概率连乘**。逐词贪心(每步取当前最高)常掉坑:某步的局部最优词后面接不出好句;全搜索又爆炸。束搜索折中:维护 k 条候选,每步各扩一词、按分数排序只留前 k 条。**k=1 就是贪心、k=∞ 就是全搜索。**
 
-- **机制**:维护 k 条候选(束宽 k),每步各扩一个词、按累积概率排序,只留前 k 条继续,其余剪枝。
-- **两极**:k=1 就是贪心、k=∞ 就是全搜索。
-- **本实验**:玩具模型、k=2、生成 3 词。贪心第一步就贪 A(0.5＞0.4)被锁进 AB⟨end⟩(0.10);束搜索同时留 B,发现 B→C→⟨end⟩ 概率 0.288、近 3 倍胜出。
+- **每一档都跟全搜索的真值比**:另穷举全部完整序列算一份最优,「找到最优了吗」不能问算法自己。
 
-束搜索是机器翻译、摘要、受限生成的标准解码法(配长度归一化等)。`,
+- **补厚补的是那句"k 越大越接近最优" —— 它在实践中是错的**。默认档「长度偏置」上:
+  - **k=1(贪心)** 选「ABC」概率 0.10、**长 3 个词**；
+  - **k≥2** 就发现了「B」概率 **0.27**(高一倍多)—— 而它**只有 1 个词**。
+  - **k 越大，分数越高，输出越短。** 这不是 bug,是"整句概率最大"这个目标本身的毛病:概率是各步**连乘**,**每多一个词就再乘一个小于 1 的数**,越短的序列概率天生越高。**机器翻译里"beam 调大反而 BLEU 下降"就是这么来的。**
+- **长度惩罚是个有力度的旋钮,不是一个开关**:
+  - 「**÷ 长度**」拿平均每词的对数概率来比,同一个 k 下把选择拉回了「ABC」(长 3)。
+  - 「**GNMT α=0.6**」温和得多 —— 分母是 ((5+len)/6)^0.6,长 1 时 1.00、长 3 时才 1.19。这张模型上两条候选的对数概率差得比这远,**它还不足以翻盘**,选中的仍是那条短的。
+  - **别一句"加了长度归一化就好了"糊过去** —— α 调多大、用哪种形式,都得看任务。`,
   bounds: [
-    '玩具语言模型,束宽 k=2,生成 3 个词',
-    '每步 k 条各扩一词→按累积概率(连乘)留前 k 条(可核)',
-    '束搜索 BC⟨end⟩=0.288 胜过贪心 AB⟨end⟩=0.10',
-    'k=1 退化成贪心;k 越大越接近最优、越慢',
+    '两张玩具语言模型;最多生成 4 个词;束宽 1/2/4/8;三种打分口径',
+    '真值另穷举**全部完整序列**（10~13 条）算,不拿算法自己的输出当判据',
+    '「长度偏置」那张模型是**特意造的**:贪心走长路(0.10/3 词)、大 k 发现短路(0.27/1 词)',
+    'k 扫描把「概率」和「长度」并排 —— 两条线打架的地方就是长度偏置',
+    '未做:真实语言模型上的 BLEU 对照、多样性束搜索、采样式解码(top-k/nucleus)与它的对比',
   ],
   tabs: [{ id: 'beam', label: '扩展+剪枝' }],
   Stage: BeamStage,
-  tone: s => (s.phase === 'done' ? { key: 'good', label: `胜贪心 ${Math.round((s.best.p / (s.greedy.p || 1)) * 10) / 10}×` } : { key: 'idle', label: `第${s.t}步` }),
+  tone: s => (s.phase === 'done'
+    ? (s.shrinks ? { key: 'bad', label: `只剩 ${s.best.len} 词` } : { key: 'good', label: s.isOptimal ? '追平最优' : '没追平' })
+    : { key: 'idle', label: `第${s.t}步` }),
   metric: s => (s.phase === 'done' ? 1 : Math.min(0.9, s.t / 3)),
   tickLabel: s => (s.phase === 'done' ? '毕' : `t${s.t}`),
   whyInRail: true,
   readouts: s => [
-    { label: '束宽 k', value: `${s.k}` },
+    { label: '束宽 k', value: `${s.k}${s.k === 1 ? '（就是贪心）' : ''}` },
     { label: '解码步', value: s.phase === 'done' ? '完成' : `第 ${s.t} 步` },
-    { label: '当前最优', value: `${s.best.seq === '' ? '⟨起⟩' : s.best.seq.replace('·', '⟨end⟩')} (${s.best.p})` },
-    { label: '对照贪心', value: s.showGreedy ? `${s.greedy.seq.replace('·', '⟨end⟩')} (${s.greedy.p})` : '待揭晓', tone: s.showGreedy ? 'good' : undefined },
+    { label: '当前最优', value: `${s.best.seq === '' ? '⟨起⟩' : s.best.seq} (${s.best.p})` },
+    /*  ⭐ 这两栏是补厚的落点：k 越大分数越高，而**长度**越短 —— 两条线打架。 */
+    { label: '输出长度', value: s.phase === 'done' ? `${s.best.len} 个词` : '—',
+      tone: s.phase === 'done' && s.shrinks && s.best.len < s.kSweep[0].len ? 'bad' : undefined },
+    { label: '对照全搜最优', value: s.phase === 'done' ? `${s.optimal.seq || '⟨空⟩'} (${s.optimal.p})${s.isOptimal ? ' ✓追平' : ' ✗没追平'}` : '—',
+      tone: s.phase === 'done' ? (s.isOptimal ? 'good' : 'bad') : undefined },
+    { label: '对照贪心', value: s.showGreedy ? `${s.greedy.seq || '⟨空⟩'} (${s.greedy.p})、长 ${s.greedy.len}` : '待揭晓' },
   ],
 }
 

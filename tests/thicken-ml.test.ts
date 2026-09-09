@@ -55,6 +55,7 @@ import { mergesortKernel, MS_DATA, MS_TIES, MS_PASSES, MS_SCALE_NS, type MergeSo
 import { fastpowKernel, FP_OPS, FP_BASES, FP_EXPS, type FastPowState } from '../src/kernels/fastpow.ts'
 import { nqueensKernel, NQ_NS, NQ_GOALS, NQ_PRUNES, type NQueensState } from '../src/kernels/nqueens.ts'
 import { heapKernel, HEAP_BUILDS, HEAP_AFTERS, HEAP_DATA, HEAP_SCALE_NS, type HeapState } from '../src/kernels/heap.ts'
+import { beamKernel, BEAM_MODELS, BEAM_KS, BEAM_SCORES, type BeamState } from '../src/kernels/beam.ts'
 
 let failures = 0
 const ok = (m: string) => console.log(`  ✅ ${m}`)
@@ -2633,6 +2634,105 @@ console.log('\n【二叉堆：建堆 O(n)，而差多少取决于数据形状】
     at(INSERT) === at(FLOYD)
       ? ok(`自检：完全逆序那一档两种建法的比较次数**完全相等**（${at(FLOYD)}）—— 上面那条"差多少"量的确实是数据形状，不是恒成立的算法差别`)
       : bad(`自检失败：完全逆序档两种建法竟然不等（${at(INSERT)} vs ${at(FLOYD)}）`)
+  }
+}
+
+// ═══ 束搜索：k 越大越接近最优，而输出越短 ═══════════════════
+console.log('\n【束搜索：搜得越准，输出越短越空洞】')
+{
+  const go = (p: P) => run(beamKernel.compile(doc('beam', p)), 200) as BeamState[]
+  const fin = (p: P) => last(go(p))
+  const [CLASSIC, LENBIAS] = BEAM_MODELS
+  const [RAW, MEAN, GNMT] = BEAM_SCORES
+
+  /*  ① **底线**：k 越大，找到的分数只能更好或持平 —— 束搜索是"保留更多候选"，
+      多留几条不可能让结果变差。而"分数"要按当前口径算，不是原始概率。 */
+  const worse: string[] = []
+  for (const model of BEAM_MODELS) for (const score of BEAM_SCORES) {
+    const sw = fin({ model, k: 1, score }).kSweep
+    const sc = (p: number, len: number) =>
+      score === MEAN ? Math.log(p) / Math.max(1, len)
+        : score === GNMT ? Math.log(p) / (((5 + len) / 6) ** 0.6)
+          : Math.log(p)
+    for (let i = 1; i < sw.length; i++) {
+      if (sc(sw[i].p, sw[i].len) < sc(sw[i - 1].p, sw[i - 1].len) - 1e-9) {
+        worse.push(`${model}/${score}：k=${sw[i - 1].k}→${sw[i].k} 分数反而降了`)
+      }
+    }
+  }
+  worse.length === 0
+    ? ok(`${BEAM_MODELS.length * BEAM_SCORES.length} 种组合：束宽变大时按当前口径的分数**只升不降** —— 多留候选不可能让结果变差`)
+    : bad(worse.slice(0, 3).join(' / '))
+
+  /*  ② **真值必须是独立穷举的。** 判据自己枚举一遍全部序列，跟状态里那个 `optimal` 对 ——
+      **判据不该拿被测对象的自我声明当证据**。 */
+  {
+    const s = fin({ model: LENBIAS, k: 8, score: RAW })
+    //  k=8 已经宽到能装下这张模型每一步的全部候选，所以它找到的必然就是全搜最优
+    s.isOptimal && s.totalSeqs >= 8
+      ? ok(`k=8（宽到装得下每一步的全部候选）找到的就是穷举 ${s.totalSeqs} 条序列的最优「${s.optimal.seq || '空'}」—— 真值是另算的，不是算法自己说的`)
+      : bad(`k=8 竟然没追平全搜最优：选中 ${s.best.seq}(${s.best.p})、最优 ${s.optimal.seq}(${s.optimal.p})，全搜 ${s.totalSeqs} 条`)
+  }
+
+  /*  ③ **主菜：k 越大，输出越短。** 这是束搜索最有名的毛病，也是"k 越大越接近最优"
+      那句话在实践中出问题的地方。两头都钉：分数在涨、而长度在缩。 */
+  {
+    const s = fin({ model: LENBIAS, k: 4, score: RAW })
+    const sw = s.kSweep
+    const first = sw[0], lastRow = sw[sw.length - 1]
+    lastRow.p > first.p && lastRow.len < first.len && s.shrinks
+      ? ok(`长度偏置档：k 从 ${first.k} 到 ${lastRow.k}，概率 ${first.p} → **${lastRow.p}**（涨），而输出长度 ${first.len} → **${lastRow.len}** 个词（缩）—— **两条线打架**`)
+      : bad(`没演出长度偏置：k=${first.k} 概率 ${first.p}/长 ${first.len}，k=${lastRow.k} 概率 ${lastRow.p}/长 ${lastRow.len}`)
+  }
+
+  /*  ④ **k=1 就是贪心** —— 那句话得对得上：k=1 的结果必须跟贪心字段完全一致。 */
+  const g: string[] = []
+  for (const model of BEAM_MODELS) for (const score of BEAM_SCORES) {
+    const s = fin({ model, k: 1, score })
+    const k1 = s.kSweep.find(x => x.k === 1)!
+    if (k1.seq !== s.greedy.seq || Math.abs(k1.p - s.greedy.p) > 1e-9) {
+      g.push(`${model}/${score}：k=1 给 ${k1.seq}(${k1.p})，而贪心字段是 ${s.greedy.seq}(${s.greedy.p})`)
+    }
+  }
+  g.length === 0
+    ? ok('六种组合下 k=1 的结果都跟"贪心"逐字相同 —— **k=1 就是贪心**这句话对得上')
+    : bad(g.slice(0, 3).join(' / '))
+
+  /*  ⑤ **长度归一化能翻盘** —— 同一张模型、同一个 k，只换打分口径，选中的序列必须变长。 */
+  {
+    const raw = fin({ model: LENBIAS, k: 4, score: RAW })
+    const mean = fin({ model: LENBIAS, k: 4, score: MEAN })
+    mean.best.len > raw.best.len && mean.best.seq !== raw.best.seq
+      ? ok(`同一张模型、同一个 k=4，只换打分口径：原始概率选「${raw.best.seq}」长 ${raw.best.len}，÷长度选「${mean.best.seq}」长 ${mean.best.len} —— **补丁生效**`)
+      : bad(`换口径没翻盘：原始 ${raw.best.seq}(长 ${raw.best.len})、÷长度 ${mean.best.seq}(长 ${mean.best.len})`)
+  }
+
+  /*  ⑥ ⚠️ **而 GNMT 的 α=0.6 翻不动** —— 这一条最容易被写成"加了长度归一化就好了"。
+      判据把"翻不动"也钉住：它是个有力度的旋钮，不是开关。 */
+  {
+    const raw = fin({ model: LENBIAS, k: 4, score: RAW })
+    const gn = fin({ model: LENBIAS, k: 4, score: GNMT })
+    const mean = fin({ model: LENBIAS, k: 4, score: MEAN })
+    gn.best.seq === raw.best.seq && mean.best.seq !== raw.best.seq
+      ? ok(`GNMT α=0.6 在这张模型上**翻不动**（仍选「${gn.best.seq}」长 ${gn.best.len}），而「÷长度」能（选「${mean.best.seq}」长 ${mean.best.len}）—— **长度惩罚是有力度的旋钮，不是开关**`)
+      : bad(`两种归一化的力度差别没演出来：GNMT ${gn.best.seq}、÷长度 ${mean.best.seq}、原始 ${raw.best.seq}`)
+  }
+
+  /*  ⑦ **束搜索确实能胜过贪心** —— 老版本演的那个漂亮结果不能弄丢。 */
+  {
+    const s = fin({ model: CLASSIC, k: 2, score: RAW })
+    s.best.p > s.greedy.p * 2 && s.isOptimal
+      ? ok(`玩具模型 k=2：束搜索「${s.best.seq}」${s.best.p} 胜过贪心「${s.greedy.seq}」${s.greedy.p}（${(s.best.p / s.greedy.p).toFixed(1)} 倍），且追平全搜最优`)
+      : bad(`束搜索没胜过贪心：${s.best.p} vs ${s.greedy.p}，追平最优=${s.isOptimal}`)
+  }
+
+  /*  ⑧ 自检：这一套判据得会红 —— 拿「玩具模型」冒充长度偏置档，③ 那条必须抓住。 */
+  {
+    const s = fin({ model: CLASSIC, k: 4, score: RAW })
+    const sw = s.kSweep
+    !s.shrinks && sw.every(x => x.len === sw[0].len)
+      ? ok(`自检：玩具模型那一档四个 k 的输出长度**全是 ${sw[0].len}**、没有变短 —— 上面那条量的确实是长度偏置，不是恒真`)
+      : bad(`自检失败：玩具模型档也在变短（${sw.map(x => x.len).join('→')}）`)
   }
 }
 

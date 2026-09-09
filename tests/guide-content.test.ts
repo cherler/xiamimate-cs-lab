@@ -988,10 +988,22 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       b: { phase: 'done', kindName: '最大', wr: 1, wc: 1, vals: [9, 1, 2, 8], result: 9, out: [[6, 4], [7, 9]] },
     },
     beam: {
-      doc: { kind: 'beam', params: {}, entities: [], streams: [] },
-      //  A 第 2 步扩展+剪枝 · B 完成(对照贪心) —— 结论必须换一套说法
-      a: { phase: 'run', act: 'expand', t: 2, k: 2, beamsIn: [{ seq: 'A', p: 0.5 }, { seq: 'B', p: 0.4 }], cands: [{ seq: 'BC', p: 0.32 }, { seq: 'AB', p: 0.2 }, { seq: 'AC', p: 0.15 }, { seq: 'AD', p: 0.15 }, { seq: 'BA', p: 0.04 }, { seq: 'BD', p: 0.04 }], kept: ['BC', 'AB'], best: { seq: 'BC', p: 0.32 }, greedy: { seq: 'AB·', p: 0.1 }, showGreedy: false },
-      b: { phase: 'done', act: 'done', t: 3, k: 2, beamsIn: [{ seq: 'BC·', p: 0.288 }, { seq: 'AB·', p: 0.1 }], cands: [], kept: ['BC·', 'AB·'], best: { seq: 'BC·', p: 0.288 }, greedy: { seq: 'AB·', p: 0.1 }, showGreedy: true },
+      /*  2026-09-09 补厚：新增 modelName/scoreKind/optimal/isOptimal/kSweep/shrinks 等。 */
+      doc: { kind: 'beam', params: { model: '长度偏置（k 越大输出越短）', k: 4, score: '累积概率（原始）' }, entities: [], streams: [] },
+      //  A 第 2 步扩展+剪枝 · B 完成（k 越大输出越短）—— 结论必须换一套说法
+      a: { phase: 'run', act: 'expand', t: 2, k: 4, beamsIn: [{ seq: 'A', p: 0.5 }, { seq: 'B', p: 0.3 }],
+        cands: [{ seq: 'B', p: 0.27 }, { seq: 'AB', p: 0.25 }, { seq: 'AC', p: 0.15 }, { seq: 'AD', p: 0.1 }],
+        kept: ['B·', 'AB', 'AC', 'AD'], best: { seq: 'B', p: 0.27, len: 1 }, greedy: { seq: 'ABC', p: 0.1, len: 3 },
+        scoreKind: '累积概率（原始）', modelName: '长度偏置（k 越大输出越短）',
+        optimal: { seq: 'B', p: 0.27, len: 1 }, topProb: { seq: 'B', p: 0.27, len: 1 },
+        isOptimal: false, totalSeqs: 10, shrinks: true, showGreedy: false,
+        kSweep: [{ k: 1, len: 3, p: 0.1 }, { k: 2, len: 1, p: 0.27 }, { k: 4, len: 1, p: 0.27 }, { k: 8, len: 1, p: 0.27 }] },
+      b: { phase: 'done', act: 'done', t: 4, k: 4, beamsIn: [], cands: [], kept: [],
+        best: { seq: 'B', p: 0.27, len: 1 }, greedy: { seq: 'ABC', p: 0.1, len: 3 },
+        scoreKind: '累积概率（原始）', modelName: '长度偏置（k 越大输出越短）',
+        optimal: { seq: 'B', p: 0.27, len: 1 }, topProb: { seq: 'B', p: 0.27, len: 1 },
+        isOptimal: true, totalSeqs: 10, shrinks: true, showGreedy: true,
+        kSweep: [{ k: 1, len: 3, p: 0.1 }, { k: 2, len: 1, p: 0.27 }, { k: 4, len: 1, p: 0.27 }, { k: 8, len: 1, p: 0.27 }] },
     },
     rnn: {
       doc: { kind: 'rnn', params: { seq: '脉冲后全 0（T=20）', wh: 0.9 }, entities: [], streams: [] },
