@@ -302,14 +302,49 @@ const CATALOG_CORE: CatalogEntry[] = [
     id: 'quicksort',
     title: '快速排序',
     kernel: quicksortKernel as Kernel<unknown>,
-    doc: trivialDoc('quicksort'),
+    /*  2026-09-09 补厚：默认档从"一组乱序数"改成**最坏情况**（已排好序 + 末元素当基准），
+        因为那才是快排最该记住的一件事。doc 必须跟 web/src/registry.ts 的 defaultDoc 一致，
+        否则出题算出来的答案跟页面上看到的对不上。 */
+    doc: { kind: 'quicksort', params: { data: '已经排好序', pivot: '末元素（教科书）', part: 'Lomuto 两路' }, entities: [], streams: [] },
     facts: [
       {
         id: 'total_steps', label: '快排走完整个过程的总步数(帧数)',
         ask: '把这个数组快速排序完成，逐步演示一共有多少帧(步)?',
-        kind: 'number',
+        kind: 'number', genre: 'count',
         compute: t => ({ answer: String(t.length), step: t.length - 1, evidence: String(last(t).log ?? '') }),
         distractors: numDistractors,
+      },
+      {
+        /*  这一条考的是补厚的落点：规模表上 n=160 的比较次数**正好等于 n(n−1)/2**。
+            题面自带全部数据（哪一档、哪个 n），不依赖"这次运行碰巧是什么"。 */
+        id: 'worst_count', label: '最坏档在 n=160 时的比较次数正好是 n(n−1)/2',
+        ask: '一份**已经排好序**的数据，用教科书快排（取区间末元素当基准、Lomuto 两路分区）。规模表上 n=160 那一行，比较了多少次？',
+        kind: 'number', genre: 'count',
+        compute: t => {
+          const f = last(t)
+          const rows = (f.scale ?? []) as { n: number; compares: number; nsq: number }[]
+          const big = rows[rows.length - 1]
+          return { answer: String(big.compares), step: t.length - 1,
+            evidence: `n=${big.n}：实测 ${big.compares} 次，n(n−1)/2 = ${big.nsq} —— 一次不差` }
+        },
+        distractors: numDistractors,
+      },
+      {
+        id: 'dup_needs_threeway', label: '元素大量相等时换基准没用、得换分区', kind: 'choice', genre: 'concept',
+        ask: '元素**大量相等**的数组上，Lomuto 两路快排退化成 O(n²)。把「选基准」从末元素换成三数取中或随机，能救回来吗？',
+        compute: t => {
+          const f = last(t)
+          return {
+            answer: '救不回来 —— 元素都相等时挑谁当基准都一样，得换成三路分区，把等于基准的一次全部锁定',
+            step: t.length - 1,
+            evidence: `实测：全相等数据下三种基准的增长指数分别是 2.03 / 1.88 / 2.03，换成三路分区后是 1.00（当前档 slope=${f.slope}）`,
+          }
+        },
+        distractors: a => [a,
+          '能救回来 —— 随机基准让每次划分的期望位置落在中间，重复元素也不例外',
+          '能救回来 —— 三数取中在全相等时会取到正中间那个，划分自然就均衡了',
+          '不用救 —— 元素全相等时数组本来就有序，快排一趟扫完就结束了',
+        ].filter(o => o !== a).slice(0, 3),
       },
       {
         id: 'first_pivot', label: '第一次分区选的基准值 pivot',

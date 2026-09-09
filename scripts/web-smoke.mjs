@@ -1101,6 +1101,8 @@ console.log('\n【13】讲解浮层：每个实验的锚点都落得下，点哪
   const names = (await p.$$eval('.nav button', bs => bs.map(b => b.textContent.trim())))
     .filter(n => !isLib({ label: n.replace(/^\d+\s*/, '') }))
   const broken = []
+  /** 锚点写了个**根本不存在**的选择器 —— 跟"高亮被撤掉"是两回事，分开报 */
+  const dead = []
   let cardTotal = 0
   for (const name of names) {
     await nav(name)
@@ -1145,8 +1147,16 @@ console.log('\n【13】讲解浮层：每个实验的锚点都落得下，点哪
           dropped: a?.dataset.dropped === 'true',
           //  锚点在这一屏上到底找不找得到（param/preset 类的卡没有选择器，记 -1）
           hit: sel ? document.querySelectorAll(sel).length : -1,
+          anchorSel: sel,
         }
       })
+      /*  ⚠️ **选择器命不命中要单独查一遍，不能只看"屏幕上有没有东西亮着"。**
+          快排那张卡的锚点写的是 `.qsrow`，而这个类**当时整个仓库里都不存在** ——
+          从 2026-08 一直躺到 2026-09-09 才被撞见，而这条判据全程是绿的。
+          漏掉的原因：`lit` 数的是**全页**的 `.guide-lit`，前一页留下的高亮
+          没被清掉时它就不是 0，死锚点于是躲了过去。
+          这里直接问这一页自己的选择器匹配到几个元素 —— 0 个就是死锚点，没有别的解释。 */
+      if (r.hit === 0) dead.push(`${name} 第 ${k + 1} 页「${r.title}」：锚点 ${r.anchorSel} 在这一屏上一个元素都匹配不到`)
       if (r.anchored && r.lit === 0) {
         /*  被主动撤掉时**翻一页再看**：回得来就是设计，回不来才是 bug。
             `go()` 会把 dropped 复位 —— 所以这一下同时验证了"翻页时再回来"这句承诺。 */
@@ -1167,6 +1177,9 @@ console.log('\n【13】讲解浮层：每个实验的锚点都落得下，点哪
       if (k < n - 1) { await p.click('.gfoot [data-nav="next"]'); await p.waitForTimeout(70) }
     }
   }
+  dead.length === 0
+    ? ok(`${cardTotal} 张卡的锚点选择器，在各自那一屏上全都匹配得到元素（死锚点 0 处）`)
+    : bad(`死锚点 ${dead.length} 处（选择器指向不存在的东西，屏幕上毫无反应也不报错）：\n     ${dead.slice(0, 8).join('\n     ')}`)
   broken.length === 0
     ? ok(`${names.length} 个实验、共 ${cardTotal} 张卡，锚点全都落得下`)
     : bad(`锚点落空 ${broken.length} 处：\n     ${broken.slice(0, 8).join('\n     ')}`)
