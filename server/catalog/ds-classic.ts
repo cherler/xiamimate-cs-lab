@@ -531,31 +531,63 @@ export const DS_CLASSIC_ENTRIES: CatalogEntry[] = [
     id: 'astar',
     title: 'A* 寻路',
     kernel: astarKernel as Kernel<unknown>,
-    doc: { kind: 'astar', params: {}, entities: [], streams: [] },
+    /*  2026-09-09 补厚：默认档改成**沼泽 + w=5** —— 那是唯一真的会走冤枉路的组合。 */
+    doc: { kind: 'astar', params: { map: '沼泽（穿过去贵、绕开便宜）', weight: 5, h: '曼哈顿（紧）' }, entities: [], streams: [] },
     facts: [
       {
-        id: 'path_steps', label: 'A star 找到的最短路步数',
-        ask: 'A star 在这张网格上找到的最短路径是几步?',
-        kind: 'number',
-        compute: t => {
-          const path = last(t).path as string[]
-          return { answer: String(path.length - 1), step: t.length - 1, evidence: `路径 ${path.join(' → ')}` }
-        },
-        distractors: numDistractors,
-      },
-      {
-        id: 'expanded', label: '一共展开的格子数',
-        ask: '找到最短路之前，A star 一共展开(移入关闭集)了多少个格子?',
-        kind: 'number',
+        id: 'expanded', label: '一共展开的格子数', kind: 'number', genre: 'count',
+        ask: '在 11×7 的沼泽地图上、启发权重 w=5 时，A star 找到终点之前一共展开(移入关闭集)了多少个格子?',
         compute: t => ({ answer: String(last(t).expanded), step: t.length - 1, evidence: String(last(t).log ?? '') }),
         distractors: numDistractors,
       },
       {
-        id: 'start_h', label: '起点的启发值 h',
-        ask: '起点到终点的启发估计 h(曼哈顿距离，把墙当不存在)是多少?',
-        kind: 'choice',
-        compute: t => ({ answer: String(t[0]!.curH), step: 0, evidence: String(t[0]!.log ?? '') }),
+        /*  补厚的落点：w=5 找到的路的代价，跟真正的最小代价**不一样**。 */
+        id: 'cost_gap', label: '加权 A* 多花的代价', kind: 'number', genre: 'count',
+        ask: '沼泽地图上把启发权重放大到 w=5：它找到的那条路的代价，比真正的最小代价多了多少?',
+        compute: t => {
+          const f = last(t)
+          return { answer: String(+((f.pathLen as number) - (f.optimalLen as number)).toFixed(2)), step: t.length - 1,
+            evidence: `这一趟代价 ${f.pathLen}，而反向 Dijkstra 算出的最小代价是 ${f.optimalLen}` }
+        },
         distractors: numDistractors,
+      },
+      {
+        id: 'w0_is_dijkstra', label: 'w=0 就是 Dijkstra', kind: 'choice', genre: 'concept',
+        ask: 'A star 按 f = g + w·h 排序。把权重 w 调成 0 之后，它变成了什么算法?',
+        compute: t => {
+          const f = last(t)
+          const sw = (f.sweep ?? []) as { w: number; expanded: number }[]
+          const d = sw.find(x => x.w === 0), a = sw.find(x => x.w === 1)
+          return {
+            answer: '就是 Dijkstra —— 启发完全不起作用，只按已走代价排序，于是四面八方均匀铺开',
+            step: t.length - 1,
+            evidence: `实测：w=0 展开 ${d?.expanded}/${f.freeCells} 格，而 w=1 只要 ${a?.expanded} 格`,
+          }
+        },
+        distractors: a => [a,
+          '变成广度优先搜索 —— 因为没有启发之后，队列里的顺序就退回先进先出了',
+          '变成贪心最好优先 —— 只剩已走代价这一项，算法会一路挑当前最省的那一步走',
+          '还是 A star —— w 只影响搜索的快慢，不改变它按 f 排序展开的这套机制',
+        ].filter(o => o !== a).slice(0, 3),
+      },
+      {
+        id: 'overestimate', label: '高估了就一定走冤枉路吗', kind: 'choice', genre: 'concept',
+        ask: '把启发放大到 w·h 之后，它在某些格子上高估了到终点的真实代价。这是不是意味着这一趟一定找不到最优路?',
+        compute: t => {
+          const f = last(t)
+          const sw = (f.sweep ?? []) as { w: number; pathLen: number; optimal: boolean; admissible: boolean }[]
+          const bad14 = sw.find(x => x.w === 1.4)
+          return {
+            answer: '不一定 —— 高估只是把"保证最优"这个承诺撤掉了，不等于结果一定错',
+            step: t.length - 1,
+            evidence: `实测：w=1.4 在同一张图上同样不可采纳（${bad14?.admissible ? '' : '有格子被高估'}），却${bad14?.optimal ? '照样找到了最优路' : '没找到'}；而 w=5 就真的走贵了`,
+          }
+        },
+        distractors: a => [a,
+          '一定找不到 —— 高估会让最优路上的某个点永远排在队列后面，算法必然错过它',
+          '一定找不到 —— 可采纳性是最优性的充分必要条件，破坏了它结果就不可能是最优的',
+          '一定能找到 —— 高估只影响展开顺序，最后回溯出来的路仍然是代价最小的那条',
+        ].filter(o => o !== a).slice(0, 3),
       },
     ],
   },

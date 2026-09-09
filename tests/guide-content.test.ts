@@ -944,10 +944,20 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       b: { phase: 'done', act: 'done', a: 3, n: 13, bitsMSB: [1, 1, 0, 1], k: 4, bit: -1, powK: -1, result: 1594323, prevResult: 1594323, mults: 3, squares: 3, picked: [1, 4, 8] },
     },
     astar: {
-      doc: { kind: 'astar', params: {}, entities: [], streams: [] },
-      //  A 展开一格(f=7) · B 找到最短路 —— 结论必须换一套说法
-      a: { phase: 'run', act: 'expand', cur: [3, 2], curG: 3, curH: 4, curF: 7, expanded: 4, open: ['3,3', '3,1'], path: [] },
-      b: { phase: 'done', act: 'done', cur: [7, 2], curG: 9, curH: 0, curF: 9, expanded: 19, open: ['5,2', '6,2'], path: ['0,2', '1,2', '2,2', '3,2', '3,3', '4,3', '5,3', '6,3', '7,3', '7,2'] },
+      /*  2026-09-09 补厚：g 改成代价、新增 weight/optimalLen/admissible/sweep。夹具跟着换。 */
+      doc: { kind: 'astar', params: { map: '沼泽（穿过去贵、绕开便宜）', weight: 5, h: '曼哈顿（紧）' }, entities: [], streams: [] },
+      //  A 展开一格 · B 走完（w=5 下走了冤枉路）—— 结论必须换一套说法
+      a: { phase: 'run', act: 'expand', cur: [3, 3], curG: 3, curH: 7, curF: 38, expanded: 4, open: ['3,2', '3,4'], path: [],
+        weight: 5, hName: '曼哈顿（紧）', mapName: '沼泽（穿过去贵、绕开便宜）', freeCells: 77,
+        pathLen: -1, steps: -1, optimalLen: 14, optimal: false, admissible: false, maxOver: 52, overAt: '0,6',
+        sweep: [{ w: 0, expanded: 76, pathLen: 14, optimal: true }, { w: 1, expanded: 23, pathLen: 14, optimal: true },
+          { w: 1.4, expanded: 23, pathLen: 14, optimal: true }, { w: 5, expanded: 11, pathLen: 19, optimal: false }] },
+      b: { phase: 'done', act: 'done', cur: [10, 3], curG: 19, curH: 0, curF: 19, expanded: 11, open: ['9,2'],
+        path: ['0,3', '1,3', '2,3', '3,3', '4,3', '5,3', '6,3', '7,3', '8,3', '9,3', '10,3'],
+        weight: 5, hName: '曼哈顿（紧）', mapName: '沼泽（穿过去贵、绕开便宜）', freeCells: 77,
+        pathLen: 19, steps: 10, optimalLen: 14, optimal: false, admissible: false, maxOver: 52, overAt: '0,6',
+        sweep: [{ w: 0, expanded: 76, pathLen: 14, optimal: true }, { w: 1, expanded: 23, pathLen: 14, optimal: true },
+          { w: 1.4, expanded: 23, pathLen: 14, optimal: true }, { w: 5, expanded: 11, pathLen: 19, optimal: false }] },
     },
     perceptron: {
       doc: { kind: 'perceptron', params: { data: '异或（怎么画都分不开）' }, entities: [], streams: [] },

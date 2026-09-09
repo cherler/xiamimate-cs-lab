@@ -49,6 +49,7 @@ import { maxentKernel, MAXENT_MODES, MAXENT_MUS, MAXENT_STARTS, type MaxEntState
 import { quicksortKernel, QS_DATA, QS_PIVOTS, QS_PARTS, QS_SCALE_NS, type QuickSortState } from '../src/kernels/quicksort.ts'
 import { dtreeKernel, DT_DATA, DT_IMPURITY, DT_DEPTHS, type DTreeState } from '../src/kernels/dtree.ts'
 import { recsysKernel, RS_SCENES, RS_DIMS, RS_LAMBDAS, type RecSysState } from '../src/kernels/recsys.ts'
+import { astarKernel, ASTAR_MAPS, ASTAR_WEIGHTS, ASTAR_HEURISTICS, type AStarState } from '../src/kernels/astar.ts'
 
 let failures = 0
 const ok = (m: string) => console.log(`  ✅ ${m}`)
@@ -1908,6 +1909,129 @@ console.log('\n【推荐系统 · 矩阵分解：隐向量本身没有意义，�
     n.coldUser < 0 && n.coldRmse === 0
       ? ok('自检：正常档没有零评分用户（coldUser=-1），上面那条冷启动判据量的确实是这个场景独有的，不是恒真')
       : bad(`自检失败：正常档也有冷启动用户 ${n.coldUser}`)
+  }
+}
+
+// ═══ A*：三句课本结论，全部改成量出来的 ═══════════════════
+console.log('\n【A* 寻路：把"h 不高估就保证最优"验到每一格】')
+{
+  const go = (p: P) => run(astarKernel.compile(doc('astar', p)), 400) as AStarState[]
+  const fin = (p: P) => last(go(p))
+  const [MAN, EUC] = ASTAR_HEURISTICS
+  const [OPEN, WALL, TRAP, SWAMP] = ASTAR_MAPS
+
+  /*  ① **底线**：任何 w 下走出来的都得是一条**真路** —— 首尾对得上、每步只挪一格、不穿墙，
+      而且这条路的代价要跟读数里印的那个数一致。不验这条，后面所有比较都是空的。 */
+  const broken: string[] = []
+  for (const map of ASTAR_MAPS) for (const w of ASTAR_WEIGHTS) {
+    const s = fin({ map, weight: w, h: MAN })
+    const wallSet = new Set(s.walls), swampSet = new Set(s.swamp)
+    if (s.path[0] !== '0,3' || last(s.path) !== '10,3') { broken.push(`${map}/w=${w}：路的首尾是 ${s.path[0]}→${last(s.path)}`); continue }
+    let cost = 0, ok2 = true
+    for (let i = 1; i < s.path.length; i++) {
+      const [c0, r0] = s.path[i - 1].split(',').map(Number)
+      const [c1, r1] = s.path[i].split(',').map(Number)
+      if (Math.abs(c1 - c0) + Math.abs(r1 - r0) !== 1) { ok2 = false; break }
+      if (wallSet.has(s.path[i])) { ok2 = false; break }
+      cost += swampSet.has(s.path[i]) ? s.swampCost : 1
+    }
+    if (!ok2) broken.push(`${map}/w=${w}：路不连续或穿了墙`)
+    else if (cost !== s.pathLen) broken.push(`${map}/w=${w}：逐格加出来是 ${cost}，读数印的是 ${s.pathLen}`)
+  }
+  broken.length === 0
+    ? ok(`${ASTAR_MAPS.length} 张图 × ${ASTAR_WEIGHTS.length} 个 w：走出来的都是真路（首尾对、每步一格、不穿墙），逐格加出来的代价跟读数一致`)
+    : bad(broken.slice(0, 3).join(' / '))
+
+  /*  ② **"h=0 就是 Dijkstra"**：w=0 时展开数必须接近铺满，而 w=1 明显更少。 */
+  /*  ⚠️ **别拿"铺满全图"当判据。** 第一版要求 w=0 展开 ≥95% 的可走格，而开阔图上只有
+      59/77 = 77% —— Dijkstra **取到终点就停**，比终点更远的格子根本轮不到展开。
+      判据红了，可产品是对的。真正处处成立的是这三条：w=0 展开数是所有 w 里**最多**的、
+      它**一定**找到最优、而且比 w=1 多出可观的一截。 */
+  const dij: string[] = []
+  for (const map of ASTAR_MAPS) {
+    const all = ASTAR_WEIGHTS.map(w => fin({ map, weight: w, h: MAN }))
+    const d = all[0], a = all[1]
+    if (d.weight !== 0) { dij.push(`${map}：第一个权重不是 0`); continue }
+    if (d.expanded !== Math.max(...all.map(x => x.expanded))) dij.push(`${map}：w=0 展开 ${d.expanded} 不是最多的（${all.map(x => x.expanded).join('/')}）`)
+    /*  ⚠️ **别在这里要求"w=0 比 w=1 多出多少倍"** —— 那会跟下面第 ⑦ 条打架：
+        ⑦ 要说的正是"启发省多少取决于地形"，凹形陷阱上只省 33%（64 → 43，才 1.49 倍）。
+        同一套判据里两条互相矛盾的话，先红的那条未必是错的那条。 */
+    if (!(d.expanded > a.expanded)) dij.push(`${map}：w=0 展开 ${d.expanded} 没多过 w=1 的 ${a.expanded}`)
+    if (!d.optimal) dij.push(`${map}：w=0（Dijkstra）竟然没找到最优路`)
+  }
+  dij.length === 0
+    ? ok(`四张图上 w=0 的展开数都是所有权重里**最多**的、都严格多过 w=1、且都找到最优 —— 这就是 Dijkstra（省多少要看地形，见下面第 ⑦ 条）`)
+    : bad(dij.slice(0, 3).join(' / '))
+
+  /*  ③ **"h 越紧越好（只要都不高估）"**：曼哈顿和欧氏在 w=1 时都可采纳，
+      而更松的欧氏展开得更多。两个条件缺一不可 —— 只说"欧氏更慢"没意义，得先证它也不高估。 */
+  const tight: string[] = []
+  for (const map of ASTAR_MAPS) {
+    const m = fin({ map, weight: 1, h: MAN })
+    const e = fin({ map, weight: 1, h: EUC })
+    if (!m.admissible || !e.admissible) tight.push(`${map}：w=1 下曼哈顿/欧氏竟然不都可采纳（${m.admissible}/${e.admissible}）`)
+    if (!(e.expanded >= m.expanded)) tight.push(`${map}：更松的欧氏展开 ${e.expanded}，反而少于曼哈顿的 ${m.expanded}`)
+    if (!m.optimal || !e.optimal) tight.push(`${map}：可采纳的 h 竟然没找到最优路`)
+  }
+  tight.length === 0
+    ? ok(`w=1 下曼哈顿与欧氏**都可采纳、都找到最优**，而更松的欧氏一律展开得不比曼哈顿少 —— "h 越紧越好"是量出来的`)
+    : bad(tight.slice(0, 3).join(' / '))
+
+  /*  ④ **可采纳性的定义本身要复核**：判据自己拿真值表重算一遍 max(w·h − 真实代价)，
+      不信状态里的 `admissible` 字段。**判据不该拿被测对象的自我声明当证据。** */
+  {
+    const s = fin({ map: SWAMP, weight: 5, h: MAN })
+    let over = 0, at = ''
+    for (const k of Object.keys(s.trueDist)) {
+      const [c, r] = k.split(',').map(Number)
+      const hv = 5 * (Math.abs(c - 10) + Math.abs(r - 3))
+      if (hv - s.trueDist[k] > over) { over = hv - s.trueDist[k]; at = k }
+    }
+    Math.abs(over - s.maxOver) < 1e-6 && at === s.overAt && s.admissible === (over <= 1e-9)
+      ? ok(`可采纳性判定复核通过：判据自己重算的最大超出量 ${over}（在 ${at}）跟状态里印的一致`)
+      : bad(`可采纳性对不上：判据算 ${over}@${at}，状态印 ${s.maxOver}@${s.overAt}`)
+  }
+
+  /*  ⑤ **主菜**：沼泽 + w=5 必须真的走冤枉路，而 w=1 必须最优。
+      这是"快是拿正确性换的"唯一的实证 —— 前三张图上 w=5 照样最优，**换句话说：
+      光有 w 这个旋钮还不够，得有地形代价才构造得出反例**。 */
+  {
+    const bad5 = fin({ map: SWAMP, weight: 5, h: MAN })
+    const good = fin({ map: SWAMP, weight: 1, h: MAN })
+    !bad5.optimal && bad5.pathLen > good.pathLen && bad5.expanded < good.expanded && good.optimal
+      ? ok(`沼泽 + w=5：只展开 ${bad5.expanded} 格（w=1 要 ${good.expanded}），而代价 ${bad5.pathLen} vs 最优 ${good.pathLen} —— **快是拿正确性换的**`)
+      : bad(`沼泽档没演出这个权衡：w=5 展开 ${bad5.expanded} 代价 ${bad5.pathLen}（最优？${bad5.optimal}）、w=1 展开 ${good.expanded} 代价 ${good.pathLen}`)
+  }
+
+  /*  ⑥ **"高估就一定走冤枉路"是错的** —— 必须真有反例，否则那句"不保证 ≠ 一定错"就是空话。 */
+  {
+    const cases: string[] = []
+    for (const map of ASTAR_MAPS) for (const h of ASTAR_HEURISTICS) for (const w of [1.4, 5]) {
+      const s = fin({ map, weight: w, h })
+      if (!s.admissible && s.optimal) cases.push(`${map}/${h}/w=${w}`)
+    }
+    cases.length > 0
+      ? ok(`不可采纳却照样找到最优路的组合有 ${cases.length} 个（如 ${cases[0]}）—— **定理给的是保证，撤掉保证不等于结果错**`)
+      : bad('没有一个"高估却仍最优"的例子 —— "不保证 ≠ 一定错"这句话在屏幕上落不了地')
+  }
+
+  /*  ⑦ **"有启发总是更快"也是错的**：凹形陷阱上 h 的收益必须明显小于开阔图。 */
+  {
+    const o0 = fin({ map: OPEN, weight: 0, h: MAN }), o1 = fin({ map: OPEN, weight: 1, h: MAN })
+    const t0 = fin({ map: TRAP, weight: 0, h: MAN }), t1 = fin({ map: TRAP, weight: 1, h: MAN })
+    const saveOpen = 1 - o1.expanded / o0.expanded
+    const saveTrap = 1 - t1.expanded / t0.expanded
+    saveOpen > 0.7 && saveTrap < 0.4
+      ? ok(`启发的收益跟地形有关：开阔图省了 ${(saveOpen * 100).toFixed(0)}%（${o0.expanded}→${o1.expanded}），凹形陷阱只省 ${(saveTrap * 100).toFixed(0)}%（${t0.expanded}→${t1.expanded}）`)
+      : bad(`两张图上启发的收益差不出来：开阔省 ${(saveOpen * 100).toFixed(0)}%、陷阱省 ${(saveTrap * 100).toFixed(0)}%`)
+  }
+
+  /*  ⑧ 自检：这一套判据得会红 —— 拿"一堵墙"冒充沼泽档，⑤ 那条必须抓住。 */
+  {
+    const s = fin({ map: WALL, weight: 5, h: MAN })
+    s.optimal
+      ? ok('自检：均匀代价的「一堵墙」图上 w=5 照样找到最优路 —— 上面那条"走冤枉路"量的确实是沼泽档独有的，不是恒真')
+      : bad(`自检失败：均匀代价图上 w=5 也走了冤枉路（代价 ${s.pathLen}、最优 ${s.optimalLen}）`)
   }
 }
 

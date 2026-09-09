@@ -5651,30 +5651,57 @@ export const GUIDES: Record<string, Guide> = {
       hook: '导航不该四面八方乱铺，该朝着终点找。',
       what: '这一屏讲的是**A\\* 寻路**：在带障碍的地图上找最短路，游戏 AI 和导航里用得最多的算法。它是 Dijkstra 的加强版。Dijkstra 像水漫金山，朝四面八方均匀扩散，**铺过的大部分区域其实跟终点方向相反、纯属浪费**。A\\* 多用了一条信息：**每个点到终点大约还有多远**（比如直线距离）。有了这个估计，它就优先扩展「已经走的路 + 估计还剩的路」最小的那个点，搜索因而朝终点偏过去，扩展的格子数往往少一个数量级。',
       terms: '**g 值**：从起点走到当前点，实际已经花了多少代价。\u3000**h 值（启发函数）**：从当前点到终点，**估计**还要花多少。这是 A\\* 唯一比 Dijkstra 多出来的东西。\u3000**f = g + h**：排序依据。每次扩展 f 最小的那个点。**h 恒为 0 时 A\\* 就退化成 Dijkstra** —— 两者是同一个算法的两端。\u3000**可采纳性（admissible）**：**h 绝对不能高估真实距离**。一旦高估，某条真正的最短路可能被永远跳过，算法给出的就不是最优解了。直线距离永远不超过实际路程，所以它是安全的。\u3000**一致性（consistent）**：比可采纳更强的条件 —— 满足它时**每个点第一次出队就已经是最优的**，不用再把节点从闭表里捞回来重算。\u3000**开表 / 闭表**：待扩展的点放开表（用优先队列），已确定的放闭表。\u3000**启发函数怎么选**：网格上只能走四方向就用曼哈顿距离，能走八方向就用对角线距离，**用错了会导致找不到最优路**。把 h 故意放大能跑得更快，但就失去了最优性保证 —— 游戏里常常故意这么做。',
-      watch: '对比 A* 和 Dijkstra 各自扩展了多少个格子。把启发值故意放大，你会看到它跑得更快，但可能给出一条不是最短的路。',
+      watch: '默认档是**沼泽 + w=5**：读数里「路的代价」是 19，而旁边「真正的最小代价」是 14 —— **它走了冤枉路**。再看底下那张权重表：w=5 只展开 11 格，w=1 要展开 23 格却拿到 14。**快是拿正确性换的。**',
     },
+    /*  ⚠️ 2026-09-09 补厚：g 改成**代价**不是步数，新增 weight / optimalLen / admissible / sweep 等。
+        `st.xxx ?? …` 是给旧快照的兜底。 */
     step: (s: never) => {
-      const st = s as { phase: string; act: string; cur: number[]; curG: number; curH: number; curF: number; expanded: number; open: string[]; path: string[] }
+      const st = s as { phase: string; act: string; cur: number[]; curG: number; curH: number; curF: number
+                        expanded: number; open: string[]; path: string[]
+                        weight?: number; pathLen?: number; steps?: number; optimalLen?: number; optimal?: boolean
+                        admissible?: boolean; maxOver?: number; overAt?: string; freeCells?: number
+                        mapName?: string; hName?: string; swamp?: string[]
+                        sweep?: { w: number; expanded: number; pathLen: number; optimal: boolean }[] }
+      const w = st.weight ?? 1
+      const dij = st.sweep?.find(x => x.w === 0)
       return [
-        { k: '本步输入', v: st.act === '' ? '从起点 S 出发' : st.act === 'done' ? `已展开 ${st.expanded} 格` : `开放集里 f 最小的格 (${st.cur[0]},${st.cur[1]})` },
-        { k: '判定规则', v: `每格算 **f=g+h**:g=从起点已走的步数、h=到终点的**乐观估计**(曼哈顿距离,永不高估)。每步展开 f 最小的格→移入关闭集、邻居加进开放集。g 防走冤枉、h 把搜索**拽向终点**;h 不高估就保证最短路。` },
-        { k: '本步结果', v: st.act === 'expand' ? `展开 (${st.cur[0]},${st.cur[1]}):g=${st.curG}+h=${st.curH}=**f=${st.curF}**,邻居入开放集。`
-            : st.act === 'goal' ? `取到终点!g=${st.curG}、h=0——最短路已定。`
-            : st.act === 'done' ? `**最短路 ${st.path.length - 1} 步**,只展开 ${st.expanded} 格(比 Dijkstra 省)。`
-            : `搜索中。` },
+        { k: '本步输入', v: st.act === '' ? `地图「${st.mapName ?? ''}」，从起点 S 出发`
+          : st.act === 'done' ? `已展开 ${st.expanded}${st.freeCells ? ` / ${st.freeCells}` : ''} 格`
+            : `开放集里 f 最小的格 (${st.cur[0]},${st.cur[1]})` },
+        { k: '判定规则', v: `每格算 **f = g + ${w}·h**：g = 从起点已走的**代价**、h = 到终点的乐观估计（${st.hName ?? '曼哈顿'}）。` +
+          `每步展开 f 最小的格 → 移入关闭集、邻居加进开放集。` +
+          (w === 0 ? `**w=0：h 完全不起作用，这就是 Dijkstra。**` : w > 1 ? `**w>1：h 被放大，可能高估 → 最优性的保证没了。**` : `w=1 是标准 A*。`) },
+        { k: '本步结果', v: st.act === 'expand' ? `展开 (${st.cur[0]},${st.cur[1]})：f = ${st.curG} + ${w}×${st.curH} = **${st.curF}**，邻居入开放集。`
+          : st.act === 'goal' ? `取到终点！g=${st.curG}、h=0。`
+            : st.act === 'done' ? (st.pathLen === undefined
+              ? `**最短路 ${st.path.length - 1} 步**，只展开 ${st.expanded} 格。`
+              : `路的代价 **${st.pathLen}**（${st.steps} 步），展开 ${st.expanded} 格；真正的最小代价是 **${st.optimalLen}**。`)
+              : `搜索中。` },
+        ...(st.phase === 'done' && st.admissible !== undefined
+          ? [{ k: '这说明什么', v: (st.optimal
+            ? `w·h ${st.admissible ? '**可采纳**（逐格比过真实最小代价，一格都没超）—— 定理说可采纳就保证最优，这一趟印证了。' : `在 (${st.overAt}) 高估了 ${st.maxOver}、**不可采纳**，而这一趟**碰巧**还是最优 —— **不保证 ≠ 一定错**。`}`
+            : `w·h 在 (${st.overAt}) 高估了 ${st.maxOver}，**不可采纳** —— 这一趟**确实走了冤枉路**：代价 ${st.pathLen}，最优 ${st.optimalLen}。`)
+            + (dij ? `　（w=0 也就是 Dijkstra 要展开 ${dij.expanded} 格）` : '') }]
+          : []),
       ]
     },
     verdict: (s: never) => {
-      const st = s as { phase: string; act: string; curF: number; path: string[] }
-      return st.phase === 'done' ? `${st.path.length - 1} 步` : st.act === 'goal' ? '到终点' : `f=${st.curF}`
+      const st = s as { phase: string; act: string; curF: number; path: string[]
+                        pathLen?: number; optimalLen?: number; optimal?: boolean }
+      if (st.phase !== 'done') return st.act === 'goal' ? '到终点' : `f=${st.curF}`
+      if (st.pathLen === undefined) return `${st.path.length - 1} 步`
+      return st.optimal ? `代价 ${st.pathLen}` : `贵了 ${+((st.pathLen ?? 0) - (st.optimalLen ?? 0)).toFixed(1)}`
     },
     read: [
-      { at: '读数', is: '当前 f=g+h、已展开格数、开放集大小。', anchor: '.scdim' },
-      { at: '网格', is: '大数=f、角标 g;蓝=已展开(关闭)、虚线浅色=开放集、琥珀=正展开、深灰=墙、S/G=起终点、绿=最短路。', anchor: '.asgrid' },
+      { at: '读数', is: '当前 f = g + w·h、已展开格数、路的代价，以及**真正的最小代价**（另一次反向 Dijkstra 算的真值）和 **w·h 可不可采纳**（逐格实测，超了多少、超在哪）。', anchor: '.scdim' },
+      { at: '网格', is: '大数=f、角标 g；蓝=已展开(关闭)、浅色=开放集、琥珀=正展开、深灰=墙、**斜纹=沼泽(走一格付 4)**、S/G=起终点、绿=走出来的路。', anchor: '.asgrid' },
+      { at: '权重表', is: '同一张图上四个 w 各静默跑一遍。w=0 就是 Dijkstra —— **"h=0 退化成 Dijkstra"这句话在这一行上量得到**。', anchor: '.qsscale' },
     ],
     try: [
-      { act: '按「下一步」展开', watch: 'A* 先探 f 最小的:沿 h 指引直扑终点,撞墙才绕行。' },
-      { act: '看展开范围', watch: '只在起点→终点那条走廊附近展开,不像 Dijkstra 四面均匀铺。' },
+      { act: '默认档（沼泽 + w=5）走完，看两个代价', watch: '路的代价 19，而真正的最小代价 14 —— **它走了冤枉路**，只展开了 11 格。' },
+      { act: '把「启发权重 w」调到 1', watch: '展开涨到 23 格，代价掉回 14（最优）。**快是拿正确性换的。**' },
+      { act: '再把 w 调到 0', watch: '这就是 Dijkstra：展开 76/77 格，几乎把整张图铺满 —— "h=0 退化成 Dijkstra"不是一句口号。' },
+      { act: '换成「凹形陷阱」，w 在 0 和 1 之间切', watch: 'w=1 展开 43 格、w=0 展开 64 格，只省三分之一（开阔图上能省八成）—— **"有启发总是更快"是错的**。' },
     ],
     terms: [],
   },

@@ -2177,6 +2177,10 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .ascell{width:30px;height:32px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;background:var(--sunk-1);border:1px solid var(--line)}
 .ascell.cur{border:2px solid var(--now);background:color-mix(in srgb,var(--now) 14%,transparent)}
 .ascell.todo{color:var(--ghost);background:transparent;border-style:dashed}
+/*  沼泽：走一格要付 4 的代价。用斜纹而不是颜色 —— 关闭集/开放集/路径已经占了三种底色，
+    再加一种就分不出"这格贵"和"这格被展开过"了。 */
+.ascell.swamp{background-image:repeating-linear-gradient(45deg,
+  color-mix(in srgb,var(--wan) 40%,transparent) 0 3px, transparent 3px 6px)}
 .ascell.carry{height:20px;font-size:11px;background:transparent;border:0;color:var(--f-off)}
 .ascell.carry.cur{border:0;background:transparent;color:var(--now);font-weight:700}
 .asrow.ascarry{margin-bottom:-2px}

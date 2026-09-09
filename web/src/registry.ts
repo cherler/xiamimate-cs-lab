@@ -177,7 +177,7 @@ import { mergesortKernel, type MergeSortState } from '@engine/kernels/mergesort.
 import { MergeSortStage } from './stages/MergeSortStage.tsx'
 import { fastpowKernel, type FastPowState } from '@engine/kernels/fastpow.ts'
 import { FastPowStage } from './stages/FastPowStage.tsx'
-import { astarKernel, type AStarState } from '@engine/kernels/astar.ts'
+import { astarKernel, ASTAR_MAPS, ASTAR_WEIGHTS, ASTAR_HEURISTICS, type AStarState } from '@engine/kernels/astar.ts'
 import { AStarStage } from './stages/AStarStage.tsx'
 import { perceptronKernel, type PerceptronState } from '@engine/kernels/perceptron.ts'
 import { PerceptronStage } from './stages/PerceptronStage.tsx'
@@ -4344,30 +4344,52 @@ const astar: Experiment<AStarState> = {
   title: 'A* 寻路',
   subtitle: 'f = 已走 g + 到终点估计 h，优先探最有希望的格',
   kernel: astarKernel,
-  defaultDoc: { kind: 'astar', params: {}, entities: [], streams: [] },
-  params: [],
+  defaultDoc: { kind: 'astar', params: { map: '沼泽（穿过去贵、绕开便宜）', weight: 5, h: '曼哈顿（紧）' }, entities: [], streams: [] },
+  /*  2026-09-09 补厚：老版本一张图、一个启发、一个权重，从头顺到尾 —— 而它自己的注释里
+      写着「h 不高估就保证最短路」「h=0 退化成 Dijkstra」「比 Dijkstra 少展开很多格」，
+      **三句一句都没在屏幕上兑现过**。默认档特意开在 w=5 + 沼泽上：那是唯一真的会走冤枉路的组合。 */
+  params: [
+    { key: 'map', label: '地图', kind: 'enum', options: [...ASTAR_MAPS] },
+    { key: 'weight', label: '启发权重 w', kind: 'number', options: [...ASTAR_WEIGHTS] },
+    { key: 'h', label: '启发 h', kind: 'enum', options: [...ASTAR_HEURISTICS] },
+  ],
   paramsNote: `**A* 是带启发的最短路搜索,BFS/Dijkstra 的聪明版**。游戏 NPC 寻路、地图导航都靠它。
 
-- **两个数**:每格算 g=从起点已走的步数、h=到终点的乐观估计(这里用曼哈顿距离,把墙当不存在、故永不高估);按 f=g+h 排序开放集优先展开,g 保证不贪近路走冤枉、h 把搜索拽向终点。
-- **最优性**:只要 h 不高估(admissible),A* 找到的必是最短路,还比 Dijkstra(只看 g、四面均匀铺)少展开很多格;h=0 就退化成 Dijkstra。
-- **本实验**:8×5 网格,起点左、终点右,中间一堵墙留缺口;A* 先沿 h 直扑终点(f=7),撞墙后绕行(f=9)从缺口穿过,展开 19 格找到 9 步最短路。`,
+- **两个数**:每格算 **g**=从起点已走的**代价**、**h**=到终点的乐观估计;按 **f = g + w·h** 排序开放集优先展开。g 保证不贪近路走冤枉、h 把搜索拽向终点。
+- **一个旋钮，四种算法**:w=0 就是 **Dijkstra**(不看终点在哪、四面均匀铺开)、w=1 是标准 **A***、w>1 是**加权 A***。
+
+- **补厚补的是那三句"课本结论"——全都改成量出来的**:
+  - **"h=0 退化成 Dijkstra"**:开阔图上 w=0 展开 **59/77** 格，w=1 只展开 **11** 格。同一份代码、只换一个 w。
+  - **"h 越紧越好(只要不高估)"**:一堵墙那张图上，曼哈顿(紧)展开 **25** 格、欧氏(松)展开 **47** 格 —— 两个都不高估，但估得越松、搜得越冤。
+  - **"不高估就保证最短路"**:反向 Dijkstra 先算出**每一格到终点的真实最小代价**，再拿 w·h 逐格比 —— 超了多少、超在哪一格，读数里直接印。**可采纳性是量出来的，不是引用定理。**
+  - **⚠️ 而"高估就一定走冤枉路"是错的**:w=1.4 在这几张图上都不可采纳(超 5.2)，却**照样找到了最优路**。**不保证 ≠ 一定错。**
+- **要让它真的垮，得有地形代价**:均匀代价的 4 邻域网格上曼哈顿是**一致**启发，任何单调靠近终点的路长度都正好等于曼哈顿距离,**根本构造不出反例**。所以加了「沼泽」那张图 —— 穿过去步数少但每格付 4，绕开步数多但每格付 1。**w=5 时展开只要 11 格(比 w=1 的 23 格还快一倍)，而路的代价 19、最优是 14** ——快是拿正确性换来的。
+- **"有启发总是更快"也是错的**:凹形陷阱那张图上启发把搜索一头拽进死胡同，w=1 展开 43 格、w=0 展开 64 格 —— 只省下三分之一，而在开阔图上能省八成。`,
   bounds: [
-    '8×5 网格,一堵墙留缺口;起点左、终点右',
-    'f=g+h:g=已走步数、h=曼哈顿距离(永不高估→最短路,可核)',
-    '先探 f 最小的格;撞墙才绕行',
-    '展开 19 格得 9 步最短路;h=0 退化成 Dijkstra',
+    '11×7 网格;起点 (0,3)、终点 (10,3);四邻域移动',
+    'g 记的是**代价**不是步数(沼泽格代价 4、其余 1);h 按曼哈顿/欧氏算,即"每步至少 1"的乐观估计',
+    '真值另用一次**反向 Dijkstra**(不是 BFS —— 边权不是 1 时 BFS 给的是步数,拿它验可采纳性会放过真高估)',
+    '可采纳性逐格实测:∀格 w·h(格) ≤ 真实最小代价;报最大超出量与超在哪一格',
+    '权重表把四个 w 各静默跑一遍,只计数不出帧',
+    '未做:八邻域/对角移动、跳点搜索 JPS、动态重规划(D* Lite)、双向搜索',
   ],
   tabs: [{ id: 'grid', label: '网格搜索' }],
   Stage: AStarStage,
-  tone: s => (s.phase === 'done' ? { key: 'good', label: `${s.path.length - 1} 步` } : s.act === 'goal' ? { key: 'good', label: '到终点' } : { key: 'idle', label: `f=${s.curF}` }),
-  metric: s => (s.phase === 'done' ? 1 : Math.min(0.95, s.expanded / 20)),
-  tickLabel: s => (s.phase === 'done' ? '毕' : s.act === 'goal' ? '到' : `${s.curF}`),
+  tone: s => (s.phase === 'done'
+    ? (s.optimal ? { key: 'good', label: `代价 ${s.pathLen}` } : { key: 'bad', label: `贵了 ${+(s.pathLen - s.optimalLen).toFixed(1)}` })
+    : s.act === 'goal' ? { key: 'good', label: '到终点' } : { key: 'idle', label: `f=${s.curF}` }),
+  metric: s => (s.phase === 'done' ? 1 : Math.min(0.95, s.expanded / Math.max(1, s.freeCells))),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.act === 'goal' ? '到' : `${+s.curF.toFixed(0)}`),
   whyInRail: true,
   readouts: s => [
-    { label: '当前 f', value: s.phase === 'done' ? '—' : `${s.curG}+${s.curH}=${s.curF}` },
-    { label: '已展开', value: `${s.expanded} 格` },
-    { label: '开放集', value: `${s.open.length}` },
-    { label: '结果', value: s.phase === 'done' ? `最短 ${s.path.length - 1} 步` : '搜索中', tone: s.phase === 'done' ? 'good' : undefined },
+    { label: '当前 f', value: s.phase === 'done' ? '—' : `${s.curG} + ${s.weight}×${s.curH} = ${s.curF}` },
+    { label: '已展开', value: `${s.expanded} / ${s.freeCells} 格` },
+    /*  ⭐ "找到的是不是最优"不能问算法自己 —— 真值来自另一次反向 Dijkstra。 */
+    { label: '路的代价', value: s.phase === 'done' ? `${s.pathLen}（${s.steps} 步）` : '—' },
+    { label: '真正的最小代价', value: `${s.optimalLen}`,
+      tone: s.phase === 'done' ? (s.optimal ? 'good' : 'bad') : undefined },
+    { label: 'w·h 可采纳吗', value: s.admissible ? '不高估 ✓' : `在 (${s.overAt}) 超了 ${s.maxOver}`,
+      tone: s.admissible ? 'good' : 'bad' },
   ],
 }
 
