@@ -5220,32 +5220,59 @@ export const GUIDES: Record<string, Guide> = {
       hook: '像玩「二十个问题」一样做判断。',
       what: '这一屏讲的是**决策树**：像玩「二十个问题」一样做判断 —— 每次挑一个最能区分数据的问题问下去（「年龄大于 30 吗」「收入高于多少吗」），一路问到能确定答案为止。它最大的优点是**人能看懂每一步为什么** —— 整棵树就是一串嵌套的 if-else，可以直接讲给业务方听。在需要解释性的场合（信贷审批、医疗辅助）这一点比准确率还重要。缺点是极容易把训练数据背下来。',
       terms: '**划分（split）**：在某个特征上选一个阈值，把数据切成两边。\u3000**纯度**：一个节点里的样本有多「清一色」。**全是同一类就是最纯，一半一半就是最不纯。**\u3000**信息增益 / 基尼系数**：衡量「问完这个问题之后纯度提升了多少」的两把尺子。**每次划分就是挑那个提升最多的特征和阈值** —— 这就是决策树的全部训练过程。（ID3 用信息增益，C4.5 用信息增益率，CART 用基尼系数。）\u3000**过拟合**：树长得足够深，每个叶子只剩一个样本，训练准确率 100%，**一到新数据就崩**。这是决策树最突出的毛病。\u3000**剪枝**：治过拟合的手段。预剪枝是长的时候就限制（限深度、限叶子最少样本数），后剪枝是长完再把收益不大的分支砍掉。\u3000**为什么单棵树很少直接用**：它不稳定 —— **训练数据变一点点，树的形状可能完全不同**。所以实际都用集成：随机森林（很多棵树投票）或梯度提升树（一棵接一棵纠错）。',
-      watch: '看每一次划分挑了哪个特征、纯度提升了多少。把树的深度放开，训练误差会一路降到 0 —— 那正是过拟合的样子。',
+      watch: '默认档的数据里有 12% 的点**标签是翻错的**。盯读数栏那两个准确率：不限深度时训练冲到 **100%**、留出只有 **77.5%**。再看底下那张深度表 —— 留出那一列**先升后降**，峰在深 2。**「训练误差 0」和「学会了」在屏幕上长得一模一样，分开它们的只有留出集。**',
     },
+    /*  ⚠️ 2026-09-09 补厚：树改成真递归，新增 trainAcc/testAcc/sweep 等字段。
+        `st.xxx ?? …` 是给旧快照的兜底 —— 拿不到就退回旧措辞。 */
     step: (s: never) => {
-      const st = s as { phase: string; splits: unknown[]; curGini: number; nCands: number; best: { feat: string; t: number; gain: number } | null; leaves: unknown[] }
+      const st = s as { phase: string; splits: unknown[]; curGini: number; nCands: number; nodeN?: number
+                        best: { feat: string; t: number; gain: number } | null; leaves: unknown[]
+                        trainAcc?: number; testAcc?: number; overfit?: number; maxLeaves?: number
+                        finalDepth?: number; impurity?: string; depthCap?: number; bestDepth?: number
+                        ceiling?: number; declineAfterPeak?: number; dataKind?: string }
+      const pc = (v?: number) => (v === undefined ? '—' : (v * 100).toFixed(1) + '%')
       return [
-        { k: '本步输入', v: st.phase === 'done' ? '切完(3 个纯叶子)' : st.phase === 'root' ? '根节点:16 点混在一起' : st.phase === 'search' ? `搜候选切法(共 ${st.nCands} 个)` : `落第 ${st.splits.length} 刀` },
-        { k: '判定规则', v: `枚举所有候选切法(每特征相邻点的中点)、算每个的信息增益(基尼下降最多)、**取最大**那刀落下;切出纯块成叶子,不纯的递归再切。` },
+        { k: '本步输入', v: st.phase === 'done' ? `切完（${st.maxLeaves ?? st.leaves.length} 个叶子、深 ${st.finalDepth ?? 2}）`
+          : st.phase === 'root' ? `根节点：训练点混在一起，另有一批留出点全程不看`
+            : st.phase === 'search' ? `这一块 ${st.nodeN ?? '?'} 个点，搜候选切法（共 ${st.nCands} 个）`
+              : st.phase === 'leaf' ? `一块切不动了，成叶子`
+                : `落第 ${st.splits.length} 刀` },
+        { k: '判定规则', v: `枚举所有候选切法（每特征相邻点的中点）、算每个的**${st.impurity ?? '基尼'}下降**、**取最大**那刀落下；` +
+          `切不动了就成叶子${st.depthCap ? `（或撞到深度上限 ${st.depthCap}）` : ''}，其余递归再切。` },
         { k: '本步结果', v: st.phase === 'done'
-            ? `深 2、**${st.leaves.length}** 个纯叶子。每条路径=一串 if-else,可解释、拼出非线性边界。`
-            : st.phase === 'root' ? `不纯度 Gini **${st.curGini}**(0=全同类),要切纯。`
-            : st.phase === 'search' ? `搜出增益最大的一刀:**${st.best?.feat}<${st.best?.t}**(增益 **${st.best?.gain}**),不是钦定。`
-            : `落下 **${st.best?.feat}<${st.best?.t}**,当前节点不纯度降到 **${st.curGini}**。` },
+          ? (st.trainAcc === undefined
+            ? `深 2、**${st.leaves.length}** 个纯叶子。每条路径=一串 if-else，可解释、拼出非线性边界。`
+            : `训练准确率 **${pc(st.trainAcc)}**、留出 **${pc(st.testAcc)}**，缺口 **${((st.overfit ?? 0) * 100).toFixed(1)}pp**。`)
+          : st.phase === 'root' ? `不纯度 **${st.curGini}**（0=全同类），要切纯。`
+            : st.phase === 'search' ? `搜出增益最大的一刀：**${st.best?.feat}<${st.best?.t}**（增益 **${st.best?.gain}**），不是钦定。`
+              : st.phase === 'leaf' ? `这一块判为一类，不再往下切。`
+                : `落下 **${st.best?.feat}<${st.best?.t}**，两边各自继续。` },
+        ...(st.phase === 'done' && st.bestDepth !== undefined
+          ? [{ k: '这说明什么', v: (st.declineAfterPeak ?? 0) > 0.02
+            ? `深度扫描里留出准确率**先升后降**：峰在深 ${st.bestDepth}（${pc(st.ceiling)}），再切下去掉 ${((st.declineAfterPeak ?? 0) * 100).toFixed(1)}pp。**这就是必须剪枝的理由。**`
+            : (st.ceiling ?? 1) < 0.97
+              ? `留出准确率升到 ${pc(st.ceiling)} 就上不去了 —— **真边界是斜的，而每一刀都必须平行于坐标轴**。天花板是形状带来的，加深度补不上。`
+              : `留出在深 ${st.bestDepth} 顶到 ${pc(st.ceiling)}，之后既不升也不降 —— 刀刚好够用。` }]
+          : []),
       ]
     },
     verdict: (s: never) => {
-      const st = s as { phase: string; splits: unknown[]; leaves: unknown[] }
-      return st.phase === 'done' ? `${st.leaves.length} 纯叶子` : st.phase === 'root' ? '根·不纯' : `切${st.splits.length}刀`
+      const st = s as { phase: string; splits: unknown[]; leaves: unknown[]; overfit?: number; testAcc?: number }
+      if (st.phase !== 'done') return st.phase === 'root' ? '根·不纯' : `切${st.splits.length}刀`
+      if (st.testAcc === undefined) return `${st.leaves.length} 纯叶子`
+      return (st.overfit ?? 0) > 0.08 ? `留出差${((st.overfit ?? 0) * 100).toFixed(0)}pp` : `留出${(st.testAcc * 100).toFixed(0)}%`
     },
     read: [
-      { at: '读数', is: '已落几刀、当前不纯度、选中那刀的增益、纯叶子数。', anchor: '.scdim' },
-      { at: '搜候选', is: '搜索步会列出候选切法及各自信息增益,★=选中的最大增益那刀。', anchor: '.dtsearch' },
-      { at: '散点图', is: '蓝/红两类点;浅虚线=候选切法预览、亮线=选中/已落的刀;浅色块=已切纯的叶子。', anchor: '.mlplot' },
+      { at: '读数', is: '已落几刀、当前不纯度、选中那刀的增益、叶子与终深，以及**训练准确率和留出准确率**（训练那个单独看没有意义）。', anchor: '.scdim' },
+      { at: '搜候选', is: '搜索步会列出候选切法及各自不纯度下降，★=选中的最大增益那刀。', anchor: '.dtsearch' },
+      { at: '散点图', is: '实心=训练点（切刀只看它们）、空心圈=**留出点**（建树时一个都没看过）；浅虚线=候选切法预览、亮线=已落的刀、蓝虚框=正在处理的那一块；浅色块=叶子。', anchor: '.mlplot' },
+      { at: '深度表', is: 'depth 1~8 各建一棵树、只算准确率不出帧。训练那一列一路涨，**留出那一列才是"学会了没有"的唯一凭据**。', anchor: '.qsscale' },
     ],
     try: [
-      { act: '一刀一刀切', watch: '先竖切 x=0(左半纯)、再横切右半 y=0——每块变纯、Gini 降到 0。' },
-      { act: '看信息增益', watch: '挑的都是让子集最纯的那刀;三刀两下全部切纯。' },
+      { act: '默认档（噪声 + 不限深度）先走完，看两个准确率', watch: '训练 100%、留出 77.5% —— 树把 12% 翻错的标签也一个个背下来了。' },
+      { act: '把「最大深度」调到 2', watch: '训练准确率**降**了，而留出准确率**升**了（信息熵档 77.5% → 87.0%）。**这就是剪枝。**' },
+      { act: '换成「对角边界 y = x」，深度放开', watch: '训练冲到 100%，留出停在 92.5% 上不去 —— 每一刀都必须平行于坐标轴，阶梯贴不满斜线。一条斜线本来 SVM 一刀就够。' },
+      { act: '换成「四象限（两刀切净）」', watch: '深 2、3 个叶子，训练和留出都接近满分，再切既不升也不降 —— 这是刀刚好够用的样子，用来当另外两档的对照。' },
     ],
     terms: [],
   },

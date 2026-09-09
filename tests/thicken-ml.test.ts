@@ -47,6 +47,7 @@ import { perceptronKernel, type PerceptronState } from '../src/kernels/perceptro
 import { pagerankKernel, type PageRankState } from '../src/kernels/pagerank.ts'
 import { maxentKernel, MAXENT_MODES, MAXENT_MUS, MAXENT_STARTS, type MaxEntState } from '../src/kernels/maxent.ts'
 import { quicksortKernel, QS_DATA, QS_PIVOTS, QS_PARTS, QS_SCALE_NS, type QuickSortState } from '../src/kernels/quicksort.ts'
+import { dtreeKernel, DT_DATA, DT_IMPURITY, DT_DEPTHS, type DTreeState } from '../src/kernels/dtree.ts'
 
 let failures = 0
 const ok = (m: string) => console.log(`  ✅ ${m}`)
@@ -1677,6 +1678,105 @@ console.log('\n【快速排序：最坏情况就在手边，而且反直觉】')
     mism === s.scale.length && !s.degraded
       ? ok(`自检：随机数据在 ${mism} 个 n 上比较次数都不等于 n(n−1)/2、也没被判退化 —— 上面那条"正好等于"量的确实是最坏情况，不是恒真`)
       : bad(`自检失败：随机数据也满足"正好等于 n(n−1)/2"（对上 ${s.scale.length - mism} 个 n），那条判据量不出东西`)
+  }
+}
+
+// ═══ 决策树：训练误差 0 是个陷阱 ═══════════════════════
+console.log('\n【决策树：训练 100% 跟"学会了"长得一模一样】')
+{
+  const go = (p: P) => run(dtreeKernel.compile(doc('dtree', p)), 400) as DTreeState[]
+  const fin = (p: P) => last(go(p))
+
+  /*  ① **留出集必须是真的没见过。** 训练点和留出点同分布、不同样本 —— 一旦有重合，
+      "留出准确率"就是自欺欺人，而这个实验全部的说服力都压在那个数上。 */
+  const leak: string[] = []
+  for (const data of DT_DATA) {
+    const s = fin({ data, impurity: DT_IMPURITY[0], depth: 0 })
+    const keys = new Set(s.points.map(p => `${p.x},${p.y}`))
+    const dup = s.holdout.filter(p => keys.has(`${p.x},${p.y}`)).length
+    if (dup > 0) leak.push(`${data}：留出集里有 ${dup} 个点跟训练点重合`)
+    if (s.holdout.length < 100) leak.push(`${data}：留出集只有 ${s.holdout.length} 个点，量不出天花板`)
+  }
+  leak.length === 0
+    ? ok(`三档数据的留出集跟训练集**一个点都不重合**，且各 ${fin({ data: DT_DATA[0], impurity: DT_IMPURITY[0], depth: 0 }).holdout.length} 个点`)
+    : bad(leak.join(' / '))
+
+  /*  ② **主菜**：噪声档不限深度时，训练必须到 100%、留出必须明显掉下来。
+      "训练误差 0 是个陷阱"这句话得有实数撑着。 */
+  {
+    const s = fin({ data: '四象限 + 噪声', impurity: DT_IMPURITY[0], depth: 0 })
+    s.trainAcc === 1 && s.overfit > 0.15
+      ? ok(`噪声档不限深度：训练 100%、留出 ${(s.testAcc * 100).toFixed(1)}%，缺口 ${(s.overfit * 100).toFixed(1)}pp（${s.maxLeaves} 个叶子）`)
+      : bad(`噪声档没演出过拟合：训练 ${s.trainAcc}、留出 ${s.testAcc}、缺口 ${s.overfit}`)
+  }
+
+  /*  ③ **剪枝是解药，而且方向必须是"训练降、留出升"。**
+      只验"留出升"不够 —— 训练也跟着升的话那是模型变强了，不是剪枝。 */
+  {
+    const full = fin({ data: '四象限 + 噪声', impurity: DT_IMPURITY[1], depth: 0 })
+    const cut = fin({ data: '四象限 + 噪声', impurity: DT_IMPURITY[1], depth: 2 })
+    cut.trainAcc < full.trainAcc && cut.testAcc > full.testAcc
+      ? ok(`剪到深 2：训练 ${(full.trainAcc * 100).toFixed(1)}% → ${(cut.trainAcc * 100).toFixed(1)}%（**降**），留出 ${(full.testAcc * 100).toFixed(1)}% → ${(cut.testAcc * 100).toFixed(1)}%（**升**）`)
+      : bad(`剪枝方向不对：训练 ${full.trainAcc}→${cut.trainAcc}、留出 ${full.testAcc}→${cut.testAcc}`)
+  }
+
+  /*  ④ **深度曲线上的三种形状必须互不相同** —— 它们就是三档数据各自的结论。 */
+  const shape: string[] = []
+  for (const impurity of DT_IMPURITY) {
+    const q = fin({ data: '四象限（两刀切净）', impurity, depth: 0 })
+    const n = fin({ data: '四象限 + 噪声', impurity, depth: 0 })
+    const d = fin({ data: '对角边界 y = x', impurity, depth: 0 })
+    //  刚好够：留出顶到很高，之后一路平
+    if (!(q.ceiling > 0.97 && q.declineAfterPeak <= 0.02)) shape.push(`四象限(${impurity})：天花板 ${q.ceiling}、峰后掉 ${q.declineAfterPeak}，本该"高且平"`)
+    //  过拟合：留出先升后降
+    if (!(n.declineAfterPeak > 0.02)) shape.push(`噪声(${impurity})：峰后只掉 ${n.declineAfterPeak}，看不出"越切越差"`)
+    //  天花板：留出一路升但够不到，且训练到过 100%
+    if (!(d.declineAfterPeak <= 0.02 && d.ceiling < 0.97)) shape.push(`对角(${impurity})：天花板 ${d.ceiling}、峰后掉 ${d.declineAfterPeak}，本该"升到头就上不去"`)
+    if (!(last(d.sweep).train === 1)) shape.push(`对角(${impurity})：训练准确率没到过 100%（${last(d.sweep).train}），"训练满分而留出到顶"这句就不成立`)
+  }
+  shape.length === 0
+    ? ok('三档数据在深度曲线上的形状互不相同：四象限"高且平"、噪声"先升后降"、对角"训练满分而留出到顶就上不去"')
+    : bad(shape.slice(0, 3).join(' / '))
+
+  /*  ⑤ **对角档的天花板是形状带来的，不是刀不够。** 同一份数据，
+      一条 45° 直线（y > x）在留出集上必须打满分 —— 那是树够不到的那 7 个百分点的去处。 */
+  {
+    const d = fin({ data: '对角边界 y = x', impurity: DT_IMPURITY[0], depth: 0 })
+    const lineAcc = d.holdout.filter(p => (p.y > p.x ? 1 : 0) === p.c).length / d.holdout.length
+    lineAcc === 1 && d.ceiling < 0.97
+      ? ok(`对角档：一条斜线在同一批留出点上是 100%，而树切到 ${d.maxLeaves} 个叶子只有 ${(d.ceiling * 100).toFixed(1)}% —— 差的那截是"只会切横竖刀"，不是刀不够`)
+      : bad(`对角对照不成立：斜线 ${lineAcc}、树天花板 ${d.ceiling}`)
+  }
+
+  /*  ⑥ **深度上限真的管用**：树的实际深度不许超过上限，叶子数随上限单调不减。 */
+  const cap: string[] = []
+  for (const data of DT_DATA) {
+    let prevLeaves = 0
+    for (const depth of DT_DEPTHS.filter(d => d > 0)) {
+      const s = fin({ data, impurity: DT_IMPURITY[0], depth })
+      if (s.finalDepth > depth) cap.push(`${data} 上限 ${depth}：实际深了 ${s.finalDepth} 层`)
+      if (s.maxLeaves < prevLeaves) cap.push(`${data} 上限 ${depth}：叶子反而少了 ${s.maxLeaves} < ${prevLeaves}`)
+      prevLeaves = s.maxLeaves
+    }
+  }
+  cap.length === 0
+    ? ok('三档 × 三个深度上限：实际深度都没超过上限，叶子数随上限单调不减')
+    : bad(cap.slice(0, 3).join(' / '))
+
+  /*  ⑦ 基尼 vs 信息熵：根节点选的那一刀在三档数据上都一样。
+      "实践中两者差别不大"这句话，这里是量出来的。 */
+  const same = DT_DATA.map(data => fin({ data, impurity: DT_IMPURITY[0], depth: 0 }).sameAsOther)
+  same.every(Boolean)
+    ? ok('基尼与信息熵在三档数据上选的**根节点那一刀完全一致** —— "两种指标实践中差别不大"是量出来的')
+    : bad(`根节点那一刀在 ${same.filter(x => !x).length} 档上不一致`)
+
+  /*  ⑧ 自检：这一套判据得会红 —— 拿"四象限（无噪声）"冒充过拟合档，②③ 那两条必须抓住。 */
+  {
+    const full = fin({ data: '四象限（两刀切净）', impurity: DT_IMPURITY[1], depth: 0 })
+    const cut = fin({ data: '四象限（两刀切净）', impurity: DT_IMPURITY[1], depth: 2 })
+    full.overfit <= 0.15 && !(cut.testAcc > full.testAcc)
+      ? ok(`自检：无噪声那档缺口只有 ${(full.overfit * 100).toFixed(1)}pp、剪到深 2 留出也没变好 —— 上面两条量的确实是"噪声导致的过拟合"，不是恒真`)
+      : bad(`自检失败：无噪声档也满足"过拟合 + 剪枝有效"（缺口 ${full.overfit}、剪后留出 ${cut.testAcc} vs ${full.testAcc}）`)
   }
 }
 

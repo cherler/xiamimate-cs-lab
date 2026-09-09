@@ -526,28 +526,66 @@ const CATALOG_CORE: CatalogEntry[] = [
     id: 'dtree',
     title: '决策树',
     kernel: dtreeKernel as Kernel<unknown>,
-    doc: trivialDoc('dtree'),
+    /*  2026-09-09 补厚：默认档改成**噪声 + 不限深度**，因为"训练 100% 却学不会"
+        才是决策树最该记住的事。doc 必须跟 registry 的 defaultDoc 一致。 */
+    doc: { kind: 'dtree', params: { data: '四象限 + 噪声', impurity: '基尼', depth: 0 }, entities: [], streams: [] },
     facts: [
       {
         id: 'depth', label: '建好的决策树深度',
-        ask: '这棵决策树按信息增益建好后，深度是多少?',
-        kind: 'number',
-        compute: t => ({ answer: String(last(t).depth), step: t.length - 1, evidence: String(last(t).log ?? '') }),
+        ask: '这棵决策树按不纯度下降建好后，深度是多少?',
+        kind: 'number', genre: 'count',
+        compute: t => ({ answer: String(last(t).finalDepth), step: t.length - 1, evidence: String(last(t).log ?? '') }),
         distractors: numDistractors,
       },
       {
         id: 'dt_ncands', label: '根节点枚举的候选切法数',
-        ask: '决策树选第一刀时，在根节点一共枚举了多少个候选切法(每个特征相邻取值的中点)来比较信息增益、取最大?',
-        kind: 'number',
+        ask: '决策树选第一刀时，在根节点一共枚举了多少个候选切法(每个特征相邻取值的中点)来比较不纯度下降、取最大?',
+        kind: 'number', genre: 'count',
         compute: t => { const f = t.find(x => x.phase === 'search' && (x.splits as unknown[]).length === 0)!; return { answer: String(f.nCands), step: t.indexOf(f), evidence: String(f.log ?? '') } },
         distractors: numDistractors,
       },
       {
-        id: 'dt_gain1', label: '搜出的第一刀的信息增益',
-        ask: '根节点搜遍所有候选后选中第一刀(x<0),它的信息增益是多少?(切前 Gini 0.375 − 切后加权 Gini 0.25)',
-        kind: 'number',
-        compute: t => { const f = t.find(x => x.phase === 'search' && (x.splits as unknown[]).length === 0)!; const b = f.best as { gain: number }; return { answer: String(b.gain), step: t.indexOf(f), evidence: String(f.log ?? '') } },
+        /*  补厚的落点：训练准确率单独看没有意义。题面把两个数一起问，
+            答案是"缺口有多大"—— 这个数只有摆了留出集才存在。 */
+        id: 'dt_gap', label: '不限深度时训练与留出准确率的缺口', kind: 'number', genre: 'count',
+        ask: '一份 12% 标签被翻错的数据，**不限深度**建一棵决策树。训练准确率减去留出准确率，差多少个百分点?',
+        compute: t => {
+          const f = last(t)
+          return { answer: ((f.overfit as number) * 100).toFixed(1), step: t.length - 1,
+            evidence: `训练 ${((f.trainAcc as number) * 100).toFixed(1)}% − 留出 ${((f.testAcc as number) * 100).toFixed(1)}%` }
+        },
         distractors: numDistractors,
+      },
+      {
+        id: 'dt_train100', label: '训练准确率 100% 说明不了学会了', kind: 'choice', genre: 'concept',
+        ask: '一棵不限深度的决策树在训练集上做到了 100% 准确。这说明它学会这个任务了吗?',
+        compute: t => {
+          const f = last(t)
+          return {
+            answer: '说明不了 —— 它可能只是把每个训练点单独圈了一个叶子，留出集上的分数才算数',
+            step: t.length - 1,
+            evidence: `实测：训练 ${((f.trainAcc as number) * 100).toFixed(1)}%，而留出只有 ${((f.testAcc as number) * 100).toFixed(1)}%，共 ${f.maxLeaves} 个叶子`,
+          }
+        },
+        distractors: a => [a,
+          '说明学会了 —— 训练集上零错误意味着这棵树完整地表达了数据里的规律',
+          '说明深度还不够 —— 再往下切几层，留出集上的分数也会跟着涨上去',
+          '说明数据太简单 —— 换一份更难的数据，训练和留出的分数自然就一致了',
+        ].filter(o => o !== a).slice(0, 3),
+      },
+      {
+        id: 'dt_axis', label: '轴对齐切不出斜边界', kind: 'choice', genre: 'concept',
+        ask: '真边界是一条 45° 斜线（y = x）时，加深决策树的深度能不能最终把留出准确率推到 100%?',
+        compute: t => ({
+          answer: '不能 —— 每一刀都必须平行于坐标轴，阶梯的每一级斜角上都留着一小块判错的三角',
+          step: t.length - 1,
+          evidence: '实测：对角档训练准确率到 100%，而留出停在 92.5%（基尼）/ 94.3%（信息熵）不再上升',
+        }),
+        distractors: a => [a,
+          '能 —— 台阶切得足够密之后，阶梯就收敛到那条斜线，误差趋于零',
+          '能 —— 只要把不纯度指标从基尼换成信息熵，斜边界就能被正确表示出来',
+          '不能 —— 因为斜线上的点不纯度恒为 0.5，任何一刀的信息增益都算不出来',
+        ].filter(o => o !== a).slice(0, 3),
       },
     ],
   },

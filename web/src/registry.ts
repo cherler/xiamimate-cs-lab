@@ -462,7 +462,7 @@ import { backpropKernel, type BackpropState } from '@engine/kernels/backprop.ts'
 import { BackpropStage } from './stages/BackpropStage.tsx'
 import { logregKernel, type LogRegState } from '@engine/kernels/logreg.ts'
 import { LogRegStage } from './stages/LogRegStage.tsx'
-import { dtreeKernel, type DTreeState } from '@engine/kernels/dtree.ts'
+import { dtreeKernel, DT_DATA, DT_IMPURITY, DT_DEPTHS, type DTreeState } from '@engine/kernels/dtree.ts'
 import { DTreeStage } from './stages/DTreeStage.tsx'
 import { gbdtKernel, type GBDTState } from '@engine/kernels/gbdt.ts'
 import { GBDTStage } from './stages/GBDTStage.tsx'
@@ -3915,31 +3915,51 @@ const dtree: Experiment<DTreeState> = {
   title: '决策树',
   subtitle: '靠一刀刀"切平面"把类别分开',
   kernel: dtreeKernel,
-  defaultDoc: { kind: 'dtree', params: {}, entities: [], streams: [] },
-  params: [],
+  defaultDoc: { kind: 'dtree', params: { data: '四象限 + 噪声', impurity: '基尼', depth: 0 }, entities: [], streams: [] },
+  /*  2026-09-09 补厚：上一轮已经把"选刀"做成真搜索，但整棵树仍是**手写死的 6 帧**、
+      数据是一份两刀就能切净的点集 —— 决策树最重要的那两件事（会把噪声也背下来、
+      只会切横竖刀）一次都没出场。默认档特意开在**噪声 + 不限深度**上：
+      训练 100% 而留出 77.5%，"训练误差 0"这个陷阱一进来就摆在脸上。 */
+  params: [
+    { key: 'data', label: '数据', kind: 'enum', options: [...DT_DATA] },
+    { key: 'impurity', label: '不纯度', kind: 'enum', options: [...DT_IMPURITY] },
+    { key: 'depth', label: '最大深度', kind: 'number', options: [...DT_DEPTHS] },
+  ],
   paramsNote: `**决策树 = 一刀刀"切平面"把类别分开**,关键在**每步怎么选那一刀**。
 
-- **搜出来、不钦定**:枚举所有候选切法(每特征相邻取值的中点)、算每个的**信息增益**(切前 Gini − 切后加权 Gini)、**取增益最大**的那刀落下。
-- **基尼**:Gini 越近 0 越纯;切出纯净(Gini=0)的一块就成叶子,不纯的递归再切。
+- **搜出来、不钦定**:枚举所有候选切法(每特征相邻取值的中点)、算每个的**不纯度下降**(切前 − 切后加权)、**取最大**的那刀落下。整棵树是**真递归**,轴上走的就是递归本身。
 - **优点**:天生可解释(每条路径=一串 if-else)、多刀轴对齐拼非线性边界,是随机森林、GBDT 的积木。
-- **本实验**:16 点分四象限、只右上第 1 类;根上 **24** 个候选里搜出 **x<0**(增益 0.125)、右半 **13** 个里搜出 **y<0**(增益 0.5),三刀两下全切纯。`,
+
+- **补厚补的是"它什么时候垮",而且全靠留出集才看得见**:平面上实心点=训练点(切刀只看它们)、空心圈=**留出点**(建树时一个都没看过)。底下那张表是**深度扫描**:depth 1~8 各建一棵树、只算准确率不出帧。三档数据在这条曲线上长得完全不同 ——
+  - **四象限(两刀切净)**:留出到深 2 顶到 **99.3%**,再切既不升也不降。**刀刚好够用。**
+  - **四象限 + 噪声(默认档)**:12% 的点标签被翻错,**它们的位置跟同象限的邻居一模一样**。不限深度时树为每一个单独切一刀 —— 训练 **100%**、留出掉到 **77.5%**,缺口 22.5 个百分点。留出曲线**先升后降**:基尼档峰在**深 3(81.5%)**、之后掉 **4.0pp**,信息熵档峰在**深 2(87.0%)**、之后掉 **9.5pp**。**这就是剪枝的全部理由:「训练准确率 100%」在屏幕上跟「学会了」长得一模一样,不摆留出集根本分不开。**
+  - **对角边界 y = x**:真边界是一条 45° 斜线,而**每一刀都必须平行于坐标轴**。树只能拿阶梯去贴:训练一路涨到 100%,留出升到 **92.5%(基尼)/94.3%(信息熵)就上不去了**——每级台阶的斜角上总留着一小块判错的三角。**这个天花板是形状带来的,加深度补不上**;一条斜线本来逻辑回归/SVM 一刀就够。
+- **基尼 vs 信息熵**:两种指标形状不同(熵的峰更尖),但根节点选的那一刀在三档数据上**都一样** —— 这一条也是量出来的,不用背"实践中差别不大"。`,
   bounds: [
-    '16 点(四象限,右上=第1类),特征 x/y;每步枚举候选切法',
-    '信息增益=切前 Gini − 切后加权 Gini;取最大那刀(可核)',
-    '根搜 24 候选→x<0(0.125);右半搜 13→y<0(0.5);深 2、3 叶子',
-    '演示轴对齐分裂 + 真搜索;剪枝/连续特征/多类未展开',
+    '40 个训练点 + 400 个留出点,同分布不同样本;留出点建树时一个都不看',
+    '三档数据:四象限均分(每象限 10 个,右上=第1类)/ 对角 y>x / 四象限翻掉 12% 标签',
+    '候选=每特征相邻取值的中点;增益=切前不纯度 − 切后加权;平局按 |阈值| 再按特征名定序(**必须完全确定**,否则"换指标那一刀会不会变"量到的是抛硬币)',
+    '深度扫描 depth=1..8 各建一棵、只算准确率不出帧;峰值深度与天花板都从这条曲线上读',
+    '未做:后剪枝(代价复杂度)、最小样本数、多类、连续特征之外的类别特征、斜决策树',
   ],
   tabs: [{ id: 'split', label: '切平面' }],
   Stage: DTreeStage,
-  tone: s => (s.phase === 'done' ? { key: 'good', label: `${s.leaves.length} 纯叶子` } : { key: 'idle', label: s.phase === 'root' ? '不纯' : `切${s.splits.length}刀` }),
+  tone: s => (s.phase === 'done'
+    ? (s.overfit > 0.08 ? { key: 'bad', label: `留出差 ${(s.overfit * 100).toFixed(0)}pp` } : { key: 'good', label: `留出 ${(s.testAcc * 100).toFixed(0)}%` })
+    : { key: 'idle', label: s.phase === 'root' ? '不纯' : `切${s.splits.length}刀` }),
   metric: s => (s.phase === 'done' ? 1 : Math.max(0, 1 - s.curGini / 0.5) * 0.6),
-  tickLabel: s => (s.phase === 'done' ? '毕' : s.phase === 'root' ? '根' : `刀${s.splits.length}`),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.phase === 'root' ? '根' : s.phase === 'leaf' ? '叶' : `刀${s.splits.length}`),
   whyInRail: true,
   readouts: s => [
     { label: '切了几刀', value: `${s.splits.length}` },
     { label: '当前不纯度', value: `${s.curGini}`, tone: s.curGini === 0 ? 'good' : undefined },
     { label: '选中增益', value: s.best ? `${s.best.gain}` : '—', tone: s.phase === 'search' ? 'good' : undefined },
-    { label: '纯叶子', value: `${s.leaves.length}`, tone: s.phase === 'done' ? 'good' : undefined },
+    { label: '叶子 / 终深', value: `${s.leaves.length}/${s.maxLeaves} · 深 ${s.finalDepth}` },
+    /*  ⭐ 这两栏是补厚的落点：训练准确率**单独看没有意义**，
+        它旁边必须站着留出准确率，否则"训练误差 0"跟"学会了"分不开。 */
+    { label: '训练准确率', value: `${(s.trainAcc * 100).toFixed(1)}%` },
+    { label: '留出准确率', value: `${(s.testAcc * 100).toFixed(1)}%（差 ${(s.overfit * 100).toFixed(1)}pp）`,
+      tone: s.overfit > 0.08 ? 'bad' : 'good' },
   ],
 }
 
