@@ -455,31 +455,85 @@ export const DL_STATS_ENTRIES: CatalogEntry[] = [
   // ── 最大熵原理 ──
   {
     id: 'maxent', title: '最大熵原理', kernel: maxentKernel as Kernel<unknown>,
-    doc: trivialDoc('maxent'),
+    /*  2026-09-09 补厚之后 trace 换了口径：轴不再是"μ 逐档收紧"，而是**在约束平面上爬熵的轮次**。
+        老的三条题全靠 `t.find(x => x.mu === 3.5)` 找帧 —— 新 trace 里每一帧的 μ 都一样，
+        三条全抛，这个实验一道原理题都出不出来（判据①当场红）。重写成考**新口径的那件事**。 */
+    doc: { kind: 'maxent', params: { mode: '+ 期望点数 = μ', mu: 5, start: '均匀' }, entities: [], streams: [] },
     facts: [
       {
-        id: 'maxEnt', label: '无约束时的最大熵(均匀分布熵=log₂6)', kind: 'number',
-        ask: '一颗 6 面骰，没有任何约束(μ=3.5)时，最大熵解的熵是多少 bit?',
-        compute: t => { const f = t.find(x => x.mu === 3.5)!; return { answer: String(f.ent), step: t.indexOf(f), evidence: String(f.log ?? '') } },
-        distractors: numDistractors,
-      },
-      {
-        id: 'entTight', label: '约束 μ=5.5 时的最大熵', kind: 'number',
-        ask: '把期望点数约束 μ 抬到 5.5 后，最大熵解的熵降到了多少 bit?',
-        compute: t => { const f = t.find(x => x.mu === 5.5) ?? last(t); return { answer: String(f.ent), step: t.indexOf(f), evidence: String(f.log ?? '') } },
-        distractors: numDistractors,
-      },
-      {
-        id: 'uniform', label: '无约束时的最大熵分布形态', kind: 'choice',
-        ask: '没有额外约束(μ=3.5)时，6 面骰的最大熵分布长什么样?',
+        id: 'famFound', label: '搜索不假设形式，最后停在指数族上', kind: 'choice', genre: 'concept',
+        ask: '这一屏的搜索只做两件事：待在满足约束的平面上、往熵高的地方走 —— 它从不假设分布是什么形式。爬完之后，它跟指数族解 p∝e^{λi} 差多少？',
         compute: t => {
-          const f = t.find(x => x.mu === 3.5)!
-          const p = f.probs as number[]
-          const isUniform = p.every(x => Math.abs(x - p[0]) < 1e-6)
-          const answer = isUniform ? '均匀分布：每一面都是 1/6（最不武断）' : '偏向某几个面'
-          return { answer, step: t.indexOf(f), evidence: `probs=[${p.join(', ')}]` }
+          const f = last(t)
+          const g = Number(f.gap)
+          return {
+            answer: g < 1e-6
+              ? '逐项差已经掉到 0，两者完全重合 —— 指数族是搜出来的结果，不是事先挑的形式'
+              : `还差 ${g}，没有重合`,
+            step: t.indexOf(f), evidence: `gap=${g}，约束残差=${f.feasErr}`,
+          }
         },
-        distractors: a => pick3(a, [a, '全压在 6 点上（概率 1）', '集中在 3、4 两点的两点分布', '概率随点数线性递增']),
+        distractors: a => pick3(a, [
+          '差得很远，熵最大的分布其实是均匀分布，跟指数族没有关系',
+          '差一个常数倍，指数族只是最大熵解的一种近似写法而已',
+          '一开始就重合，因为搜索的每一步都是按 e^{λi} 的形式算出来的',
+        ]),
+      },
+      {
+        id: 'freedomDim', label: '可行平面还剩几个自由方向', kind: 'choice', genre: 'concept',
+        ask: '6 个面（6 个未知数），加上"概率加起来=1"和"期望点数=μ"两条线性约束。可行平面上还剩几个自由方向，为什么？',
+        compute: t => {
+          const f = last(t)
+          return {
+            answer: `${f.freedom} 个 —— 6 个未知数减掉 2 条线性无关的约束，剩下的就是能走的维数`,
+            step: t.indexOf(f), evidence: `freedom=${f.freedom}，约束=${f.conText}`,
+          }
+        },
+        distractors: a => pick3(a, [
+          '6 个 —— 每一面的概率都还可以自由调整，约束只影响最后的取值范围',
+          '1 个 —— 只要定下 λ 这一个参数，整条指数族曲线就唯一确定了',
+          '0 个 —— 两条约束已经把 6 个未知数全部解死，没有任何余地',
+        ]),
+      },
+      {
+        id: 'entCost', label: '熵从上限掉下去的那一段是什么', kind: 'choice', genre: 'concept',
+        ask: '没有约束时 6 面骰的熵是 log₂6≈2.585 bit。加上"期望点数=μ"之后熵掉了下来 —— 掉下去的那一段代表什么？',
+        compute: t => {
+          const f = last(t)
+          const drop = +(Number(f.maxEnt) - Number(f.ent)).toFixed(3)
+          return {
+            answer: `掉了 ${drop} bit，这一段正是"期望点数=μ"这条约束携带的信息量`,
+            step: t.indexOf(f), evidence: `熵 ${f.ent} / 上限 ${f.maxEnt}`,
+          }
+        },
+        distractors: a => pick3(a, [
+          '掉下去的部分是数值误差，理论上加约束不该让熵变小才对',
+          '代表这个分布比均匀分布更不可信，掉得越多说明假设越武断',
+          '代表还没搜到最优解，继续多爬几轮熵还会回到 2.585 附近',
+        ]),
+      },
+      {
+        id: 'randCross', label: '随机撒点这条交叉验证在验什么', kind: 'choice', genre: 'concept',
+        ask: '屏幕上还印着"在同一张可行平面上随机撒 N 个分布，撞到的最高熵"。这个数拿来干什么？',
+        compute: t => {
+          const f = last(t)
+          const rb = Number(f.randBest), e = Number(f.ent)
+          return {
+            answer: `随机撞到的最高熵 ${rb} 低于爬到的 ${e} —— 换一个来源确认爬到的确实是顶`,
+            step: t.indexOf(f), evidence: `randBest=${rb}，randN=${f.randN}，爬到 ${e}`,
+          }
+        },
+        distractors: a => pick3(a, [
+          '用随机采样代替爬山来求解，比坐标上升更快也更不容易陷进局部极值',
+          '用来估计可行集有多大，撞到的分布越多说明约束越松、信息越少',
+          '用来给爬山提供起点，撒到的最高熵那一个就是下一轮开始搜索的地方',
+        ]),
+      },
+      {
+        id: 'entFinal', label: '爬完之后的熵', kind: 'number',
+        ask: '约束"期望点数=5"下，爬熵爬到最后的熵是多少 bit？',
+        compute: t => { const f = last(t); return { answer: String(f.ent), step: t.indexOf(f), evidence: String(f.log ?? '') } },
+        distractors: numDistractors,
       },
     ],
   },

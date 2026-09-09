@@ -22,6 +22,14 @@ export type Fact = {
   /** 保底题面：大模型不可用时直接用它，保证功能不依赖模型也能出题。 */
   ask: string
   kind: 'number' | 'choice'
+  /**
+   * 这条事实属于哪一类：`concept` 原理/不变量/适用条件，`count` 这一次运行里的某个数。
+   *
+   * ⚠️ 跟 `catalog.ts` 里主表的 `Fact` 保持一致 —— **分片文件原来漏了这个字段**，
+   * 于是分片里写 `genre: 'concept'` 会被类型检查挡下来，只能靠"答案长过 12 字"
+   * 那条兜底推断蒙对。推断是给存量兼容用的，新写的一律显式声明（catalog.ts 的原话）。
+   */
+  genre?: 'concept' | 'count'
   /** 从引擎 trace 算出钉死答案 + 出处（第几帧 + 该帧证据文字）。 */
   compute: (trace: Frame[]) => { answer: string; step: number; evidence: string }
   /** 生成干扰项（错误选项）。数值题按扰动，选择题按同类其它取值。 */

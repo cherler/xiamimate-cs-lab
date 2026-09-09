@@ -5494,34 +5494,60 @@ export const GUIDES: Record<string, Guide> = {
       hook: '先分家，再各自收拾。',
       what: '这一屏讲的是**快速排序**本身的划分过程。它属于「分治」这一类：随手挑一个数当**枢轴**，一趟扫描把比它小的甩到左边、大的甩到右边，于是枢轴落到它最终该在的位置、从此不动；然后左右两段各自重复。它跟冒泡、插入那类「相邻两两比较」的根本差别只有一条：**一刀下去，左边的数从此再也不用跟右边的比** —— 省掉的正是这些注定不会发生的比较。平均比较次数约 1.39·n·log₂n，最坏会退化到 n²/2。',
       terms: '**枢轴（pivot）**：每趟挑出来当分界线的那个数。**挑得好不好是快排唯一的命门** —— 每次都挑到最小的，就退化成 n²。实际实现会取首、中、尾三个数的中位数来躲开最坏情况。\u3000**划分（partition）**：一趟扫描把数组分成「小于枢轴」和「大于枢轴」两段。常见有两种写法：双指针从两头往中间夹，或者挖坑法（先把枢轴取出来握在手里，所以中途你会看到数组「少了一个数」，那不是 bug）。\u3000**递归**：左右两段各自再来一次划分，直到段长为 1。递归深度平均是 log n，最坏是 n（可能爆栈，所以实现里会把较长的一侧改成循环）。\u3000**原地排序**：只用常数级的额外空间，全靠交换 —— 这是它比归并排序省内存的地方。\u3000**不稳定**：值相等的元素相对次序可能被打乱。按多关键字排序时（先按成绩再按姓名）这一点会出问题。\u3000**跟标准库的关系**：C++ 的 std::sort 用的是 introsort —— 快排打底，**递归太深就自动切换成堆排序**保底，小区间改用插入排序。纯快排在生产环境里几乎不会单独出现。',
-      watch: '看每一趟划分之后，枢轴落到了哪个位置 —— 它从此定死不动。左右两段的长度差得越少，整体越快。',
+      watch: '默认档的数据**已经排好序** —— 盯着每一趟划分完的「左段/右段」：总有一边是空的，一趟只定下 1 个数。再看底下那张规模表，n=160 时比较次数正好是 n(n−1)/2。**「数据已经有序」恰恰是快排最慢的一档**，这条反直觉。然后把「选基准」换成三数取中，同一份数据立刻回到 O(n log n)。',
     },
+    /*  ⚠️ 2026-09-09 补厚：`compares / maxDepth / slope / degraded / scale` 是新字段。
+        `st.xxx ?? …` 那几支是给旧快照的兜底，拿不到就退回旧措辞。 */
     step: (s: never) => {
-      const st = s as { phase: string; act: string; arr: number[]; lo: number; hi: number; pivotVal: number; iPtr: number; jPtr: number; sortedCount: number; n: number }
+      const st = s as { phase: string; act: string; arr: number[]; lo: number; hi: number; pivotVal: number
+                        iPtr: number; jPtr: number; sortedCount: number; n: number
+                        compares?: number; maxDepth?: number; slope?: number; degraded?: boolean
+                        dataKind?: string; pivotRule?: string; partRule?: string; swapWith?: number }
+      const three = !!st.partRule?.startsWith('三路')
       return [
-        { k: '本步输入', v: st.act === '' ? `乱序 [${st.arr.join(',')}]` : st.pivotVal >= 0 && st.phase !== 'done' ? `区间 [${st.lo},${st.hi}],基准 ${st.pivotVal}` : `已排好 ${st.sortedCount}/${st.n}` },
-        { k: '判定规则', v: `分治:挑一个**基准 pivot**,一趟扫描把 **<pivot 的甩左、≥pivot 的留右**;基准落到分界位=**最终位置**(左全小、右全不小),永久锁定。再对左右两段**各自递归**,段长到 1 停。` },
-        { k: '本步结果', v: st.act === 'swap' ? `${st.arr[st.iPtr]} < ${st.pivotVal},换进左区。`
-            : st.act === 'grow' ? `${st.arr[st.jPtr]} < ${st.pivotVal},原地并入左区。`
-            : st.act === 'keep' ? `${st.arr[st.jPtr]} ≥ ${st.pivotVal},留右边。`
-            : st.act === 'place' ? `基准 ${st.pivotVal} **归位**到 #${st.jPtr},区间一切为二。`
-            : st.act === 'single' ? `单元素区间,天然有序,直接归位。`
-            : st.act === 'pivot' ? `挑末元素 ${st.pivotVal} 当基准,开始扫描。`
-            : st.act === 'done' ? `**排好序** [${st.arr.join(',')}]——平均 O(n log n)、原地。`
-            : `扫描中。` },
+        { k: '本步输入', v: st.act === '' ? `${st.dataKind ?? '乱序'} [${st.arr.join(',')}]`
+          : st.pivotVal >= 0 && st.phase !== 'done' ? `区间 [${st.lo},${st.hi}]（长 ${st.hi - st.lo + 1}），基准 ${st.pivotVal}`
+            : `已排好 ${st.sortedCount}/${st.n}` },
+        { k: '判定规则', v: three
+          ? `三路分区（荷兰国旗）：小的甩左、大的甩右，**等于基准的全留中间并一次全部锁定**。等值元素多时这一步能把一整堆一次定死。`
+          : `分治：挑一个**基准 pivot**，一趟扫描把 **<pivot 的甩左、≥pivot 的留右**；基准落到分界位=**最终位置**，永久锁定。再对左右两段**各自递归**。` },
+        { k: '本步结果', v: st.act === 'swap' ? `换位：和 #${st.swapWith} 交换。`
+          : st.act === 'grow' ? `${st.arr[st.jPtr]} < ${st.pivotVal}，原地并入左区。`
+            : st.act === 'keep' ? (three ? `${st.arr[st.jPtr]} = ${st.pivotVal}，留在中间那堆。` : `${st.arr[st.jPtr]} ≥ ${st.pivotVal}，留右边。`)
+              : st.act === 'place' ? (three ? `#${st.iPtr}~#${st.jPtr} 全等于 ${st.pivotVal}，**一次全部归位**。` : `基准 ${st.pivotVal} **归位**到 #${st.jPtr}，区间一切为二。`)
+                : st.act === 'single' ? `单元素区间，天然有序，直接归位。`
+                  : st.act === 'pivot' ? `按「${st.pivotRule ?? '末元素'}」挑出基准 ${st.pivotVal}，开始扫描。`
+                    : st.act === 'done' ? (st.slope === undefined
+                      ? `**排好序** [${st.arr.join(',')}]——平均 O(n log n)、原地。`
+                      : `**排好序**。比较 ${st.compares} 次、最深递归 ${st.maxDepth} 层，实测增长指数 **${st.slope}**。`)
+                      : `扫描中。` },
+        ...(st.phase === 'done' && st.degraded !== undefined
+          ? [{ k: '这说明什么', v: st.degraded
+            ? `**这一档退化成 O(n²) 了**（指数 ${st.slope}，递归 ${st.maxDepth} 层≈n）。每趟总有一边是空的，问题规模只缩小 1 —— 规模再大就是爆栈，这正是 std::sort 要用 introsort 保底的理由。`
+            : (st.slope ?? 2) <= 1.1
+              ? `增长指数 ${st.slope} —— **线性**。三路分区一趟就把等于基准的整堆锁定，递归只有 ${st.maxDepth} 层；两路分区一次只能定一个，看不见这一点。`
+              : `增长指数 ${st.slope}，接近 n log n 的 1.28 —— 每趟把区间大致切成两半，这才是快排该有的样子。` }]
+          : []),
       ]
     },
     verdict: (s: never) => {
-      const st = s as { phase: string; sortedCount: number; n: number; pivotVal: number }
-      return st.phase === 'done' ? '已排好' : st.pivotVal >= 0 ? `归位 ${st.sortedCount}/${st.n}` : `${st.sortedCount}/${st.n}`
+      const st = s as { phase: string; sortedCount: number; n: number; pivotVal: number; degraded?: boolean; slope?: number }
+      return st.phase === 'done' ? (st.degraded ? `退化 n^${st.slope}` : '已排好')
+        : st.pivotVal >= 0 ? `归位 ${st.sortedCount}/${st.n}` : `${st.sortedCount}/${st.n}`
     },
     read: [
-      { at: '读数', is: '当前基准、处理区间、已归位个数。', anchor: '.scdim' },
-      { at: '数组', is: '琥珀=基准 pivot、蓝=扫描指针 j、i=左区右边界、绿✓=已归位(最终位置)、灰=不在当前区间。', anchor: '.qsrow' },
+      { at: '读数', is: '当前基准、处理区间、已归位个数、比较/交换次数，以及**最深递归**（会不会爆栈的唯一凭据）和**实测增长指数**。', anchor: '.scdim' },
+      /*  ⚠️ 这一栏原来锚 `.qsrow` —— 而那个类**当时整个仓库里都不存在**（现在有了，是规模表的行，
+          讲的又不是同一样东西）。柱子在 `.bc-chart` 里。这类"锚点指向不存在的选择器"
+          屏幕上毫无反应、也不报错，冒烟【13】那条判据因此补了一道"选择器命不命中"的检查。 */
+      { at: '数组', is: '琥珀=基准 pivot、蓝=扫描指针 j、绿✓=已归位(最终位置)、淡绿=已收进左区、灰=不在当前区间；重复值带 a/b/c 角标，看它们的次序有没有被打乱。', anchor: '.bc-chart' },
+      { at: '规模表', is: '同一档参数在 n=10/20/40/80/160 上**静默各排一遍**（只计数不出帧，跟屏幕上这一趟是同一份代码），把比较次数跟 n·log₂n、n(n−1)/2 并排。"退化成 n²"是这一列量出来的。', anchor: '.qsscale' },
     ],
     try: [
-      { act: '按「下一步」分区', watch: 'j 一路扫:小的收进左区、大的留右;扫完基准归位、区间一切为二。' },
-      { act: '数已归位', watch: '每趟 partition 定死一个基准的最终位置;段越切越短,直到全部锁定。' },
+      { act: '把「选基准」从末元素换成三数取中', watch: '同一份已排好序的数据，n=160 的比较次数从 **12720** 掉到 **1161**、增长指数从 2.03 掉到 1.24 —— 这就是"取首中尾中位数"在躲的东西。' },
+      { act: '把「数据」换成"全都一样"，再挨个换基准', watch: '三种基准全是平方级（2.03 / 1.88 / 2.03）—— **这一档换基准救不了**。' },
+      { act: '接着把「分区」换成三路', watch: '同一份全相等数据，n=160 从 12720 掉到 **320**、指数 **1.00**，递归深度 1 层 —— 换分区才是这一档的解药。' },
+      { act: '选「大量重复（3 种值）」看等值元素的角标', watch: '排完之后 a/b/c 的次序被打乱了 —— 快排**不稳定**，按多关键字排序时这一点决定结果对不对。' },
     ],
     terms: [],
   },
@@ -6761,30 +6787,46 @@ export const GUIDES: Record<string, Guide> = {
       hook: '在什么都不知道的时候，该假设什么分布？',
       what: '这一屏讲的是**最大熵原理**：在信息不足的时候，**该假设什么分布**。答案是：**假设最「摊平」的那一个** —— 因为任何比它更集中的假设，**都等于你偷偷加进了自己并不掌握的信息**。这条原则给了很多常见分布一个统一的来历：什么都不知道时，最摊平的是均匀分布；只知道平均值时是指数分布；知道平均值和方差时，**就是正态分布** —— 这也是正态分布如此普遍的一个深层原因。',
       terms: '**熵**：−Σ p·log p，衡量一个分布有多不确定。**分布越均匀熵越大，越集中在一个选项上熵越小。**\u3000**最大熵原理**：**在满足已知约束的所有分布里，选熵最大的那个**。\u3000**为什么是「最诚实」的选择**：熵最大意味着**除了已知的约束之外，没有引入任何额外的假设**。选一个熵更小的分布，就是在声称你知道一些其实并不知道的事。\u3000**约束决定形状**：**这是这一屏最值得看的现象** —— 每加一条约束，分布就从摊平往那个方向收一点，**收的幅度正好对应这条信息的分量**。\u3000**几个经典结果**：无约束 → 均匀分布；给定均值（且取值非负）→ 指数分布；**给定均值和方差 → 正态分布**；给定均值和取值为正整数 → 几何分布。\u3000**跟统计物理的联系**：玻尔兹曼分布就是「给定平均能量下的最大熵分布」，**热力学熵和信息熵在数学上是同一个东西**。\u3000**在机器学习里**：最大熵模型（也就是 softmax 回归 / 逻辑回归）**正是在「匹配训练数据的特征期望」这个约束下的最大熵分布** —— 这给了 softmax 一个原理性的来历，而不只是「一个好用的归一化函数」。',
-      watch: '加一条约束再看分布怎么变形。每加一个已知条件，分布就从摊平往那个方向收一点 —— 收的幅度正好是这条信息的分量。',
+      watch: '盯着**虚线框和实心柱的差**（读数栏里也印着这个数）。实心柱是在约束平面上一路爬熵搜出来的，全程不知道"指数族"长什么样；虚线框是解析的指数族解。差掉到 0 的那一刻，"softmax 是唯一答案"就从一句断言变成了屏幕上看得见的事。',
     },
+    /*  ⚠️ 老字段（naiveEnt / 单一 μ 轴）在 2026-09-09 补厚里换掉了。
+        这里全部按新字段读，`st.xxx?` 的写法是给旧快照留的兜底 —— 拿不到就退回旧措辞。 */
     step: (s: never) => {
-      const st = s as { phase: string; mu: number; ent: number; naiveEnt: number; maxEnt: number }
+      const st = s as { phase: string; step: number; mu: number; ent: number; maxEnt: number
+                        gap: number; freedom: number; nCon: number; conText: string; feasErr: number
+                        randBest: number; naiveMean: number }
+      const gapText = Number.isFinite(st.gap) ? (st.gap < 1e-9 ? '0（完全重合）' : st.gap.toExponential(2)) : '—'
       return [
-        { k: '本步输入', v: st.phase === 'done' ? '约束 μ 从 3.5 收紧到 5.5' : `约束:期望点数 μ=${st.mu}` },
-        { k: '判定规则', v: `在满足约束的分布里选**熵最大**的(最不武断)。可证它恒为指数族 p_i∝e^{λi};给期望能量约束就是 softmax/玻尔兹曼。` },
-        { k: '本步结果', v: st.phase === 'done'
-            ? `最大熵解从均匀(熵 ${st.maxEnt})变尖(熵→${st.ent})——信息越多、最诚实的分布越集中。这就是 softmax 的根。`
-            : `最大熵 **${st.ent}** bit${st.mu === 3.5 ? '(=均匀,到顶)' : `(> 同均值两点分布 ${st.naiveEnt})`}。` },
+        { k: '本步输入', v: st.phase === 'dead' ? `约束 ${st.conText} —— 支撑集 63 个全枚举过，没有解`
+          : st.step <= 0 ? `约束 ${st.conText}；投影到可行平面上的起点`
+            : `第 ${st.step} 轮：当前分布 + ${st.freedom} 个自由方向` },
+        { k: '判定规则', v: st.freedom === 0
+          ? `${st.nCon} 条矩约束 + "加起来=1" 已经把 6 个未知数解死了 —— **熵最大化在这里没有余地**。`
+          : `沿可行平面的每个自由方向做线搜索、再沿投影梯度走一次，**只往熵高处走，不假设分布长什么样**。` },
+        { k: '本步结果', v: st.phase === 'dead' ? `无解。而只盯期望点数二分求 λ 的老解法会**照样给你一个分布**（均值 ${st.naiveMean}）—— 解出来了 ≠ 解对了。`
+          : st.freedom === 0 ? `分布被方程组解出来，熵 ${st.ent} —— 跟只约束均值那一档爬出来的**一模一样**。`
+            : `熵 **${st.ent}** / ${st.maxEnt} bit，约束残差 ${st.feasErr}；与指数族解的最大逐项差 **${gapText}**。` },
+        ...(st.phase === 'done' && st.freedom > 0 && Number.isFinite(st.gap)
+          ? [{ k: '这说明什么', v: `搜索没听说过"指数族"，却停在了它上面（差 ${gapText}）。**softmax 不是挑出来的公式，是"约束下最不武断"的唯一解。**` }]
+          : []),
       ]
     },
     verdict: (s: never) => {
-      const st = s as { phase: string; mu: number; ent: number }
-      return st.phase === 'done' ? `熵 ${st.ent}` : `μ${st.mu}·H${st.ent}`
+      const st = s as { phase: string; step: number; ent: number; freedom: number }
+      return st.phase === 'dead' ? '无解'
+        : st.freedom === 0 ? '被约束定死'
+          : st.phase === 'done' ? `熵 ${st.ent}` : `第${st.step}轮·H${st.ent}`
     },
     read: [
-      { at: '读数', is: '约束 μ、最大熵、熵上限、同均值两点分布的熵。', anchor: '.scdim' },
-      { at: '分布柱', is: '骰子 1..6 的最大熵概率;μ 越大越往 6 偏。', anchor: '.mebars' },
-      { at: '熵条', is: '当前熵占上限(log₂6)的比例。', anchor: '.meenttrack' },
+      { at: '读数', is: '约束、可行平面还剩几个自由方向、当前熵、**与指数族解的差**、约束残差。', anchor: '.scdim' },
+      { at: '分布柱', is: '实心=爬熵搜出来的分布（不假设形式）；虚线框=指数族解析解。两者重合就是这一屏的结论。', anchor: '.mebars' },
+      { at: '熵条', is: '当前熵占上限(log₂6)的比例。被约束压下去的那一段，就是这条约束携带的信息量。', anchor: '.meenttrack' },
     ],
     try: [
-      { act: '按「下一步」收紧 μ', watch: '分布从均匀往 6 偏、熵一路降;但每步都是该约束下最不武断的。' },
-      { act: '看 μ=3.5', watch: '没有约束时最大熵=均匀、熵到顶——这就是"最诚实"。' },
+      { act: '把「搜索起点」换成"全押小点数"或"全押大点数"', watch: '三个天差地别的起点收敛到**同一个分布** —— 这就是"唯一答案"的实测版。' },
+      { act: '把「约束」换成"一到五阶矩全给定"', watch: '自由方向变成 0：分布被方程组解死，熵一句话没说上。而答案跟只约束均值那档**一模一样**——同一个分布，两种完全不同的理由。' },
+      { act: '选"+ 期望点数、方差 = 0"，μ 取 4.5', watch: '无解："每次都掷出同一面"和"平均 4.5 点"不可能同时成立。屏幕上会告诉你老解法在这里会闷声给个错答案。' },
+      { act: '同一档把 μ 换成 5', watch: '有解了（全押 5 点），但**自由方向还有 3 个却一步走不动** —— 答案被逼到单纯形的角上。"有自由方向"和"走得动"是两回事。' },
     ],
     terms: [],
   },

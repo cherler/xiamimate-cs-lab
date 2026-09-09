@@ -3297,8 +3297,12 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .mebars { display:flex; align-items:flex-end; gap:8px; height:110px; }
 .mecol { display:flex; flex-direction:column; align-items:center; gap:3px; height:100%; width:34px; }
 .mepct { font-size:10px; color:var(--faint); }
-.mebartrack { flex:1; width:100%; display:flex; align-items:flex-end; }
+.mebartrack { flex:1; width:100%; display:flex; align-items:flex-end; position:relative; }
 .mebar { width:100%; background:var(--now); opacity:.75; border-radius:3px 3px 0 0; min-height:2px; transition:height .3s; }
+/*  指数族解析解的"影子柱"：只有虚线轮廓、不填色，压在实心柱上。
+    这一屏全部的说服力都在"实心柱一轮一轮长进虚线框里" —— 两根并排画就看不出重合了。 */
+.mefam { position:absolute; left:0; right:0; bottom:0; border:1.5px dashed var(--f-tag);
+  border-radius:3px 3px 0 0; min-height:2px; pointer-events:none; transition:height .3s; }
 .melab { font-size:12px; color:var(--dim); font-weight:600; }
 .meentwrap { display:flex; align-items:center; gap:8px; width:min(300px,78vw); }
 .meentlab { font-size:11px; color:var(--dim); }
@@ -3903,6 +3907,23 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
   background:linear-gradient(180deg, color-mix(in srgb,var(--hit) 22%,var(--panel)), color-mix(in srgb,var(--hit) 44%,var(--panel)));
   box-shadow:0 2px 8px color-mix(in srgb,var(--hit) 26%,transparent); }
 .bc-bar.done .bc-v { color:var(--hit); }
+
+/*  重复值的角标 a/b/c —— 快排「不稳定」这句话就靠它看得见：
+    排完之后 3a 跑到 3b 后面，屏幕上一眼分得出来。 */
+.bc-bar .bc-sub { font-style:normal; font-size:10px; opacity:.7; margin-left:1px; }
+
+/*  规模验证表：同一档参数静默跑几个 n，只计数不出帧。
+    「退化成 n²」必须在这张表上量得出来，不能只写在旁白里。 */
+.qsscale { margin:10px 0 4px; }
+.qsrow { display:grid; grid-template-columns:44px 1fr 1fr 1fr 76px; gap:6px;
+  font-family:var(--mono); font-size:var(--t-meta); color:var(--ink);
+  padding:2px 6px; border-bottom:1px solid var(--line-soft); font-variant-numeric:tabular-nums; }
+.qsrow span { text-align:right; }
+.qsrow span:first-child { text-align:left; color:var(--dim); }
+.qshead { color:var(--dim); border-bottom:1px solid var(--line); }
+.qsrow .dimv { color:var(--faint); }
+.qsrow .bad { color:var(--miss); font-weight:700; }
+
 /* 指针小旗，飘在柱顶上方，带朝下三角 */
 .bc-flag { position:absolute; top:-20px; font-family:var(--mono); font-size:var(--t-meta); font-weight:700; color:#fff;
   padding:1px 7px; border-radius:9px; white-space:nowrap; line-height:1.6; }

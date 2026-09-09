@@ -45,6 +45,8 @@ import { ragKernel, type RagState } from '../src/kernels/rag.ts'
 import { ganKernel, type GanState } from '../src/kernels/gan.ts'
 import { perceptronKernel, type PerceptronState } from '../src/kernels/perceptron.ts'
 import { pagerankKernel, type PageRankState } from '../src/kernels/pagerank.ts'
+import { maxentKernel, MAXENT_MODES, MAXENT_MUS, MAXENT_STARTS, type MaxEntState } from '../src/kernels/maxent.ts'
+import { quicksortKernel, QS_DATA, QS_PIVOTS, QS_PARTS, QS_SCALE_NS, type QuickSortState } from '../src/kernels/quicksort.ts'
 
 let failures = 0
 const ok = (m: string) => console.log(`  ✅ ${m}`)
@@ -1446,6 +1448,236 @@ console.log('\n【二分查找：有序是前提，破了不会报错】')
   JSON.stringify([...a].sort((x, y) => x - y)) === JSON.stringify([...b].sort((x, y) => x - y))
     ? ok('乱序档跟有序 13 个是同一批数、只是顺序变了 —— 差别只可能来自"有没有序"')
     : bad('两档的元素不一样 —— 对照不干净，说明不了问题出在顺序上')
+}
+
+// ═══ 最大熵：指数族不是假设，是搜出来的 ═══════════════════
+console.log('\n【最大熵原理：搜索不假设形式，自己走到指数族上】')
+{
+  const go = (p: P) => run(maxentKernel.compile(doc('maxent', p)), 400) as MaxEntState[]
+  const fin = (p: P) => last(go(p))
+
+  /*  ① **这一屏的全部说服力**：搜索在约束平面上爬熵，全程不假设分布形式，
+         最后必须落在指数族解析解上。gap 是两者的最大逐项差。 */
+  const off: string[] = []
+  for (const mode of [MAXENT_MODES[0], MAXENT_MODES[1], MAXENT_MODES[2]]) {
+    for (const mu of MAXENT_MUS) {
+      const s = fin({ mode, mu, start: '均匀' })
+      if (!(s.gap < 1e-6)) off.push(`${mode} μ=${mu}：差 ${s.gap}`)
+      if (!(s.feasErr < 1e-9)) off.push(`${mode} μ=${mu}：约束残差 ${s.feasErr}`)
+    }
+  }
+  off.length === 0
+    ? ok(`三档约束 × ${MAXENT_MUS.length} 个 μ：爬熵搜出来的分布跟指数族解的最大逐项差都 < 1e-6，约束残差全程 0`)
+    : bad(off.slice(0, 3).join(' / '))
+
+  /*  ② **爬到的确实是顶**，而且这句话不是拿爬山自己证的：
+         在同一张可行平面上 hit-and-run 撒 3000 个分布，最高的那个也得低于它。 */
+  const notTop: string[] = []
+  for (const mu of MAXENT_MUS) {
+    const s = fin({ mode: MAXENT_MODES[1], mu, start: '均匀' })
+    if (s.randN < 2000) notTop.push(`μ=${mu}：3000 发只落进可行集 ${s.randN} 发，这条交叉验证量不出东西`)
+    if (s.randBest > s.ent + 1e-9) notTop.push(`μ=${mu}：随机撒到 ${s.randBest} > 爬到 ${s.ent}`)
+  }
+  notTop.length === 0
+    ? ok('随机撒点（hit-and-run，每发都落在可行集里）撞到的最高熵，全部低于爬到的熵')
+    : bad(notTop.slice(0, 3).join(' / '))
+
+  /*  ③ **唯一性**：三个天差地别的起点必须收敛到同一个分布。
+         这是"最大熵解唯一"那句话的实测版。 */
+  const spread: string[] = []
+  for (const mu of MAXENT_MUS) {
+    const ps = MAXENT_STARTS.map(start => fin({ mode: MAXENT_MODES[1], mu, start }).probs)
+    const d = Math.max(...ps[0].map((_, k) => Math.max(...ps.map(p => p[k])) - Math.min(...ps.map(p => p[k]))))
+    if (d > 1e-4) spread.push(`μ=${mu}：三个起点最大分歧 ${d}`)
+  }
+  spread.length === 0
+    ? ok(`${MAXENT_STARTS.length} 个起点（均匀 / 全押小点数 / 全押大点数）× ${MAXENT_MUS.length} 个 μ：收敛到同一个分布，逐项分歧 < 1e-4`)
+    : bad(spread.join(' / '))
+
+  /*  ④ **锁死档**：五阶矩全给定 ⇒ 自由方向 0 个，熵一句话没说上。
+         而答案必须跟"只约束均值"那一档爬出来的**一模一样** —— 同一个分布、两种理由。
+         这是补厚后这个实验最想让人记住的一句话，所以单独钉。 */
+  const lock: string[] = []
+  for (const mu of MAXENT_MUS) {
+    const a = fin({ mode: MAXENT_MODES[3], mu, start: '均匀' })
+    const b = fin({ mode: MAXENT_MODES[1], mu, start: '均匀' })
+    if (a.freedom !== 0) lock.push(`μ=${mu}：五阶矩全给定，自由方向却有 ${a.freedom} 个`)
+    const d = Math.max(...a.probs.map((x, k) => Math.abs(x - b.probs[k])))
+    if (d > 1e-4) lock.push(`μ=${mu}：锁死档跟只约束均值差 ${d}`)
+  }
+  lock.length === 0
+    ? ok('锁死档（一到五阶矩全给定）自由方向恒为 0，且答案跟"只约束均值"爬出来的完全一致 —— 同一个分布，一次靠约束给够了，一次靠熵')
+    : bad(lock.slice(0, 3).join(' / '))
+
+  /*  ⑤ **无解 / 卡死这两档要分得开。**「方差=0」加上 μ：
+         μ 是整数 → 有解（全押那一面），但答案在单纯形的角上，一步走不动；
+         μ 不是整数 → 真无解。**第一版就在这儿栽过**：交替投影往顶点收敛太慢，
+         μ=5 被判成无解，屏幕上会理直气壮印一句假话。 */
+  const zv: string[] = []
+  for (const mu of MAXENT_MUS) {
+    const s = fin({ mode: MAXENT_MODES[4], mu, start: '均匀' })
+    const want = Number.isInteger(mu)
+    if (s.solvable !== want) zv.push(`μ=${mu}：${want ? '本该有解（全押那一面）' : '本该无解'}，实际 solvable=${s.solvable}`)
+    if (want && s.ent !== 0) zv.push(`μ=${mu}：方差 0 的解熵应为 0，实际 ${s.ent}`)
+    if (want && s.probs[mu - 1] !== 1) zv.push(`μ=${mu}：该全押第 ${mu} 面，实际 [${s.probs.join(',')}]`)
+    if (!want && s.phase !== 'dead') zv.push(`μ=${mu}：无解档 phase=${s.phase}`)
+  }
+  zv.length === 0
+    ? ok('方差=0 档：μ 是整数就有解且全押那一面（熵 0），μ 不是整数就真无解 —— 两种收场分得开')
+    : bad(zv.slice(0, 3).join(' / '))
+
+  /*  ⑥ **无解档屏幕上那句"老解法会闷声给你一个错答案"必须是真的。**
+         只盯期望点数二分求 λ，它给出的分布均值确实等于 μ（所以看着没毛病），
+         但方差那条约束根本不在它眼里 —— 差得离谱。 */
+  const naive: string[] = []
+  for (const mu of [3.5, 4.5, 5.5, 5.9]) {
+    const s = fin({ mode: MAXENT_MODES[4], mu, start: '均匀' })
+    if (Math.abs(s.naiveMean - mu) > 1e-3) naive.push(`μ=${mu}：老解法的均值 ${s.naiveMean} 竟然不等于 μ，那它连"看着像回事"都算不上`)
+  }
+  naive.length === 0
+    ? ok('无解档里，老式"只盯均值二分求 λ"照样交得出一个分布、均值也正好等于 μ —— 它失败得毫无破绽，这就是要摆出来的理由')
+    : bad(naive.join(' / '))
+
+  /*  ⑦ 自检：这一套判据得会红。把"约束越多熵越低"这条**必然成立**的性质
+         拿反着写一遍 —— 若它通过，说明上面量的东西根本没在动。 */
+  const chain = [MAXENT_MODES[0], MAXENT_MODES[1], MAXENT_MODES[2]]
+    .map(mode => fin({ mode, mu: 5, start: '均匀' }).ent)
+  chain[0] > chain[1] && chain[1] > chain[2]
+    ? ok(`μ=5 下约束逐条加严，熵单调下降 ${chain.join(' → ')} —— 每一条约束都真的带走了信息量`)
+    : bad(`熵没有随约束变严而单调下降：${chain.join(' → ')}`)
+
+  //  自检的自检：反着比必须失败
+  !(chain[0] < chain[1] && chain[1] < chain[2])
+    ? ok('自检：把单调方向写反，这条判据会红 —— 它量的确实是"约束越多熵越低"')
+    : bad('自检失败：正反两个方向都成立，这条判据量不出东西')
+}
+
+// ═══ 快速排序：三条退化路径，两种解药 ═══════════════════
+console.log('\n【快速排序：最坏情况就在手边，而且反直觉】')
+{
+  const go = (p: P) => run(quicksortKernel.compile(doc('quicksort', p)), 600) as QuickSortState[]
+  const fin = (p: P) => last(go(p))
+  const all: { data: string; pivot: string; part: string; s: QuickSortState }[] = []
+  for (const data of QS_DATA) for (const pivot of QS_PIVOTS) for (const part of QS_PARTS) {
+    all.push({ data, pivot, part, s: fin({ data, pivot, part }) })
+  }
+
+  /*  ① 底线：30 个组合，每一个都得真把数排好，而且**还是原来那批数**。
+      ⚠️ 第一版这条的"同一批数"写成了 `sorted(arr) === sorted(arr)` —— 左右同一个表达式，
+      恒真。判据自己写了句废话，还绿着。这里把每一档**应该**是哪批数独立算出来对（判据自带数据）。 */
+  const EXPECT: Record<string, number[]> = {
+    '随机打乱': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    '已经排好序': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    '完全逆序': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    '全都一样': [5, 5, 5, 5, 5, 5, 5, 5, 5, 5],
+    //  makeData 的 D_DUP：第 k 个是 (k%3)*3+1，n=10 → 1×4、4×3、7×3，再打乱
+    '大量重复（3 种值）': [1, 1, 1, 1, 4, 4, 4, 7, 7, 7],
+  }
+  const wrong = all.filter(({ data, s }) => {
+    const sorted = s.arr.every((v, k) => k === 0 || s.arr[k - 1] <= v)
+    const same = JSON.stringify(s.arr) === JSON.stringify(EXPECT[data])
+    return !sorted || !same || s.sortedCount !== s.n
+  })
+  wrong.length === 0
+    ? ok(`${all.length} 个参数组合全都真排好了，元素跟各档应有的那批数逐个对得上，且都归了位`)
+    : bad(`${wrong.length} 个组合不对，如 ${wrong[0].data}/${wrong[0].pivot}/${wrong[0].part}：[${wrong[0].s.arr.join(',')}]`)
+
+  /*  ② **动画跑的和规模表跑的必须是同一份代码。**
+      这是"退化成 n² 是量出来的"这句话的前提 —— 两条路一旦分开写，
+      屏幕上演的和曲线上量的可以悄悄变成两个算法，而没有任何东西会报错。 */
+  const drift = all.filter(({ s }) => s.compares !== s.totalCompares || s.maxDepth !== s.totalDepth)
+  drift.length === 0
+    ? ok('每个组合里，逐帧动画数出来的比较次数/递归深度，跟静默规模表在同一个 n 上数出来的完全相等')
+    : bad(`${drift.length} 个组合两条路对不上，如 ${drift[0].data}：动画 ${drift[0].s.compares} vs 静默 ${drift[0].s.totalCompares}`)
+
+  /*  ③ **主菜**：已排好序 / 完全逆序 + 末元素基准 + 两路分区 → 比较次数**正好** n(n−1)/2。
+      不是"接近"，是逐个 n 一次不差 —— 每趟总有一边是空的，n(n−1)/2 是它的精确值。 */
+  const exact: string[] = []
+  for (const data of ['已经排好序', '完全逆序']) {
+    const s = fin({ data, pivot: QS_PIVOTS[0], part: QS_PARTS[0] })
+    for (const r of s.scale) if (r.compares !== r.nsq) exact.push(`${data} n=${r.n}：${r.compares} ≠ ${r.nsq}`)
+    if (s.totalDepth !== s.n) exact.push(`${data}：递归深度 ${s.totalDepth}，最坏该是 n=${s.n}`)
+  }
+  exact.length === 0
+    ? ok(`已排好序 / 完全逆序 + 末元素基准：${QS_SCALE_NS.length} 个 n 上比较次数都**正好等于** n(n−1)/2，递归深度正好等于 n`)
+    : bad(exact.slice(0, 3).join(' / '))
+
+  /*  ④ **解药一**：同一份有序数据，只把基准换成三数取中或随机，就从平方级回到 n log n。
+      "命门和解药并排"这句话得两边都量得到。 */
+  const cure: string[] = []
+  for (const data of ['已经排好序', '完全逆序']) {
+    const bad0 = fin({ data, pivot: QS_PIVOTS[0], part: QS_PARTS[0] })
+    if (!bad0.degraded) cure.push(`${data}+末元素 竟然没退化（指数 ${bad0.slope}）`)
+    for (const pivot of [QS_PIVOTS[1], QS_PIVOTS[2]]) {
+      const g = fin({ data, pivot, part: QS_PARTS[0] })
+      if (g.degraded) cure.push(`${data}+${pivot} 仍然退化（指数 ${g.slope}）`)
+      const bigBad = last(bad0.scale).compares, bigGood = last(g.scale).compares
+      if (!(bigGood < bigBad / 5)) cure.push(`${data}+${pivot} 在 n=${last(g.scale).n} 只降到 ${bigGood}（原 ${bigBad}）`)
+    }
+  }
+  cure.length === 0
+    ? ok('同一份有序/逆序数据，只把基准换成三数取中或随机就不再退化，最大 n 上的比较次数降到不足原来的 1/5')
+    : bad(cure.slice(0, 3).join(' / '))
+
+  /*  ⑤ **解药二**：元素大量相等是**另一条**退化路径 —— 换基准一点用没有，只有换分区管用。
+      这一条是这个实验最容易被记成"随机基准包治百病"的地方，所以正反两面都钉。 */
+  const dup: string[] = []
+  for (const data of ['全都一样', '大量重复（3 种值）']) {
+    for (const pivot of QS_PIVOTS) {
+      const two = fin({ data, pivot, part: QS_PARTS[0] })
+      if (!two.degraded) dup.push(`${data}+${pivot}+两路 竟然没退化（指数 ${two.slope}）—— "换基准救不了"这句话就不成立了`)
+      const three = fin({ data, pivot, part: QS_PARTS[1] })
+      if (three.degraded) dup.push(`${data}+${pivot}+三路 仍然退化（指数 ${three.slope}）`)
+      if (!(last(three.scale).compares < last(two.scale).compares / 5)) {
+        dup.push(`${data}+${pivot}：三路只降到 ${last(three.scale).compares}（两路 ${last(two.scale).compares}）`)
+      }
+    }
+  }
+  dup.length === 0
+    ? ok('元素大量相等时：三种基准配两路分区**全部**退化，换成三路后**全部**不退化、比较次数降到不足 1/5 —— 换基准救不了，换分区才行')
+    : bad(dup.slice(0, 3).join(' / '))
+
+  //  ⑥ 全相等 + 三路：增长指数必须落在 1 附近（每个元素只被看一遍），递归 1 层
+  {
+    const s = fin({ data: '全都一样', pivot: QS_PIVOTS[0], part: QS_PARTS[1] })
+    s.slope <= 1.1 && s.totalDepth === 1
+      ? ok(`全相等 + 三路分区：增长指数 ${s.slope}（线性），递归深度 ${s.totalDepth} 层 —— 一趟就把整堆锁定`)
+      : bad(`全相等 + 三路：指数 ${s.slope}、深度 ${s.totalDepth}，本该是线性 + 1 层`)
+  }
+
+  /*  ⑦ **"退化"这条判定线得留着余量。** 阈值是 1.5：正常档最高与退化档最低之间
+      必须留出可见的缝，否则某天噪声一晃就误判 —— 而误判的方向是屏幕上印一句假话。 */
+  {
+    const normals = all.filter(x => !x.s.degraded).map(x => x.s.slope)
+    const bads = all.filter(x => x.s.degraded).map(x => x.s.slope)
+    const hiN = Math.max(...normals), loB = Math.min(...bads)
+    loB - hiN > 0.1
+      ? ok(`退化判定留着缝：正常档指数最高 ${hiN}、退化档最低 ${loB}，中间空着 ${(loB - hiN).toFixed(2)}（阈值 1.5）`)
+      : bad(`判定线太挤：正常最高 ${hiN}、退化最低 ${loB} —— 噪声一晃就会误判`)
+  }
+
+  /*  ⑧ **不稳定**要有实例，而且只在有等值元素时才下结论。
+      没有等值元素时报"稳定"是无从谈起的话，不能算数。 */
+  {
+    const withTies = all.filter(x => x.s.hasTies)
+    const unstable = withTies.filter(x => !x.s.stable)
+    const noTies = all.filter(x => !x.s.hasTies)
+    withTies.length > 0 && unstable.length > 0 && noTies.every(x => !x.s.hasTies)
+      ? ok(`${withTies.length} 个有等值元素的组合里，${unstable.length} 个把等值元素的原始次序打乱了 —— 快排不稳定，屏幕上看得见`)
+      : bad(`不稳定没有实例：有等值 ${withTies.length} 个、其中乱序 ${unstable.length} 个`)
+    noTies.every(x => !x.s.hasTies)
+      ? ok('没有等值元素的档不下"稳不稳定"的结论 —— 那种情况下这件事无从谈起')
+      : bad('无等值元素的档也报了稳定性结论')
+  }
+
+  //  ⑨ 自检：这一套判据得会红 —— 拿"随机数据"冒充最坏情况，③ 那条必须抓住
+  {
+    const s = fin({ data: '随机打乱', pivot: QS_PIVOTS[0], part: QS_PARTS[0] })
+    const mism = s.scale.filter(r => r.compares !== r.nsq).length
+    mism === s.scale.length && !s.degraded
+      ? ok(`自检：随机数据在 ${mism} 个 n 上比较次数都不等于 n(n−1)/2、也没被判退化 —— 上面那条"正好等于"量的确实是最坏情况，不是恒真`)
+      : bad(`自检失败：随机数据也满足"正好等于 n(n−1)/2"（对上 ${s.scale.length - mism} 个 n），那条判据量不出东西`)
+  }
 }
 
 console.log(failures === 0 ? '\n本套全部通过' : `\n${failures} 处不对`)

@@ -143,7 +143,7 @@ import { greedyKernel, type GreedyState } from '@engine/kernels/greedy.ts'
 import { GreedyStage } from './stages/GreedyStage.tsx'
 import { jlKernel, type JLState } from '@engine/kernels/jl.ts'
 import { JLStage } from './stages/JLStage.tsx'
-import { maxentKernel, type MaxEntState } from '@engine/kernels/maxent.ts'
+import { maxentKernel, MAXENT_MODES, MAXENT_MUS, MAXENT_STARTS, type MaxEntState } from '@engine/kernels/maxent.ts'
 import { MaxEntStage } from './stages/MaxEntStage.tsx'
 import { condnumKernel, type CondNumState } from '@engine/kernels/condnum.ts'
 import { CondNumStage } from './stages/CondNumStage.tsx'
@@ -171,7 +171,7 @@ import { unionfindKernel, type UnionFindState } from '@engine/kernels/unionfind.
 import { UnionFindStage } from './stages/UnionFindStage.tsx'
 import { heapKernel, type HeapState } from '@engine/kernels/heap.ts'
 import { HeapStage } from './stages/HeapStage.tsx'
-import { quicksortKernel, type QuickSortState } from '@engine/kernels/quicksort.ts'
+import { quicksortKernel, QS_DATA, QS_PIVOTS, QS_PARTS, type QuickSortState } from '@engine/kernels/quicksort.ts'
 import { QuickSortStage } from './stages/QuickSortStage.tsx'
 import { mergesortKernel, type MergeSortState } from '@engine/kernels/mergesort.ts'
 import { MergeSortStage } from './stages/MergeSortStage.tsx'
@@ -4203,19 +4203,35 @@ const quicksort: Experiment<QuickSortState> = {
   title: '快速排序',
   subtitle: '选基准，小的甩左、大的甩右，分而治之',
   kernel: quicksortKernel,
-  defaultDoc: { kind: 'quicksort', params: {}, entities: [], streams: [] },
-  params: [],
+  defaultDoc: { kind: 'quicksort', params: { data: '已经排好序', pivot: '末元素（教科书）', part: 'Lomuto 两路' }, entities: [], streams: [] },
+  /*  2026-09-09 补厚：老版本一组数、一种基准、一种分区，**从头到尾一切顺利**。
+      而讲解卡里写着「挑得好不好是快排唯一的命门」「std::sort 递归太深会切成堆排序保底」——
+      这两句在屏幕上一次都没兑现过。默认档特意开在**最坏情况**上（已排好序 + 末元素基准），
+      因为那才是快排最该记住的一件事，而且反直觉。 */
+  params: [
+    { key: 'data', label: '数据', kind: 'enum', options: [...QS_DATA] },
+    { key: 'pivot', label: '选基准', kind: 'enum', options: [...QS_PIVOTS] },
+    { key: 'part', label: '分区', kind: 'enum', options: [...QS_PARTS] },
+  ],
   paramsNote: `**快排是分治的代表作**:排一个区间时先挑一个基准 pivot,做一趟 partition,把比 pivot 小的甩到左、不小于的留右。
 
 - **pivot 归位**:这趟结束 pivot 就落到最终该在的位置(左全比它小、右全不小于),永久锁定;再对左右两段各自递归,段越切越短到长度 1(天然有序)。
 - **性能**:平均 O(n log n)、原地(不需额外数组)、常数因子小,是实践中最快的通用排序,C++ sort、各语言库底子都有它。
-- **最坏**:近有序且总挑到极值时退化 O(n²),用随机/三数取中基准规避。
-- **本实验**:7 个数 [5,2,8,1,9,3,7],看 pivot、扫描指针 j 一趟趟收小的、pivot 归位、再切两段递归。`,
+
+- **补厚补的是"它什么时候垮"** —— 三条互不相同的退化路径,以及各自的解药:
+  - **数据已经排好序（默认档）**:末元素当基准时,每趟切出来**总有一边是空的**,一趟只定 1 个数。规模表上 n=160 时比较 **12720 次 = n(n−1)/2 一次不差**,实测增长指数 **2.03**,递归深度 = n。**"数据已经有序"恰恰是最慢的那一档** —— 这一条反直觉,也是快排最该记住的事。**完全逆序**同理。
+  - **解药就在旁边**:「选基准」换成三数取中,同一份有序数据 n=160 掉到 **1161** 次、指数 **1.24**。这就是"实际实现取首中尾三个数的中位数"在躲的东西。
+  - **元素大量相等**:这一档**换基准救不了**(末元素 2.03、三数取中 1.88、随机 2.03,全是平方级) —— Lomuto 两路把等值元素反复搬来搬去。得换**分区**:三路分区(荷兰国旗)一趟把等于基准的**全部**锁定,n=160 从 12720 掉到 **320**,指数 **1.00**。
+  - **递归深度**单独一栏:最坏 n 层就是**爆栈**。C++ std::sort 用 introsort 正为此 —— 快排打底,递归太深自动切成堆排序保底。
+- **规模表是静默跑的**:同一档参数在 n=10/20/40/80/160 上各排一遍、只计数不出帧,**走的跟屏幕上这一趟是同一份代码**。"退化成 n²"是那一列量出来的,不是写上去的。
+- **不稳定**:等值元素带着原始下标一起搬家,角标 a/b/c 排完之后次序会被打乱 —— 按多关键字排序时这一点直接决定结果对不对。`,
   bounds: [
-    '7 个数 [5,2,8,1,9,3,7],末元素当基准',
-    '一趟扫描:<基准收左、≥基准留右;基准归位后锁定(可核)',
-    '再对左右两段递归,段长到 1 停',
-    '平均 O(n log n) 原地;最坏 O(n²) 用随机基准避',
+    '动画跑 n=10;规模验证静默跑 n=10/20/40/80/160,两条路是同一份 quicksort() 代码',
+    '基准三档:末元素 / 三数取中(那 3 次比较也计入) / 随机(定死种子,可重现)',
+    '分区两档:Lomuto 两路 / 三路荷兰国旗;**三路每个元素最多比两次**,比较次数跟两路不是同一把尺,横向比要看增长指数',
+    '增长指数 = (log n, log 比较次数) 的最小二乘斜率;> 1.5 判退化。这一段 n 上 n·log₂n 的斜率是 1.28',
+    '稳定性按等值元素的原始下标判;没有等值元素时不给结论',
+    '未做:introsort 的实际切换、尾递归消除把深度压到 log n、小区间转插入排序',
   ],
   tabs: [{ id: 'part', label: '分区+递归' }],
   Stage: QuickSortStage,
@@ -4227,7 +4243,11 @@ const quicksort: Experiment<QuickSortState> = {
     { label: '当前基准', value: s.pivotVal >= 0 && s.phase !== 'done' ? `${s.pivotVal}` : '—' },
     { label: '处理区间', value: s.pivotVal >= 0 && s.phase !== 'done' ? `[${s.lo},${s.hi}]` : s.phase === 'done' ? '全区' : '—' },
     { label: '已归位', value: `${s.sortedCount}/${s.n}`, tone: s.act === 'place' || s.act === 'single' ? 'good' : undefined },
-    { label: '本步', value: s.act === 'swap' ? '换进左区' : s.act === 'grow' ? '并入左区' : s.act === 'keep' ? '留右边' : s.act === 'place' ? '基准归位' : s.act === 'pivot' ? '选基准' : s.act === 'single' ? '单元素归位' : s.act === 'done' ? '排好序' : '待走' },
+    { label: '比较 / 交换', value: `${s.compares} / ${s.swaps}` },
+    //  最深递归是"会不会爆栈"的唯一凭据：理想 log₂n，最坏 n
+    { label: '最深递归', value: `${s.maxDepth} 层（理想 ${Math.log2(s.n).toFixed(1)}）`, tone: s.maxDepth >= s.n ? 'bad' : undefined },
+    //  ⭐ 这一栏是补厚的落点：增长指数由规模表实测，不是写死的结论
+    { label: '实测增长指数', value: `${s.slope}${s.degraded ? '（O(n²)）' : ''}`, tone: s.degraded ? 'bad' : 'good' },
   ],
 }
 
@@ -5474,29 +5494,51 @@ const maxent: Experiment<MaxEntState> = {
   title: '最大熵原理',
   subtitle: 'softmax/玻尔兹曼分布凭什么"天生合理"',
   kernel: maxentKernel,
-  defaultDoc: { kind: 'maxent', params: {}, entities: [], streams: [] },
-  params: [],
+  defaultDoc: { kind: 'maxent', params: { mode: '+ 期望点数 = μ', mu: 5, start: '均匀' }, entities: [], streams: [] },
+  /*  2026-09-09 补厚：老版本**把要证的东西当前提用了** —— 直接写 p_i ∝ e^{λi}、二分求 λ，
+      然后在旁边说"可证最大熵解一定是指数族"。屏幕上从头到尾没有任何东西在最大化熵。
+      这一版主线改成一场**真搜索**：在满足约束的平面上爬熵，全程不假设任何形式，
+      看它自己走到指数族上。三个失败档回答"这条原理什么时候使不上劲"。 */
+  params: [
+    { key: 'mode', label: '约束', kind: 'enum', options: [...MAXENT_MODES] },
+    { key: 'mu', label: '期望点数 μ', kind: 'number', options: [...MAXENT_MUS] },
+    { key: 'start', label: '搜索起点', kind: 'enum', options: [...MAXENT_STARTS] },
+  ],
   paramsNote: `**最大熵原理:在所有满足已知约束的分布里,选熵最大的那个**——它对没被约束的部分不做多余假设,最诚实/最不武断。
 
 - **可证**:给定若干"期望值"约束,最大熵解一定是指数族 p_i∝e^(Σλ·特征);给"期望能量"约束时正是 softmax/玻尔兹曼分布 p_i∝e^(λE_i)。这就是 softmax、逻辑回归、玻尔兹曼机天生合理的根——不是随手一挑,是约束下最大熵的唯一答案。
-- **本实验**:一颗 6 面骰,无约束时最大熵=均匀(log2 6=2.585);把期望点数 μ 从 3.5 抬到 5.5,最大熵解 p_i∝e^(λi)(二分求 λ)往 6 偏、熵 2.585→1.375,但每步都是该约束下熵最高(对比同均值两点分布熵低很多)。`,
+
+- **这一屏不背这个结论,它把结论搜出来**:轴上走的是一场真搜索——在满足约束的那张平面(Ap=b ∩ 单纯形)上做坐标上升,沿零空间的每个自由方向做线搜索找熵更高的点。**全程没有任何地方假设指数族。**屏幕上实心柱是搜出来的分布、虚线框是指数族解析解,两者的最大逐项差印在读数里,一路掉到 1e-9 以下——**"指数族"是搜出来的结果,不是挑出来的形式**。
+- **「搜索起点」这个旋钮验的是唯一性**:均匀 / 全押小点数 / 全押大点数三个天差地别的起点,收敛到**同一个分布**。
+- **三个失败档,回答"它什么时候使不上劲"**:
+  - **锁死**(一到五阶矩全给定):6 个方程 6 个未知数,可行集缩成一个点,**自由方向 0 个**——熵一句话没说上。而答案跟「只约束均值」那一档**一模一样**:同一个分布,一次靠"约束给够了",一次靠"没给够的部分别瞎猜"。**信息足够时熵原理是多余的;不够时它才是唯一不武断的补法。**
+  - **卡死**(方差=0 且 μ 是整数):零空间明明还有 3 个方向,但答案被逼到单纯形的**角**上,每个方向刚一动概率就变负,线搜索能走的那段长度是 0——**有自由方向不等于走得动**。
+  - **无解**(方差=0 而 μ 不是整数):"每次都掷出同一面"和"平均 4.5 点"不可能同时成立。这一档特意把**老式解法**摆出来:只盯期望点数二分求 λ,它会**闷声给你一个分布**,而方差那条约束它压根没看见——**「解出来了」和「解对了」是两件事**。`,
   bounds: [
-    '6 面骰;约束=期望点数 μ 取 3.5→4→4.5→5→5.5',
-    '最大熵解 p_i∝e^{λi},二分 λ 使 Σi·p_i=μ(可核)',
-    '无约束→均匀(熵 log2 6);μ 越大分布越尖、熵越低',
-    '每步熵 > 同均值两点分布(体现"最大");未做多约束一般情形',
+    '6 面骰;约束可选"只要求加起来=1 / +期望点数 / +期望点数与方差 / 一到五阶矩全给定 / +方差=0"',
+    '主线是真搜索:可行平面零空间里坐标上升 + 投影梯度线搜索,**不假设指数族**;解析解只作对照',
+    '"方差"那一档的目标取该 μ 下方差上限(7μ−6−μ²)的六成——对任何 μ 都严格可行',
+    '可行性判定:交替投影 + 支撑集全枚举(63 个)最小二乘;两道都过不去才叫无解',
+    '交叉验证用 hit-and-run 在可行集里撒 3000 点,报最高熵;它必须低于爬到的熵',
+    '未做:连续分布、非矩型约束(如 KL 到某先验)、多于 5 条约束的一般情形',
   ],
   tabs: [{ id: 'dist', label: '最大熵分布' }],
   Stage: MaxEntStage,
-  tone: s => (s.phase === 'done' ? { key: 'good', label: `熵 ${s.ent}` } : s.probs.some(p => p > 0) ? { key: 'idle', label: `μ=${s.mu}` } : { key: 'idle', label: '' }),
+  tone: s => (s.phase === 'dead' ? { key: 'bad', label: '无解' }
+    : s.phase === 'done' ? { key: 'good', label: s.freedom === 0 ? '被约束定死' : `熵 ${s.ent}` }
+      : s.probs.length ? { key: 'idle', label: `第 ${s.step} 轮` } : { key: 'idle', label: '' }),
   metric: s => (s.maxEnt ? Math.max(0, Math.min(1, s.ent / s.maxEnt)) : 0),
-  tickLabel: s => (s.phase === 'done' ? '毕' : s.probs.some(p => p > 0) ? `μ${s.mu}` : '0'),
+  tickLabel: s => (s.phase === 'dead' ? '✗' : s.phase === 'done' ? '毕' : s.probs.length ? `${s.step}` : '0'),
   whyInRail: true,
   readouts: s => [
-    { label: '约束 μ', value: `${s.mu}` },
-    { label: '最大熵', value: `${s.ent} bit`, tone: 'good' },
-    { label: '熵上限', value: `${s.maxEnt} bit` },
-    { label: '同均值两点分布', value: s.mu === 3.5 ? '—' : `${s.naiveEnt} bit（更低）` },
+    { label: '约束', value: s.conText },
+    { label: '自由方向', value: `${s.freedom}`, tone: s.freedom === 0 ? 'bad' : undefined },
+    { label: '当前熵', value: s.probs.length ? `${s.ent} / ${s.maxEnt} bit` : '—', tone: 'good' },
+    /*  这一栏是整屏的心脏：搜索**没有**假设指数族，它掉到 0 才叫证出来了。
+        `Number.isFinite` 挡的是无解档 —— 那里没有解析解可比，印 NaN 会当成"差得远"。 */
+    { label: '与指数族解的差', value: s.probs.length && Number.isFinite(s.gap) ? (s.gap < 1e-9 ? '0（重合）' : s.gap.toExponential(1)) : '—',
+      tone: s.probs.length && Number.isFinite(s.gap) && s.gap < 1e-6 ? 'good' : undefined },
+    { label: '约束残差', value: s.probs.length && Number.isFinite(s.feasErr) ? `${s.feasErr}` : '—' },
   ],
 }
 
