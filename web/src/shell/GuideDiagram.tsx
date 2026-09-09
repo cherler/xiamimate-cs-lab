@@ -66,8 +66,8 @@ function Shell({ icon, title, sub, children }: { icon: ReactNode; title: string;
   )
 }
 
-/** 编号小节。n=1|2|3 对应蓝/紫/琥珀三种序号底色。 */
-function Sec({ n, title, children }: { n: 1 | 2 | 3; title: ReactNode; children: ReactNode }) {
+/** 编号小节。n=1|2|3|4 对应蓝/紫/琥珀/绿四种序号底色。 */
+function Sec({ n, title, children }: { n: 1 | 2 | 3 | 4; title: ReactNode; children: ReactNode }) {
   return (
     <div className="gd-sec">
       <div className="gd-st"><i className={`gd-sn b${n}`}>{n}</i><b>{title}</b></div>
@@ -5826,6 +5826,11 @@ function SelfConsistDiagram() {
   )
 }
 
+/*  实测值（有缺陷的奖励模型 + 高多样性），别按记忆填 —— 判据在 tests/thicken-ml.test.ts 里量 */
+const NS_BON = [1, 2, 4, 8, 16, 32]
+const PROXY_BON = [6, 6, 9, 14, 14, 14]
+const TRUE_BON = [2, 2, 5, 0, 0, 0]
+
 function BestOfNDiagram() {
   const cands: [string, number, number][] = [
     ['3 + 8 + 5 = 16', 2, 0], ['5 × 3 + 8 = 23', 9, 0], ['8 × 5 = 40', 0, 0], ['3 × 8 = 24', 10, 1], ['3 × 8 − 5 = 19', 5, 0],
@@ -5855,12 +5860,39 @@ function BestOfNDiagram() {
         <div className="gd-note">{Icn.info}<span>关键是<b>打分器</b>:训练好的<b>奖励模型</b>(给回答质量打分,RLHF 用)或<b>可算的验证器</b>(验算/跑单测)。采样 N 个、逐个打分、<b>argmax 取最高</b> → 3×8=24 满分胜出。</span></div>
       </Sec>
 
-      <Sec n={3} title="和自洽的分工：打分 vs 投票">
+      {/*  2026-09-09 补厚：reward hacking 原来只是 §3 note 里的一句脚注，
+           而它是这一屏真正的落点。单开一节，把两条线画出来。 */}
+      <Sec n={3} title="但 argmax 认的是打分器的分，不是真实质量">
+        <div className="gd-graph">
+          <svg viewBox="0 0 210 90" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+            <text x="6" y="8" fontSize="5.5" fill="var(--faint)">打分器有个缺陷:偏爱长的、看着像在推理的回答</text>
+            {/*  实测曲线：代理分 6→6→9→14→14→14 / 真实质量 2→2→5→0→0→0 */}
+            {[0, 7, 14].map(v => (
+              <g key={v}>
+                <line x1="24" y1={76 - v * 3.6} x2="196" y2={76 - v * 3.6} stroke="var(--line-soft)" strokeWidth="0.4" />
+                <text x="21" y={78 - v * 3.6} fontSize="4.5" fill="var(--faint)" textAnchor="end">{v}</text>
+              </g>
+            ))}
+            {NS_BON.map((nn, i) => <text key={nn} x={30 + i * 33} y="86" fontSize="4.5" fill="var(--faint)" textAnchor="middle">N={nn}</text>)}
+            <polyline points={PROXY_BON.map((v, i) => `${30 + i * 33},${76 - v * 3.6}`).join(' ')}
+              fill="none" stroke="var(--now)" strokeWidth="1.4" />
+            <polyline points={TRUE_BON.map((v, i) => `${30 + i * 33},${76 - v * 3.6}`).join(' ')}
+              fill="none" stroke="var(--dim)" strokeWidth="1.2" strokeDasharray="3 2" />
+            <line x1={30 + 2 * 33} y1="18" x2={30 + 2 * 33} y2="76" stroke="var(--miss)" strokeWidth="0.8" strokeDasharray="2 2" opacity="0.8" />
+            <text x={30 + 2 * 33} y="15" fontSize="4.5" fill="var(--miss)" textAnchor="middle">真实质量见顶</text>
+            <text x="130" y={76 - 14 * 3.6 - 3} fontSize="5" fill="var(--now)">代理分数（打分器给的）</text>
+            <text x="130" y={76 + 6} fontSize="5" fill="var(--dim)">真实质量</text>
+          </svg>
+        </div>
+        <div className="gd-note">{Icn.info}<span>候选池里有一条<b>又长又像在一步步推理</b>的:「先算 8−5=3，再 3×3=9…」——算出来是 12,<b>真实质量 0</b>,可代理分拿到 <b>14</b>,压过了真正的最优解 3×8（真实 10、太短、代理只有 12）。<b>N 越大，argmax 就越一定会撞上它</b>:代理分一路涨到 14,真实质量从 5 掉到 0。这就是 <b>Goodhart 定律 / reward hacking</b>,RLHF 里叫<b>过优化</b>。</span></div>
+      </Sec>
+
+      <Sec n={4} title="和自洽的分工：打分 vs 投票">
         <div className="gd-lane">
           <div className="gd-card hit"><h4>Best-of-N</h4><p>外部<em>打分器选单个最好</em>——适合开放式生成(写作/对话/代码),没"多数答案"可投。</p></div>
           <div className="gd-card i"><h4>自洽</h4><p><em>多数投票</em>——适合有唯一离散答案、正确路径会聚集的推理题。</p></div>
         </div>
-        <div className="gd-note">{Icn.info}<span>是 RLHF 数据合成、推理时增强(test-time scaling)的常用招。软肋:N 越大越好但越贵(线性涨);且<b>只和打分器一样好</b>——打分器能被钻空子就会 reward hacking。</span></div>
+        <div className="gd-note">{Icn.info}<span>是 RLHF 数据合成、推理时增强(test-time scaling)的常用招。软肋有两条:<b>算力线性涨而质量近似只随 log N 涨</b>(边际递减);以及<b>它只和打分器一样好</b>。还有一条常被忽略的前提——取的是"N 个样本里的<b>最大值</b>",<b>样本之间得真的不一样</b>,候选高度重复时 N 加了等于没加。</span></div>
       </Sec>
 
       <Flow
@@ -6258,9 +6290,15 @@ function DiffusionDiagram() {
   )
 }
 
+/*  实测值（默认档 c=1.4、20 轮），别按记忆填 —— 判据在 tests/thicken-ml.test.ts 里量。
+    ⚠️ 老版本这里是 A=4访/4赢、B/C 各 1访/0赢 —— 那是内核里那张**写死的输赢脚本表**留下的，
+    "A 每次都赢"根本不是跑出来的。现在 rollout 照真实胜率抛硬币，数就长这样。 */
+const MCTS_N = [['A', 6, 5], ['B', 6, 5], ['C', 4, 2], ['D', 2, 0], ['E', 2, 0]] as [string, number, number][]
+const MCTS_SWEEP: [number, number][] = [[10, 0.43], [20, 0.55], [40, 0.728], [80, 0.858], [160, 0.964], [320, 0.99]]
+
 function MctsDiagram() {
-  const moves = [['A', 4, 4], ['B', 1, 0], ['C', 1, 0]] as [string, number, number][]
-  const maxN = 4, bx = (k: number) => 45 + k * 60
+  const moves = MCTS_N
+  const maxN = 6, bx = (k: number) => 22 + k * 32
   const rad = (nn: number) => 8 + (nn / maxN) * 7
   return (
     <Shell icon={Icn.star} title="蒙特卡洛树搜索 MCTS 原理"
@@ -6285,17 +6323,46 @@ function MctsDiagram() {
                 </g>
               )
             })}
-            <text x="85" y="80" textAnchor="middle" fontSize="5" fill="var(--faint)">圆越大=访问越多。6 轮后 A 独大 → 选 A</text>
+            <text x="85" y="80" textAnchor="middle" fontSize="5" fill="var(--faint)">圆越大=访问越多。20 轮后 A/B 各 6 次、D/E 各 2 次 → 选访问最多的</text>
           </svg>
         </div>
-        <div className="gd-note">{Icn.info}<span>①<b>选择</b>按 UCB 挑分支 ②<b>扩展</b>加新节点 ③<b>模拟</b>随机走到底看输赢 ④<b>回传</b>更新沿途 N、胜数。反复几千轮,好走法<b>访问数飙升</b>,选访问最多的。</span></div>
+        <div className="gd-note">{Icn.info}<span>①<b>选择</b>按 UCB 挑分支 ②<b>扩展</b>加新节点 ③<b>模拟</b>随机走到底看输赢 ④<b>回传</b>更新沿途 n、胜数。五个走法的<b>真实胜率</b>是 0.75/0.60/0.40/0.30/0.25——<b>算法看不到这几个数</b>,只能靠一次次抛硬币去估。</span></div>
       </Sec>
 
       <Sec n={3} title="灵魂：UCB 平衡利用与探索">
         <div className="gd-lane">
-          <div className="gd-card hit"><h4>UCB=胜率+c·√(ln N父/N子)</h4><p>前项<em>利用</em>(胜率高多试)、后项<em>探索</em>(试得少的也要试;没试过=∞)。</p></div>
+          <div className="gd-card hit"><h4>UCB = 实测胜率 + c·√(ln N父/n子)</h4><p>前项<em>利用</em>(已经量到的胜率)、后项<em>探索</em>(试得越少这项越大;没试过=∞)。</p></div>
+          <div className="gd-card miss"><h4>c=0 就废了</h4><p>探索项恒为 0,开局各试一次之后<em>谁碰巧赢就一直押谁</em>——加到 320 轮也只有 <b>64.4%</b>。<em>不是收敛得慢,是不收敛。</em></p></div>
           <div className="gd-card i"><h4>AlphaGo 引擎</h4><p>用<em>策略网给先验、价值网估胜率</em>替代随机 rollout;和思维树 ToT 一家。</p></div>
         </div>
+      </Sec>
+
+      {/*  2026-09-09 补厚：老版本三节讲完就收，而"靠**大量**随机对局的统计说话"
+           里的"大量"到底是多少，从来没画出来过。这一节就画它。 */}
+      <Sec n={4} title="但「大量」两个字不是修辞">
+        <div className="gd-graph">
+          <svg viewBox="0 0 200 84" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+            <text x="6" y="8" fontSize="5" fill="var(--faint)">选对率 vs 模拟预算（每档换种子重跑 500 次；横轴对数）</text>
+            {[0, 0.5, 1].map(v => (
+              <g key={v}>
+                <line x1="24" y1={72 - v * 54} x2="192" y2={72 - v * 54} stroke="var(--line-soft)" strokeWidth="0.4" />
+                <text x="21" y={74 - v * 54} fontSize="4.5" fill="var(--faint)" textAnchor="end">{v * 100}%</text>
+              </g>
+            ))}
+            {/*  瞎猜的基线：5 选 1 = 20% */}
+            <line x1="24" y1={72 - 0.2 * 54} x2="192" y2={72 - 0.2 * 54} stroke="var(--miss)" strokeWidth="0.6" strokeDasharray="2 2" />
+            <text x="192" y={72 - 0.2 * 54 - 2} fontSize="4.5" fill="var(--miss)" textAnchor="end">瞎猜 20%</text>
+            <polyline points={MCTS_SWEEP.map(([b, p], i) => `${30 + i * 32},${72 - p * 54}`).join(' ')}
+              fill="none" stroke="var(--now)" strokeWidth="1.4" />
+            {MCTS_SWEEP.map(([b, p], i) => (
+              <g key={b}>
+                <circle cx={30 + i * 32} cy={72 - p * 54} r="1.8" fill="var(--now)" />
+                <text x={30 + i * 32} y="80" fontSize="4.5" fill="var(--faint)" textAnchor="middle">{b}</text>
+              </g>
+            ))}
+          </svg>
+        </div>
+        <div className="gd-note">{Icn.info}<span>最好的两个走法只差 <b>0.15</b>(0.75 vs 0.60)。<b>单场模拟就是抛一次硬币,它什么都不说明</b>——20 轮下来选对的概率只有 <b>55%</b>,要到 <b>320 轮才 99%</b>。所以读 MCTS 的输出时,<b>先问它跑了多少轮</b>。AlphaGo 用价值网络替代随机 rollout,省掉的正是这几万次抛硬币。</span></div>
       </Sec>
 
       <Flow

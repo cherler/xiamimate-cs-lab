@@ -11,6 +11,7 @@
  * 所以「够不够 30 个实验」这条也归浏览器那边 —— 它在那儿反而更强：
  * 数的是**页面上真的列出来的**实验，不是源码里写了几条。
  */
+import { readdirSync } from 'node:fs'
 import { GUIDES, TERMS, TOUR, cardsOf } from '../web/src/guide.ts'
 
 let failures = 0
@@ -884,8 +885,8 @@ console.log('\n【「这一步为什么」真的在跟着走】')
     dtree: {
       doc: { kind: 'dtree', params: {}, entities: [], streams: [] },
       //  A 根节点(不纯) · B 切完(3 纯叶子) —— 结论必须换一套说法
-      a: { phase: 'root', splits: [], curGini: 0.375, gain: 0, leaves: [], depth: 0 },
-      b: { phase: 'done', splits: [{}, {}], curGini: 0, gain: 0, leaves: [{}, {}, {}], depth: 2 },
+      a: { phase: 'root', splits: [], curGini: 0.375, leaves: [], depth: 0 },
+      b: { phase: 'done', splits: [{}, {}], curGini: 0, leaves: [{}, {}, {}], depth: 2 },
     },
     logreg: {
       doc: { kind: 'logreg', params: { data: '线性可分', lr: 30, l2: 0 }, entities: [], streams: [] },
@@ -1061,29 +1062,48 @@ console.log('\n【「这一步为什么」真的在跟着走】')
     },
     selfconsist: {
       doc: { kind: 'selfconsist', params: { p: 44, spread: '分散', seed: 7 }, entities: [], streams: [] },
-      //  A 采样第 2 条(平票) · B 多数投票(17 胜) —— 结论必须换一套说法
-      a: { phase: 'run', problem: '小明有 5 个苹果，又买了 3 袋、每袋 4 个，一共几个？', n: 5, correct: 17, winner: 17, tally: [[17, 1], [32, 1]], chains: [{ r: '5 + 3×4 = 17', a: 17, ok: true }, { r: '(5+3)×4 = 32', a: 32, ok: false }],
-           pWin: 0.5, pCorrect: 0.44, spread: '分散', curve: [[1, 0.4], [5, 0.5], [49, 1]], correctCount: 2, reliable: false, tie: false, samples: [] },
-      b: { phase: 'done', problem: '小明有 5 个苹果，又买了 3 袋、每袋 4 个，一共几个？', n: 49, correct: 17, winner: 17, tally: [[17, 3], [32, 1], [19, 1]], chains: [{ r: '5 + 3×4 = 17', a: 17, ok: true }, { r: '(5+3)×4 = 32', a: 32, ok: false }, { r: '3×4=12, +5 = 17', a: 17, ok: true }, { r: '5 + 12 = 17', a: 17, ok: true }, { r: '5×3 + 4 = 19', a: 19, ok: false }],
-           pWin: 1, pCorrect: 0.44, spread: '分散', curve: [[1, 0.4], [5, 0.5], [49, 1]], correctCount: 22, reliable: true, tie: false, samples: [] },
+      /*  ⚠️ 老夹具写的是 `chains` —— **内核里从来没有过这个字段**（一直叫 `samples`）,
+          和同样写错的 guide 互相对上了。2026-09-09 改成从真轨迹抄下来的状态:
+          A=N=5（平票，pWin 0.5）· B=N=49（17 胜出，pWin 0.998）—— 结论必须换一套说法。 */
+      a: { phase: 'done', problem: '小明有 5 个苹果，又买了 3 袋、每袋 4 个，一共几个？', n: 5, maxN: 49, correct: 17,
+           winner: null, tally: [[17, 2], [32, 2], [19, 1]], samples: [{ a: 17, r: '5 + 3×4 = 5 + 12 = 17', ok: true }, { a: 19, r: '5×3 + 4 = 19', ok: false }, { a: 32, r: '(5+3)×4 = 32', ok: false }, { a: 32, r: '(5+3)×4 = 32', ok: false }, { a: 17, r: '3×4 = 12，再 + 5 = 17', ok: true }],
+           pWin: 0.5, pCorrect: 0.44, spread: '分散', curve: [[1, 0.4], [3, 0.417], [5, 0.5], [9, 0.618], [15, 0.825], [25, 0.922], [49, 0.998]], correctCount: 2, reliable: false, tie: true },
+      b: { phase: 'done', problem: '小明有 5 个苹果，又买了 3 袋、每袋 4 个，一共几个？', n: 49, maxN: 49, correct: 17,
+           winner: 17, tally: [[17, 22], [32, 9], [19, 8], [20, 6], [35, 4]], samples: [{ a: 17, r: '5 + 3×4 = 5 + 12 = 17', ok: true }, { a: 19, r: '5×3 + 4 = 19', ok: false }, { a: 32, r: '(5+3)×4 = 32', ok: false }, { a: 32, r: '(5+3)×4 = 32', ok: false }, { a: 17, r: '3×4 = 12，再 + 5 = 17', ok: true }],
+           pWin: 0.998, pCorrect: 0.44, spread: '分散', curve: [[1, 0.4], [3, 0.417], [5, 0.5], [9, 0.618], [15, 0.825], [25, 0.922], [49, 0.998]], correctCount: 22, reliable: true, tie: false },
     },
     bestofn: {
-      doc: { kind: 'bestofn', params: {}, entities: [], streams: [] },
-      //  A 采样中(当前最高 9) · B 取最高分(3×8=24 得 10) —— 结论必须换一套说法
-      a: { phase: 'run', task: '用 3、8、5 拼一个算式，结果尽量接近 24', target: 24, n: 5, bestIdx: 1, cands: [{ e: '3 + 8 + 5', r: 16, reward: 2 }, { e: '5 × 3 + 8', r: 23, reward: 9 }] },
-      b: { phase: 'done', task: '用 3、8、5 拼一个算式，结果尽量接近 24', target: 24, n: 5, bestIdx: 3, cands: [{ e: '3 + 8 + 5', r: 16, reward: 2 }, { e: '5 × 3 + 8', r: 23, reward: 9 }, { e: '8 × 5', r: 40, reward: 0 }, { e: '3 × 8', r: 24, reward: 10 }, { e: '3 × 8 − 5', r: 19, reward: 5 }] },
+      doc: { kind: 'bestofn', params: { judge: '有缺陷的奖励模型（能被钻空子）', variety: '高（多样但参差）' }, entities: [], streams: [] },
+      /*  ⚠️ 老夹具写的是 `cands: [{e, r, reward}]` —— **内核里从来没有过这个字段**（一直叫 `drawn`）。
+          夹具是手写的，于是它和同样写错的 guide 互相对上了，两边一起错了半年没人发现。
+          2026-09-09 补厚时改成**从真轨迹里抄下来的状态**：A=N=4（还没撞上钻空子那条）、
+          B=N=32（撞上了：代理分 14、真实质量 0）—— 结论必须换一套说法。 */
+      a: { task: '用 3、8、5 拼一个算式，结果尽量接近 24', target: 24, maxN: 32, judge: '有缺陷的奖励模型（能被钻空子）', variety: '高（多样但参差）', peakN: 4, declineAfterPeak: 5, ceiling: 10, phase: 'done', n: 4, bestIdx: 2, bestReward: 9, bestTrue: 5, gain: 3, hacked: false, distinct: 4,
+           drawn: [{ e: "3 + 8 + 5", v: 16, reward: 6, trueR: 2 }, { e: "8 × 5", v: 40, reward: 2, trueR: 0 }, { e: "3 × 8 − 5", v: 19, reward: 9, trueR: 5 }, { e: "(8 − 5) × 3", v: 9, reward: 5, trueR: 0 }], curve: [{ n: 1, best: 6, trueBest: 2 }, { n: 2, best: 6, trueBest: 2 }, { n: 4, best: 9, trueBest: 5 }], fullCurve: [{ n: 1, best: 6, trueBest: 2 }, { n: 2, best: 6, trueBest: 2 }, { n: 4, best: 9, trueBest: 5 }, { n: 8, best: 14, trueBest: 0 }, { n: 16, best: 14, trueBest: 0 }, { n: 32, best: 14, trueBest: 0 }] },
+      b: { task: '用 3、8、5 拼一个算式，结果尽量接近 24', target: 24, maxN: 32, judge: '有缺陷的奖励模型（能被钻空子）', variety: '高（多样但参差）', peakN: 4, declineAfterPeak: 5, ceiling: 10, phase: 'done', n: 32, bestIdx: 6, bestReward: 14, bestTrue: 0, gain: 0, hacked: true, distinct: 7,
+           drawn: [{ e: "3 + 8 + 5", v: 16, reward: 6, trueR: 2 }, { e: "8 × 5", v: 40, reward: 2, trueR: 0 }, { e: "3 × 8 − 5", v: 19, reward: 9, trueR: 5 }, { e: "(8 − 5) × 3", v: 9, reward: 5, trueR: 0 }, { e: "5 × 3 + 8", v: 23, reward: 13, trueR: 9 }, { e: "8 × 5", v: 40, reward: 2, trueR: 0 }, { e: "先算 8−5=3，再 3×3=9，最后 9+3=12，所以答案是 12", v: 12, reward: 14, trueR: 0 }], curve: [{ n: 1, best: 6, trueBest: 2 }, { n: 2, best: 6, trueBest: 2 }, { n: 4, best: 9, trueBest: 5 }, { n: 8, best: 14, trueBest: 0 }, { n: 16, best: 14, trueBest: 0 }, { n: 32, best: 14, trueBest: 0 }], fullCurve: [{ n: 1, best: 6, trueBest: 2 }, { n: 2, best: 6, trueBest: 2 }, { n: 4, best: 9, trueBest: 5 }, { n: 8, best: 14, trueBest: 0 }, { n: 16, best: 14, trueBest: 0 }, { n: 32, best: 14, trueBest: 0 }] },
     },
     tot: {
       doc: { kind: 'tot', params: {}, entities: [], streams: [] },
-      //  A 评估分支(还没剪) · B 解出 —— 结论必须换一套说法
-      a: { phase: 'run', stage: 'evaluate', target: 24, root: '{4, 3, 2}', chosen: -1, solution: '', thoughts: [{ op: '4 × 3 = 12', state: '{12, 2}', sure: true, evaluated: true, pruned: false }, { op: '4 × 2 = 8', state: '{8, 3}', sure: true, evaluated: true, pruned: false }, { op: '3 × 2 = 6', state: '{6, 4}', sure: true, evaluated: true, pruned: false }, { op: '4 + 3 = 7', state: '{7, 2}', sure: false, evaluated: true, pruned: false }, { op: '4 − 3 = 1', state: '{1, 2}', sure: false, evaluated: true, pruned: false }] },
-      b: { phase: 'done', stage: 'done', target: 24, root: '{4, 3, 2}', chosen: 0, solution: '4×3=12，12×2=24', thoughts: [{ op: '4 × 3 = 12', state: '{12, 2}', sure: true, evaluated: true, pruned: false }, { op: '4 × 2 = 8', state: '{8, 3}', sure: true, evaluated: true, pruned: false }, { op: '3 × 2 = 6', state: '{6, 4}', sure: true, evaluated: true, pruned: false }, { op: '4 + 3 = 7', state: '{7, 2}', sure: false, evaluated: true, pruned: true }, { op: '4 − 3 = 1', state: '{1, 2}', sure: false, evaluated: true, pruned: true }] },
+      /*  ⚠️ 老夹具写的是 `thoughts` / `chosen` —— **内核里从来没有过这两个字段**
+          （真状态是 `l1` 第一层想法 / `l2` 第二层 / `kept` 剪枝后留几条 / `solL1` 解在哪条）。
+          跟 selfconsist、bestofn 同一类,和同样写错的 guide 互相对上了。
+          2026-09-09 改成从真轨迹抄下来的:A=评估完还没剪 · B=解出 —— 结论必须换一套说法。 */
+      a: { phase: 'run', step: 2, stage: 'evaluate', target: 24, root: '{2, 3, 4}',
+           l1: [{ op: '3 × 4 = 12', state: '{12, 2}', sure: true, evaluated: true, pruned: false, onPath: false }, { op: '2 × 4 = 8', state: '{8, 3}', sure: true, evaluated: true, pruned: false, onPath: false }, { op: '2 × 3 = 6', state: '{6, 4}', sure: true, evaluated: true, pruned: false, onPath: false }, { op: '3 + 4 = 7', state: '{7, 2}', sure: false, evaluated: true, pruned: false, onPath: false }, { op: '4 − 2 = 2', state: '{2, 3}', sure: false, evaluated: true, pruned: false, onPath: false }], l2: [], kept: 0, solL1: -1, solution: '' },
+      b: { phase: 'done', step: 5, stage: 'done', target: 24, root: '{2, 3, 4}',
+           l1: [{ op: '3 × 4 = 12', state: '{12, 2}', sure: true, evaluated: true, pruned: false, onPath: true }, { op: '2 × 4 = 8', state: '{8, 3}', sure: true, evaluated: true, pruned: false, onPath: false }, { op: '2 × 3 = 6', state: '{6, 4}', sure: true, evaluated: true, pruned: false, onPath: false }, { op: '3 + 4 = 7', state: '{7, 2}', sure: false, evaluated: true, pruned: true, onPath: false }, { op: '4 − 2 = 2', state: '{2, 3}', sure: false, evaluated: true, pruned: true, onPath: false }], l2: [{ parent: 0, op: '12 × 2 = 24', solves: true, state: '', onPath: true }, { parent: 1, op: '8 × 3 = 24', solves: true, state: '', onPath: false }, { parent: 2, op: '6 × 4 = 24', solves: true, state: '', onPath: false }], kept: 3, solL1: 0, solution: '3×4=12，12×2=24' },
     },
     mcts: {
-      doc: { kind: 'mcts', params: {}, entities: [], streams: [] },
-      //  A 第4轮选中A模拟赢 · B 搜索结束选A —— 结论必须换一套说法
-      a: { phase: 'run', iter: 4, moves: ['A', 'B', 'C'], n: [2, 1, 1], w: [2, 0, 0], ucb: [2.47, 1.47, 1.47], pick: 0, win: 1, c: 1.4, best: 0 },
-      b: { phase: 'done', iter: 6, moves: ['A', 'B', 'C'], n: [4, 1, 1], w: [4, 0, 0], ucb: [2.03, 1.78, 1.78], pick: 0, win: -1, c: 1.4, best: 0 },
+      doc: { kind: 'mcts', params: { c: 1.4, budget: 20 }, entities: [], streams: [] },
+      /*  ⚠️ 老夹具写的是 `ucb` / `pick` —— 补厚后内核里这两个字段都没了
+          （UCB 拆成 `picks[k].exploit/explore/ucb`，本轮选中的叫 `chosen`）。
+          由「夹具没有编字段」那条判据抓出来。这两份是从真轨迹抄的:
+          A=第 5 轮（还在把没试过的挨个试）· B=末帧（选对了）—— 结论必须换一套说法。 */
+      a: { moves: ['A', 'B', 'C', 'D', 'E'], trueP: [0.75, 0.6, 0.4, 0.3, 0.25], best: 0, budget: 20, c: 1.4, pickRule: '访问最多', pRight: 0.55, sweep: [{ budget: 10, pRight: 0.43 }, { budget: 20, pRight: 0.55 }, { budget: 40, pRight: 0.728 }, { budget: 80, pRight: 0.858 }, { budget: 160, pRight: 0.964 }, { budget: 320, pRight: 0.99 }], cSweep: [{ c: 0, pRight: 0.556, pMax: 0.644 }, { c: 0.7, pRight: 0.616, pMax: 0.996 }, { c: 1.4, pRight: 0.55, pMax: 0.99 }, { c: 4, pRight: 0.5, pMax: 0.968 }], ruleCmp: [{ rule: '访问最多', pRight: 0.55 }, { rule: '胜率最高', pRight: 0.59 }], step: 5, n: [1, 1, 1, 1, 1], w: [1, 1, 0, 0, 0], picks: [{ k: 0, exploit: 1, explore: 1.648, ucb: 2.648 }, { k: 1, exploit: 1, explore: 1.648, ucb: 2.648 }, { k: 2, exploit: 0, explore: 1.648, ucb: 1.648 }, { k: 3, exploit: 0, explore: null, ucb: null }, { k: 4, exploit: 0, explore: 1.648, ucb: 1.648 }],
+           chosen: 3, win: 0, iter: 5, byVisit: 0, byRate: 0, final: -1, right: false, phase: 'run' },
+      b: { moves: ['A', 'B', 'C', 'D', 'E'], trueP: [0.75, 0.6, 0.4, 0.3, 0.25], best: 0, budget: 20, c: 1.4, pickRule: '访问最多', pRight: 0.55, sweep: [{ budget: 10, pRight: 0.43 }, { budget: 20, pRight: 0.55 }, { budget: 40, pRight: 0.728 }, { budget: 80, pRight: 0.858 }, { budget: 160, pRight: 0.964 }, { budget: 320, pRight: 0.99 }], cSweep: [{ c: 0, pRight: 0.556, pMax: 0.644 }, { c: 0.7, pRight: 0.616, pMax: 0.996 }, { c: 1.4, pRight: 0.55, pMax: 0.99 }, { c: 4, pRight: 0.5, pMax: 0.968 }], ruleCmp: [{ rule: '访问最多', pRight: 0.55 }, { rule: '胜率最高', pRight: 0.59 }], step: 21, n: [6, 6, 4, 2, 2], w: [5, 5, 2, 0, 0], picks: [{ k: 0, exploit: 0.8, explore: 1.074, ucb: 1.874 }, { k: 1, exploit: 0.833, explore: 0.981, ucb: 1.814 }, { k: 2, exploit: 0.5, explore: 1.201, ucb: 1.701 }, { k: 3, exploit: 0, explore: 1.699, ucb: 1.699 }, { k: 4, exploit: 0, explore: 1.699, ucb: 1.699 }],
+           chosen: 0, win: -1, iter: 20, byVisit: 0, byRate: 0, final: 0, right: true, phase: 'done' },
     },
     collision: {
       doc: { kind: 'collision', params: {}, entities: [], streams: [] },
@@ -1110,8 +1130,8 @@ console.log('\n【「这一步为什么」真的在跟着走】')
     qlearn: {
       doc: { kind: 'qlearn', params: {}, entities: [], streams: [] },
       //  A 倒推第2圈 · B 学好(最优路线) —— 结论必须换一套说法
-      a: { phase: 'run', ring: 2, gamma: 0.9, w: 5, h: 4, goal: [4, 1], start: [0, 2], value: [], policy: [], path: [] },
-      b: { phase: 'done', ring: -1, gamma: 0.9, w: 5, h: 4, goal: [4, 1], start: [0, 2], value: [], policy: [], path: ['0,2', '1,2', '2,2', '3,2', '4,2', '4,1'] },
+      a: { phase: 'run', gamma: 0.9, w: 5, h: 4, goal: [4, 1], start: [0, 2], value: [], policy: [], path: [] },
+      b: { phase: 'done', gamma: 0.9, w: 5, h: 4, goal: [4, 1], start: [0, 2], value: [], policy: [], path: ['0,2', '1,2', '2,2', '3,2', '4,2', '4,1'] },
     },
     recsys: {
       /*  2026-09-09 补厚：隐向量改成 ALS 真学出来的，字段整套换了
@@ -1215,8 +1235,8 @@ console.log('\n【「这一步为什么」真的在跟着走】')
     maxent: {
       doc: { kind: 'maxent', params: {}, entities: [], streams: [] },
       //  A μ=3.5(均匀、熵到顶) · B μ=5.5(偏、熵降) —— 结论必须换一套说法
-      a: { phase: 'run', mu: 3.5, ent: 2.585, naiveEnt: 1, maxEnt: 2.585 },
-      b: { phase: 'done', mu: 5.5, ent: 1.375, naiveEnt: 1, maxEnt: 2.585 },
+      a: { phase: 'run', mu: 3.5, ent: 2.585, maxEnt: 2.585 },
+      b: { phase: 'done', mu: 5.5, ent: 1.375, maxEnt: 2.585 },
     },
     jl: {
       doc: { kind: 'jl', params: { dim: 256, points: 6 }, entities: [], streams: [] },
@@ -1804,6 +1824,88 @@ console.log('\n【「这一步为什么」真的在跟着走】')
   })
     ? ok('自检：段名对但内容恒定的假实现会被挡下、真实现过得去 —— 它能红，也不误杀')
     : bad(`自检失败：假实现被抓=${fakeCaught}`)
+
+  /*  ═══════════════════════════════════════════════════════════════
+      夹具字段名 vs 真状态字段名。
+
+      2026-09-09 加。起因是 bestofn:它的夹具写的是 `cands: [{e, r, reward}]`,
+      而内核里**从来没有过这个字段**（一直叫 `drawn`）。夹具是手写的,于是它
+      和同样写错的 `GUIDES.bestofn.step()` **互相对上了** —— 上面那一整批判据
+      全绿,而真跑起来是 `TypeError: Cannot read properties of undefined`。
+
+      根因就是「手写夹具没有任何东西把它钉在真状态上」。所以这条判据去跑一遍
+      **真内核**,拿真轨迹里出现过的字段名当基准,查夹具有没有编字段。
+
+      ⚠️ 这里不能 import 注册表（它一路拖进 React 舞台,node 里起不来,见文件头）。
+      改成直接扫 `src/kernels/`,按内核自己的 `kind` 建索引,再用夹具 doc 的 kind 去认。 */
+  console.log('\n【夹具没有编字段】')
+  {
+    const kdir = new URL('../src/kernels/', import.meta.url)
+    const byKind = new Map<string, { compile: (d: unknown) => { initial: () => unknown; step: (p: unknown) => { state: unknown } | null } }>()
+    for (const f of readdirSync(kdir).filter(x => x.endsWith('.ts'))) {
+      let mod: Record<string, unknown>
+      try { mod = await import(new URL(f, kdir).href) } catch { continue }
+      for (const v of Object.values(mod)) {
+        const k = v as { kind?: string; compile?: unknown }
+        if (k && typeof k === 'object' && typeof k.kind === 'string' && typeof k.compile === 'function')
+          byKind.set(k.kind, k as never)
+      }
+    }
+
+    const invented: string[] = []
+    let checked = 0, noKernel = 0
+    for (const [id, f] of Object.entries(FIX)) {
+      const kind = (f.doc as { kind?: string } | undefined)?.kind
+      const kern = kind ? byKind.get(kind) : undefined
+      if (!kern) { noKernel++; continue }
+      let real: Set<string>
+      try {
+        const m = kern.compile(f.doc)
+        const seen = new Set<string>()
+        let prev: unknown = m.initial()
+        for (const k of Object.keys(prev as object)) seen.add(k)
+        for (let i = 0; i < 400; i++) {
+          const r = m.step(prev)
+          if (!r) break
+          prev = r.state
+          for (const k of Object.keys(r.state as object)) seen.add(k)
+        }
+        real = seen
+      } catch { noKernel++; continue }
+      checked++
+      for (const which of ['a', 'b'] as const) {
+        const extra = Object.keys((f[which] ?? {}) as object).filter(k => !real.has(k))
+        if (extra.length) invented.push(`${id}.${which}(${extra.join('/')})`)
+      }
+    }
+
+    ok(`拿真轨迹核对了 ${checked} 份夹具的字段名（另有 ${noKernel} 份的内核在这儿起不来，跳过）`)
+    /*  欠账台账:只许降不许涨。0 就是 0 —— 这条判据是新加的,加的时候就是干净的。 */
+    const CAP = 0
+    invented.length <= CAP
+      ? ok(`夹具里编出来的字段还有 ${invented.length} 处（上限 ${CAP}）`)
+      : bad(`夹具编了真状态里没有的字段：${invented.join(', ')}`
+            + ' —— 手写夹具和讲解层可以互相对上、一起错，只有真轨迹能钉住它')
+
+    /*  自检:这条判据必须真的会红。拿**炸过的那份数据**来自检 ——
+        bestofn 老夹具的 `cands` 正是它没抓住过的东西。 */
+    const probe = byKind.get('bestofn')
+    if (probe) {
+      const m = probe.compile({ kind: 'bestofn', params: {}, entities: [], streams: [] })
+      const seen = new Set(Object.keys(m.initial() as object))
+      for (let i = 0, p: unknown = m.initial(); i < 40; i++) {
+        const r = m.step(p); if (!r) break; p = r.state
+        for (const k of Object.keys(r.state as object)) seen.add(k)
+      }
+      const oldFixture = { phase: 'done', task: '…', target: 24, n: 5, bestIdx: 3, cands: [] }
+      const caught = Object.keys(oldFixture).filter(k => !seen.has(k))
+      caught.length > 0 && !caught.includes('phase') && !caught.includes('n')
+        ? ok(`自检：拿老那份 bestofn 夹具来试，${caught.join('/')} 会被认出是编的 —— 它能红，也没误杀 phase/n`)
+        : bad(`自检失败：老夹具的 cands 没被认出来（抓到 ${caught.join('/') || '什么都没抓到'}）`)
+    } else {
+      bad('自检失败：找不到 bestofn 内核，这条判据的自检没跑')
+    }
+  }
 }
 
 console.log(failures === 0 ? '\n本套全部通过' : `\n本套失败 ${failures} 项`)

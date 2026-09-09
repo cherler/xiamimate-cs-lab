@@ -6223,20 +6223,33 @@ export const GUIDES: Record<string, Guide> = {
       terms: '**采样多条推理链**：同一个问题问 N 次（N 常取 5 到 40）。\u3000**温度不能为 0**：**这是前提** —— 贪心解码每次都一样，投票就没有意义。必须有足够的随机性让路径分岔。\u3000**多数投票**：只看**最终答案**出现的频次，**不管推理过程写得漂不漂亮**。\u3000**为什么有效的直觉**：**错误是发散的，正确是收敛的**。一道题有一个正确答案，却有无数种错法。\u3000**适用范围**：**要求答案可以比对** —— 数学题的数字、选择题的选项、代码的运行结果。开放式写作没法投票（每次输出都不一样），那要用 Best-of-N 加打分模型。\u3000**成本**：**算 N 遍就是 N 倍的钱和时间**。所以它更适合值得算 N 遍的难题，不适合日常问答。\u3000**收益递减**：N 从 1 加到 5 提升明显，**加到 40 之后基本就饱和了**。\u3000**跟思维链的关系**：自洽性建立在思维链之上 —— **先让模型写出推理过程，再对多条过程的结论投票**。两者是叠加使用的。',
       watch: '看几条推理链各自走到哪儿、答案怎么分布。错误答案通常很分散，正确答案则反复出现 —— 这就是投票有效的原因。',
     },
+    /*  ⚠️ 老版本这里读的是 `st.chains` —— **内核里从来没有过这个字段**（一直叫 `samples`）,
+        `st.chains.length` 一进来就 TypeError。夹具也是手写的、跟着一起写成 `chains`,
+        于是两边互相对上、判据全绿。2026-09-09 由「夹具没有编字段」那条判据抓出来。 */
     step: (s: never) => {
-      const st = s as { phase: string; chains: { r: string; a: number; ok: boolean }[]; n: number; tally: [number, number][]; winner: number; correct: number }
-      const last = st.chains[st.chains.length - 1]
+      const st = s as {
+        phase: string; samples: { r: string; a: number; ok: boolean }[]; n: number; maxN: number
+        tally: [number, number][]; winner: number | null; correct: number
+        tie: boolean; pWin: number; reliable: boolean
+      }
+      const last = st.samples[st.samples.length - 1]
+      const done = st.n >= st.maxN
       return [
-        { k: '本步输入', v: st.chains.length === 0 ? `一道题(正解 ${st.correct})` : st.phase === 'done' ? `${st.n} 条链的答案` : `第 ${st.chains.length} 条链:${last?.r}` },
+        { k: '本步输入', v: st.n === 0 ? `一道题(正解 ${st.correct})` : `采样 **N=${st.n}** 条推理链` },
         { k: '判定规则', v: `对同一题**采样 N 条不同的推理链**(温度制造多样),每条独立推到一个答案,最后**多数投票**取出现最多的。正确推法往往多条且一致,错法各异——所以多数票能把少数算错的淹没。` },
-        { k: '本步结果', v: st.phase === 'done' ? `${st.tally.map(([a, n]) => `${a}×${n}`).join('、')} → **${st.winner} 胜出**(正解 ${st.correct}${st.winner === st.correct ? '✓' : '✗'})。`
-            : st.chains.length === 0 ? '开始采样。'
-            : `→ ${last.a}${last.ok ? '' : '(算错)'};当前 ${st.tally[0][0]} 领先(${st.tally[0][1]} 票)。` },
+        { k: '本步结果', v: st.n === 0 ? '开始采样。'
+            : `${st.tally.slice(0, 3).map(([a, c]) => `${a}×${c}`).join('、')}${st.tally.length > 3 ? '…' : ''} → `
+              + (st.tie ? '**平票**' : `**${st.winner} 胜出**`)
+              + `(正解 ${st.correct}${st.reliable ? '✓' : '✗'})。`
+              + `　这个 N 下答对的概率 **${(st.pWin * 100).toFixed(0)}%**（重采样 400 次）——`
+              + `单看这一次的输赢是运气，${done ? '整条曲线才是"多跑几条有多大用"的答案。' : '接着往下扫。'}`
+            + (last ? `　最后一条:${last.r} → ${last.a}${last.ok ? '' : '(算错)'}` : '') },
       ]
     },
     verdict: (s: never) => {
-      const st = s as { phase: string; chains: unknown[]; n: number; winner: number }
-      return st.phase === 'done' ? `${st.winner} 胜出` : `${st.chains.length}/${st.n} 链`
+      const st = s as { n: number; maxN: number; winner: number | null; tie: boolean; pWin: number }
+      if (st.n < st.maxN) return `N=${st.n}`
+      return st.tie ? '平票' : `${st.winner} 胜出 ${(st.pWin * 100).toFixed(0)}%`
     },
     read: [
       { at: '读数', is: '已采样链数、当前多数票、正解。', anchor: '.scdim' },
@@ -6257,34 +6270,47 @@ export const GUIDES: Record<string, Guide> = {
   bestofn: {
     question: '生成质量时好时坏，怎么稳定地拿到更好的那个输出？',
     plain: {
-      hook: '生成十个，挑最好的一个。',
-      what: '这一屏讲的是**Best-of-N 采样**：生成 N 个候选，**用一个打分器挑出最好的那个**。它跟自洽性投票要解决的是同一类问题（单次生成质量不稳），**但适用场景正好互补**：投票要求答案能互相比对（数学题），**而 Best-of-N 适合没有标准答案的任务** —— 写文案、写代码、对话回复。这条路的天花板不在生成模型，**而在那个打分器身上**。',
-      terms: '**候选生成**：用较高的温度采样 N 个不同的输出。**多样性不够的话，挑来挑去都差不多，白花钱。**\u3000**打分器（奖励模型）**：专门训练来判断「哪个输出更好」的模型。**它通常是在人类偏好数据上训出来的。**\u3000**跟投票的区别**：**投票不需要额外模型**（答案自己比对），Best-of-N 必须有一个打分器。但投票要求答案可比对，Best-of-N 不要求。\u3000**打分器就是天花板**：**这条路最关键的一点** —— 打分器判不准，挑出来的就不是最好的。\u3000**奖励作弊（reward hacking）**：**最典型的失败模式** —— 打分器有偏好（比如喜欢长的、喜欢用词华丽的），**N 一大，采样就会专门找出那些「讨好打分器但质量并不好」的输出**。N 越大这个问题越严重，这也是它收益递减甚至倒退的原因。\u3000**跟 RLHF 的关系**：**Best-of-N 是「推理时」用奖励模型，RLHF 是「训练时」用奖励模型**把这种偏好直接学进模型里。前者每次推理都要花 N 倍成本，后者一次训练长期受益。\u3000**实用变体**：先用小模型或规则粗筛掉明显不合格的，再打分，省钱。',
-      watch: '看几个候选各自拿了多少分、最终选了谁。故意把打分模型换成一个有偏好的，你会看到它稳定地挑错。',
+      hook: '生成十个，挑最好的一个 —— 前提是你真认得出哪个最好。',
+      what: '这一屏讲的是**Best-of-N 采样**：生成 N 个候选，**用一个打分器挑出最好的那个**。它跟自洽性投票要解决的是同一类问题（单次生成质量不稳），**但适用场景正好互补**：投票要求答案能互相比对（数学题），**而 Best-of-N 适合没有标准答案的任务** —— 写文案、写代码、对话回复。\n\n**这一屏真正要你盯的，是屏幕上那两条线**：实线是**打分器给的分数**（argmax 认的就是它），虚线是**候选的真实质量**（我们真正想要的）。打分器完美的时候两条线重合，N 越大越好；打分器一有偏差，两条线就分岔 —— **代理分一路涨，真实质量掉头往下**。分岔的那个 N，就是"再加算力反而更差"的拐点。',
+      terms: '**候选生成**：用较高的温度采样 N 个不同的输出。**多样性不够的话，挑来挑去都差不多，白花钱** —— 把「采样多样性」调到低那一档就能看到，32 次采样只抽出 2 个不同的候选，N 从 4 往后一分没涨。\u3000**打分器（奖励模型）**：专门训练来判断「哪个输出更好」的模型，通常在人类偏好数据上训出来。\u3000**代理指标 vs 真目标**：**这是整屏的骨头** —— 打分器是**代理**，我们要的是**真实质量**。argmax 认的是代理。\u3000**奖励作弊（reward hacking）**：**最典型的失败模式** —— 打分器有偏好（这里是"式子越长越像在认真推理"），**N 一大，argmax 就会专门挑出那些「讨好打分器但质量并不好」的输出**。\u3000**Goodhart 定律**：一个指标一旦成为目标，它就不再是个好指标。**过优化（over-optimization）**是它在 RLHF 里的名字。\u3000**跟投票的区别**：**投票不需要额外模型**（答案自己比对），Best-of-N 必须有一个打分器。但投票要求答案可比对，Best-of-N 不要求。\u3000**跟 RLHF 的关系**：**Best-of-N 是「推理时」用奖励模型，RLHF 是「训练时」用**把这种偏好直接学进模型里。前者每次推理都要花 N 倍成本，后者一次训练长期受益 —— 而**过优化这个毛病两边都有**。',
+      watch: '盯两条线什么时候分岔。把「打分器」在完美验证器和有缺陷的奖励模型之间来回切，同一条抽样序列，一个越采越好、一个采到 N=8 就开始倒退。',
     },
     step: (s: never) => {
-      const st = s as { phase: string; cands: { e: string; r: number; reward: number }[]; n: number; bestIdx: number; target: number }
-      const last = st.cands[st.cands.length - 1]
-      const best = st.cands[st.bestIdx]
+      /*  ⚠️ 老版本这里读的是 `st.cands` —— **这个字段从来没存在过**（内核里一直叫 `drawn`），
+          所以这段一进来就 TypeError。2026-09-09 补厚时发现并改掉。 */
+      const st = s as {
+        phase: string; drawn: { e: string; v: number; reward: number; trueR: number }[]
+        n: number; bestIdx: number; target: number; judge: string
+        bestReward: number; bestTrue: number; hacked: boolean; distinct: number
+        peakN: number; declineAfterPeak: number; maxN: number
+      }
+      const best = st.drawn[st.bestIdx]
+      const done = st.n >= st.maxN
       return [
-        { k: '本步输入', v: st.cands.length === 0 ? `任务:凑近 ${st.target}` : st.phase === 'done' ? `${st.n} 个候选的分数` : `第 ${st.cands.length} 个候选:${last?.e}=${last?.r}` },
-        { k: '判定规则', v: `**采样 N 个**候选,每个交给**打分器**评分(奖励模型 或 可算的验证器),最后 **argmax 取最高分**的那个。和自洽的多数投票不同——这里靠**外部打分器选单个最好**,适合开放式生成。` },
-        { k: '本步结果', v: st.phase === 'done' ? `「${best?.e}」得 ${best?.reward} 分最高 → **采纳**。`
-            : st.cands.length === 0 ? '开始采样。'
-            : `${last?.e}=${last?.r} 得 **${last?.reward}** 分;当前最高「${best?.e}」(${best?.reward})。` },
+        { k: '本步输入', v: st.n === 0 ? `任务:凑近 ${st.target}` : `采样 **N=${st.n}** 个候选（其中 ${st.distinct} 个互不相同）` },
+        { k: '判定规则', v: `每个候选交给**打分器**评分（这一档是「${st.judge}」），**argmax 取分数最高**的那个。**注意 argmax 认的是打分器给的分数,不是真实质量。**` },
+        { k: '本步结果', v: st.n === 0 ? '开始采样。'
+          : `采纳「${best?.e}」= ${best?.v} —— 代理分 **${st.bestReward}**、真实质量 **${st.bestTrue}**。`
+            + (st.hacked ? ' ⚠️ **两个分数已经分家**:它是来骗打分器的。' : '')
+            + (done && st.declineAfterPeak > 0 ? ` 整条曲线:真实质量在 **N=${st.peakN}** 见顶,之后掉了 **${st.declineAfterPeak}** 分。` : '') },
       ]
     },
     verdict: (s: never) => {
-      const st = s as { phase: string; cands: { reward: number }[]; n: number; bestIdx: number }
-      return st.phase === 'done' ? `取 ${st.cands[st.bestIdx]?.reward} 分` : `${st.cands.length}/${st.n}`
+      const st = s as { n: number; maxN: number; bestReward: number; bestTrue: number; hacked: boolean }
+      if (st.n < st.maxN) return `N=${st.n}`
+      return st.hacked ? `代理 ${st.bestReward}/真实 ${st.bestTrue}` : `取 ${st.bestReward} 分`
     },
     read: [
-      { at: '读数', is: '已采样候选数、当前最高分、目标。', anchor: '.scdim' },
-      { at: '候选与分', is: '每个候选的算式+结果+奖励条(越长分越高),★=当前最高分。', anchor: '.bncands' },
+      { at: '读数', is: '采样数 N、**代理分数**、**真实质量**（两者一分家就出事了）、不同候选数。', anchor: '.scdim' },
+      { at: '两条线', is: '实线=打分器给的代理分数（argmax 认它）、虚线=真实质量。分岔的那个 N 就是过优化拐点;红竖线标的是真实质量见顶的位置。', anchor: '.bncurvewrap' },
+      { at: '候选与分', is: '每个候选一行,条形外层=代理分数、内层实心=真实质量,差出来那截就是打分器**虚报**的量。★=argmax 采纳的;红框那条是**专门来骗打分器**的。', anchor: '.bncands' },
+      { at: '整条 N 曲线', is: '每个 N 的代理分、真实质量、以及**算力代价**（N 次生成 + N 次打分）并排。', anchor: '.qsscale' },
     ],
     try: [
-      { act: '按「下一步」采样', watch: '候选一个个冒出、各自打分,★最高分实时更新。' },
-      { act: '想它和自洽的区别', watch: '自洽数票(多数投票)、Best-of-N 看分(打分器择优)——一个投票、一个打分。' },
+      { act: '把「打分器」在两档之间来回切（多样性保持"高"）', watch: '完美验证器:两条线重合,N 越大越好。换成有缺陷的奖励模型:代理分照涨到 14,**真实质量在 N=4 见顶（5 分）、N=8 就掉到 0** —— N=4 花 8 次调用拿到 5 分，N=32 花 64 次调用只拿到 0 分。' },
+      { act: '把「采样多样性」调到「低」', watch: '32 次采样只抽出 **2** 个不同候选,曲线从 N=4 起就是一条平线 —— **Best-of-N 取的是"N 个样本里的最大值",样本都一样的话最大值就是那一个**,N 加了等于没加。' },
+      { act: '完美验证器 + 多样性中,只看真实质量那条线', watch: 'N=1→8 涨 7 分、N=8→32 只再涨 1 分 —— **边际递减**:质量近似随 log N 涨,而算力是**线性**翻倍。' },
+      { act: '想它和自洽的区别', watch: '自洽数票（多数投票,不需要额外模型）、Best-of-N 看分（外部打分器择优,适合没有"多数答案"的开放式生成）——代价就是**它只和打分器一样好**。' },
     ],
     terms: [],
   },
@@ -6296,19 +6322,28 @@ export const GUIDES: Record<string, Guide> = {
       terms: '**思维节点**：推理过程中的一个中间状态（一步推导、一个部分解）。\u3000**分支**：在同一个状态下生成多个不同的下一步。\u3000**评估**：**这是思维树能不能成立的关键** —— 要有办法判断「这个中间状态有多大希望」。通常是让模型自己打分（「这条路看起来有前途吗」）。\u3000**搜索策略**：广度优先（每层保留最好的 k 个，**跟束搜索是同一个形状**）或深度优先加回溯。\u3000**回溯**：走进死胡同就退回上一个分支点换一条路。**这是思维链完全没有的能力。**\u3000**代价**：**成本成倍甚至十倍地涨** —— 每个节点都要一次生成，每次评估又是一次调用。\u3000**真正的难点**：**评估中间状态往往比解题本身还难**。在 24 点、填字游戏这类**中间状态好坏容易判断**的问题上效果显著；**在开放式推理上，模型对自己中间步骤的评估往往不可靠**，这时候思维树的收益就很有限。\u3000**跟 MCTS 的关系**：思维树的搜索部分可以换成蒙特卡洛树搜索，那就更接近 AlphaGo 那套思路了。',
       watch: '看树上哪些分支被展开、哪些被剪掉。剪枝的依据是什么，决定了这套方法有没有用。',
     },
+    /*  ⚠️ 老版本这里读的是 `st.thoughts` —— **内核里从来没有过这个字段**（真状态是
+        `l1`（第一层想法）/ `l2`（第二层）/ `kept`（剪枝后留几条）），`st.thoughts.filter`
+        一进来就 TypeError。跟 selfconsist、bestofn 同一类:手写夹具跟着一起写错,
+        两边互相对上。2026-09-09 由「夹具没有编字段」那条判据一起抓出来。 */
     step: (s: never) => {
-      const st = s as { phase: string; stage: string; root: string; target: number; thoughts: { pruned: boolean; sure: boolean }[]; solution: string }
-      const pruned = st.thoughts.filter(t => t.pruned).length
-      const sure = st.thoughts.filter(t => t.sure && !t.pruned).length
+      const st = s as {
+        phase: string; stage: string; root: string; target: number; solution: string
+        l1: { op: string; state: string; sure: boolean; evaluated: boolean; pruned: boolean }[]
+        l2: { parent: number; op: string; solves: boolean }[]
+        kept: number; solL1: number
+      }
+      const pruned = st.l1.filter(t => t.pruned).length
+      const sure = st.l1.filter(t => t.sure).length
       return [
-        { k: '本步输入', v: st.stage === 'root' || st.stage === '' ? `${st.root} 凑 ${st.target}` : st.stage === 'generate' ? `根 ${st.root}` : `${st.thoughts.length} 个候选分支` },
+        { k: '本步输入', v: st.stage === 'root' ? `${st.root} 凑 ${st.target}` : st.stage === 'generate' ? `根 ${st.root}` : `${st.l1.length} 个第一层分支` },
         { k: '判定规则', v: `把中间状态当**树节点**:每步①**生成多个想法分支**②用**评估器**判前景(能否通向解:sure/impossible)③**剪掉**没希望的④沿有希望的**搜索**(可**回溯**换分支)。比 CoT 单线、自洽独立多线更进一步。` },
-        { k: '本步结果', v: st.stage === 'generate' ? `展开出 ${st.thoughts.length} 个中间状态(分支)。`
-            : st.stage === 'evaluate' ? `${sure} 个有希望(sure)、${st.thoughts.length - sure} 个死路(impossible)。`
-            : st.stage === 'prune' ? `剪掉 ${pruned} 个死路分支,留有希望的。`
-            : st.stage === 'expand' ? `沿 {12,2} 展开:12×2=24 ✓ 找到解。`
-            : st.phase === 'done' ? `**解出** ${st.solution}=${st.target}——生成→评估→剪枝→搜索。`
-            : '展开树。' },
+        { k: '本步结果', v: st.stage === 'generate' ? `展开出 ${st.l1.length} 个中间状态(分支),还没评估。`
+            : st.stage === 'evaluate' ? `${sure} 个有希望(sure)、${st.l1.length - sure} 个死路(impossible)。`
+            : st.stage === 'prune' ? `剪掉 ${pruned} 个死路分支,留下 ${st.kept} 条。`
+            : st.stage === 'expand' ? `对留下的 ${st.kept} 条各展开第二层,共 ${st.l2.length} 个叶子。`
+            : st.phase === 'done' ? `**解出** ${st.solution}=${st.target}(解在第 ${st.solL1 + 1} 条分支上)——生成→评估→剪枝→搜索。`
+            : `${st.root} 当根,还没展开。` },
       ]
     },
     verdict: (s: never) => {
@@ -6328,35 +6363,65 @@ export const GUIDES: Record<string, Guide> = {
   mcts: {
     question: '下棋走法多到没法全搜，怎么把有限的思考花在最有希望的走法上？',
     plain: {
-      hook: '棋局走法多到没法全搜，怎么把力气花在刀刃上？',
-      what: '这一屏讲的是**蒙特卡洛树搜索（MCTS）**：AlphaGo 的核心算法，也是很多博弈和规划问题的通用搜索方法。它要解决的问题是**分支太多没法全搜**：围棋每一步有几百种走法，走十步就是天文数字。MCTS 的答案是**不全搜，而是反复「随机试一局」**：从当前局面挑一条路走到底，看输赢，把结果记回沿途每一步。试的次数多了，好走法的胜率就浮出来了。**它把有限的思考花在最有希望的分支上，而不是均匀地浪费。**',
-      terms: '**四个步骤**：**选择**（沿着树往下走到一个未完全展开的节点）、**扩展**（加一个新子节点）、**模拟**（从这里快速随机走到终局）、**回传**（把结果沿路径更新回去）。**每一轮迭代都是这四步。**\u3000**UCB 公式**：**选择那一步的依据，也是整个算法的精髓** —— 它同时考虑**平均胜率**（利用）和**访问次数的倒数**（探索）。**访问得少的分支，它的胜率估计本来就不可信，所以要给它机会。**\u3000**探索与利用**：只走胜率高的会错过更好的路，只走没试过的等于瞎搜。**UCB 用一个公式把这个矛盾量化了。**\u3000**访问次数比胜率更可信**：**读 MCTS 输出时的一个要点** —— 访问次数少的节点，胜率数字几乎没有参考价值。最终选走法时通常按**访问次数**而不是胜率。\u3000**随时可停**：**MCTS 是 anytime 算法** —— 想什么时候停就什么时候停，**算得越久结果越好**。这对有时限的对弈极其重要。\u3000**AlphaGo 的改进**：用神经网络替代随机模拟（策略网络提供先验、价值网络直接评估局面），**省掉了大量无意义的随机走子** —— 这是它超越前代的关键。',
-      watch: '看每个节点的访问次数和胜率怎么随模拟增长。访问次数少的分支，它的胜率数字几乎没有参考价值。',
+      hook: '不全搜，反复随机试一局 —— 但"反复"要反复到什么程度？',
+      what: '这一屏讲的是**蒙特卡洛树搜索（MCTS）**：AlphaGo 的核心算法，也是很多博弈和规划问题的通用搜索方法。它要解决的问题是**分支太多没法全搜**：围棋每一步有几百种走法，走十步就是天文数字。MCTS 的答案是**不全搜，而是反复「随机试一局」**：挑一条路走到底，看输赢，把结果记回沿途每一步。\n\n**这一屏真正要你看的是"反复"这两个字有多沉。** 五个走法各有一个真实胜率（0.75 / 0.60 / 0.40 / 0.30 / 0.25，**算法看不到**），最好的两个只差 0.15。**单场模拟就是抛一次硬币，它什么都不说明。** 20 轮下来选对的概率只有 55%，要到 320 轮才 99%。屏幕上那一次的输赢是运气 —— 底下那条「重跑 500 次的选对率」才是答案。',
+      terms: '**四个步骤**：**选择**（沿树往下走到一个未完全展开的节点）、**扩展**（加一个新子节点）、**模拟**（从这里快速随机走到终局）、**回传**（把结果沿路径更新回去）。**每一轮迭代都是这四步。**\u3000**UCB 公式**：**选择那一步的依据，也是整个算法的精髓** —— **利用项**是已经量到的平均胜率，**探索项**是 c·√(ln N父 / n子)：试得越少这一项越大。这一屏把两项**分开摆在表里**，你能指着屏幕说是哪一项在起作用。\u3000**探索常数 c**：**它决定这套方法到底收不收敛，不是一个可调可不调的旋钮**。c=0 时探索项恒为 0，开局各试一次之后谁碰巧赢就一直押谁，**加到 320 轮也只有 64%** —— 它不是收敛得慢，是压根不收敛。c 太大又几乎均匀撒钱，明显差的走法也照样反复试。\u3000**随时可停**：**MCTS 是 anytime 算法** —— 想什么时候停就什么时候停，算得越久结果越好。这对有时限的对弈极其重要，而"越久越好"到底有多好，就是那条选对率曲线。\u3000**访问次数比胜率更可信**：读 MCTS 输出时的常见说法 —— 访问次数少的节点，胜率数字没什么参考价值，所以最终选走法按**访问次数**。**⚠️ 但这一屏量不出这条**：在扁平的五选一上两条规则实测几乎一样。真实 MCTS 里的理由在**树**上（深层节点方差更大、还被对手挑剔过），这一屏没有树。\u3000**AlphaGo 的改进**：用神经网络替代随机模拟（策略网络给先验、价值网络直接评估局面），**省掉了大量无意义的随机走子**。回头看这一屏的选对率曲线，你就明白它省的是什么。',
+      watch: '盯两处：UCB 表里"利用"和"探索"哪一项在决定这轮挑谁；以及底下那条选对率曲线 —— 单场的输赢是运气，曲线才是结论。',
     },
+    /*  ⚠️ 老版本这里读的是 `st.ucb` / `st.pick` —— 补厚后内核里这两个字段都没了
+        （UCB 拆成了 `picks[k].exploit/explore/ucb`，选中的叫 `chosen`）。
+        跟 bestofn / selfconsist / tot 同一类，由「夹具没有编字段」那条判据钉住。 */
     step: (s: never) => {
-      const st = s as { phase: string; iter: number; moves: string[]; n: number[]; w: number[]; ucb: (number | null)[]; pick: number; win: number; best: number }
+      const st = s as {
+        phase: string; iter: number; budget: number; moves: string[]; n: number[]; w: number[]
+        picks: { k: number; exploit: number; explore: number; ucb: number | null }[]
+        chosen: number; win: number; best: number; final: number; right: boolean
+        trueP: number[]; pRight: number; c: number
+        sweep: { budget: number; pRight: number }[]
+      }
+      const p = st.picks?.[st.chosen]
+      const done = st.phase === 'done'
+      const big = st.sweep?.[st.sweep.length - 1]
       return [
-        { k: '本步输入', v: st.iter === 0 && st.phase !== 'done' ? '根有 3 个候选走法 A/B/C' : st.phase === 'done' ? '各走法的访问次数' : `第 ${st.iter} 轮的 UCB` },
-        { k: '判定规则', v: `每轮四步:**选择**(按 **UCB=胜率+c·√(ln N父/N子)** 挑分支,胜率高多利用、试得少多探索)→**扩展**→**模拟**(随机走到底看输赢)→**回传**(更新沿途 N、胜数)。多轮后访问集中到最好的走法。` },
-        { k: '本步结果', v: st.phase === 'done' ? `访问 ${st.moves.map((m, k) => `${m}=${st.n[k]}`).join('、')} → 选 **${st.moves[st.best]}**(被反复模拟、几乎全赢)。`
-            : st.pick < 0 ? '待模拟。'
-            : `UCB 最大是 ${st.moves[st.pick]}${st.ucb[st.pick] === null ? '(没试过∞,先探索)' : ''} → 模拟**${st.win ? '赢' : '输'}**、回传。` },
+        { k: '本步输入', v: st.iter === 0 && !done ? `根有 ${st.moves.length} 个候选走法（真实胜率 ${st.trueP.join('/')}，**算法看不到**）` : `第 ${st.iter}/${st.budget} 轮的 UCB` },
+        { k: '判定规则', v: `每轮四步:**选择**(按 **UCB = 实测胜率 + c·√(ln N父/n子)** 挑,c=${st.c})→**扩展**→**模拟**(照那个走法的真实胜率抛一次硬币)→**回传**(更新 n 和胜数)。最后取**访问最多**的。` },
+        { k: '本步结果', v: done
+          ? `访问 ${st.moves.map((m, k) => `${m}=${st.n[k]}`).join('、')} → 选 **${st.moves[st.final]}**，`
+            + `真实最优是 **${st.moves[st.best]}** —— 这一次**${st.right ? '选对了' : '选错了'}**。`
+            + `　⚠️ 单看这一次是运气：这个配置重跑 500 次的选对率是 **${(st.pRight * 100).toFixed(1)}%**，`
+            + `加到 ${big?.budget} 轮才 **${((big?.pRight ?? 0) * 100).toFixed(1)}%**。`
+          : st.chosen < 0 ? '待模拟。'
+            : `UCB 最大是 **${st.moves[st.chosen]}**`
+              + (p?.ucb === null ? '（没试过，∞ 先探索）' : `（利用 ${p?.exploit} + 探索 ${p?.explore} = ${p?.ucb}）`)
+              + ` → 模拟**${st.win ? '赢' : '输'}**、回传。` },
       ]
     },
     verdict: (s: never) => {
-      const st = s as { phase: string; iter: number; moves: string[]; best: number; win: number }
-      return st.phase === 'done' ? `选 ${st.moves[st.best]}` : st.win === 1 ? '模拟赢' : st.win === 0 ? '模拟输' : `第${st.iter}轮`
+      const st = s as { phase: string; iter: number; moves: string[]; final: number; right: boolean; win: number }
+      return st.phase === 'done' ? `选 ${st.moves[st.final]} ${st.right ? '✓' : '✗'}`
+        : st.win === 1 ? '模拟赢' : st.win === 0 ? '模拟输' : `第${st.iter}轮`
     },
     read: [
-      { at: '读数', is: '模拟轮、本轮选中的走法+UCB、各走法访问次数。', anchor: '.scdim' },
-      { at: '树', is: '根+3走法;圆越大=访问越多;每轮挑 UCB 最大的模拟、回传;绿=本轮/最终选中。', anchor: '.gcntree' },
+      { at: '读数', is: '模拟轮、本轮选中（利用+探索两项分开）、**选中的对不对**（对着真实胜率判，不问算法自己）、**这个配置选对的概率**。', anchor: '.scdim' },
+      { at: '树', is: '根 + 5 个走法;圆越大 = 访问越多。每个走法下面两行:**真实胜率**（算法看不到，★=真正的最优）和**实测胜率**（它靠 rollout 估出来的）。', anchor: '.gcntree' },
+      { at: 'UCB 两项', is: '利用（实测胜率）+ 探索（c·√(lnN/n)）= UCB，按行摆开。试得越少探索项越大 —— 这就是"给冷门一个翻案的机会"。', anchor: '.qsscale' },
+      { at: '选对率曲线', is: '横轴是模拟预算（对数），纵轴是重跑 500 次的选对率;红虚线是"瞎猜"的 20%。', anchor: '.bncurvewrap' },
     ],
     try: [
-      { act: '按「下一步」模拟', watch: '每轮挑 UCB 最大的走法(没试过=∞先试)、随机模拟、回传更新访问数。' },
-      { act: '看火力集中', watch: 'A 总赢 → 被越选越多、圆越来越大;探索与利用的平衡。' },
+      { act: '把「探索常数 c」调成 0', param: '探索常数 c',
+        watch: '**探索项整列变成 0**，UCB 退化成"只看实测胜率"。开局各试一次之后，谁碰巧赢就一直押谁 —— '
+          + '预算加到 320 轮，选对率也只有 **64.4%**（其余三档都在 96% 以上）。**它不是收敛得慢，是压根不收敛。**' },
+      { act: '把 c 调到 4', param: '探索常数 c',
+        watch: '探索项压过了胜率差，5 个走法几乎平分预算，明显差的 D/E 也照样反复试 —— 20 轮时只有 **50.0%**。**两头都不行，中间那档才对。**' },
+      { act: '把「模拟预算」从 10 拉到 40，看底下那条曲线', param: '模拟预算',
+        watch: '选对率 43% → 55% → 73%，曲线一路往上，到 320 轮才 99%。**"靠大量随机对局的统计说话"里，"大量"两个字不是修辞。**' },
+      { act: '⚠️ 别拿 20 轮那一列去排 c 的高下 —— 它排错了',
+        watch: '20 轮时垫底的是 c=4（50.0%），而真正有毛病的 **c=0 在那一列有 55.6%、看着还行**（比 c=1.4 的 55.0% 还高一点）。'
+          + '**小预算下大家都还没来得及收敛，看不出谁根本收敛不了** —— 得看「320 轮」那一列：c=0 只有 64.4%。' },
     ],
     terms: [],
   },
+
   collision: {
     question: '一堆小球乱糟糟地碰来碰去，有什么东西是始终不变的？',
     plain: {

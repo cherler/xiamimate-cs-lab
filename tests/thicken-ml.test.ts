@@ -56,6 +56,8 @@ import { fastpowKernel, FP_OPS, FP_BASES, FP_EXPS, type FastPowState } from '../
 import { nqueensKernel, NQ_NS, NQ_GOALS, NQ_PRUNES, type NQueensState } from '../src/kernels/nqueens.ts'
 import { heapKernel, HEAP_BUILDS, HEAP_AFTERS, HEAP_DATA, HEAP_SCALE_NS, type HeapState } from '../src/kernels/heap.ts'
 import { beamKernel, BEAM_MODELS, BEAM_KS, BEAM_SCORES, type BeamState } from '../src/kernels/beam.ts'
+import { bestofnKernel, BON_JUDGES, BON_VARIETY, type BestOfNState } from '../src/kernels/bestofn.ts'
+import { mctsKernel, type MctsState } from '../src/kernels/mcts.ts'
 
 let failures = 0
 const ok = (m: string) => console.log(`  ✅ ${m}`)
@@ -2733,6 +2735,264 @@ console.log('\n【束搜索：搜得越准，输出越短越空洞】')
     !s.shrinks && sw.every(x => x.len === sw[0].len)
       ? ok(`自检：玩具模型那一档四个 k 的输出长度**全是 ${sw[0].len}**、没有变短 —— 上面那条量的确实是长度偏置，不是恒真`)
       : bad(`自检失败：玩具模型档也在变短（${sw.map(x => x.len).join('→')}）`)
+  }
+}
+
+/*  ═══════════════════════════════════════════════════════════════
+    Best-of-N —— 补厚的落点是「argmax 认的是**代理分数**，不是真实质量」。
+    老版本只有一条线（最高分随 N 涨），演的是边际递减；而它自己写着
+    「还被**打分器上限**卡住」—— 那句话背后就是 Goodhart / reward hacking。 */
+console.log('\n【Best-of-N：代理分数 vs 真实质量】')
+{
+  const fin = (params: Record<string, unknown>) => {
+    const m = bestofnKernel.compile({ kind: 'bestofn', params, entities: [], streams: [] } as never)
+    let st: BestOfNState | null = null
+    for (let i = 0; i < 40; i++) { const r = m.step(st); if (!r) break; st = r.state }
+    return st!
+  }
+  const [PERFECT, FLAWED] = BON_JUDGES
+  const [LOW, MID, HIGH] = BON_VARIETY
+
+  /*  ① **完美验证器下两条线重合** —— 打分器就是真实质量时，代理分不多不少。 */
+  {
+    const bad2: string[] = []
+    for (const variety of BON_VARIETY) {
+      const s = fin({ judge: PERFECT, variety })
+      if (s.fullCurve.some(p => p.best !== p.trueBest)) bad2.push(variety)
+    }
+    bad2.length === 0
+      ? ok('完美验证器下，三档多样性的**代理分数和真实质量逐点相同** —— 打分器就是真实质量时两条线重合')
+      : bad(`完美验证器下两条线却分家了：${bad2.join('、')}`)
+  }
+
+  /*  ② **完美验证器下真实质量单调不降** —— Best-of-N 取的是最大值，加样本不会变差。 */
+  {
+    const s = fin({ judge: PERFECT, variety: MID })
+    const mono = s.fullCurve.every((p, i) => i === 0 || p.trueBest >= s.fullCurve[i - 1].trueBest)
+    mono && s.declineAfterPeak === 0
+      ? ok(`完美验证器：真实质量 ${s.fullCurve.map(p => p.trueBest).join('→')} **单调不降**，峰后掉 0`)
+      : bad(`完美验证器下真实质量却掉了：${s.fullCurve.map(p => p.trueBest).join('→')}`)
+  }
+
+  /*  ③ ⭐ **补厚的落点：有缺陷的打分器上，代理分一路涨而真实质量掉头。**
+      两件事都得钉住 —— 只钉"真实质量掉了"不够，"代理分同时还在涨"才是过优化的形状。 */
+  {
+    const s = fin({ judge: FLAWED, variety: HIGH })
+    const proxyMono = s.fullCurve.every((p, i) => i === 0 || p.best >= s.fullCurve[i - 1].best)
+    proxyMono && s.declineAfterPeak > 0 && s.hacked
+      ? ok(`有缺陷的打分器：代理分 ${s.fullCurve.map(p => p.best).join('→')}（**只涨不跌**），`
+        + `而真实质量 ${s.fullCurve.map(p => p.trueBest).join('→')} —— **在 N=${s.peakN} 见顶、之后掉 ${s.declineAfterPeak} 分**`)
+      : bad(`过优化没演出来：代理单调=${proxyMono}、峰后掉 ${s.declineAfterPeak}、钻空子=${s.hacked}`)
+  }
+
+  /*  ④ **挑出来的那条确实是"来骗打分器的"** —— 代理分虚高、真实质量为 0，
+      而且它必须**压过池子里真正的最优解**。不然钻空子这件事根本不会发生。 */
+  {
+    const s = fin({ judge: FLAWED, variety: HIGH })
+    const best = s.drawn[s.bestIdx]
+    const optimal = s.drawn.find(c => c.trueR === s.ceiling)
+    best.trueR === 0 && best.reward > (optimal?.reward ?? -1) && optimal != null
+      ? ok(`N=32 采纳的是「${best.e.slice(0, 14)}…」：代理分 **${best.reward}**、真实质量 **0**，`
+        + `而真正的最优解「${optimal.e}」真实质量 ${optimal.trueR} 却只有代理分 ${optimal.reward} —— **被压下去了**`)
+      : bad(`没压过最优解：采纳 ${best.e}(代理 ${best.reward}/真实 ${best.trueR})、最优 ${optimal?.e}(代理 ${optimal?.reward})`)
+  }
+
+  /*  ⑤ **多样性是前提** —— 候选高度重复时，N 加了等于没加。
+      ⚠️ 这里量的不是"分数低"，是"**从某个 N 起就再也不动**" —— 那才是"最大值取完了"。 */
+  {
+    const s = fin({ judge: PERFECT, variety: LOW })
+    const c = s.fullCurve
+    const flatFrom = c.findIndex((p, i) => i > 0 && c.slice(i).every(q => q.trueBest === p.trueBest))
+    s.distinct <= 2 && flatFrom > 0 && flatFrom < c.length - 1
+      ? ok(`多样性低：32 次采样只有 **${s.distinct}** 个不同候选，真实质量从 N=${c[flatFrom].n} 起就是平的`
+        + `（${c.map(p => p.trueBest).join('→')}）—— **N 加了等于没加**，而算力照样翻了 ${32 / c[flatFrom].n} 倍`)
+      : bad(`多样性低那档没演出"加了没用"：不同候选 ${s.distinct}、平线起点下标 ${flatFrom}`)
+  }
+
+  /*  ⑥ **多样性档之间真的不一样** —— 三条抽样序列不能碰巧长一样。 */
+  {
+    const ds = BON_VARIETY.map(v => fin({ judge: PERFECT, variety: v }).distinct)
+    new Set(ds).size >= 2 && ds[0] < ds[2]
+      ? ok(`三档多样性的不同候选数分别是 ${ds.join(' / ')} —— 低档确实比高档少`)
+      : bad(`三档多样性区分不开：${ds.join(' / ')}`)
+  }
+
+  /*  ⑦ **边际递减** —— 这是老版本演的那一半，不能弄丢。
+      完美验证器下前半程涨得比后半程多，而算力是**线性**的。 */
+  {
+    const s = fin({ judge: PERFECT, variety: MID })
+    const c = s.fullCurve
+    const early = c[3].trueBest - c[0].trueBest   // N=1 → 8
+    const late = c[5].trueBest - c[3].trueBest    // N=8 → 32
+    early > late
+      ? ok(`边际递减：N=1→8 涨 **${early}** 分（算力 ×8），N=8→32 只再涨 **${late}** 分（算力又 ×4）`)
+      : bad(`没演出边际递减：前半涨 ${early}、后半涨 ${late}`)
+  }
+
+  /*  ⑧ 自检：这一套判据得会红。
+      ⚠️ 拿**炸过的那个配置**自检 —— 「有缺陷 + 多样性中」那条序列没抽到钻空子的候选，
+      ③ 的条件必须在它身上不成立（否则 ③ 量的是"有缺陷"本身，而不是"撞上了"）。 */
+  {
+    const s = fin({ judge: FLAWED, variety: MID })
+    s.declineAfterPeak === 0 && !s.hacked && s.bestReward > s.bestTrue
+      ? ok(`自检：同样是有缺陷的打分器，多样性「中」那条序列**没抽到**钻空子的候选 —— `
+        + `真实质量没掉（峰后 0），但代理分 ${s.bestReward} 已经高于真实质量 ${s.bestTrue}（打分器在虚报）。`
+        + `所以 ③ 量的是"撞上了"，不是"有缺陷"这四个字`)
+      : bad(`自检失败：多样性「中」档也掉了（峰后 ${s.declineAfterPeak}、钻空子 ${s.hacked}）`)
+  }
+}
+
+/*  ═══════════════════════════════════════════════════════════════
+    MCTS —— 老版本的"模拟"是一张写死的脚本表 `{A:[1,1,1,1], B:[0], C:[0]}`，
+    而它正文写着「靠**大量随机对局的统计**说话」「UCB **兼顾探索与利用**」。
+    补厚补的就是这两句：rollout 真去抛硬币，c 做成旋钮。 */
+console.log('\n【MCTS：单场是抛硬币，c 决定收不收敛】')
+{
+  const fin = (params: Record<string, unknown>) => {
+    const m = mctsKernel.compile({ kind: 'mcts', params, entities: [], streams: [] } as never)
+    let st: MctsState | null = null
+    for (let i = 0; i < 400; i++) { const r = m.step(st); if (!r) break; st = r.state }
+    return st!
+  }
+  const base = fin({ c: 1.4, budget: 20 })
+
+  /*  ① **rollout 真的随机** —— 同一个走法在不同轮里必须有输有赢。
+      写死脚本表的年代这一条恒假：A 一路全赢。 */
+  {
+    const m = mctsKernel.compile({ kind: 'mcts', params: { c: 4, budget: 40 }, entities: [], streams: [] } as never)
+    const wins = new Map<number, Set<number>>()
+    let st: MctsState | null = null, prevW: number[] = []
+    for (let i = 0; i < 400; i++) {
+      const r = m.step(st); if (!r) break
+      st = r.state
+      if (st.chosen >= 0 && st.win >= 0 && prevW.length) {
+        if (!wins.has(st.chosen)) wins.set(st.chosen, new Set())
+        wins.get(st.chosen)!.add(st.win)
+      }
+      prevW = st.w
+    }
+    const mixed = [...wins.values()].filter(v => v.size === 2).length
+    mixed >= 2
+      ? ok(`rollout 真的在抛硬币：${mixed} 个走法在不同轮里既赢过也输过（写死脚本表的话这一条恒假）`)
+      : bad(`rollout 看着像脚本：只有 ${mixed} 个走法有输有赢`)
+  }
+
+  /*  ② **真实胜率是独立真值** —— "选对了吗"不能问算法自己。
+      `best` 必须是 argmax(trueP)，而不是访问次数最多的那个。 */
+  {
+    const s = base
+    const trueBest = s.trueP.indexOf(Math.max(...s.trueP))
+    s.best === trueBest && s.right === (s.final === trueBest)
+      ? ok(`"选对了吗"对着**真实胜率**判：真实最优是 ${s.moves[s.best]}(${s.trueP[s.best]})，`
+        + `这一场选了 ${s.moves[s.final]} → ${s.right ? '对' : '错'}`)
+      : bad(`真值口径不对：best=${s.best}、argmax(trueP)=${trueBest}、right=${s.right}`)
+  }
+
+  /*  ③ ⭐ **补厚的落点①：预算加大，选对率真的往上爬。**
+      老版本 6 轮必胜，"大量随机对局的统计"一次都没兑现过。 */
+  {
+    const s = base
+    const sw = s.sweep
+    const mono = sw.every((p, i) => i === 0 || p.pRight >= sw[i - 1].pRight - 0.05)
+    sw[sw.length - 1].pRight > sw[0].pRight + 0.4 && mono && sw[0].pRight < 0.6
+      ? ok(`预算 ${sw[0].budget}→${sw[sw.length - 1].budget} 轮，选对率 `
+        + `${sw.map(p => `${(p.pRight * 100).toFixed(0)}%`).join('→')} —— **"大量"两个字不是修辞**`)
+      : bad(`选对率没随预算爬起来：${sw.map(p => `${p.budget}:${p.pRight}`).join(' ')}`)
+  }
+
+  /*  ④ ⭐ **补厚的落点②：c=0 不是收敛得慢，是压根不收敛。**
+      ⚠️ 判据必须钉在**加满预算之后仍然低**上。只看"c=0 比 c=1.4 差"是不够的 ——
+      小预算下四档全在噪声里，c=0 甚至可能高一点（实测 20 轮 55.6% vs 55.0%）。 */
+  {
+    const s = base
+    const z = s.cSweep.find(x => x.c === 0)!
+    const others = s.cSweep.filter(x => x.c > 0)
+    z.pMax < 0.75 && others.every(x => x.pMax > 0.9)
+      ? ok(`c=0 加到 320 轮也只有 ${(z.pMax * 100).toFixed(1)}%，而 c>0 的三档都在 `
+        + `${(Math.min(...others.map(x => x.pMax)) * 100).toFixed(1)}% 以上 —— **它不是慢，是不收敛**`)
+      : bad(`c=0 的病没演出来：c=0 加满 ${z.pMax}，其余 ${others.map(x => x.pMax).join('/')}`)
+  }
+
+  /*  ⑤ **c 太大也不行** —— 两头都得摆出来，不然"兼顾"没有第二个反例。 */
+  {
+    const s = fin({ c: 4, budget: 10 })
+    const mid = fin({ c: 1.4, budget: 10 })
+    s.pRight < mid.pRight - 0.15 && s.pRight < 1 / s.moves.length + 0.05
+      ? ok(`c=4、预算 10 时只有 ${(s.pRight * 100).toFixed(1)}%（瞎猜是 ${(100 / s.moves.length).toFixed(0)}%，`
+        + `c=1.4 同预算 ${(mid.pRight * 100).toFixed(1)}%）—— 探索项压过胜率差，预算被平摊掉了`)
+      : bad(`c 太大那一头没演出来：c=4 ${s.pRight}、c=1.4 ${mid.pRight}`)
+  }
+
+  /*  ⑥ **UCB 两项分开且对得上** —— 「兼顾探索与利用」得能指着屏幕说是哪一项。
+      逐行核对 exploit + explore === ucb，以及 exploit === w/n。 */
+  {
+    const s = base
+    const bad2: string[] = []
+    for (const p of s.picks) {
+      if (p.ucb === null) continue
+      if (Math.abs(p.exploit + p.explore - p.ucb) > 0.002) bad2.push(`${s.moves[p.k]} 两项加起来对不上 ucb`)
+      /*  ⚠️ 拿 `picksN/picksW` 比，不是 `n/w`：中间帧里 picks 是**本轮开始时**的账，
+          而 n/w 已经是这一轮跑完之后的。第一版拿 n/w 比，末帧上就红了 ——
+          红的是判据的时点，不是产品。**读状态字段先问它是这一步之前还是之后的。** */
+      if (s.picksN[p.k] > 0 && Math.abs(p.exploit - s.picksW[p.k] / s.picksN[p.k]) > 0.002)
+        bad2.push(`${s.moves[p.k]} 利用项≠它自己那组计数算出的胜率`)
+    }
+    //  末帧那张表必须是按**最终**计数重算的，不然它跟旁边树上的实测胜率对不上
+    const fresh = s.picks.every(p => p.ucb === null || s.picksN[p.k] === s.n[p.k])
+    bad2.length === 0 && fresh
+      ? ok(`UCB 逐行拆得开：利用 + 探索 = UCB，${s.picks.filter(p => p.ucb !== null).length} 行都对得上；`
+        + `末帧那张表是按最终计数重算的（和树上的实测胜率同一个时点）`)
+      : bad(bad2.slice(0, 3).join(' / '))
+  }
+
+  /*  ⑦ **c=0 时探索项整列为 0** —— "退化成只看胜率"这句话得有据可查。 */
+  {
+    const s = fin({ c: 0, budget: 20 })
+    s.picks.every(p => p.ucb === null || p.explore === 0)
+      ? ok('c=0 时探索项整列都是 0 —— UCB 确实退化成"只看实测胜率"')
+      : bad(`c=0 时探索项不为 0：${s.picks.map(p => p.explore).join('/')}`)
+  }
+
+  /*  ⑧ ⚠️ **小预算那一列排不出 c 的高下** —— 屏幕上那句提醒必须有数撑着。
+      我先把它写成了"四档差距还没噪声大"，而实测跨度 11.6 个点、噪声 ±2 点，**自己打自己**。
+      量得到的是另一件事：**这一列垫底的那个 c，不是真正有毛病的那个**。 */
+  {
+    const s = base
+    const worstNow = s.cSweep.reduce((a, x) => (x.pRight < a.pRight ? x : a), s.cSweep[0])
+    const worstMax = s.cSweep.reduce((a, x) => (x.pMax < a.pMax ? x : a), s.cSweep[0])
+    const zeroNow = s.cSweep.find(x => x.c === 0)!
+    worstNow.c !== worstMax.c && worstMax.c === 0 && zeroNow.pRight > worstNow.pRight
+      ? ok(`小预算那一列排错了：${s.budget} 轮垫底的是 c=${worstNow.c}（${(worstNow.pRight * 100).toFixed(1)}%），`
+        + `而真正有毛病的 c=0 在那一列有 ${(zeroNow.pRight * 100).toFixed(1)}%、看着还行 —— 它的病要到 320 轮那一列才露`)
+      : bad(`"小预算排不出 c"这件事没量到：这一列垫底 c=${worstNow.c}、加满垫底 c=${worstMax.c}`)
+  }
+
+  /*  ⑨ **c 调过头时，"访问最多"退化成瞎猜** —— 预算被平摊，那一列不携带任何信息。
+      这条是浏览器探针逼出来的：屏幕上摆着 17.0% vs 43.6%，而我写死了一句"几乎一样"。 */
+  {
+    const s = fin({ c: 4, budget: 10 })
+    const flat = Math.max(...s.n) - Math.min(...s.n) <= 1
+    const byVisitRate = s.ruleCmp[0].pRight
+    const K = s.moves.length
+    flat && Math.abs(byVisitRate - 1 / K) < 0.06 && s.ruleCmp[1].pRight > byVisitRate + 0.15
+      ? ok(`c=4/预算10：预算被平摊成 ${s.n.join('/')}，"访问最多"整个是平局 → 退化成瞎猜 `
+        + `${(byVisitRate * 100).toFixed(1)}%（瞎猜是 ${(100 / K).toFixed(0)}%），而"胜率最高"还有 ${(s.ruleCmp[1].pRight * 100).toFixed(1)}% —— `
+        + `**访问计数在均匀分配下根本没携带信息**`)
+      : bad(`平摊那一档没演出来：n=${s.n.join('/')}、访问最多 ${byVisitRate}、胜率最高 ${s.ruleCmp[1].pRight}`)
+  }
+
+  /*  ⑩ 自检：这一套判据得会红。
+      ⚠️ 拿**栽过的那件事**自检 —— 第一版拿 indexOf(max) 拆平局，永远偏向 0 号
+      （正好是最优走法），量出"预算越小选对率越高"。判据得认得出这种反常。 */
+  {
+    const s = base
+    const sw = s.sweep
+    //  真·收敛的曲线，前两档不该高过末档
+    const anomalous = sw.slice(0, 2).some(p => p.pRight > sw[sw.length - 1].pRight)
+    !anomalous && sw[0].pRight < sw[1].pRight
+      ? ok(`自检：曲线起点 ${(sw[0].pRight * 100).toFixed(1)}% 低于第二档、也低于末档 —— `
+        + `没有"预算越小越准"那种反常（第一版拿 indexOf(max) 拆平局时正是这个症状）`)
+      : bad(`自检失败：曲线起点反常 ${sw.map(p => `${p.budget}:${p.pRight}`).join(' ')}`)
   }
 }
 

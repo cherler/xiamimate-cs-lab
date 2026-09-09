@@ -11,7 +11,7 @@
  * 里该实验的 defaultDoc 逐字一致(均为 trivial doc,内核自带默认数据)。
  */
 import { beamKernel } from '../../src/kernels/beam.ts'
-import { bestofnKernel } from '../../src/kernels/bestofn.ts'
+import { bestofnKernel, BON_JUDGES, BON_VARIETY } from '../../src/kernels/bestofn.ts'
 import { mctsKernel } from '../../src/kernels/mcts.ts'
 import { ragKernel } from '../../src/kernels/rag.ts'
 import { totKernel } from '../../src/kernels/tot.ts'
@@ -101,53 +101,90 @@ export const LLM_ALGO_ENTRIES: CatalogEntry[] = [
     id: 'bestofn',
     title: 'Best-of-N 拒绝采样',
     kernel: bestofnKernel as Kernel<unknown>,
-    doc: { kind: 'bestofn', params: {}, entities: [], streams: [] },
+    /*  2026-09-09 补厚：默认档 = 有缺陷的奖励模型 + 高多样性 —— 那才是 Best-of-N 真正的失败模式。
+        老那批 fact 全按"奖励=10−|24−结果|、满分 10"提问，而这一档 argmax 认的是**代理分数**
+        （真实质量 + 长度加成，最高 14），采纳的也不再是 3×8。整批重写。 */
+    doc: { kind: 'bestofn', params: { judge: BON_JUDGES[1], variety: BON_VARIETY[2] }, entities: [], streams: [] },
     facts: [
       {
-        id: 'bon_n', label: '扫到的最大采样数 N',
+        id: 'bon_n', label: '扫到的最大采样数 N', kind: 'number', genre: 'count',
         ask: 'Best-of-N 沿采样数 N 扫描(1、2、4…),扫到的最大 N 是多少?',
-        kind: 'number',
-        compute: t => ({ answer: String(last(t).n), step: t.length - 1, evidence: String(last(t).log ?? '') }),
+        compute: t => ({ answer: String(last(t).n), step: t.length - 1, evidence: `轴扫到 N=${last(t).n}` }),
         distractors: numDistractors,
       },
       {
-        id: 'bon_best_reward', label: '采样够多(N=32)时被采纳候选的得分',
-        ask: '采样到 N=32 时,所有候选里最终被打分器选中采纳的那个,拿到多少分(奖励=10−|24−结果|,满分 10)?',
-        kind: 'number',
+        /*  ⚠️ 计数题要自带数据：把整条曲线抄进题干，答题的人不用去翻屏幕。 */
+        id: 'bon_true_peak_n', label: '真实质量在哪个 N 见顶', kind: 'number', genre: 'count',
+        ask: '这一档（有缺陷的奖励模型 + 高多样性）实测的两条曲线是——代理分数 6→6→9→14→14→14，真实质量 2→2→5→0→0→0，对应 N=1、2、4、8、16、32。**真实质量**最高出现在哪个 N?',
+        compute: t => ({ answer: String(last(t).peakN), step: t.length - 1,
+          evidence: `真实质量在 N=${last(t).peakN} 见顶，之后掉了 ${last(t).declineAfterPeak} 分；而代理分数一路只涨不跌` }),
+        distractors: numDistractors,
+      },
+      {
+        /*  ⭐ 补厚的落点。这是只有把两条线并排量过才答得出的事。 */
+        id: 'bon_overopt', label: 'N 加大之后真实质量怎么走', kind: 'choice', genre: 'concept',
+        ask: '打分器换成一个有缺陷的奖励模型（它偏爱长的、看起来在认真推理的回答）之后，把 N 从 1 一路加到 32，**最终输出的真实质量**怎么走?',
         compute: t => {
-          const cands = last(t).drawn as { e: string; v: number; reward: number }[]
-          const bi = last(t).bestIdx as number
-          return { answer: String(cands[bi].reward), step: t.length - 1, evidence: `最高分候选「${cands[bi].e}」= ${cands[bi].v},奖励 ${cands[bi].reward} 分` }
-        },
-        distractors: numDistractors,
-      },
-      {
-        id: 'bon_n1', label: 'N=1(只采1个)时的最高分——边际递减的起点',
-        ask: 'Best-of-N 的核心是"最高分随 N 边际递减"。若只采样 N=1 个候选(碰运气),本实验第一个候选拿到多少分?',
-        kind: 'number',
-        compute: t => ({ answer: String(t[0]!.bestReward), step: 0, evidence: String(t[0]!.log ?? '') }),
-        distractors: numDistractors,
-      },
-      {
-        id: 'bon_vs_vote', label: 'Best-of-N 与自洽多数投票的区别',
-        ask: 'Best-of-N 和「思维链自洽」都采样多个候选,它选出最终答案的方式有何不同?',
-        kind: 'choice',
-        compute: t => ({ answer: '靠一个外部打分器(奖励模型 / 可算的验证器)给每个候选打分,argmax 取单个最高分的——适合没有"多数答案"可投的开放式生成', step: t.length - 1, evidence: String(last(t).log ?? '') }),
-        distractors: () => ['对所有候选做多数投票,得票最多的答案胜出', '把 N 个候选的答案数值取平均作为结果', '只采样一次,直接采用第一个候选'],
-      },
-      {
-        id: 'bon_why_pick', label: '为何选 3×8 而非结果最大的 8×5',
-        ask: '8×5=40 数值最大,为什么打分器最终采纳的却是 3×8?',
-        kind: 'choice',
-        compute: t => {
-          const cands = last(t).drawn as { e: string; v: number; reward: number }[]
-          const bi = last(t).bestIdx as number
+          const f = last(t)
+          const fc = (f.fullCurve ?? []) as { n: number; best: number; trueBest: number }[]
           return {
-            answer: `打分器按接近目标 24 打分(奖励=10−|24−结果|):${cands[bi].e}=${cands[bi].v} 最接近得满分 ${cands[bi].reward};8×5=40 偏离最远,只有 0 分`,
-            step: t.length - 1, evidence: String(last(t).log ?? ''),
+            answer: '先涨、到某个 N 见顶，然后掉头往下 —— 而代理分照涨',
+            step: t.length - 1,
+            evidence: `实测：代理分数 ${fc.map(x => x.best).join('→')}，真实质量 ${fc.map(x => x.trueBest).join('→')}（N=${fc.map(x => x.n).join('、')}）`,
           }
         },
-        distractors: () => ['因为 3×8 的算式字符数最少', '因为 8×5 超过了 24 被判违规淘汰', '因为 3×8 是最先被采样到的候选'],
+        distractors: a => [a,
+          '一路涨到满分 —— 采得越多，撞上好候选的机会就越大',
+          '先涨后压平 —— 涨到打分器的分数上限就再也上不去了',
+          '一路不动 —— 打分器有偏差，从第一个候选起就一直挑错',
+        ].filter(o => o !== a).slice(0, 3),
+      },
+      {
+        id: 'bon_argmax_on_what', label: 'argmax 认的是哪个分数', kind: 'choice', genre: 'concept',
+        ask: 'Best-of-N 采样出 N 个候选之后，argmax 是照着什么挑出最终那一个的?',
+        compute: t => {
+          const f = last(t)
+          const d = (f.drawn ?? []) as { e: string; reward: number; trueR: number }[]
+          const bi = f.bestIdx as number
+          return {
+            answer: '打分器给出的分数 —— 它只是真实质量的一个代理',
+            step: t.length - 1,
+            evidence: `本档采纳「${d[bi]?.e}」：代理分 ${d[bi]?.reward}，而它的真实质量只有 ${d[bi]?.trueR}`,
+          }
+        },
+        distractors: a => [a,
+          '候选本身的真实质量 —— 那正是我们要优化的那个量',
+          'N 个候选之间的多数投票 —— 谁被重复采到得多就选谁',
+          '生成模型自己给出的概率 —— 它最有把握的那一条',
+        ].filter(o => o !== a).slice(0, 3),
+      },
+      {
+        id: 'bon_needs_variety', label: '多样性不够时 N 还有没有用', kind: 'choice', genre: 'concept',
+        ask: '如果采样出来的 N 个候选高度重复（32 次只抽出 2 个不同的），把 N 加大还有用吗?',
+        compute: t => ({
+          answer: '没用 —— 取的是最大值，样本都一样最大值就是那一个',
+          step: t.length - 1,
+          evidence: '实测「多样性低」那一档：32 次采样只有 2 个不同候选，最高分从 N=4 起就再没动过，而算力照样翻了 8 倍',
+        }),
+        distractors: a => [a,
+          '有用 —— 重复采到同一个候选说明它可靠，分数会被抬高',
+          '有用 —— N 越大打分器见到的样本越多，打分就越准',
+          '要看打分器 —— 打分器够好的话，重复的候选也能挑出差别',
+        ].filter(o => o !== a).slice(0, 3),
+      },
+      {
+        id: 'bon_vs_vote', label: 'Best-of-N 与自洽多数投票的区别', kind: 'choice', genre: 'concept',
+        ask: 'Best-of-N 和「思维链自洽」都采样多个候选,它选出最终答案的方式有何不同?',
+        compute: t => ({
+          answer: '靠一个外部打分器给每个候选打分，argmax 取单个最高的',
+          step: t.length - 1,
+          evidence: '自洽是数票（答案得互相比对得上）；Best-of-N 是看分，适合没有"多数答案"可投的开放式生成',
+        }),
+        distractors: a => [a,
+          '对所有候选做多数投票，得票最多的那个答案胜出',
+          '把 N 个候选各自的答案取数值平均，作为最终结果',
+          '只看第一个采样到的候选，其余的都直接丢掉不用',
+        ].filter(o => o !== a).slice(0, 3),
       },
     ],
   },
@@ -157,52 +194,108 @@ export const LLM_ALGO_ENTRIES: CatalogEntry[] = [
     id: 'mcts',
     title: '蒙特卡洛树搜索 MCTS',
     kernel: mctsKernel as Kernel<unknown>,
-    doc: { kind: 'mcts', params: {}, entities: [], streams: [] },
+    /*  2026-09-09 补厚：老那批 fact 全建立在"A 每次都赢"的写死脚本上
+        （「B/C 各 1 次」「几乎每次都赢」）。现在 rollout 是照真实胜率抛硬币的，
+        那些描述一句都不成立了。整批重写。 */
+    doc: { kind: 'mcts', params: { c: 1.4, budget: 20 }, entities: [], streams: [] },
     facts: [
       {
-        id: 'mcts_rollouts', label: '总模拟(rollout)轮数',
-        ask: 'MCTS 搜索结束时,对根下三个走法一共做了多少轮模拟(rollout)?',
-        kind: 'number',
+        id: 'mcts_rollouts', label: '总模拟(rollout)轮数', kind: 'number', genre: 'count',
+        ask: 'MCTS 搜索结束时,对根下的几个走法一共做了多少轮模拟(rollout)?',
         compute: t => {
           const n = last(t).n as number[]
-          return { answer: String(n.reduce((a, b) => a + b, 0)), step: t.length - 1, evidence: `终态访问次数 ${n.join('、')},合计 ${n.reduce((a, b) => a + b, 0)} 次模拟` }
+          const tot = n.reduce((a, b) => a + b, 0)
+          return { answer: String(tot), step: t.length - 1, evidence: `终态访问次数 ${n.join('、')},合计 ${tot} 次模拟` }
         },
         distractors: numDistractors,
       },
       {
-        id: 'mcts_best_visits', label: '被选中走法的访问次数',
-        ask: '搜索结束时,最终被选中的那个走法一共被访问(模拟)了几次?',
-        kind: 'number',
+        /*  ⚠️ 计数题要自带数据：把两条曲线抄进题干，不用去翻屏幕 */
+        id: 'mcts_p_at_320', label: '预算加满时的选对率', kind: 'number', genre: 'count',
+        ask: '这一档(c=1.4)实测的选对率曲线是——10轮 43.0%、20轮 55.0%、40轮 72.8%、80轮 85.8%、160轮 96.4%、320轮 99.0%(每档换种子重跑 500 次)。加到 320 轮时选对率是多少(填百分数的整数部分,如 99.0% 填 99)?',
         compute: t => {
-          const n = last(t).n as number[]
-          const best = last(t).best as number
-          const moves = last(t).moves as string[]
-          return { answer: String(n[best]), step: t.length - 1, evidence: `走法 ${moves[best]} 访问 ${n[best]} 次,B/C 各 ${n[(best + 1) % 3]} 次` }
+          const sw = last(t).sweep as { budget: number; pRight: number }[]
+          const big = sw[sw.length - 1]
+          return { answer: String(Math.floor(big.pRight * 100)), step: t.length - 1,
+            evidence: `预算扫描:${sw.map(x => `${x.budget}轮 ${(x.pRight * 100).toFixed(1)}%`).join('、')}` }
         },
         distractors: numDistractors,
       },
       {
-        id: 'mcts_final_pick', label: 'MCTS 最终按什么选走法',
-        ask: '所有模拟跑完后,MCTS 输出的最终走法是按什么标准选的?',
-        kind: 'choice',
+        /*  ⭐ 补厚的落点①：单场是抛硬币 */
+        id: 'mcts_single_run', label: '跑一次的结果说明什么', kind: 'choice', genre: 'concept',
+        ask: '这一屏跑完一次 MCTS,选中了某个走法。**这一次的结果**说明了什么?',
         compute: t => {
-          const n = last(t).n as number[]
-          const best = last(t).best as number
-          const moves = last(t).moves as string[]
-          return { answer: `选访问次数最多的走法:${moves[best]} 被访问 ${n[best]} 次(远多于另两个各 1 次),因为它反复被模拟且几乎每次都赢`, step: t.length - 1, evidence: String(last(t).log ?? '') }
+          const f = last(t)
+          const sw = f.sweep as { budget: number; pRight: number }[]
+          return {
+            answer: '几乎什么都说明不了 —— 单场模拟就是抛硬币，得看重跑几百次的概率',
+            step: t.length - 1,
+            evidence: `实测：这个配置重跑 500 次的选对率是 ${((f.pRight as number) * 100).toFixed(1)}%，`
+              + `而预算加到 ${sw[sw.length - 1].budget} 轮才 ${(sw[sw.length - 1].pRight * 100).toFixed(1)}%`,
+          }
         },
-        distractors: () => ['选当前 UCB 值最大的走法', '选胜率最高的走法(哪怕只试过一次)', '在三个走法里随机选一个'],
+        distractors: a => [a,
+          '说明它找到了最优走法 —— 访问次数最多的那个就是最好的',
+          '说明这个走法的胜率最高 —— 模拟结果就是胜率的无偏估计',
+          '说明预算已经够了 —— 能收敛到一个答案就说明模拟次数足够',
+        ].filter(o => o !== a).slice(0, 3),
       },
       {
-        id: 'mcts_ucb', label: 'UCB 在选择步平衡什么',
-        ask: '每轮"选择"用的 UCB=胜率+c·√(ln N父/N子),这个公式在平衡哪两件事?',
-        kind: 'choice',
-        compute: t => ({ answer: '兼顾利用与探索:第一项(胜率)鼓励多用当前表现好的走法,第二项 c·√(ln N父/N子)鼓励探索访问次数少的;未访问的记为 ∞,优先各试一遍', step: t.length - 1, evidence: String(last(t).log ?? '') }),
-        distractors: () => ['只看胜率,谁高就一直选谁', '只看访问次数,谁被试得最少就选谁', '只看模拟走到底的步数,越短越好'],
+        /*  ⭐ 补厚的落点②：c=0 不是慢，是不收敛 */
+        id: 'mcts_c_zero', label: 'c 调成 0 会怎样', kind: 'choice', genre: 'concept',
+        ask: '把 UCB 里的探索常数 c 调成 0(只剩胜率那一项),再把模拟预算一路加大,会发生什么?',
+        compute: t => {
+          const cs = last(t).cSweep as { c: number; pRight: number; pMax: number }[]
+          const z = cs.find(x => x.c === 0)!
+          const other = cs.filter(x => x.c > 0).map(x => x.pMax)
+          return {
+            answer: '选对率停在半路就再也不涨 —— 它不是收敛得慢，是不收敛',
+            step: t.length - 1,
+            evidence: `实测：c=0 加到 320 轮也只有 ${(z.pMax * 100).toFixed(1)}%，而 c>0 的三档都在 ${(Math.min(...other) * 100).toFixed(1)}% 以上`,
+          }
+        },
+        distractors: a => [a,
+          '照样能收敛到最优，只是要多花几倍的模拟预算才追得上',
+          '会更快收敛 —— 省下探索的开销，全部押在当前最好的走法上',
+          '结果不变 —— 探索项只影响中间过程，最终按访问次数选的结果一样',
+        ].filter(o => o !== a).slice(0, 3),
+      },
+      {
+        id: 'mcts_ucb', label: 'UCB 在选择步平衡什么', kind: 'choice', genre: 'concept',
+        ask: '每轮"选择"用的 UCB = 实测胜率 + c·√(ln N父/n子),这个公式在平衡哪两件事?',
+        compute: t => ({
+          answer: '利用已经量到的胜率，和探索被试得太少的走法',
+          step: t.length - 1,
+          evidence: '第一项是已经量到的平均胜率；第二项随 n 变小而变大，未访问的记为 ∞，所以开局每个走法必被各试一遍',
+        }),
+        distractors: a => [a,
+          '只看胜率高低，谁的实测胜率最高就一直选谁',
+          '只看访问次数，谁被试得次数最少就优先选谁',
+          '模拟走到底的步数和结果，越快分出胜负越好',
+        ].filter(o => o !== a).slice(0, 3),
+      },
+      {
+        /*  ⭐ 「量不到就说量不到」也出成题 —— 它是这一屏教的方法论之一 */
+        id: 'mcts_visit_vs_rate', label: '这一屏量不出的那件事', kind: 'choice', genre: 'concept',
+        ask: 'MCTS 最后取"访问次数最多"而不是"胜率最高"。这一屏把两条规则都量了一遍,结果如何?',
+        compute: t => {
+          const rc = last(t).ruleCmp as { rule: string; pRight: number }[]
+          return {
+            answer: '几乎一样 —— 这个扁平的五选一上量不出差别，理由在树上',
+            step: t.length - 1,
+            evidence: `实测：访问最多 ${(rc[0].pRight * 100).toFixed(1)}% vs 胜率最高 ${(rc[1].pRight * 100).toFixed(1)}%。`
+              + '真实 MCTS 里取访问次数的理由是深层节点方差更大、还被对手挑剔过，而这一屏没有树',
+          }
+        },
+        distractors: a => [a,
+          '访问最多明显更好 —— 胜率被只试过一次的走法骗走了',
+          '胜率最高明显更好 —— 访问次数只反映探索顺序，不反映好坏',
+          '两条规则永远选出同一个走法 —— 访问最多的必然胜率也最高',
+        ].filter(o => o !== a).slice(0, 3),
       },
     ],
   },
-
   // ── RAG 检索增强生成 ────────────────────────────────────────────────
   {
     id: 'rag',

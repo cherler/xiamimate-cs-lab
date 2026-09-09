@@ -197,7 +197,7 @@ import { ragKernel, type RagState } from '@engine/kernels/rag.ts'
 import { RagStage } from './stages/RagStage.tsx'
 import { selfconsistKernel, type SelfConsistState } from '@engine/kernels/selfconsist.ts'
 import { SelfConsistStage } from './stages/SelfConsistStage.tsx'
-import { bestofnKernel, type BestOfNState } from '@engine/kernels/bestofn.ts'
+import { bestofnKernel, BON_JUDGES, BON_VARIETY, type BestOfNState } from '@engine/kernels/bestofn.ts'
 import { BestOfNStage } from './stages/BestOfNStage.tsx'
 import { totKernel, type ToTState } from '@engine/kernels/tot.ts'
 import { ToTStage } from './stages/ToTStage.tsx'
@@ -456,7 +456,7 @@ import { diffusionKernel, type DiffusionState } from '@engine/kernels/diffusion.
 import { DiffusionStage } from './stages/DiffusionStage.tsx'
 import { ganKernel, type GanState } from '@engine/kernels/gan.ts'
 import { GanStage } from './stages/GanStage.tsx'
-import { mctsKernel, type MctsState } from '@engine/kernels/mcts.ts'
+import { mctsKernel, MCTS_CS, MCTS_BUDGETS, type MctsState } from '@engine/kernels/mcts.ts'
 import { MctsStage } from './stages/MctsStage.tsx'
 import { backpropKernel, type BackpropState } from '@engine/kernels/backprop.ts'
 import { BackpropStage } from './stages/BackpropStage.tsx'
@@ -4909,34 +4909,57 @@ const bestofn: Experiment<BestOfNState> = {
   id: 'bestofn',
   group: '大模型算法',
   title: 'Best-of-N 拒绝采样',
-  subtitle: '采样越多、最高分越好——但边际递减',
+  subtitle: '采样越多分越高——但那是打分器给的分',
   kernel: bestofnKernel,
-  defaultDoc: { kind: 'bestofn', params: {}, entities: [], streams: [] },
-  params: [],
-  paramsNote: `**轴 = 采样候选数 N**（扫 1→32）。Best-of-N（拒绝采样）:多采 N 个、打分器给每个评分、**argmax 取最高**——用算力换质量。
+  defaultDoc: { kind: 'bestofn', params: { judge: BON_JUDGES[1], variety: BON_VARIETY[2] }, entities: [], streams: [] },
+  /*  2026-09-09 补厚：老版本只有一条线（最高分随 N 涨），演的是**边际递减**。
+      而它自己写着「还被**打分器上限**卡住」—— 那句话背后是 Best-of-N 真正的失败模式：
+      打分器只是**代理**，argmax 认的是代理分数、不是真实质量。两者一分家，
+      N 越大越一定会撞上那条"专门讨好打分器"的候选，**代理分一路涨、真实质量掉头往下**。 */
+  params: [
+    { key: 'judge', label: '打分器', kind: 'enum', options: [...BON_JUDGES] },
+    { key: 'variety', label: '采样多样性', kind: 'enum', options: [...BON_VARIETY] },
+  ],
+  paramsNote: `**轴 = 采样候选数 N**（扫 1→32）。Best-of-N（拒绝采样）:多采 N 个、打分器给每个评分、**argmax 取最高**——用算力换质量。任务是"用 3、8、5 拼算式凑近 24",**真实质量 = 10−|24−结果|**,分数都可手算。
 
-- **核心是边际递减**:取 N 个样本的最好一个 = 取分布的最大值,期望最大值随 N **越涨越慢**(近似 log N)。前几个就容易撞到"还行"的、best 快速抬升;再加候选只偶尔更好、几乎不动。
-- **代价**:N 翻倍算力翻倍,质量提升却越来越小,还被**打分器上限**卡住(满分 10 封顶)。
-- **打分器**:奖励模型(RLHF)或可算验证器(验算/跑单测)。和自洽的**多数投票**不同:这里靠外部打分器选**单个最好**,适合开放式生成(没有"多数答案"可投)。
+- **边际递减**（上一版就有的那一半）:取 N 个样本里的最好一个 = 取分布的最大值,期望最大值随 N **越涨越慢**（近似 log N）,而**算力是线性翻倍**。「完美验证器 + 多样性中」那一档:N=1→8 涨 7 分,N=8→32 只再涨 1 分。
 
-任务"用 3、8、5 拼算式凑近 24",奖励=10−|24−结果|;候选池与抽样序列钉死(好候选故意出现得晚),扫 N 看最高分怎么先快涨后压平。分数都可手算。`,
+- **补厚补的是另一半:argmax 认的是打分器给的分数,不是真实质量。** 屏幕上从此**两条线并排**——实线代理分数、虚线真实质量。
+  - 「**完美验证器**」:打分器真去算式子的值,代理分就是真实质量,两条线**重合**,N 越大只会越好。
+  - 「**有缺陷的奖励模型**」:它有个很具体的偏好——**式子越长越觉得像在认真推理**,于是给长度加分。候选池里有一条"先算 8−5=3，再 3×3=9…"——又长、又像在推理、**算出来是 12,离 24 差 12,真实质量 0**,但代理分拿到 **14**,压过了真正的最优解 3×8=24（真实质量 10、太短、代理分只有 12）。
+  - 于是「有缺陷 + 多样性高」那一档:代理分 6→6→9→**14**→14→14 一路只涨,而**真实质量 2→2→5→0→0→0,在 N=4 见顶、之后掉了 5 分**。**N=32 那 64 次调用买回来的是一个更差的答案。**
+  - 这就是 **Goodhart 定律**（一个指标一旦成为目标,就不再是个好指标）,在大模型这边叫 **reward hacking / 过优化**——RLHF 里那条著名的曲线（KL 越大、奖励模型分越高、人类偏好反而下降）说的是同一件事。
+
+- **还有一条常被忽略的前提:样本之间得真的不一样。** Best-of-N 取的是"N 个样本里的**最大值**"——「**多样性低**」那一档 32 次采样只抽出 **2** 个不同的候选,最大值从 N=4 起就再没动过,**N 加了等于没加、算力全白花**。真实系统里这靠温度/采样策略保证。
+
+- 和自洽的**多数投票**不同:这里靠外部打分器选**单个最好**,适合开放式生成（没有"多数答案"可投）,代价是**它只和打分器一样好**。`,
   bounds: [
-    '轴=采样候选数 N(1→32);每个 N 取钉死序列前 N 个候选、打分、argmax 取最高',
-    '奖励=10−|24−结果|:3×8=24 得 10(满分)、5×3+8=23 得 9、8×5=40 得 0',
-    'best 随 N:2→2→5→9→10→10 —— 先快涨(N≤8)后压平(N≥16),边际递减',
-    'argmax 取单个最好(≠自洽的多数投票);受打分器上限卡住',
+    '轴=采样候选数 N（1→32）;每个 N 取钉死抽样序列的前 N 个候选、打分、argmax 取最高',
+    '**真实质量**=10−|24−结果|:3×8=24 得 10（满分）、5×3+8=23 得 9、8×5=40 得 0',
+    '两个打分器档:完美验证器（分数==真实质量）/ 有缺陷的奖励模型（真实质量 + 长度加成,每 2 字符 +1、最多 +14）',
+    '长度加成的力度是**特意调过的**:要让"又长又错"那条（真实 0、代理 14）压得过最优解（真实 10、代理 12）——不然钻空子这件事根本不会发生,而它正是要演的东西',
+    '三档多样性用三条不同的抽样序列（低=只有 2 个不同候选 / 中=6 个 / 高=7 个,含那条钻空子的）',
+    '候选池只有 7 条、抽样序列钉死——**这是个玩具**:真实的奖励模型偏差远比"偏爱长句"复杂,真实的采样多样性也不是一张查找表',
+    '未做:真去训一个奖励模型、加权 Best-of-N（按分数软合成而非硬 argmax）、以及"用多个打分器投票来缓解过优化"这条常见对策',
   ],
   tabs: [{ id: 'pick', label: '采样+择优' }],
   Stage: BestOfNStage,
-  tone: s => ({ key: 'good', label: `N=${s.n} 取 ${s.bestReward}` }),
+  tone: s => (s.hacked
+    ? { key: 'bad', label: `代理 ${s.bestReward} / 真实 ${s.bestTrue}` }
+    : { key: 'good', label: `N=${s.n} 取 ${s.bestReward}` }),
   metric: s => (s.maxN ? s.n / s.maxN : 0),
   tickLabel: s => `N${s.n}`,
   whyInRail: true,
   readouts: s => [
     { label: '采样候选数 N', value: `${s.n}` },
-    { label: '最高分', value: `${s.bestReward} / 10`, tone: 'good' },
+    { label: '代理分数（argmax 认的）', value: `${s.bestReward}`, tone: 'good' },
+    /*  ⭐ 补厚的落点：代理分数旁边永远摆着真实质量 —— 两者一分家就出事了 */
+    { label: '真实质量（天花板 ' + s.ceiling + '）', value: `${s.bestTrue}`,
+      tone: s.hacked ? 'bad' : s.bestTrue >= s.ceiling ? 'good' : undefined },
     { label: '采纳', value: s.drawn[s.bestIdx]?.e ?? '—' },
-    { label: '比上一档', value: s.n === 1 ? '起点' : `+${s.gain}`, tone: s.gain > 0 ? 'good' : undefined },
+    { label: '不同候选 / 采了几个', value: `${s.distinct} / ${s.n}`,
+      tone: s.distinct <= 2 && s.n >= 4 ? 'bad' : undefined },
+    { label: '算力', value: `${s.n * 2} 次调用（N 次生成 + N 次打分）` },
   ],
 }
 
@@ -5244,33 +5267,66 @@ const mcts: Experiment<MctsState> = {
   id: 'mcts',
   group: '大模型算法',
   title: '蒙特卡洛树搜索 MCTS',
-  subtitle: '随机模拟 + UCB，把思考花在最有希望的走法上',
+  subtitle: '随机模拟 + UCB —— 但"大量"两个字不是修辞',
   kernel: mctsKernel,
-  defaultDoc: { kind: 'mcts', params: {}, entities: [], streams: [] },
-  params: [],
-  paramsNote: `**MCTS:维护一棵树,用随机模拟 + 统计逼近最优走法**——围棋每步几百种选择、走到底天文数字,穷举和 minimax 算不动;每节点记访问次数 N 和胜率。
+  defaultDoc: { kind: 'mcts', params: { c: 1.4, budget: 20 }, entities: [], streams: [] },
+  /*  2026-09-09 补厚：老版本的"模拟"是一张写死的脚本表 `{A:[1,1,1,1], B:[0], C:[0]}` ——
+      A 每次都赢、跑 6 轮、A 必胜。而它正文写着「靠**大量随机对局的统计**说话」
+      「UCB **兼顾探索与利用**」：既没有随机、也没有"大量"，c 更是写死 1.4 从没动过。
+      **统计要收敛，先得有东西可收敛。** */
+  params: [
+    { key: 'c', label: '探索常数 c', kind: 'number', options: [...MCTS_CS] },
+    { key: 'budget', label: '模拟预算', kind: 'number', options: [...MCTS_BUDGETS] },
+  ],
+  paramsNote: `**MCTS:维护一棵树,用随机模拟 + 统计逼近最优走法**——围棋每步几百种选择、走到底天文数字,穷举和 minimax 算不动;每节点记访问次数 n 和胜率。**每轮四步**:选择(按 **UCB = 胜率 + c·√(ln N父/n子)** 挑分支)→ 扩展 → 模拟(随机走到底得输赢)→ 回传(更新沿途节点)。
 
-- **每轮四步**:选择(从根按 UCB=胜率+c·√(ln N父/N子) 挑分支,胜率高的多利用、试得少的多探索)→ 扩展(加新节点)→ 模拟(从这随机走到底得输赢)→ 回传(把结果更新回沿途节点)。反复几千上万轮,好走法被反复模拟、访问数飙升,最后选访问最多的;不需要评估函数,靠大量随机对局的统计说话。
-- **本实验**:根有 3 走法 A/B/C(A 好 B/C 差),看 UCB 先把三个都试一遍(未访问=∞)再集中到 A,6 轮后 A 访问 4 次全赢→选 A。每步 UCB 可手算。
+- **模拟是真随机的**:5 个走法各有一个**真实胜率**(A=0.75、B=0.60、C=0.40、D=0.30、E=0.25),每次 rollout 就是照这个概率抛一次硬币(种子化可复现)。**这几个数算法看不到**,只有屏幕上看得到——所以「选对了吗」有独立答案,不用问算法自己。
 
-MCTS 是 AlphaGo/AlphaZero 引擎,和思维树 ToT 一脉相承。`,
+- **A 和 B 只差 0.15,这是量过才定的**:差太小时几百轮也分不出来、曲线爬不起来;差太大又随便几轮就分得出。而**"预算不够会选错"正是 MCTS 最要紧的一课**。
+
+- **补厚的落点①:单场模拟就是抛一次硬币,它什么都不说明。** 屏幕上那一次的输赢是运气,真正的答案是把整场搜索**重跑 500 次**量出来的**选对率**。默认档(c=1.4、20 轮)只有 **55.0%**,要到 **320 轮才 99.0%**。**"靠大量随机对局的统计说话"里,"大量"两个字不是修辞。**
+
+- **补厚的落点②:c 决定它到底收不收敛。** UCB 的两项在屏幕上**分开摆着**(利用 + 探索)。
+  - **c=0**(纯利用):探索项恒为 0,开局各试一次之后谁碰巧赢就一直押谁,其余的再没机会翻案 —— 加到 320 轮也只有 **64.4%**。**它不是收敛得慢,是压根不收敛。**
+  - **c=4**(探索过头):探索项压过了胜率差,5 个走法几乎平分预算,20 轮时只有 **50.0%**、320 轮 96.8%。
+  - **c=0.7 / 1.4**:320 轮到 **99.6% / 99.0%**。**"兼顾探索与利用"不是口号,是一个要调的数。**
+  - ⚠️ **别拿小预算那一列去排 c 的高下——它排错了**:20 轮时垫底的是 c=4(50.0%),而真正有毛病的 c=0 在那一列有 **55.6%、看着还行**(比 c=1.4 的 55.0% 还高一点)。**小预算下大家都还没来得及收敛,看不出谁根本收敛不了。**
+
+- ⚠️ **有一件事这一屏量不到**:MCTS 最后取"访问最多"而不是"胜率最高",理由通常说成"胜率会被只试过一两次、碰巧全赢的走法骗走"。但在这个**扁平的五选一**上实测两者几乎一样(55.0% vs 59.0%)。真实 MCTS 里的理由在**树**上(深层节点方差更大、还被对手挑剔过),而这一屏没有树。**量不到就说量不到。**
+
+MCTS 是 AlphaGo/AlphaZero 引擎(配神经网络给先验和价值),和思维树 ToT 一脉相承。`,
   bounds: [
-    '根 3 个候选走法 A/B/C(A 好、B/C 差)',
-    'UCB=胜率+c·√(ln N父/N子);未访问=∞ 先探索(可核)',
-    '选择→模拟→回传;6 轮后 A 访问 4 次→选 A',
-    '兼顾探索/利用;AlphaGo 引擎,接思维树 ToT',
+    '根 5 个候选走法,真实胜率 0.75 / 0.60 / 0.40 / 0.30 / 0.25(算法看不到,是判"选对没"的独立真值)',
+    'rollout = 照真实胜率抛一次硬币(mulberry32 种子化,可复现);**不是**写死的输赢脚本',
+    'UCB = 实测胜率 + c·√(ln N父 / n子);没试过的一律 ∞ 先试;**平局随机拆**',
+    '⚠️ 平局那条是栽过才补的:第一版用 indexOf(max) 永远偏向 0 号(正好是最优走法),量出"4 轮就选对 76.5%、16 轮反而掉到 66%"——那是拆法在冒充结果',
+    '选对率 = 把整场搜索换种子重跑 500 次数出来的(±2 个点噪声);预算扫描 10→320 轮',
+    '走法之间**互相独立**(扁平的多臂老虎机),没有真的树、没有对手、没有扩展深层节点',
+    '未做:多层树 + 反向传播到祖先、对手视角(minimax 取负)、RAVE/AMAF、神经网络先验(PUCT,AlphaZero 用的那个)',
   ],
   tabs: [{ id: 'tree', label: '模拟+UCB' }],
   Stage: MctsStage,
-  tone: s => (s.phase === 'done' ? { key: 'good', label: `选 ${s.moves[s.best]}` } : s.win === 1 ? { key: 'good', label: '模拟赢' } : s.win === 0 ? { key: 'bad', label: '模拟输' } : { key: 'idle', label: 'UCB 选' }),
-  metric: s => (s.phase === 'done' ? 1 : s.iter / 6),
-  tickLabel: s => (s.phase === 'done' ? '选' : s.iter === 0 ? '始' : s.pick >= 0 ? s.moves[s.pick] : `${s.iter}`),
+  tone: s => (s.phase === 'done'
+    ? (s.right ? { key: 'good', label: `选对 ${s.moves[s.final]}` } : { key: 'bad', label: `选错 ${s.moves[s.final]}` })
+    : s.win === 1 ? { key: 'good', label: '模拟赢' } : s.win === 0 ? { key: 'bad', label: '模拟输' } : { key: 'idle', label: 'UCB 选' }),
+  metric: s => (s.phase === 'done' ? 1 : Math.min(0.95, s.iter / Math.max(1, s.budget))),
+  tickLabel: s => (s.phase === 'done' ? '选' : s.iter === 0 ? '始' : s.chosen >= 0 ? s.moves[s.chosen] : `${s.iter}`),
   whyInRail: true,
   readouts: s => [
-    { label: '模拟轮', value: s.phase === 'done' ? '结束' : s.iter === 0 ? '起步' : `第 ${s.iter} 轮` },
-    { label: '本轮选中', value: s.pick >= 0 && !s.phase.includes('done') ? `${s.moves[s.pick]}(UCB ${s.ucb[s.pick] === null ? '∞' : s.ucb[s.pick]})` : '—' },
+    { label: '模拟轮', value: s.phase === 'done' ? `结束（共 ${s.budget} 轮）` : s.iter === 0 ? '起步' : `第 ${s.iter}/${s.budget} 轮` },
+    { label: '本轮选中', value: s.chosen >= 0 && s.phase !== 'done'
+      ? `${s.moves[s.chosen]}（利用 ${s.picks[s.chosen]?.ucb === null ? '—' : s.picks[s.chosen].exploit} + 探索 ${s.picks[s.chosen]?.ucb === null ? '∞' : s.picks[s.chosen].explore}）`
+      : '—' },
     { label: '访问次数', value: s.moves.map((m, k) => `${m}=${s.n[k]}`).join(' ') },
-    { label: '结果', value: s.phase === 'done' ? `选 ${s.moves[s.best]}` : '搜索中', tone: s.phase === 'done' ? 'good' : undefined },
+    /*  ⭐ 「选对了吗」问的是我们设的真实胜率，不是算法自己的输出 */
+    { label: `选中的对不对（真实最优 ${s.moves[s.best]}）`,
+      value: s.phase === 'done' ? `选 ${s.moves[s.final]} —— ${s.right ? '对 ✓' : '错 ✗'}` : '搜索中',
+      tone: s.phase === 'done' ? (s.right ? 'good' : 'bad') : undefined },
+    /*  ⭐ 单看这一次是运气；这个才是"多花算力有多大用"的答案 */
+    { label: '这个配置选对的概率', value: `${(s.pRight * 100).toFixed(1)}%（重跑 500 次）`,
+      tone: s.pRight >= 0.9 ? 'good' : s.pRight < 0.6 ? 'bad' : undefined },
+    { label: '加到 320 轮能到多少', value: `${(s.sweep[s.sweep.length - 1].pRight * 100).toFixed(1)}%`,
+      tone: s.sweep[s.sweep.length - 1].pRight >= 0.95 ? 'good' : 'bad' },
   ],
 }
 
