@@ -450,7 +450,7 @@ import { pagerankKernel, type PageRankState } from '@engine/kernels/pagerank.ts'
 import { PageRankStage } from './stages/PageRankStage.tsx'
 import { qlearnKernel, type QLearnState } from '@engine/kernels/qlearn.ts'
 import { QLearnStage } from './stages/QLearnStage.tsx'
-import { recsysKernel, type RecSysState } from '@engine/kernels/recsys.ts'
+import { recsysKernel, RS_SCENES, RS_DIMS, RS_LAMBDAS, type RecSysState } from '@engine/kernels/recsys.ts'
 import { RecSysStage } from './stages/RecSysStage.tsx'
 import { diffusionKernel, type DiffusionState } from '@engine/kernels/diffusion.ts'
 import { DiffusionStage } from './stages/DiffusionStage.tsx'
@@ -5010,31 +5010,51 @@ const recsys: Experiment<RecSysState> = {
   title: '推荐系统 · 矩阵分解',
   subtitle: '评分 = 用户隐向量 · 电影隐向量，内积补全"猜你喜欢"',
   kernel: recsysKernel,
-  defaultDoc: { kind: 'recsys', params: {}, entities: [], streams: [] },
-  params: [],
+  defaultDoc: { kind: 'recsys', params: { scene: '有冷启动用户（一条评分都没有）', dim: 2, lambda: 0.05 }, entities: [], streams: [] },
+  /*  2026-09-09 补厚：老版本**隐向量是手写在代码里的**（小明=(1,0)、复仇者=(5,0)），
+      然后一路算内积 —— 矩阵分解的全部内容就是"这些向量是学出来的"，而学习整个没发生。
+      而且那套"第一维=爱动作、第二维=爱文艺"的标注本身是**误导**的。 */
+  params: [
+    { key: 'scene', label: '场景', kind: 'enum', options: [...RS_SCENES] },
+    { key: 'dim', label: '隐维度 k', kind: 'number', options: [...RS_DIMS] },
+    { key: 'lambda', label: '正则 λ', kind: 'number', options: [...RS_LAMBDAS] },
+  ],
   paramsNote: `**协同过滤·矩阵分解:给用户和物品各学一个隐向量,评分 ≈ 两者内积**——推荐系统核心问题是评分矩阵大半是空的,怎么猜用户没看过的会打几分。
 
-- **机制**:每个用户、每个电影各学一个隐向量(压进低维隐空间),已知评分把隐向量学出来(内积对上真实分),空缺处再用内积一算就是预测评分;口味和属性对得上(内积大)=推荐。
-- **本实验**:3 用户×3 电影,隐向量用两条可解释轴(爱动作/爱文艺 × 动作度/文艺度)——小明(1,0)·盗梦(4,3)=4 分预测;小明×小森林(纯文艺)=0 不推荐。每个内积可手算。
+- **机制**:每个用户、每部电影各学一个隐向量,已知评分把隐向量**学**出来(内积对上真实分),空缺处再用内积一算就是预测评分。这一屏走的是 **ALS(交替最小二乘)**:每轮先把每个用户的向量按"让它的已知评分误差最小"重解一遍(电影向量当已知),再反过来重解每部电影的向量。**轴上走的就是训练轮次。**
+- **表上三种格子**:绿=**训练格**(模型只看这些)、蓝框=**留出格**(一格都不看,最后拿它算分)、虚线=真没打过分。每格印"预测/真值",红底=差了 0.8 分以上。旁边还站着一条基线:**什么都不学、一律猜基准分 3.2**——模型至少得赢过它,否则这一档白学。
 
-Netflix/淘宝/抖音猜你喜欢的经典底子,和词向量同属把对象嵌进隐空间的表示学习。`,
+- **补厚补的是三个会垮的地方**:
+  - **冷启动(默认档)**:「新来的」一条训练评分都没有,他的隐向量**没有任何约束**,正则把它压成 0,于是给他的预测全是基准分。他那几格上的 RMSE 是 **0.96**,而全表只有 0.68。**加维度、加轮次、调正则都救不了** —— 没有数据就是没有数据。真实系统只能走别的路:问一句"你喜欢什么类型"、拿注册信息做先验、或先推热门换第一批反馈。
+  - **λ=0**:留出 RMSE **一律更差**，最惨的一档 k=2 是训练 0.15、留出 **11.1**，预测值飞到 **−48 ~ 28**（评分只有 1~5 分）。注意这里**不是**教科书那种"更贴合训练集但不泛化"—— k=2 时 λ=0 连训练误差都更大（0.154 vs 0.138），**两头都更差**:方程组接近奇异，ALS 在两侧之间来回甩。隐向量长度没有任何约束时，ALS 可以把它拉到任意大，训练格上正负相消看不出来，一到没见过的格子就原形毕露。**正则不是锦上添花，是这个模型能不能用的前提。**
+  - **k 和 λ 得一起挑**:屏幕上是一张 **k × λ 的网格**(每格重训一次、只算留出 RMSE)。只固定 λ 扫 k 会挑出跟真秩对不上的答案 —— 这份数据的真模型是**秩 2** 的，而网格挑出来的是 k=5、λ=0.05。这不奇怪:数据只有几十格还带噪声，更大的 k 配足够的正则同样稳。**而真实场景里你根本不知道真秩是多少。**
+- ⭐ **最容易被讲错的一件事**:把 P 乘一个随机可逆矩阵、Q 乘它的逆，隐向量整个面目全非，而**所有预测逐格变化是 0**。所以"第一维是爱动作、第二维是爱文艺"这种话**讲不得** —— 隐向量本身不是定下来的东西，只有内积(也就是预测)才是模型。老版本正是这么标的。`,
   bounds: [
-    '3 用户 × 3 电影,评分表大半空缺',
-    '评分=用户隐向量·电影隐向量(内积,可核)',
-    '小明(1,0)·盗梦(4,3)=4;小明×小森林=0 不推',
-    '真实隐向量几十上百维、从海量评分自动学',
+    '15 用户 × 12 电影;真模型 = 基准分 3.2 + 一个**秩 2** 的项 + 噪声(σ=0.14),评分裁到 1~5',
+    '学的是**减掉基准分之后的残差**;直接学原始评分的话隐向量会被"表示 3.2 这个底"占满',
+    'ALS 12 轮,每轮两侧各解一次带岭的最小二乘;初始化必须**零均值**(同号初始化会让 k=2 卡在坏的局部解)',
+    '留出格建树时一格不看;基线=一律猜基准分,模型必须赢过它',
+    'k × λ 网格各自重训一次,共 12 次;"最佳 k"从全网格读,不从单行读',
+    '未做:隐式反馈(点击/时长)、时间衰减、物品/用户偏置项、负采样、评估用 NDCG/召回而非 RMSE',
   ],
   tabs: [{ id: 'matrix', label: '分解+预测' }],
   Stage: RecSysStage,
-  tone: s => (s.phase === 'done' ? { key: 'good', label: '补全' } : s.stage === 'predict' ? { key: 'good', label: `预测 ${s.rating[s.pr]?.[s.pc]}` } : { key: 'idle', label: s.stage === 'userv' ? '用户向量' : s.stage === 'moviev' ? '电影向量' : '评分表' }),
-  metric: s => { const order: Record<string, number> = { matrix: 0.2, userv: 0.4, moviev: 0.6, predict: 0.8, done: 1 }; return order[s.stage] ?? 0 },
-  tickLabel: s => (s.phase === 'done' ? '毕' : s.stage === 'predict' ? '测' : s.stage === 'userv' ? 'U' : s.stage === 'moviev' ? 'V' : '表'),
+  tone: s => (s.phase === 'done'
+    ? (s.testRmse < s.baseRmse ? { key: 'good', label: `留出 ${s.testRmse}` } : { key: 'bad', label: `没赢过基线` })
+    : s.round > 0 ? { key: 'idle', label: `第 ${s.round} 轮` } : { key: 'idle', label: '评分表' }),
+  metric: s => (s.round > 0 ? Math.min(1, s.round / 12) : 0),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.round > 0 ? `${s.round}` : '表'),
   whyInRail: true,
   readouts: s => [
-    { label: '本步', value: s.stage === 'userv' ? '用户隐向量' : s.stage === 'moviev' ? '电影隐向量' : s.stage === 'predict' ? '内积预测' : s.phase === 'done' ? '补全推荐' : '评分表' },
-    { label: '隐空间', value: '2 维(动作/文艺)' },
-    { label: '预测评分', value: s.stage === 'predict' || s.phase === 'done' ? `${s.rating[s.pr]?.[s.pc]}` : '?', tone: s.phase === 'done' ? 'good' : undefined },
-    { label: '已填', value: `${s.rating.flat().filter(x => x !== null).length}/9` },
+    { label: 'ALS 轮次', value: `${s.round}` },
+    { label: '隐空间', value: `${s.dim} 维 · λ=${s.lambda}` },
+    { label: '训练 RMSE', value: s.round > 0 ? `${s.trainRmse}（${s.nTrain} 格）` : '—' },
+    /*  ⭐ 训练 RMSE 单独看没有意义。留出旁边还得站着"什么都不学"的基线，
+        否则一个 0.9 的留出 RMSE 看不出是好是坏。 */
+    { label: '留出 RMSE', value: s.round > 0 ? `${s.testRmse}（${s.nTest} 格）` : '—',
+      tone: s.round > 0 ? (s.testRmse < s.baseRmse ? 'good' : 'bad') : undefined },
+    { label: '基线：一律猜 3.2', value: `${s.baseRmse}` },
+    { label: '预测量程', value: `${s.predMin} ~ ${s.predMax}`, tone: s.predMax > 5.5 || s.predMin < 0.5 ? 'bad' : undefined },
   ],
 }
 

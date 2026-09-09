@@ -4275,12 +4275,29 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .rsuh { text-align:right; padding-right:10px; }
 .rsname { display:block; font-size:12.5px; font-weight:600; color:var(--ink); }
 .rsvec { display:block; font-size:10px; color:var(--now); font-family:var(--mono); }
-.rscell { width:64px; height:40px; font-size:16px; font-weight:700; border-radius:6px; border:1px solid var(--line);
-  background:var(--panel); color:var(--faint); font-variant-numeric:tabular-nums; }
-.rscell.known { background:color-mix(in srgb,var(--hit) 12%,var(--panel)); border-color:color-mix(in srgb,var(--hit) 35%,var(--line)); color:var(--hit); }
-.rscell.pred { background:color-mix(in srgb,var(--now) 12%,var(--panel)); border-color:color-mix(in srgb,var(--now) 35%,var(--line)); color:var(--now); }
-.rscell.empty { color:var(--faint); }
-.rscell.cur { box-shadow:0 0 0 2px var(--now); }
+/*  2026-09-09 补厚：表从 3×3 涨到 15×12，每格要装"预测 / 真值"两行，
+    还要分出**训练格 / 留出格 / 真没打分**三种身份 —— 留出格是这一屏全部说服力所在。 */
+.rstable { border-spacing:2px; }
+.rscorner { width:56px; }
+.rsmh { max-width:44px; }
+.rsmh .rsname { font-size:10px; font-weight:500; line-height:1.15; color:var(--dim); }
+.rsuh .rsname { font-size:11px; }
+.rscoldtag { display:block; font-style:normal; font-size:9px; color:var(--miss); font-weight:700; }
+.rstable td { width:40px; height:30px; border-radius:4px; border:1px solid var(--line);
+  background:var(--panel); font-variant-numeric:tabular-nums; padding:1px; }
+.rspred { display:block; font-size:11px; font-weight:700; line-height:1.1; }
+.rstrue { display:block; font-size:9px; line-height:1.1; color:var(--faint); }
+.rsq { color:var(--faint); font-size:11px; }
+td.rs-train { background:color-mix(in srgb,var(--hit) 12%,var(--panel)); border-color:color-mix(in srgb,var(--hit) 35%,var(--line)); }
+td.rs-train .rspred { color:var(--hit); }
+td.rs-test { background:color-mix(in srgb,var(--f-tag) 10%,var(--panel)); border-color:var(--f-tag); border-width:1.5px; }
+td.rs-test .rspred { color:var(--f-tag); }
+td.rs-none { background:var(--panel); border-style:dashed; }
+td.rsbad { background:color-mix(in srgb,var(--miss) 22%,var(--panel)); }
+td.rsbad .rspred { color:var(--miss); }
+tr.rscold td { box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--miss) 40%,transparent); }
+.rslg { display:inline-block; width:10px; height:10px; border-radius:2px; border:1px solid var(--line);
+  vertical-align:-1px; margin-right:2px; }
 
 /* 扩散模型 Diffusion */
 .dfwrap { display:flex; flex-direction:column; align-items:center; gap:10px; margin:14px 0; }

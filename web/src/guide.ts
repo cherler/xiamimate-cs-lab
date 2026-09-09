@@ -6336,31 +6336,54 @@ export const GUIDES: Record<string, Guide> = {
       hook: '网站怎么知道我可能喜欢什么？',
       what: '这一屏讲的是**推荐系统**里最经典的思路：**协同过滤**。它的巧妙之处在于**完全不需要理解内容是什么** —— 不用知道这部电影讲什么、这本书是什么类型，只看「谁和谁一起被喜欢」这张表。两条对称的路子：**基于用户** —— 跟你口味相近的那批人喜欢的，你多半也喜欢；**基于物品** —— 跟你喜欢的东西经常被同一批人喜欢的，你多半也喜欢。亚马逊的「买了这个的人还买了」就是后者。',
       terms: '**评分矩阵**：行是用户、列是物品、格子是评分。**它极其稀疏** —— 一个用户看过的电影占全部电影的比例往往不到千分之一。推荐的本质就是**把这张表里空着的格子填上**。\u3000**相似度**：衡量两个用户（或两个物品）有多像。常用余弦相似度或皮尔逊相关系数，**只在两者都评过分的物品上计算**。\u3000**基于用户 vs 基于物品**：用户的口味会变、用户数往往远多于物品数，**所以工业界更常用基于物品** —— 物品之间的相似度更稳定，可以离线算好。\u3000**冷启动**：**推荐系统最难的问题**。新用户没有历史、新物品没人评过，相似度无从算起。只能先靠内容特征、人口统计或者热门榜顶一阵子。\u3000**矩阵分解**：把大而稀疏的评分矩阵分解成两个瘦长的矩阵（用户隐向量 × 物品隐向量），**这就是「用户画像」和「物品向量」的数学来源**。\u3000**流行度偏差**：热门物品被推荐得更多、于是更热门，形成马太效应。这也是「信息茧房」争论的技术根源。',
-      watch: '看相似度是怎么从共同评分算出来的，以及预测分怎么由邻居的评分加权得出。共同评分越少，这个估计越不可靠。',
+      watch: '默认档里「新来的」那一行**一条训练评分都没有** —— 看他的隐向量被正则压成 0、预测全变成基准分，他那几格的 RMSE 是 0.96 而全表只有 0.68。**这就是冷启动，加维度、加轮次、调正则都救不了。** 再把 λ 调到 0 看另一种垮法：训练 RMSE 掉到 0，而预测值直接飞出 1~5 分的量程。',
     },
+    /*  ⚠️ 2026-09-09 补厚：隐向量改成 ALS 真学出来的，字段全换了
+        （stage/rating/pr/pc → round/trainRmse/testRmse/…）。老快照走 `?? ` 那一支。 */
     step: (s: never) => {
-      const st = s as { phase: string; stage: string; users: { n: string; v: number[] }[]; movies: { n: string; v: number[] }[]; rating: (number | null)[][]; pr: number; pc: number }
+      const st = s as { phase: string; round?: number; trainRmse?: number; testRmse?: number
+                        baseRmse?: number; nTrain?: number; nTest?: number; dim?: number; lambda?: number
+                        coldUser?: number; coldNorm?: number; coldRmse?: number; users?: string[]
+                        rotGap?: number; rotPGap?: number; predMin?: number; predMax?: number
+                        bestK?: number; bestLam?: number; curve?: { round: number; train: number; test: number }[] }
+      if (st.round === undefined) return [
+        { k: '本步输入', v: '评分表，大半空缺' },
+        { k: '判定规则', v: '矩阵分解：给每个用户、每部电影各学一个**隐向量**，让 **评分 ≈ 内积**。' },
+        { k: '本步结果', v: '（这是补厚前的快照）' },
+      ]
+      const prev = st.curve && st.round > 1 ? st.curve[st.round - 2] : null
       return [
-        { k: '本步输入', v: st.stage === 'matrix' || st.stage === '' ? '评分表,大半空缺' : st.stage === 'userv' ? '每个用户的口味' : st.stage === 'moviev' ? '每个电影的属性' : `${st.users[st.pr]?.n} 没看过 ${st.movies[st.pc]?.n}` },
-        { k: '判定规则', v: `矩阵分解:给每个用户、每个电影各学一个**隐向量**(压进低维隐空间),让 **评分 ≈ 用户隐向量·电影隐向量**(内积)。已知评分学隐向量,空缺处用内积**预测**。口味和属性对得上=内积大=推荐。` },
-        { k: '本步结果', v: st.stage === 'userv' ? '小明=(1,0)只爱动作、小红=(0,1)只爱文艺。'
-            : st.stage === 'moviev' ? '盗梦=(4,3)动作+烧脑;已知评分都=内积,对得上。'
-            : st.stage === 'predict' ? `${st.users[st.pr]?.n}·${st.movies[st.pc]?.n}=(${st.users[st.pr]?.v})·(${st.movies[st.pc]?.v})=**${st.rating[st.pr][st.pc]}** 分。`
-            : st.phase === 'done' ? `补全:给小明推盗梦(4)、不推小森林(0,纯文艺不对味)。`
-            : '待分解。' },
+        { k: '本步输入', v: st.round === 0 ? `${st.nTrain} 格训练评分（模型只看这些）+ ${st.nTest} 格留出评分（一格都不看）`
+          : `第 ${st.round} 轮：当前的 ${st.dim} 维隐向量` },
+        { k: '判定规则', v: `**ALS**：先把每个用户的向量按"让它的已知评分误差最小"重解一遍（电影向量当已知），` +
+          `再反过来重解每部电影的向量。带 λ=${st.lambda} 的岭 —— **隐向量的长度必须被约束住**，否则它可以拉到任意大。` },
+        { k: '本步结果', v: st.round === 0 ? `还没开始学。基线（一律猜基准分）的留出 RMSE 是 ${st.baseRmse}，**模型至少得赢过它**。`
+          : `训练 RMSE ${prev ? `${prev.train} → ` : ''}**${st.trainRmse}**，留出 ${prev ? `${prev.test} → ` : ''}**${st.testRmse}**（基线 ${st.baseRmse}）。` },
+        ...(st.phase === 'done'
+          ? [{ k: '这说明什么', v: (st.coldUser ?? -1) >= 0
+            ? `**冷启动**：「${st.users?.[st.coldUser!]}」一条训练评分都没有，隐向量被压到范数 ${st.coldNorm}，预测全是基准分 —— 他那几格 RMSE ${st.coldRmse}，全表 ${st.testRmse}。**没有数据就是没有数据。**`
+            : (st.predMax ?? 0) > 5.5
+              ? `**预测飞出量程**（${st.predMin} ~ ${st.predMax}，而评分只有 1~5 分）：λ=${st.lambda} 时隐向量长度没有约束，训练格上正负相消看不出来，一到没见过的格子就原形毕露。`
+              : `隐向量**乘一个随机可逆矩阵**、另一边乘它的逆：向量变了 ${st.rotPGap}，而所有预测逐格变化只有 ${st.rotGap}。**"第一维是爱动作"这种话讲不得** —— 只有内积才是模型。` }]
+          : []),
       ]
     },
     verdict: (s: never) => {
-      const st = s as { phase: string; stage: string; rating: (number | null)[][]; pr: number; pc: number }
-      return st.phase === 'done' ? '补全' : st.stage === 'predict' ? `预测 ${st.rating[st.pr]?.[st.pc]}` : st.stage === 'userv' ? '用户向量' : st.stage === 'moviev' ? '电影向量' : '评分表'
+      const st = s as { phase: string; round?: number; testRmse?: number; baseRmse?: number }
+      if (st.round === undefined) return st.phase === 'done' ? '补全' : '评分表'
+      if (st.phase !== 'done') return st.round > 0 ? `第${st.round}轮` : '评分表'
+      return (st.testRmse ?? 9) < (st.baseRmse ?? 0) ? `留出 ${st.testRmse}` : '没赢过基线'
     },
     read: [
-      { at: '读数', is: '预测评分、隐空间维度、已填格数。', anchor: '.scdim' },
-      { at: '评分表', is: '绿=已知评分、? =空缺;行/列标着用户/电影的隐向量;评分=两向量内积。', anchor: '.rstable' },
+      { at: '读数', is: 'ALS 轮次、隐空间大小、训练 RMSE、**留出 RMSE**、"一律猜基准分"的基线，以及**预测量程**（评分只有 1~5 分，飞出去多少比 RMSE 更直观）。', anchor: '.scdim' },
+      { at: '评分表', is: '绿=训练格（模型只看这些）、**蓝框=留出格**（一格都不看）、虚线=真没打过分。每格上面是预测、下面是真值，红底=差了 0.8 分以上。', anchor: '.rstable' },
+      { at: 'k×λ 网格', is: '每格重训一次、只算留出 RMSE。**只调一个旋钮会挑错** —— k 和 λ 得一起挑。', anchor: '.qsscale' },
     ],
     try: [
-      { act: '按「下一步」分解', watch: '露出用户口味向量、电影属性向量;已知评分=它们的内积。' },
-      { act: '看预测空缺', watch: '小明·盗梦=(1,0)·(4,3)=4 分;口味和属性合拍就推荐。' },
+      { act: '默认档走完，看「新来的」那一行', watch: '他一条训练评分都没有，隐向量被压成 0、预测全是基准分。RMSE 0.96 vs 全表 0.68 —— **冷启动救不了**。' },
+      { act: '把「正则 λ」调到 0', watch: '训练 RMSE 掉到 0，而留出冲到 8 以上、预测值飞出 1~5 分的量程。**正则不是锦上添花，是前提。**' },
+      { act: '把「隐维度 k」在 1 / 2 / 5 / 10 之间换', watch: '看底下那张 k×λ 网格：真模型是秩 2 的，而全场最低在 k=5、λ=0.05 —— 两个旋钮是一对。' },
+      { act: '换成「非常稀疏」', watch: '训练格只剩 40 个，模型只比"一律猜基准分"好一点点 —— 数据量本身就是天花板。' },
     ],
     terms: [],
   },

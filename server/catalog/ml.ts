@@ -355,28 +355,63 @@ export const ML_ENTRIES: CatalogEntry[] = [
   // ── 推荐系统·矩阵分解：评分=用户隐向量·物品隐向量 ──
   {
     id: 'recsys', title: '推荐系统 · 矩阵分解', kernel: recsysKernel as Kernel<unknown>,
-    doc: trivialDoc('recsys'),
+    /*  2026-09-09 补厚：隐向量改成 ALS 真学出来的，老那三条 fact 全靠手写的
+        `(1,0)·(4,3)=4` 这套写死的向量，新 trace 里连 `rating` 字段都没有了。 */
+    doc: { kind: 'recsys', params: { scene: '有冷启动用户（一条评分都没有）', dim: 2, lambda: 0.05 }, entities: [], streams: [] },
     facts: [
       {
-        id: 'predict', label: '预测小明对盗梦空间的评分',
-        ask: '小明隐向量 (1,0)、盗梦空间隐向量 (4,3)，矩阵分解用内积预测小明会给盗梦空间打几分？',
-        kind: 'number',
-        compute: t => { const f = last(t); const rating = f.rating as (number | null)[][]; return { answer: String(rating[0][2]), step: t.length - 1, evidence: String(f.log ?? '') } },
+        id: 'cold_rmse', label: '冷启动用户那几格的 RMSE', kind: 'number', genre: 'count',
+        ask: '评分表里有一位用户**一条训练评分都没有**。训完之后，模型在他那几格留出评分上的 RMSE 是多少？',
+        compute: t => {
+          const f = last(t)
+          return { answer: String(f.coldRmse), step: t.length - 1,
+            evidence: `他的隐向量范数 ${f.coldNorm}（被正则压成 0），全表留出 RMSE ${f.testRmse}` }
+        },
         distractors: numDistractors,
       },
       {
-        id: 'nomatch', label: '小明对小森林的预测评分',
-        ask: '小明 (1,0) 只爱动作、小森林隐向量 (0,5) 纯文艺，内积预测小明给小森林打几分？',
-        kind: 'number',
-        compute: t => { const f = last(t); const rating = f.rating as (number | null)[][]; return { answer: String(rating[0][1]), step: t.length - 1, evidence: String(f.log ?? '') } },
-        distractors: numDistractors,
+        id: 'cold_why', label: '冷启动为什么加维度也救不了', kind: 'choice', genre: 'concept',
+        ask: '一个新用户一条评分都没打过。把隐维度 k 调大、多训几轮、把正则调小，能不能让模型给他推得准一点？',
+        compute: t => {
+          const f = last(t)
+          return {
+            answer: '都不行 —— 他的隐向量在训练目标里根本没有出现过，怎么调都是在解一个没有约束的方程',
+            step: t.length - 1,
+            evidence: `实测：他的隐向量范数是 ${f.coldNorm}，那几格上的 RMSE ${f.coldRmse}，而全表是 ${f.testRmse}`,
+          }
+        },
+        distractors: a => [a,
+          '把 k 调大能行 —— 维度多了就能从别的用户那里借到足够的信息来定位他',
+          '多训几轮能行 —— ALS 每轮都会把误差往下压，轮次够多他的向量就收敛了',
+          '把正则调小能行 —— 正则是把他的向量压成 0 的元凶，去掉它向量就学得出来',
+        ].filter(o => o !== a).slice(0, 3),
       },
       {
-        id: 'how_fill', label: '矩阵分解怎么补全空缺',
+        id: 'rotation', label: '隐向量的维度没有含义', kind: 'choice', genre: 'concept',
+        ask: '常有人说矩阵分解学出来的"第一维代表爱动作、第二维代表爱文艺"。这个说法对吗？',
+        compute: t => {
+          const f = last(t)
+          return {
+            answer: '不对 —— 把用户矩阵乘一个可逆矩阵、物品矩阵乘它的逆，预测一个数都不变，可两边的向量已经面目全非',
+            step: t.length - 1,
+            evidence: `实测：隐向量最大变化 ${f.rotPGap}，而所有预测逐格最大变化只有 ${f.rotGap}`,
+          }
+        },
+        distractors: a => [a,
+          '对 —— 每一维都对应数据里一个真实存在的因子，训练就是在把这些因子找出来',
+          '对 —— 只要维度数取得跟真实因子个数一样多，学出来的每一维就有确定的含义',
+          '不对 —— 因为隐向量是随机初始化的，每次训练出来的第一维含义都不一样',
+        ].filter(o => o !== a).slice(0, 3),
+      },
+      {
+        id: 'how_fill', label: '矩阵分解怎么补全空缺', kind: 'choice', genre: 'concept',
         ask: '评分表大半是空的（没看过），矩阵分解怎么把空缺补出来？',
-        kind: 'choice',
-        compute: t => ({ answer: '给每个用户、每个物品各学一个隐向量，让"评分 ≈ 两个隐向量的内积"；用已知评分把隐向量学出来，空缺处再用内积一算就是预测评分——口味和属性对得上（内积大）就推荐', step: t.length - 1, evidence: String(last(t).log ?? '') }),
-        distractors: () => ['直接用这部电影所有人打分的平均值填', '随机猜一个 1~5 的分数填进去', '找口味最像的一个用户，把他的评分复制过来'],
+        compute: t => ({ answer: '给每个用户、每个物品各学一个隐向量，让"评分 ≈ 两个隐向量的内积"；用已知评分把隐向量学出来，空缺处再用内积一算就是预测评分', step: t.length - 1, evidence: String(last(t).log ?? '') }),
+        distractors: () => [
+          '直接用这部电影所有人打分的平均值，一格一格填进去当预测',
+          '在 1~5 分之间按整体评分的分布随机采一个，填进空缺格里',
+          '找口味最像的那一个用户，把他在这一格上的评分原样复制过来',
+        ],
       },
     ],
   },

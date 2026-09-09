@@ -48,6 +48,7 @@ import { pagerankKernel, type PageRankState } from '../src/kernels/pagerank.ts'
 import { maxentKernel, MAXENT_MODES, MAXENT_MUS, MAXENT_STARTS, type MaxEntState } from '../src/kernels/maxent.ts'
 import { quicksortKernel, QS_DATA, QS_PIVOTS, QS_PARTS, QS_SCALE_NS, type QuickSortState } from '../src/kernels/quicksort.ts'
 import { dtreeKernel, DT_DATA, DT_IMPURITY, DT_DEPTHS, type DTreeState } from '../src/kernels/dtree.ts'
+import { recsysKernel, RS_SCENES, RS_DIMS, RS_LAMBDAS, type RecSysState } from '../src/kernels/recsys.ts'
 
 let failures = 0
 const ok = (m: string) => console.log(`  ✅ ${m}`)
@@ -56,6 +57,7 @@ const bad = (m: string) => { failures++; console.log(`  ❌ ${m}`) }
 type P = Record<string, string | number>
 const doc = (kind: string, params: P): SimDocument => ({ kind, params, entities: [], streams: [] })
 const last = <T>(a: T[]) => a[a.length - 1]
+const r = (x: number) => +x.toFixed(3)
 
 // ═══ GBDT：留出集是"过拟合看得见"的唯一凭据 ═══════════════
 console.log('\n【GBDT：训练误差单调降，留出误差会掉头】')
@@ -1777,6 +1779,135 @@ console.log('\n【决策树：训练 100% 跟"学会了"长得一模一样】')
     full.overfit <= 0.15 && !(cut.testAcc > full.testAcc)
       ? ok(`自检：无噪声那档缺口只有 ${(full.overfit * 100).toFixed(1)}pp、剪到深 2 留出也没变好 —— 上面两条量的确实是"噪声导致的过拟合"，不是恒真`)
       : bad(`自检失败：无噪声档也满足"过拟合 + 剪枝有效"（缺口 ${full.overfit}、剪后留出 ${cut.testAcc} vs ${full.testAcc}）`)
+  }
+}
+
+// ═══ 推荐系统：隐向量是学出来的，而且它本身没有意义 ═══════
+console.log('\n【推荐系统 · 矩阵分解：隐向量本身没有意义，只有内积才是模型】')
+{
+  const go = (p: P) => run(recsysKernel.compile(doc('recsys', p)), 400) as RecSysState[]
+  const fin = (p: P) => last(go(p))
+  const NORMAL = RS_SCENES[0], COLD = RS_SCENES[1], SPARSE = RS_SCENES[2]
+
+  /*  ① **旋转不变性** —— 这一屏最想让人记住的一句话，也是最容易被讲错的那句。
+      把 P 乘一个随机可逆矩阵、Q 乘它的逆：向量必须**真的变了**，而预测必须**一个数都不变**。
+      只验后半句不够：R 取成单位阵时后半句自动成立，那就什么也没证明。 */
+  const rot: string[] = []
+  for (const scene of RS_SCENES) {
+    for (const dim of RS_DIMS.filter(k => k >= 2)) {
+      const s = fin({ scene, dim, lambda: 0.05 })
+      if (!(s.rotGap < 1e-6)) rot.push(`${scene}/k=${dim}：旋转后预测变了 ${s.rotGap}`)
+      if (!(s.rotPGap > 0.1)) rot.push(`${scene}/k=${dim}：隐向量只变了 ${s.rotPGap} —— 旋转矩阵太接近单位阵，这条判据什么也没证明`)
+    }
+  }
+  rot.length === 0
+    ? ok('旋转 P、逆旋转 Q：隐向量最大变化 > 0.1，而所有预测逐格变化 < 1e-6 —— 隐向量不是定下来的东西，只有内积是')
+    : bad(rot.slice(0, 3).join(' / '))
+
+  /*  ② **模型得真学到东西**：配好的那一档必须明显赢过"什么都不学、一律猜基准分"。
+      不摆这条基线的话，一个 0.6 的 RMSE 看不出是好是坏。 */
+  {
+    const s = fin({ scene: NORMAL, dim: 5, lambda: 0.05 })
+    s.testRmse < s.baseRmse * 0.75
+      ? ok(`配好的一档（k=5、λ=0.05）留出 RMSE ${s.testRmse}，基线（一律猜 ${3.2}）是 ${s.baseRmse} —— 赢了 ${r(s.baseRmse - s.testRmse)}`)
+      : bad(`没赢过基线：留出 ${s.testRmse} vs 基线 ${s.baseRmse}`)
+  }
+
+  /*  ③ **λ=0 会飞出量程。** 评分只有 1~5 分 —— 预测值飞到哪儿，比 RMSE 更能说明"没有正则不行"。 */
+  /*  ⚠️ **普遍成立的那一条要写弱，具体那一档才写强。**
+      第一版对三个场景一律要求"λ=0 的留出 RMSE 差一倍以上"，而冷启动档 k=5 时只差 1.57 倍 ——
+      判据红了，可产品是对的。**方向（更差、飞出量程）处处成立，倍数不是。** */
+  const wild: string[] = []
+  for (const scene of RS_SCENES) {
+    for (const dim of RS_DIMS.filter(k => k >= 2)) {
+      const bad0 = fin({ scene, dim, lambda: 0 })
+      const good = fin({ scene, dim, lambda: 0.05 })
+      if (!(bad0.testRmse > good.testRmse)) wild.push(`${scene}/k=${dim}：λ=0 的留出 RMSE ${bad0.testRmse} 竟然没比 λ=0.05 的 ${good.testRmse} 更差`)
+    }
+  }
+  wild.length === 0
+    ? ok('三场景 × 三个 k 下，λ=0 的留出 RMSE **一律**比 λ=0.05 更差 —— 这个方向处处成立')
+    : bad(wild.slice(0, 3).join(' / '))
+
+  /*  ⚠️ 而"λ=0 训练误差更小"这句话**不成立**，别顺手写上去。
+      k=2 时 λ=0 的训练 RMSE 反而更大（0.154 vs 0.138）—— 没有正则不是
+      "更贴合训练集但不泛化"那种教科书画面，而是**两头都更差**：
+      方程组接近奇异，ALS 在两侧之间来回甩，连训练误差都优化不好。
+      这一条比那句顺口的话更值得记，所以单独钉住。 */
+  {
+    const b2 = fin({ scene: NORMAL, dim: 2, lambda: 0 })
+    const g2 = fin({ scene: NORMAL, dim: 2, lambda: 0.05 })
+    const b5 = fin({ scene: NORMAL, dim: 5, lambda: 0 })
+    const g5 = fin({ scene: NORMAL, dim: 5, lambda: 0.05 })
+    b2.trainRmse > g2.trainRmse && b5.trainRmse < g5.trainRmse
+      ? ok(`λ=0 的训练误差**不一定更小**：k=2 时反而更大（${b2.trainRmse} vs ${g2.trainRmse}，两头都更差），k=5 时才更小（${b5.trainRmse} vs ${g5.trainRmse}）—— "没正则=更贴合训练集"这句顺口话是错的`)
+      : bad(`两面的观察对不上：k=2 训练 ${b2.trainRmse}/${g2.trainRmse}，k=5 训练 ${b5.trainRmse}/${g5.trainRmse}`)
+  }
+
+  //  最惨的那一档单独钉住：预测值必须真的飞出 1~5 分的量程
+  {
+    const s = fin({ scene: NORMAL, dim: 2, lambda: 0 })
+    const g = fin({ scene: NORMAL, dim: 2, lambda: 0.05 })
+    s.predMax > 6 && s.testRmse > g.testRmse * 5
+      ? ok(`正常档 k=2：λ=0 训练 ${s.trainRmse}、留出 **${s.testRmse}**，预测量程飞到 ${s.predMin}~${s.predMax}（评分只有 1~5 分）；λ=0.05 时留出只有 ${g.testRmse}`)
+      : bad(`最惨那一档不够惨：λ=0 留出 ${s.testRmse}、量程 ${s.predMin}~${s.predMax}，λ=0.05 留出 ${g.testRmse}`)
+  }
+
+  /*  ④ **冷启动**：那位用户必须真的一条训练评分都没有、隐向量被压成 0、
+      而且他那几格明显比全表差。三条缺一条这个演示就不成立。 */
+  {
+    const s = fin({ scene: COLD, dim: 2, lambda: 0.05 })
+    const n = fin({ scene: NORMAL, dim: 2, lambda: 0.05 })
+    s.coldUser >= 0 && s.coldNorm === 0 && s.coldRmse > s.testRmse * 1.3 && n.coldUser < 0
+      ? ok(`冷启动：「${s.users[s.coldUser]}」隐向量范数 ${s.coldNorm}，他那几格 RMSE ${s.coldRmse} vs 全表 ${s.testRmse}；而「正常」那一档没有这种用户`)
+      : bad(`冷启动演示不成立：coldUser=${s.coldUser} 范数=${s.coldNorm} 他=${s.coldRmse} 全表=${s.testRmse}；正常档 coldUser=${n.coldUser}`)
+  }
+
+  /*  ⑤ **冷启动救不了**：加维度、加正则、换 λ 都不能让他那几格变好。
+      这是屏幕上那句"没有数据就是没有数据"的实证。 */
+  {
+    const base = fin({ scene: COLD, dim: 2, lambda: 0.05 }).coldRmse
+    const tries = RS_DIMS.flatMap(dim => RS_LAMBDAS.map(lambda => fin({ scene: COLD, dim, lambda }).coldRmse))
+    tries.every(x => Math.abs(x - base) < 1e-9)
+      ? ok(`冷启动那几格的 RMSE 在 ${tries.length} 组 (k, λ) 下**一模一样**（${base}）—— 加维度、调正则一点用都没有`)
+      : bad(`冷启动 RMSE 竟然随参数变了：${[...new Set(tries)].slice(0, 5).join(' / ')}`)
+  }
+
+  /*  ⑥ **留出格真的没参与训练**：训练格与留出格不能有交集，且留出格数量要够。 */
+  {
+    const s = fin({ scene: NORMAL, dim: 2, lambda: 0.05 })
+    const cells = s.role.flat()
+    const nTrain = cells.filter(x => x === 'train').length
+    const nTest = cells.filter(x => x === 'test').length
+    nTrain === s.nTrain && nTest === s.nTest && nTest >= 15 && nTrain + nTest < cells.length
+      ? ok(`评分表 ${s.role.length}×${s.role[0].length}：训练 ${nTrain} 格、留出 ${nTest} 格、真没打分 ${cells.length - nTrain - nTest} 格，三者互斥且都不空`)
+      : bad(`格子身份对不上：训练 ${nTrain}/${s.nTrain}、留出 ${nTest}/${s.nTest}、总 ${cells.length}`)
+  }
+
+  /*  ⑦ **k×λ 网格里挑出来的那一格，必须真的是全场最低**（判据自己重算一遍，不信状态里的字段）。 */
+  {
+    const s = fin({ scene: NORMAL, dim: 2, lambda: 0.05 })
+    const best = s.grid.reduce((a, b) => (b.test < a.test ? b : a), s.grid[0])
+    s.grid.length === RS_DIMS.length * RS_LAMBDAS.length && best.k === s.bestK && best.lam === s.bestLam
+      ? ok(`k×λ 网格 ${s.grid.length} 格齐全，最低点 (k=${s.bestK}, λ=${s.bestLam}) 跟逐格重算的结果一致`)
+      : bad(`网格不对：${s.grid.length} 格，声称最低 (${s.bestK}, ${s.bestLam})，实算 (${best.k}, ${best.lam})`)
+  }
+
+  /*  ⑧ **稀疏档的天花板是数据量**：同样的 (k, λ) 下，稀疏档必须明显不如正常档。 */
+  {
+    const n = fin({ scene: NORMAL, dim: 5, lambda: 0.05 })
+    const sp = fin({ scene: SPARSE, dim: 5, lambda: 0.05 })
+    sp.nTrain < n.nTrain * 0.7 && sp.testRmse / sp.baseRmse > n.testRmse / n.baseRmse
+      ? ok(`稀疏档训练格 ${sp.nTrain}（正常档 ${n.nTrain}）：相对基线只做到 ${r(sp.testRmse / sp.baseRmse)}，而正常档是 ${r(n.testRmse / n.baseRmse)} —— 数据量本身就是天花板`)
+      : bad(`稀疏档没比正常档差：训练格 ${sp.nTrain}/${n.nTrain}，相对基线 ${r(sp.testRmse / sp.baseRmse)} vs ${r(n.testRmse / n.baseRmse)}`)
+  }
+
+  /*  ⑨ 自检：这一套判据得会红 —— 拿"正常档"冒充冷启动档，④ 那条必须抓住。 */
+  {
+    const n = fin({ scene: NORMAL, dim: 2, lambda: 0.05 })
+    n.coldUser < 0 && n.coldRmse === 0
+      ? ok('自检：正常档没有零评分用户（coldUser=-1），上面那条冷启动判据量的确实是这个场景独有的，不是恒真')
+      : bad(`自检失败：正常档也有冷启动用户 ${n.coldUser}`)
   }
 }
 

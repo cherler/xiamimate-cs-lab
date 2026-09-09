@@ -1082,10 +1082,18 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       b: { phase: 'done', ring: -1, gamma: 0.9, w: 5, h: 4, goal: [4, 1], start: [0, 2], value: [], policy: [], path: ['0,2', '1,2', '2,2', '3,2', '4,2', '4,1'] },
     },
     recsys: {
-      doc: { kind: 'recsys', params: {}, entities: [], streams: [] },
-      //  A 露出用户向量 · B 补全预测 —— 结论必须换一套说法
-      a: { phase: 'run', stage: 'userv', pr: -1, pc: -1, users: [{ n: '小明', v: [1, 0] }, { n: '小红', v: [0, 1] }, { n: '阿强', v: [0.8, 0.6] }], movies: [{ n: '复仇者', v: [5, 0] }, { n: '小森林', v: [0, 5] }, { n: '盗梦空间', v: [4, 3] }], known: ['0,0', '0,1', '1,1', '2,0', '2,2'], rating: [[5, 0, null], [null, 5, null], [4, null, 5]] },
-      b: { phase: 'done', stage: 'done', pr: 0, pc: 2, users: [{ n: '小明', v: [1, 0] }, { n: '小红', v: [0, 1] }, { n: '阿强', v: [0.8, 0.6] }], movies: [{ n: '复仇者', v: [5, 0] }, { n: '小森林', v: [0, 5] }, { n: '盗梦空间', v: [4, 3] }], known: ['0,0', '0,1', '1,1', '2,0', '2,2'], rating: [[5, 0, 4], [0, 5, 3], [4, 3, 5]] },
+      /*  2026-09-09 补厚：隐向量改成 ALS 真学出来的，字段整套换了
+          （stage/rating/pr/pc → round/trainRmse/testRmse/coldUser/…）。夹具跟着换。 */
+      doc: { kind: 'recsys', params: { scene: '有冷启动用户（一条评分都没有）', dim: 2, lambda: 0.05 }, entities: [], streams: [] },
+      //  A 第 3 轮训练中 · B 训完（冷启动那一档）—— 结论必须换一套说法
+      a: { phase: 'run', round: 3, trainRmse: 0.21, testRmse: 0.74, baseRmse: 0.792, nTrain: 61, nTest: 36,
+        dim: 2, lambda: 0.05, coldUser: 14, coldNorm: 0, coldRmse: 0.961, rotGap: 0, rotPGap: 1.87,
+        predMin: 1.1, predMax: 4.9, bestK: 5, bestLam: 0.05, users: ['小明', '小红', '阿强', '大伟', '小雨', '老陈', '阿珍', '阿杰', '小柯', '大凯', '小婷', '阿福', '小敏', '老周', '新来的'],
+        curve: [{ round: 1, train: 0.4, test: 0.9 }, { round: 2, train: 0.25, test: 0.8 }, { round: 3, train: 0.21, test: 0.74 }] },
+      b: { phase: 'done', round: 12, trainRmse: 0.133, testRmse: 0.68, baseRmse: 0.792, nTrain: 61, nTest: 36,
+        dim: 2, lambda: 0.05, coldUser: 14, coldNorm: 0, coldRmse: 0.961, rotGap: 0, rotPGap: 1.87,
+        predMin: 1.1, predMax: 4.9, bestK: 5, bestLam: 0.05, users: ['小明', '小红', '阿强', '大伟', '小雨', '老陈', '阿珍', '阿杰', '小柯', '大凯', '小婷', '阿福', '小敏', '老周', '新来的'],
+        curve: [{ round: 1, train: 0.4, test: 0.9 }, { round: 11, train: 0.14, test: 0.69 }, { round: 12, train: 0.133, test: 0.68 }] },
     },
     diffusion: {
       doc: { kind: 'diffusion', params: { steps: 8, seed: 1, schedule: '线性' }, entities: [], streams: [] },
