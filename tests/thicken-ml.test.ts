@@ -51,6 +51,7 @@ import { dtreeKernel, DT_DATA, DT_IMPURITY, DT_DEPTHS, type DTreeState } from '.
 import { recsysKernel, RS_SCENES, RS_DIMS, RS_LAMBDAS, type RecSysState } from '../src/kernels/recsys.ts'
 import { astarKernel, ASTAR_MAPS, ASTAR_WEIGHTS, ASTAR_HEURISTICS, type AStarState } from '../src/kernels/astar.ts'
 import { unionfindKernel, UF_UNIONS, UF_COMPRESS, UF_SEQS, UF_SCALE_NS, type UnionFindState } from '../src/kernels/unionfind.ts'
+import { mergesortKernel, MS_DATA, MS_TIES, MS_PASSES, MS_SCALE_NS, type MergeSortState } from '../src/kernels/mergesort.ts'
 
 let failures = 0
 const ok = (m: string) => console.log(`  ✅ ${m}`)
@@ -2149,6 +2150,122 @@ console.log('\n【并查集：不上优化时它是 O(n²)】')
     !s.degraded && s.finalDepth < s.n - 1
       ? ok(`自检：两两归并序列上朴素+不压缩也没退化（指数 ${s.slope}、树深 ${s.finalDepth}）—— 上面那条量的确实是"最坏序列"，不是恒真`)
       : bad(`自检失败：两两归并序列上也退化了（指数 ${s.slope}、树深 ${s.finalDepth}）`)
+  }
+}
+
+// ═══ 归并排序：稳定是一个字符，没有坏情况是拿空间换的 ═══════
+console.log('\n【归并排序：三句课本结论，全部改成量出来的】')
+{
+  const go = (p: P) => run(mergesortKernel.compile(doc('mergesort', p)), 800) as MergeSortState[]
+  const fin = (p: P) => last(go(p))
+  const [RAND, SORTED, REV, DUP] = MS_DATA
+  const [LEFT, RIGHT] = MS_TIES
+  const [POW2, NATURAL] = MS_PASSES
+
+  /*  ① **底线**：所有组合都得真排好，而且元素还是原来那一批（判据自带期望数据）。 */
+  const EXPECT: Record<string, number[]> = {
+    [RAND]: Array.from({ length: 12 }, (_, k) => k + 1),
+    [SORTED]: Array.from({ length: 12 }, (_, k) => k + 1),
+    [REV]: Array.from({ length: 12 }, (_, k) => k + 1),
+    //  makeData 的 D_DUP：第 k 个是 (k%4)*2+1，n=12 → 1/3/5/7 各 3 个
+    [DUP]: [1, 1, 1, 3, 3, 3, 5, 5, 5, 7, 7, 7],
+  }
+  const wrong: string[] = []
+  for (const data of MS_DATA) for (const tie of MS_TIES) for (const pass of MS_PASSES) {
+    const s = fin({ data, tie, pass })
+    if (JSON.stringify(s.arr) !== JSON.stringify(EXPECT[data])) wrong.push(`${data}/${tie}/${pass}：[${s.arr.join(',')}]`)
+  }
+  wrong.length === 0
+    ? ok(`${MS_DATA.length * MS_TIES.length * MS_PASSES.length} 种组合全都排好了，元素跟各档应有的那批数逐个对得上`)
+    : bad(wrong.slice(0, 3).join(' / '))
+
+  /*  ② **主菜之一：稳定性就是一个字符。**
+      同一份数据、同一个算法，只换"相等时取左还是取右"：
+      排序结果必须**一模一样**，而等值元素的原序必须一个稳一个不稳。
+      两条缺一不可 —— 只验"不稳"不够，得先证明结果没变，否则那就是另一个算法了。 */
+  {
+    const a = fin({ data: DUP, tie: LEFT, pass: POW2 })
+    const b = fin({ data: DUP, tie: RIGHT, pass: POW2 })
+    const sameResult = JSON.stringify(a.arr) === JSON.stringify(b.arr)
+    sameResult && a.hasTies && b.hasTies && a.stable && !b.stable
+      ? ok(`「相等取左」vs「相等取右」：排序结果**逐个相同** [${a.arr.join(',')}]，而原序一个保住、一个被打乱 —— 稳定性就是这一个字符`)
+      : bad(`稳定性演示不成立：结果相同=${sameResult}、取左稳=${a.stable}、取右稳=${b.stable}`)
+  }
+
+  /*  ③ 没有等值元素时不许下"稳不稳定"的结论 —— 那种情况下这件事无从谈起。 */
+  {
+    const noTies = [RAND, SORTED, REV].map(d => fin({ data: d, tie: LEFT, pass: POW2 }))
+    noTies.every(s => !s.hasTies)
+      ? ok('三档无重复值的数据都不给稳定性结论 —— 没有等值元素时这件事无从谈起')
+      : bad(`有档在没有等值元素时也报了稳定性：${noTies.filter(s => s.hasTies).length} 个`)
+  }
+
+  /*  ④ **主菜之二：没有坏情况。** 固定倍增下，四种数据形状的比较次数必须几乎不动。
+      而且这个"几乎"要有个数：判据自己从 shapeSweep 重算一遍倍数，不信状态里的字段。 */
+  {
+    const s = fin({ data: RAND, tie: LEFT, pass: POW2 })
+    const bigs = s.shapeSweep.map(x => last(x.rows).compares)
+    const spread = +(Math.max(...bigs) / Math.min(...bigs)).toFixed(2)
+    spread < 3 && Math.abs(spread - s.shapeSpread) < 1e-9 && s.shapeSweep.every(x => x.slope < 1.5)
+      ? ok(`固定倍增：四种数据形状在 n=${last([...MS_SCALE_NS])} 上比较 ${bigs.join(' / ')} 次，最费的只多 ${spread} 倍，四条曲线指数都 < 1.5 —— **没有坏情况**`)
+      : bad(`形状差不成立：${bigs.join('/')}，倍数 ${spread}（状态里印的是 ${s.shapeSpread}）`)
+  }
+
+  /*  ⑤ **跟快排并排才有意义。** 判据直接把快排那一屏的对照拉过来算一遍：
+      同样换数据形状，快排的差距必须**远大于**归并。两屏说的是同一件事的两面。 */
+  {
+    const ms = fin({ data: RAND, tie: LEFT, pass: POW2 })
+    const msSpread = Math.max(...ms.shapeSweep.map(x => last(x.rows).compares)) / Math.min(...ms.shapeSweep.map(x => last(x.rows).compares))
+    const qs = ['随机打乱', '已经排好序'].map(d =>
+      last(last(run(quicksortKernel.compile(doc('quicksort', { data: d, pivot: '末元素（教科书）', part: 'Lomuto 两路' })), 600) as QuickSortState[]).scale).compares)
+    const qsSpread = Math.max(...qs) / Math.min(...qs)
+    qsSpread > msSpread * 3
+      ? ok(`跟快排并排：同样换数据形状，归并差 ${msSpread.toFixed(2)} 倍、快排差 ${qsSpread.toFixed(2)} 倍（${qs.join(' → ')}）—— 两屏说的是同一件事的两面`)
+      : bad(`两屏对照不成立：归并 ${msSpread.toFixed(2)} 倍、快排只有 ${qsSpread.toFixed(2)} 倍`)
+  }
+
+  /*  ⑥ **主菜之三：代价是空间。** 缓冲区峰值必须等于 n（自底向上最后一趟要归并整个数组），
+      而且逐帧的峰值只增不减、末帧等于总值。 */
+  {
+    const s = fin({ data: RAND, tie: LEFT, pass: POW2 })
+    const frames = go({ data: RAND, tie: LEFT, pass: POW2 })
+    const monotone = frames.every((f, k) => k === 0 || f.bufPeak >= frames[k - 1].bufPeak)
+    s.totalBuf === s.n && monotone && last(frames).bufPeak === s.totalBuf
+      ? ok(`缓冲区峰值 ${s.totalBuf} = n（最后一趟要归并整个数组），逐帧只增不减 —— 这就是归并"没有坏情况"付的那笔账，而快排这一栏是 0`)
+      : bad(`缓冲区账不对：峰值 ${s.totalBuf}（n=${s.n}）、单调=${monotone}`)
+  }
+
+  /*  ⑦ **自然归并两面都要钉。** 好的一面：已排好序时 0 趟、缓冲 0。
+      坏的一面：随机数据上它**反而更亏**（每趟要重扫一遍找有序段）。
+      只钉好的一面，屏幕上就会留下"自然归并总是更好"的错觉。 */
+  {
+    const sortedNat = fin({ data: SORTED, tie: LEFT, pass: NATURAL })
+    const sortedPow = fin({ data: SORTED, tie: LEFT, pass: POW2 })
+    const randNat = fin({ data: RAND, tie: LEFT, pass: NATURAL })
+    const randPow = fin({ data: RAND, tie: LEFT, pass: POW2 })
+    sortedNat.totalPasses === 0 && sortedNat.totalBuf === 0 && sortedNat.totalCompares < sortedPow.totalCompares
+      && randNat.totalCompares > randPow.totalCompares
+      ? ok(`自然归并两面都真：已排好序时 **0 趟、缓冲 0**（比较 ${sortedNat.totalCompares} < 固定倍增的 ${sortedPow.totalCompares}）；而随机数据上它**反而更亏**（${randNat.totalCompares} > ${randPow.totalCompares}）—— 它赌的是"数据本来就局部有序"`)
+      : bad(`自然归并的账不对：有序档 ${sortedNat.totalPasses} 趟/缓冲 ${sortedNat.totalBuf}/比较 ${sortedNat.totalCompares}(vs ${sortedPow.totalCompares})、随机档 ${randNat.totalCompares}(vs ${randPow.totalCompares})`)
+  }
+
+  /*  ⑧ **有了"好情况"就等于承认了"坏情况"** —— 自然归并的形状差必须明显大于固定倍增的。
+      这一条是上一条的必然推论，但它值得单独印在屏幕上，所以也单独钉。 */
+  {
+    const nat = fin({ data: RAND, tie: LEFT, pass: NATURAL })
+    const pow = fin({ data: RAND, tie: LEFT, pass: POW2 })
+    nat.shapeSpread > pow.shapeSpread * 3
+      ? ok(`自然归并的数据形状差 ${nat.shapeSpread} 倍 ≫ 固定倍增的 ${pow.shapeSpread} 倍 —— **有了"好情况"，就等于承认了"坏情况"**`)
+      : bad(`两种分段方式的形状差没拉开：自然 ${nat.shapeSpread}、固定 ${pow.shapeSpread}`)
+  }
+
+  /*  ⑨ 自检：这一套判据得会红 —— 拿无重复值的数据冒充稳定性演示，② 那条必须抓住。 */
+  {
+    const a = fin({ data: RAND, tie: LEFT, pass: POW2 })
+    const b = fin({ data: RAND, tie: RIGHT, pass: POW2 })
+    !a.hasTies && !b.hasTies && JSON.stringify(a.tags) === JSON.stringify(b.tags)
+      ? ok('自检：没有重复值时，换取小规则连元素的原始下标都一模一样 —— 上面那条稳定性判据量的确实是等值元素，不是恒真')
+      : bad(`自检失败：无重复值的数据上换规则竟然改变了排列（hasTies ${a.hasTies}/${b.hasTies}）`)
   }
 }
 

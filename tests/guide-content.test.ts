@@ -932,10 +932,16 @@ console.log('\n【「这一步为什么」真的在跟着走】')
       b: { phase: 'done', act: 'done', arr: [1, 2, 3, 5, 7, 8, 9], n: 7, lo: 0, hi: 6, pivotVal: -1, iPtr: -1, jPtr: -1, swapWith: -1, sortedCount: 7, locked: [true, true, true, true, true, true, true] },
     },
     mergesort: {
-      doc: { kind: 'mergesort', params: {}, entities: [], streams: [] },
+      /*  2026-09-09 补厚：单次归并完成的 act 改名 'merged'，新增 compares/bufPeak/shapeSpread 等。 */
+      doc: { kind: 'mergesort', params: { data: '大量重复（考稳定性）', tie: '相等时取左段（≤，稳定）', pass: '固定倍增（1→2→4…）' }, entities: [], streams: [] },
       //  A 归并中取右段队首 · B 排好序 —— 结论必须换一套说法
-      a: { phase: 'run', act: 'emit', from: 'R', took: 1, arr: [2, 5, 1, 8, 3, 9, 7], n: 7, width: 2, lo: 0, mid: 2, hi: 4, li: 0, rj: 2, out: [1], focus: 2 },
-      b: { phase: 'done', act: 'done', from: '', took: -1, arr: [1, 2, 3, 5, 7, 8, 9], n: 7, width: 4, lo: 0, mid: 4, hi: 7, li: 7, rj: 7, out: [1, 2, 3, 5, 7, 8, 9], focus: -1 },
+      a: { phase: 'run', act: 'emit', from: 'R', took: 1, arr: [3, 5, 1, 7, 3, 1, 5, 7, 3, 1, 5, 7], n: 12, width: 2, lo: 0, mid: 2, hi: 4, li: 0, rj: 2, out: [1], focus: 2,
+        compares: 4, moves: 5, bufPeak: 4, passes: 2, tie: '相等时取左段（≤，稳定）',
+        totalCompares: 29, totalMoves: 44, totalBuf: 12, totalPasses: 4, shapeSpread: 1.66, stable: true, hasTies: true },
+      b: { phase: 'done', act: 'done', from: '', took: -1, arr: [1, 1, 1, 3, 3, 3, 5, 5, 5, 7, 7, 7], n: 12, width: 0, lo: 0, mid: 0, hi: 12, li: -1, rj: -1,
+        out: [1, 1, 1, 3, 3, 3, 5, 5, 5, 7, 7, 7], focus: -1,
+        compares: 29, moves: 44, bufPeak: 12, passes: 4, tie: '相等时取左段（≤，稳定）',
+        totalCompares: 29, totalMoves: 44, totalBuf: 12, totalPasses: 4, shapeSpread: 1.66, stable: true, hasTies: true },
     },
     fastpow: {
       doc: { kind: 'fastpow', params: {}, entities: [], streams: [] },

@@ -5610,31 +5610,54 @@ export const GUIDES: Record<string, Guide> = {
       hook: '两队已经排好的人，合成一队最快怎么合？',
       what: '这一屏讲的是**归并排序**：另一种分治排序，思路是「**先把两半各自排好，再把两个有序段合成一个**」。合并这一步极其高效：两队各派一个人站队头，比一下谁小谁先出列 —— 一趟扫描就合完了。它跟快排的分工正好相反：快排的功夫在「分」（划分要花力气，合并什么都不用做），归并的功夫在「合」（对半切不用动脑，合并要逐个比较）。它有两个快排给不了的性质：**稳定**，而且**最坏情况也是 n log n**。',
       terms: '**分治**：把问题对半切开，各自解决，再合并。归并排序是分治最干净的样板。\u3000**归并（merge）**：把两个已经有序的段合成一个有序段。两个指针各指一段的头，比较之后小的那个出列、该指针前进。\u3000**稳定性**：合并时**遇到相等就让左边那段的先出列** —— 就这一条小规矩，保证了值相等的元素相对次序不变。这是归并排序被 Java、Python 用来给对象排序的原因。\u3000**额外空间**：合并需要一块跟原数组一样大的临时空间，这是它的主要代价。（有原地归并的写法，但常数大到不划算。）\u3000**自顶向下 vs 自底向上**：前者是递归地对半切；后者从长度 1 的段开始两两合并、段长翻倍，**没有递归、更适合链表和外部排序**。\u3000**外部排序**：数据大到内存装不下时（几十 GB 的日志排序），归并几乎是唯一选择 —— 因为它**只需要顺序读写**，而快排要随机访问，在磁盘上代价极高。',
-      watch: '看合并那一步两个指针怎么各自前进。相等时取左边的 —— 这一条小规矩就是「稳定排序」的全部实现。',
+      watch: '默认档数据里有大量重复值，柱子上带 **a/b/c 角标**。走完看它们的次序有没有被打乱 —— 然后把「取小的规则」换成「相等时取右段」（只把 `<=` 改成 `<`），**排序结果一模一样，而角标会乱**。「归并排序是稳定的」这句话，稳的就是这一个字符。',
     },
+    /*  ⚠️ 2026-09-09 补厚：单次归并完成的 act 从 'done' 改名成 'merged'
+        （'done' 现在只留给最后一帧），另加 compares/bufPeak/shapeSpread 等字段。 */
     step: (s: never) => {
-      const st = s as { phase: string; act: string; arr: number[]; width: number; lo: number; hi: number; took: number; from: string; out: number[] }
+      const st = s as { phase: string; act: string; arr: number[]; width: number; lo: number; hi: number
+                        took: number; from: string; out: number[]
+                        compares?: number; bufPeak?: number; passes?: number
+                        totalCompares?: number; totalBuf?: number; totalPasses?: number
+                        shapeSpread?: number; stable?: boolean; hasTies?: boolean; tie?: string; n?: number }
       return [
-        { k: '本步输入', v: st.act === '' ? `乱序 [${st.arr.join(',')}]` : st.act === 'done' ? `段宽 ${st.width} 的两段` : `归并 [${st.lo},${st.hi}),各取队首比` },
-        { k: '判定规则', v: `分治:拆到长度 1(天然有序),再**两两归并**。合并两个有序段时,两段各自**队首就是各自最小**——比一下,把**小的先接进输出**,一趟线性扫完就拼成更长有序段。段宽 1→2→4… 翻倍。` },
-        { k: '本步结果', v: st.act === 'done' ? `拼成宽 ${st.out.length} 的有序段 [${st.out.join(',')}]。`
-            : st.act === 'drain' ? `另一段空了,${st.from === 'L' ? '左' : '右'}段剩下的 ${st.took} 直接接上。`
-            : st.act === 'emit' ? `${st.from === 'L' ? '左' : '右'}段队首 ${st.took} 更小 → 取它。`
-            : st.act === 'done' && st.phase === 'done' ? `排好序。`
-            : `扫描中。` },
+        { k: '本步输入', v: st.act === '' ? `乱序 [${st.arr.join(',')}]`
+          : st.act === 'merged' ? `段宽 ${st.width} 的两段`
+            : st.act === 'done' ? `已排好 [${st.arr.join(',')}]`
+              : `归并 [${st.lo},${st.hi})，各取队首比` },
+        { k: '判定规则', v: `合并两个已排好的段时，两段各自**队首就是各自最小** —— 比一下，把**小的先接进输出**。` +
+          (st.tie ? `　相等时按「${st.tie}」处理 —— **稳定性就在这一个字符上**。` : '') },
+        { k: '本步结果', v: st.act === 'merged' ? `拼成宽 ${st.out.length} 的有序段 [${st.out.join(',')}]。`
+          : st.act === 'drain' ? `另一段空了，${st.from === 'L' ? '左' : '右'}段剩下的 ${st.took} 直接接上（不用再比）。`
+            : st.act === 'emit' ? `${st.from === 'L' ? '左' : '右'}段队首 ${st.took} 更小 → 取它${st.compares !== undefined ? `（累计比较 ${st.compares} 次）` : ''}。`
+              : st.act === 'done' ? (st.totalCompares === undefined ? `排好序。`
+                : `排好序：走了 ${st.totalPasses} 趟、比较 ${st.totalCompares} 次，**缓冲区峰值 ${st.totalBuf}** 个元素。`)
+                : `扫描中。` },
+        ...(st.phase === 'done' && st.shapeSpread !== undefined
+          ? [{ k: '这说明什么', v: `四种数据形状扫下来，比较次数最费的比最省的只多 **${st.shapeSpread} 倍** —— ` +
+            `**归并没有坏情况**（隔壁快排同样的对照是差 11 倍）。代价是那 ${st.totalBuf} 个元素的缓冲区：` +
+            `**快排是原地的，这一栏它是 0**。` +
+            (st.hasTies ? `　等值元素的原序${st.stable ? '**保住了**' : '**被打乱了**'}。` : '') }]
+          : []),
       ]
     },
     verdict: (s: never) => {
-      const st = s as { phase: string; act: string; width: number; out: number[] }
-      return st.phase === 'done' ? '已排好' : st.act === 'done' ? `宽 ${st.out.length}` : `段宽 ${st.width}`
+      const st = s as { phase: string; act: string; width: number; out: number[]
+                        totalCompares?: number; totalBuf?: number; hasTies?: boolean; stable?: boolean }
+      if (st.phase !== 'done') return st.act === 'merged' ? `宽 ${st.out.length}` : `段宽 ${st.width}`
+      if (st.totalCompares === undefined) return '已排好'
+      return st.hasTies ? (st.stable ? `稳定·比${st.totalCompares}` : `不稳定·比${st.totalCompares}`) : `比 ${st.totalCompares} 次`
     },
     read: [
-      { at: '读数', is: '当前段宽、正在归并的区段、已输出个数。', anchor: '.scdim' },
-      { at: '数组+缓冲', is: '上=原数组(蓝=左段、琥珀=右段,▸=各自队首,灰=不在本次归并),下=输出缓冲逐个填。', anchor: '.mswrap' },
+      { at: '读数', is: '当前段宽、正在归并的区段、已输出个数、比较/搬运次数，以及**缓冲区峰值**（归并要 O(n)，快排是 0）和**数据形状差**（归并几乎不随形状变）。', anchor: '.scdim' },
+      { at: '数组+缓冲', is: '上=原数组（蓝=左段、琥珀=右段，旗=各自队首，灰=不在本次归并），重复值带 a/b/c 角标；下=输出缓冲逐个填。', anchor: '.bc-chart' },
+      { at: '形状表', is: '四种数据形状各跑一遍（只计数不出帧）。比较次数几乎不动 —— 拿去跟快排那一屏的 11 倍对照。', anchor: '.qsscale' },
     ],
     try: [
-      { act: '按「下一步」归并', watch: '比两段队首、把小的先接进输出;一段空了另一段整段接上。' },
-      { act: '看段宽翻倍', watch: '长度 1→2→4… 每轮把相邻两段合成更长的有序段,直到全有序。' },
+      { act: '默认档走完，看等值元素的 a/b/c 角标', watch: '相等时取左段，角标次序原样保住 —— 这就是"稳定"。' },
+      { act: '把「取小的规则」换成「相等时取右段」', watch: '只把 `<=` 改成 `<`：排序结果一模一样，**而角标乱了**。稳定性就是这一个字符。' },
+      { act: '看底下的形状表', watch: '四种数据形状比较次数只差 1.66 倍 —— 而快排那一屏同样的对照是 1137 → 12720（差 11 倍）。' },
+      { act: '换「自然归并」+「已经排好序」', watch: '0 趟、一次归并都不做。但换回随机数据它反而更亏（每趟要重扫一遍找有序段）—— 它赌的是"数据本来就局部有序"。' },
     ],
     terms: [],
   },

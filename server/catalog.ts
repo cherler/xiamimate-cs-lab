@@ -400,24 +400,68 @@ const CATALOG_CORE: CatalogEntry[] = [
     id: 'mergesort',
     title: '归并排序',
     kernel: mergesortKernel as Kernel<unknown>,
-    doc: trivialDoc('mergesort'),
+    /*  2026-09-09 补厚：默认档带上重复值 —— "稳定"这件事没有重复值根本无从谈起。 */
+    doc: { kind: 'mergesort', params: { data: '大量重复（考稳定性）', tie: '相等时取左段（≤，稳定）', pass: '固定倍增（1→2→4…）' }, entities: [], streams: [] },
     facts: [
       {
-        id: 'total_steps', label: '归并排序逐步演示的总帧数',
-        ask: '对这 7 个数做归并排序，逐步演示一共有多少帧(步)?',
-        kind: 'number',
-        compute: t => ({ answer: String(t.length), step: t.length - 1, evidence: String(last(t).log ?? '') }),
+        id: 'buf_peak', label: '归并需要的额外缓冲区峰值', kind: 'number', genre: 'count',
+        ask: '对 12 个数做自底向上的归并排序（固定倍增 1→2→4…），过程中额外缓冲区最多同时装了多少个元素?',
+        compute: t => {
+          const f = last(t)
+          return { answer: String(f.totalBuf), step: t.length - 1,
+            evidence: `走了 ${f.totalPasses} 趟、比较 ${f.totalCompares} 次；快排是原地的，这一栏是 0` }
+        },
         distractors: numDistractors,
       },
       {
-        id: 'emit_count', label: '归并过程中「取较小的放进输出」的次数',
-        ask: '归并排序全过程一共做了多少次「比较两段队首、取较小的放进输出」(emit)?',
-        kind: 'number',
+        id: 'shape_spread', label: '换数据形状比较次数几乎不变', kind: 'choice', genre: 'concept',
+        ask: '把数据换成"已经排好序"或"完全逆序"，归并排序的比较次数会有多大变化?',
         compute: t => {
-          const n = t.filter(f => f.act === 'emit').length
-          return { answer: String(n), step: t.length - 1, evidence: `trace 中 act='emit' 的帧数 = ${n}` }
+          const f = last(t)
+          const sw = (f.shapeSweep ?? []) as { data: string; rows: { n: number; compares: number }[] }[]
+          const bigs = sw.map(x => x.rows[x.rows.length - 1].compares)
+          return {
+            answer: '几乎不变 —— 它不看数据长什么样，照着 log n 趟一趟趟扫，代价永远是那么多',
+            step: t.length - 1,
+            evidence: `实测 n=128 四种形状：${bigs.join(' / ')} 次，最费的比最省的只多 ${f.shapeSpread} 倍（快排同样的对照是差 11 倍）`,
+          }
         },
-        distractors: numDistractors,
+        distractors: a => [a,
+          '会大幅变少 —— 已经有序时相邻两段一比就知道不用动，整趟归并可以跳过',
+          '会大幅变多 —— 逆序时每次比较都要取右段，输出缓冲要来回搬更多次',
+          '会变成 O(n²) —— 跟快排一样，有序数据正好是归并排序的最坏情况',
+        ].filter(o => o !== a).slice(0, 3),
+      },
+      {
+        id: 'stable_one_char', label: '"稳定"来自哪一个字符', kind: 'choice', genre: 'concept',
+        ask: '归并排序被称为稳定排序。这个性质具体是由代码里的哪一处保证的?',
+        compute: t => {
+          const f = last(t)
+          return {
+            answer: '合并时那一次比较：相等时先取左段（写成 <=）。左段在原数组里本来就在前面，原序因此保住',
+            step: t.length - 1,
+            evidence: `实测：当前是「${f.tie}」，等值元素的原序${f.stable ? '保住了' : '被打乱了'}；把 <= 改成 < 之后排序结果一模一样，而角标会乱`,
+          }
+        },
+        distractors: a => [a,
+          '由分治结构保证 —— 只要是"分到底再合并回去"，相等元素就不可能被换序',
+          '由自底向上的扫描顺序保证 —— 段宽从 1 开始翻倍，天然是从左往右处理的',
+          '由额外缓冲区保证 —— 输出写进新数组而不是原地交换，位置关系就不会被破坏',
+        ].filter(o => o !== a).slice(0, 3),
+      },
+      {
+        id: 'space_tradeoff', label: '归并 vs 快排的取舍', kind: 'choice', genre: 'concept',
+        ask: '归并排序最坏也是 O(n log n)，而快排最坏是 O(n²)。既然如此，为什么实践中快排反而更常用?',
+        compute: t => ({
+          answer: '因为归并要一块 O(n) 的额外缓冲，而快排是原地的、只花 O(log n) 的递归栈，访存局部性也更好',
+          step: t.length - 1,
+          evidence: `实测缓冲区峰值 ${last(t).totalBuf} 个元素；反过来，数据大到内存装不下时（外部排序）只有归并做得了，因为它只需要顺序读写`,
+        }),
+        distractors: a => [a,
+          '因为快排的比较次数在数学上就更少 —— 同样规模下它要做的比较只有归并的一半',
+          '因为归并排序的最坏情况其实也会退化成 O(n²)，两者在这一点上并没有区别',
+          '因为快排是稳定的而归并不是，需要保持相等元素次序的场合只能用快排',
+        ].filter(o => o !== a).slice(0, 3),
       },
     ],
   },

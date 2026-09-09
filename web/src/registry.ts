@@ -173,7 +173,7 @@ import { heapKernel, type HeapState } from '@engine/kernels/heap.ts'
 import { HeapStage } from './stages/HeapStage.tsx'
 import { quicksortKernel, QS_DATA, QS_PIVOTS, QS_PARTS, type QuickSortState } from '@engine/kernels/quicksort.ts'
 import { QuickSortStage } from './stages/QuickSortStage.tsx'
-import { mergesortKernel, type MergeSortState } from '@engine/kernels/mergesort.ts'
+import { mergesortKernel, MS_DATA, MS_TIES, MS_PASSES, type MergeSortState } from '@engine/kernels/mergesort.ts'
 import { MergeSortStage } from './stages/MergeSortStage.tsx'
 import { fastpowKernel, type FastPowState } from '@engine/kernels/fastpow.ts'
 import { FastPowStage } from './stages/FastPowStage.tsx'
@@ -4294,19 +4294,32 @@ const mergesort: Experiment<MergeSortState> = {
   title: '归并排序',
   subtitle: '分到不能再分，再两两有序地合并回去',
   kernel: mergesortKernel,
-  defaultDoc: { kind: 'mergesort', params: {}, entities: [], streams: [] },
-  params: [],
+  defaultDoc: { kind: 'mergesort', params: { data: '大量重复（考稳定性）', tie: '相等时取左段（≤，稳定）', pass: '固定倍增（1→2→4…）' }, entities: [], streams: [] },
+  /*  2026-09-09 补厚：老版本 7 个**互不相同**的数、一种策略 —— 而它自己写着
+      「稳定」「最坏也一样」「代价是额外缓冲」三句话，一句都没兑现：
+      没有重复值（稳定性无从谈起）、没有第二种数据可比、缓冲区从没被数过。
+      这一屏是**快排的对照面**，所以特意跟快排那一屏用同一把尺。 */
+  params: [
+    { key: 'data', label: '数据', kind: 'enum', options: [...MS_DATA] },
+    { key: 'tie', label: '取小的规则', kind: 'enum', options: [...MS_TIES] },
+    { key: 'pass', label: '分段方式', kind: 'enum', options: [...MS_PASSES] },
+  ],
   paramsNote: `**归并排序是分治的另一面**:快排先分区再递归,归并是分到底再合并。
 
-- **怎么合**:把数组不断对半拆到每段剩 1 个(天然有序),再两两归并——合并两个已排好的段时只需比各自队首、把小的先放进输出,一趟线性就拼成更长的有序段;段宽 1→2→4… 直到全有序。
-- **特点**:稳定(相等不换序)、最坏也稳稳 O(n log n)(log n 轮×每轮扫 n),代价是要一块额外缓冲区。
+- **怎么合**:合并两个已排好的段时只需比各自队首、把小的先放进输出,一趟线性就拼成更长的有序段;段宽 1→2→4… 直到全有序。
 - **用处**:外部排序(数据大到装不下内存,分块排好再多路归并)、稳定排序需求、链表排序都靠它。
-- **本实验**:7 个数 [5,2,8,1,9,3,7],看长度 1 的段两两归并成 2、再成 4,每次比队首取小的。`,
+
+- **补厚补的是它自己那三句话 —— 全改成量出来的**:
+  - **「稳定」其实是一个字符。** 归并里那行 \`left[i] <= right[j]\`,把 \`<=\` 改成 \`<\`,相等时就先取右段 —— **排序结果一模一样,而稳定性没了**。屏幕上等值元素带 a/b/c 角标,一眼看得见 3a 跑到 3b 后面。「取小的规则」就是这一个字符的开关。
+  - **「最坏也一样」拿数据形状扫出来。** 四种形状 × n=8…128 各跑一遍(只计数不出帧):比较次数最费的比最省的只多 **1.66 倍**。⚠️ **拿去跟隔壁快排那一屏对照** —— 同样换数据形状,快排是 **1137 → 12720(差 11 倍、指数 2.03)**。归并**不看数据长什么样**。
+  - **「代价是额外缓冲」要数出来。** 读数里多一栏**缓冲区峰值**:归并要 **O(n)**,而快排是**原地**的、只花 O(log n) 递归栈。**这就是实践中快排更常用的理由** —— 反过来,数据大到装不下内存时只有归并做得了。
+- **自然归并**:先扫一遍找出数据里**现成的**有序段再归并。已排好序那一档它 **0 趟、一次归并都不做**。⚠️ 但每趟都得重扫一遍找段,**随机数据上反而更亏**(比较 68 次 vs 固定倍增 26 次)——它赌的是"数据里本来就有长的有序段"。真实数据常常局部有序,所以这个赌大多时候划算,**Timsort**(Python/Java 用的)就是这条路走到底的产物。而**有了"好情况"就等于承认了"坏情况"**:自然归并四种形状之间差 13.8 倍,不再"最坏也一样"。`,
   bounds: [
-    '7 个数 [5,2,8,1,9,3,7],自底向上归并',
-    '合并两有序段=比队首取小的,一趟线性(可核)',
-    '段宽 1→2→4… 翻倍,共 log n 轮',
-    '稳定、最坏也 O(n log n);代价=额外缓冲',
+    '动画跑 n=12;形状扫描静默跑 n=8/16/32/64/128,两条路是同一份 mergesort() 代码',
+    '比较次数按**实际执行的比较**记;自然归并每趟找有序段的扫描**也算比较**(那是真花的)',
+    '缓冲区峰值 = 单次归并里两段长度之和的最大值',
+    '稳定性按等值元素的原始下标判;没有等值元素时不给结论',
+    '未做:自顶向下递归写法、多路归并/外部排序的落盘、Timsort 的 galloping 与 minrun',
   ],
   tabs: [{ id: 'merge', label: '归并回合' }],
   Stage: MergeSortStage,
@@ -4316,9 +4329,13 @@ const mergesort: Experiment<MergeSortState> = {
   whyInRail: true,
   readouts: s => [
     { label: '当前段宽', value: s.phase === 'done' ? '全' : `${s.width}` },
-    { label: '归并区段', value: (s.act === 'emit' || s.act === 'drain' || s.act === 'done') ? `[${s.lo},${s.hi})` : s.phase === 'done' ? '全区' : '—' },
-    { label: '本步取', value: s.took >= 0 ? `${s.from === 'L' ? '左' : '右'}段 ${s.took}` : s.act === 'done' ? '本段合完' : '—' },
-    { label: '输出', value: `${s.out.length} 个`, tone: s.act === 'done' ? 'good' : undefined },
+    { label: '归并区段', value: (s.act === 'emit' || s.act === 'drain' || s.act === 'merged') ? `[${s.lo},${s.hi})` : s.phase === 'done' ? '全区' : '—' },
+    { label: '本步取', value: s.took >= 0 ? `${s.from === 'L' ? '左' : '右'}段 ${s.took}` : s.act === 'merged' ? '本段合完' : '—' },
+    { label: '趟数 / 比较', value: `${s.passes} 趟 · ${s.compares} 次` },
+    /*  ⭐ 补厚的落点：归并"没有坏情况"是**拿空间换的**。快排这一栏是 0（原地）。 */
+    { label: '缓冲区峰值', value: `${s.bufPeak} 个（快排是 0）` },
+    { label: '数据形状差', value: `${s.shapeSpread} 倍`,
+      tone: s.shapeSpread < 3 ? 'good' : undefined },
   ],
 }
 
