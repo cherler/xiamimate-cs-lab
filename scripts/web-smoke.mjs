@@ -919,8 +919,13 @@ const closePg = async () => { await p.click('.pgx'); await p.waitForTimeout(200)
     sum: document.querySelector('.pgsum')?.textContent?.trim(),
   }))
   await closePg()
-  c.includes('0 /') && empty.queue === 0 && empty.empty
-    ? ok(`初始状态：页眉「${c}」，错题本为空并给出下一步提示`)
+  /*  ⚠️ **钉"掌握数是 0"，别钉那一串字。**
+      原来写的是 `c.includes('0 /')`，而页眉印的是「掌握 0/49」——**没有空格**，
+      面板里印的才是「掌握 0 / 49 实验」。同一个数字两处排版不同，判据挑了排版
+      窄的那一处，改一次文案就红一次。清空之后掌握数必须是 0，这才是这条要说的意思。 */
+  const mastered = /掌握\s*(\d+)\s*\/\s*(\d+)/.exec(c)
+  mastered && Number(mastered[1]) === 0 && Number(mastered[2]) > 0 && empty.queue === 0 && empty.empty
+    ? ok(`初始状态：页眉「${c}」掌握数为 0，错题本为空并给出下一步提示`)
     : bad(`初始状态不对：chip=${c} ${JSON.stringify(empty)}`)
 }
 
@@ -996,14 +1001,32 @@ await p.waitForSelector('.tick')
       : bad(`第 ${k + 1} 次答对后标记是「${badge}」，应为「${want}」`)
   }
   await openPg()
-  const q = await p.evaluate(() => ({
-    queue: document.querySelectorAll('.pgqueue li button').length,
-    sum: document.querySelector('.pgsum b')?.textContent,
-  }))
+  /*  ⚠️ **页眉那个「掌握 K / M」数的是实验，不是题。**
+      口径改过之后（`ProgressPanel` 的 `expMastered` = 每实验的题全掌握才算一个），
+      练熟一道题不会让它从 0 变 1 —— 页面置换底下还有别的真题和 AI 事实没做。
+      判据原来钉的是 `sum === '1'`，钉的是旧口径下"掌握的题数"，于是恒红，
+      而它红的时候产品是对的。**这一条该验的是「这一问出师了」**：
+      ① 它从错题本里出去了；② 「按实验」那一行的题级掌握数 +1。
+      页眉的实验级计数另立一条判据，钉它此刻**应该**还是 0。 */
+  const q = await p.evaluate(() => {
+    const row = [...document.querySelectorAll('.pgexps li')]
+      .find(li => li.querySelector('.t')?.textContent?.trim() === '页面置换')
+    const n = row?.querySelector('.n')?.textContent?.trim() ?? ''
+    const [m, t] = n.split('/').map(Number)
+    return {
+      queue: document.querySelectorAll('.pgqueue li button').length,
+      expSum: document.querySelector('.pgsum b')?.textContent,
+      row: n, mastered: m, total: t,
+    }
+  })
   await closePg()
-  q.queue === 0 && q.sum === '1'
-    ? ok(`连续答对两次后移出错题本，已掌握计数变成 ${q.sum}`)
-    : bad(`出师规则不对：队列 ${q.queue} 条，已掌握 ${q.sum}`)
+  q.queue === 0 && q.mastered === 1
+    ? ok(`连续答对两次后移出错题本，「页面置换」题级掌握 ${q.row}`)
+    : bad(`出师规则不对：队列 ${q.queue} 条，页面置换题级掌握「${q.row}」`)
+  //  同一份数据的另一面：实验级计数要求**这个实验的题全掌握**，此刻只掌握 1 道，所以还是 0
+  q.total > 1 && q.expSum === '0'
+    ? ok(`页眉「掌握 ${q.expSum}」数的是实验：页面置换 ${q.row}，没全掌握就不计入 —— 两个口径各说各的`)
+    : bad(`实验级口径不对：题级 ${q.row}，页眉却是 ${q.expSum}`)
 }
 
 // 偏离原题配置时不许记账
@@ -1104,13 +1127,43 @@ console.log('\n【13】讲解浮层：每个实验的锚点都落得下，点哪
     if (!n) { broken.push(`${name}：没有讲解浮层`); continue }
     cardTotal += n
     for (let k = pos.cur - 1; k < n; k++) {
-      const r = await p.evaluate(() => ({
-        title: document.querySelector('.guide h3')?.textContent?.trim() ?? '',
-        lit: document.querySelectorAll('.guide-lit').length,
-        //  这一页自己声明"我该点亮点什么"。名词页是 false —— 那是设计不是 bug。
-        anchored: document.querySelector('aside.guide')?.dataset.anchored === 'true',
-      }))
-      if (r.anchored && r.lit === 0) broken.push(`${name} 第 ${k + 1} 页「${r.title}」：声明了锚点却没落下`)
+      /*  ⚠️ **"高亮没落下"要分清是哪一种，否则报出来的话会把人带偏一整轮。**
+          真 bug 只有一种：锚点选择器在这一屏上匹配不到元素（舞台改了 class）。
+          另一种是 `dropped` —— 用户刚点了别处，高亮被组件**主动撤掉**、翻一页就回来，
+          那是设计。这条判据原来只说"声明了锚点却没落下"，两种都报同一句；
+          实测撞上的正是后者（上一组最后点了「清空记录」的确认钮），
+          从干净起点根本复现不了，查到根因隔着一整组判据。 */
+      const r = await p.evaluate(() => {
+        const a = document.querySelector('aside.guide')
+        const sel = a?.dataset.anchor ?? ''
+        return {
+          title: document.querySelector('.guide h3')?.textContent?.trim() ?? '',
+          lit: document.querySelectorAll('.guide-lit').length,
+          //  这一页自己声明"我该点亮点什么"。名词页是 false —— 那是设计不是 bug。
+          anchored: a?.dataset.anchored === 'true',
+          //  高亮是不是被"点了别处"主动撤掉的
+          dropped: a?.dataset.dropped === 'true',
+          //  锚点在这一屏上到底找不找得到（param/preset 类的卡没有选择器，记 -1）
+          hit: sel ? document.querySelectorAll(sel).length : -1,
+        }
+      })
+      if (r.anchored && r.lit === 0) {
+        /*  被主动撤掉时**翻一页再看**：回得来就是设计，回不来才是 bug。
+            `go()` 会把 dropped 复位 —— 所以这一下同时验证了"翻页时再回来"这句承诺。 */
+        let why = `锚点 hit=${r.hit}`
+        let recovered = false
+        if (r.dropped && n > 1) {
+          const [away, back] = k > 0 ? ['prev', 'next'] : ['next', 'prev']
+          await p.click(`.gfoot [data-nav="${away}"]`).catch(() => {})
+          await p.waitForTimeout(80)
+          await p.click(`.gfoot [data-nav="${back}"]`).catch(() => {})
+          await p.waitForTimeout(80)
+          recovered = await p.evaluate(() => document.querySelectorAll('.guide-lit').length) > 0
+          why = `点了别处撤掉高亮，翻页也没回来（锚点 hit=${r.hit}）`
+        }
+        //  翻一页就回来了 —— 设计如此，不是窟窿
+        if (!recovered) broken.push(`${name} 第 ${k + 1} 页「${r.title}」：声明了锚点却没落下 —— ${why}`)
+      }
       if (k < n - 1) { await p.click('.gfoot [data-nav="next"]'); await p.waitForTimeout(70) }
     }
   }
@@ -2236,6 +2289,8 @@ console.log('\n【16c】「本步推演」：逐实验、逐步走一遍')
   const names = await p.$$eval('.nav button', bs => bs.map(b => b.textContent.trim()))
   const holes = []
   let withBand = 0, walked = 0
+  /** 走过的最后一份**真实**四段 —— 自检拿它当底稿，见循环后那一段 */
+  let lastSegs = null
   for (const raw of names) {
     const name = raw.replace(/^\d+\s*/, '')
     await nav(name)
@@ -2255,6 +2310,8 @@ console.log('\n【16c】「本步推演」：逐实验、逐步走一遍')
       walked++
       const r = await p.evaluate(() => [...document.querySelectorAll('.wseg')]
         .map(e => (e.querySelector('.wv')?.textContent ?? '').trim()))
+      //  留一份真实的四段给下面的自检用 —— 理由见那一段的注释
+      if (r.length >= 3) lastSegs = { name, at: at + 1, vals: r }
       //  骨架是**前缀**：至少三段（本步输入/判定规则/本步结果），第四段可有可无
       if (r.length < 3 || r.length > 4) { holes.push(`${name} 第 ${at + 1} 步有 ${r.length} 段`); break }
       const blank = r.findIndex(v => v === '')
@@ -2267,17 +2324,19 @@ console.log('\n【16c】「本步推演」：逐实验、逐步走一遍')
 
   //  自检：这条判据得会红 —— 手动摘掉一段，看它认不认
   /*  同上：**不改 DOM**。把真值取出来，在副本里挖掉第一段，
-      再拿同一个"找空段"的写法跑一遍 —— 验的是判定，不是浏览器。 */
-  const canFail = await p.evaluate(() => {
-    const vals = [...document.querySelectorAll('.wseg')]
-      .map(e => (e.querySelector('.wv')?.textContent ?? '').trim())
-    if (vals.length === 0) return null
-    const faked = vals.slice(); faked[0] = ''
-    return faked.findIndex(v => v === '')
-  })
+      再拿同一个"找空段"的写法跑一遍 —— 验的是判定，不是浏览器。
+
+      ⚠️ **底稿要用循环里存下来的那一份，不能当场再去页面上捞。**
+      原来写的是"跑完循环，读此刻屏幕上的 `.wseg`" —— 而循环是靠
+      `continue` 结束的：最后一个实验没有推演带，页面上一段都没有，
+      `vals.length === 0` 于是回 `null`，自检报红。红的是判据自己**碰巧停在哪一屏**，
+      跟被验的东西毫无关系。这类"判据依赖前置状态"这一轮已经撞到第二次。 */
+  const canFail = lastSegs
+    ? (() => { const faked = lastSegs.vals.slice(); faked[0] = ''; return faked.findIndex(v => v === '') })()
+    : null
   canFail === 0
-    ? ok('自检：把一段的正文清空，这条判据会认出那个窟窿 —— 它能红')
-    : bad(`自检失败：清空一段之后判据没认出来（${canFail}）`)
+    ? ok(`自检：拿「${lastSegs.name}」第 ${lastSegs.at} 步的真四段，把第一段清空 —— 这条判据认得出那个窟窿，它能红`)
+    : bad(`自检失败：清空一段之后判据没认出来（${canFail}${lastSegs ? '' : '，整轮一份四段都没取到'}）`)
 }
 
 // ═══ 16b · 实验单说的东西页面上真有 ═══════════════

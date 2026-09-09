@@ -483,7 +483,13 @@ export function GuideOverlay({ cards, title, onRequestClose, onReopen, closedRef
                而 N 是 TOUR 数组的下标 —— 数组增删一条，三处判据一起错位、
                应用却一点没坏（「拿位置当键」的第八次）。锚点是这张卡的本质，
                不会因为别人增删而变。 */
-           data-anchor={card.anchor ?? ''}>
+           data-anchor={card.anchor ?? ''}
+           /*  ⚠️ **"高亮没落下"有两个完全不同的原因，屏幕上长得一模一样。**
+               一是选择器不匹配（真 bug，舞台的 class 改了）；二是 `dropped` ——
+               用户刚点了别处，高亮被**主动撤掉**，翻一页就回来（设计如此）。
+               冒烟报「声明了锚点却没落下」时分不出这两者，查了一整轮才落到
+               "上一组留下的点击"上。把它挂出来，判据一眼就能说清是哪一种。 */
+           data-dropped={String(dropped)}>
       {/* 标题栏就是把手 —— 不另加一根拖动条：那会多占一行，而这块地方本来就紧张 */}
       <header className="ghead" onPointerDown={e => {
         if ((e.target as HTMLElement).closest('button')) return
