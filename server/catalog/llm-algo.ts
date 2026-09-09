@@ -14,7 +14,7 @@ import { beamKernel } from '../../src/kernels/beam.ts'
 import { bestofnKernel, BON_JUDGES, BON_VARIETY } from '../../src/kernels/bestofn.ts'
 import { mctsKernel } from '../../src/kernels/mcts.ts'
 import { ragKernel } from '../../src/kernels/rag.ts'
-import { totKernel } from '../../src/kernels/tot.ts'
+import { totKernel, TOT_EVALS, TOT_PUZZLES } from '../../src/kernels/tot.ts'
 import { numDistractors, last, type CatalogEntry, type Kernel } from '../catalog-shared.ts'
 
 // 束搜索里把内部序列结束符替换成可读写法,和内核 disp 一致。
@@ -347,49 +347,93 @@ export const LLM_ALGO_ENTRIES: CatalogEntry[] = [
     id: 'tot',
     title: '思维树 ToT',
     kernel: totKernel as Kernel<unknown>,
-    doc: { kind: 'tot', params: {}, entities: [], streams: [] },
+    /*  2026-09-09 补厚：老那批 fact 建立在一张写死的常量表上（「{7,2} 和 {2,3} 这两个分支」
+        是我预先标好的）。现在第一层是全部枚举的（10~18 条）、评估器会判错，那些描述不成立了。 */
+    doc: { kind: 'tot', params: { puzzle: TOT_PUZZLES[1], eval: TOT_EVALS[1] }, entities: [], streams: [] },
     facts: [
       {
-        id: 'tot_branches', label: '从根生成的想法(分支)数',
-        ask: 'ToT 解 24 点,从根节点第一层一共生成了多少个想法(分支)?',
-        kind: 'number',
-        compute: t => ({ answer: String((last(t).l1 as unknown[]).length), step: t.length - 1, evidence: `根下展开 ${(last(t).l1 as unknown[]).length} 个候选中间状态` }),
+        id: 'tot_branches', label: '从根生成的想法(分支)数', kind: 'number', genre: 'count',
+        ask: 'ToT 解 24 点,把"挑两个数做一次运算"的可能全部枚举出来,第一层一共生成了多少个想法(分支)?',
+        compute: t => ({ answer: String((last(t).l1 as unknown[]).length), step: t.length - 1,
+          evidence: `根下枚举出 ${(last(t).l1 as unknown[]).length} 个中间状态（减和除跟顺序有关，两个方向都算）` }),
         distractors: numDistractors,
       },
       {
-        id: 'tot_pruned', label: '被剪掉的分支数',
-        ask: '评估之后,有多少个分支因被判"impossible"而剪枝?',
-        kind: 'number',
+        /*  ⚠️ 计数题要自带数据 */
+        id: 'tot_wrong_prunes', label: '评估器剪错了几条', kind: 'number', genre: 'count',
+        ask: '这一档（题目 {1,5,5}、评估器「像大模型那样」）里，评估器判 impossible 的分支中，有几条其实是能到 24 的？'
+          + '（提示：屏幕上每条分支的"评估器说的"旁边就摆着"真值"，数描红的那几行）',
+        compute: t => ({ answer: String(last(t).wrongPrunes), step: t.length - 1,
+          evidence: `真值路径是 ${(last(t).truePath as string[]).join('，')}，而它被评估器当死路剪了` }),
+        distractors: numDistractors,
+      },
+      {
+        /*  ⭐ 补厚的落点①：剪掉的枝回溯够不着 */
+        id: 'tot_prune_irreversible', label: '回溯救不救得回被剪掉的枝', kind: 'choice', genre: 'concept',
+        ask: '思维树能回溯。如果评估器把一条其实有希望的分支判成了死路,后面的回溯救得回来吗?',
         compute: t => {
-          const th = last(t).l1 as { pruned: boolean }[]
-          return { answer: String(th.filter(x => x.pruned).length), step: t.length - 1, evidence: String(last(t).log ?? '') }
+          const f = last(t)
+          return {
+            answer: '救不回来 —— 剪掉的枝不会再被访问，回溯只在剩下的枝里换',
+            step: t.length - 1,
+            evidence: `实测：这一档剪错了 ${f.wrongPrunes} 条，之后回溯了 ${f.backtracks} 次，`
+              + `最后仍然说「${f.claimFound ? '有解' : '无解'}」，而真值是「${f.trulySolvable ? '有解' : '无解'}」`,
+          }
         },
-        distractors: numDistractors,
+        distractors: a => [a,
+          '救得回来 —— 回溯就是退回分支点重选，剪错的也会被重新捡起来',
+          '救得回来 —— 剪枝只是降低优先级，走投无路时还会回头试',
+          '看搜索策略 —— 深度优先救不回来，广度优先可以',
+        ].filter(o => o !== a).slice(0, 3),
       },
       {
-        id: 'tot_kept', label: '剪枝后继续展开第二层的分支数',
-        ask: 'ToT 剪掉 impossible 的分支后,还剩几条 sure 分支被保留、继续往深处展开第二层?',
-        kind: 'number',
-        compute: t => ({ answer: String(last(t).kept), step: t.length - 1, evidence: String(last(t).log ?? '') }),
-        distractors: numDistractors,
+        /*  ⭐ 补厚的落点②：完美评估器的"省"是假的 */
+        id: 'tot_perfect_cost', label: '完美评估器为什么现实里没有', kind: 'choice', genre: 'concept',
+        ask: '把评估器换成"完美评估器"（真去枚举剩下的数能不能到 24），它展开的节点确实少了很多。那为什么说现实里没有这种东西?',
+        compute: t => {
+          const cs = last(t).costs as { evalKind: string; nodes: number; evalNodes: number; total: number }[]
+          const p = cs[0], n = cs[2]
+          return {
+            answer: '能完美判断中间状态有没有希望，本来就等于已经把题解了一遍',
+            step: t.length - 1,
+            evidence: `实测：它展开 ${p.nodes} 个节点，但评估器内部又走了 ${p.evalNodes} 个 —— `
+              + `总账 ${p.total}，而不剪枝那档总共才 ${n.total}`,
+          }
+        },
+        distractors: a => [a,
+          '因为它要额外训练一个模型，成本太高，一般项目负担不起',
+          '因为它只在 24 点这种小问题上能算，换个领域公式就写不出来',
+          '因为它判得太严，会把很多其实可行的分支一并剪掉',
+        ].filter(o => o !== a).slice(0, 3),
       },
       {
-        id: 'tot_vs_cot', label: 'ToT 与思维链 / 自洽的差别',
+        id: 'tot_vs_cot', label: 'ToT 与思维链 / 自洽的差别', kind: 'choice', genre: 'concept',
         ask: '思维树 ToT 相比思维链 CoT、自洽,组织推理的方式有什么根本不同?',
-        kind: 'choice',
-        compute: t => ({ answer: '把推理组织成一棵树:每步生成多个想法分支、用评估器判前景、剪掉没希望的、沿有希望的搜索,走不通还能回溯换分支', step: t.length - 1, evidence: String(last(t).log ?? '') }),
-        distractors: () => ['只走一条推理链,一步错就步步错(思维链 CoT)', '采样多条独立推理链最后多数投票(自洽)', '把所有想法的答案取平均得到结果'],
+        compute: t => ({
+          answer: '推理组织成树：生成多个分支、评估前景、剪枝、深入，走不通能回溯',
+          step: t.length - 1,
+          evidence: 'CoT 是一条直线，错一步没回头；自洽是多条独立直线再投票，每条内部仍是直线',
+        }),
+        distractors: a => [a,
+          '只走一条推理链，中间错一步就一路错到底（这是思维链）',
+          '采样多条互相独立的推理链，最后按答案多数投票（这是自洽）',
+          '把所有候选想法的答案取数值平均，作为最终结果',
+        ].filter(o => o !== a).slice(0, 3),
       },
       {
-        id: 'tot_why_prune', label: '为什么剪掉那两个分支',
-        ask: 'ToT 为什么把 {7, 2} 和 {2, 3} 这两个分支剪掉、不再往下展开?',
-        kind: 'choice',
-        compute: t => {
-          const th = last(t).l1 as { state: string; pruned: boolean }[]
-          const states = th.filter(x => x.pruned).map(x => x.state).join('、')
-          return { answer: `评估器判定 ${states} 为 impossible(剩下两个数怎么算都到不了 24),剪掉它们就不必在死路上浪费后续展开`, step: t.length - 1, evidence: String(last(t).log ?? '') }
-        },
-        distractors: () => ['因为这两个分支里的数字最大', '因为它们是最后才生成出来的分支', '因为算法随机剪掉了其中两个'],
+        /*  ⭐ 「无解比有解贵」—— 搜索问题里的不对称 */
+        id: 'tot_unsat_cost', label: '断言"无解"为什么更贵', kind: 'choice', genre: 'concept',
+        ask: '同一棵搜索树上,"找到一个解"和"断言无解"这两件事,代价上有什么不对称?',
+        compute: t => ({
+          answer: '有解可以撞到就停，无解必须把整棵树走完才敢说',
+          step: t.length - 1,
+          evidence: '{3,3,8} 这三个数真凑不出 24，独立穷举把整棵树的每个节点都访问了一遍才能下这个结论',
+        }),
+        distractors: a => [a,
+          '无解可以早停，有解要把所有解都找齐才算完',
+          '两者一样贵，搜索树的节点总数是固定的，跟结论无关',
+          '无解更便宜，因为剪枝会把大部分分支很早就砍掉',
+        ].filter(o => o !== a).slice(0, 3),
       },
     ],
   },

@@ -4078,6 +4078,17 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .wvaxy { left:2px; top:2px; }
 .wvplotbox { position:relative; width:min(320px,76vw); aspect-ratio:1/1; }
 .wvplotbox .mlplot { width:100%; height:100%; }
+/*  词向量补厚：坐标是学出来的，散点直接画在 SVG 里（老版本用绝对定位的 HTML 标签） */
+.wvdot{fill:var(--dim)}
+.wvdot.in{fill:var(--now)}
+.wvdot.ans{fill:var(--hit)}
+.wvlbl{font-size:3.6px;fill:var(--dim)}
+.wvlbl.in{fill:var(--now);font-weight:700}
+.wvlbl.ans{fill:var(--hit);font-weight:700}
+.wvarrow{stroke:var(--now);stroke-width:1;stroke-dasharray:2 1.5;fill:none;opacity:.8}
+.wvres{fill:none;stroke:var(--hit);stroke-width:1}
+/*  共现 / PPMI 表：列数跟着上下文词走 */
+.qsrow.wvco{grid-template-columns:repeat(8,1fr)}
 
 /* LSTM 门控 */
 .lstmwrap { display:flex; flex-direction:column; align-items:center; gap:10px; margin:14px 0; }
@@ -4221,6 +4232,36 @@ body[data-brief-open] .guide,body[data-brief-open] .guide-fab{display:none}
 .bncand.bnhack .bnexpr{color:var(--miss)}
 /*  MCTS 补厚：当前档/本轮选中的那一行 */
 .qsrow.mcpick{background:color-mix(in srgb,var(--now) 9%,transparent);border-radius:4px}
+/*  ToT 补厚：第一层分支改成列表（枚举出来是 10~18 条，绝对定位的树摆不下） */
+.totlist{border:1px solid var(--line);border-radius:8px;padding:9px 11px;background:var(--panel-2);display:flex;flex-direction:column;gap:3px}
+.totroot{font-size:12px;color:var(--dim);margin-bottom:5px}
+.totrow{display:grid;grid-template-columns:96px 1fr 88px 108px 96px;gap:8px;align-items:center;
+  font-size:11.5px;padding:3px 7px;border-radius:5px;border:1px solid transparent;font-variant-numeric:tabular-nums}
+.totrow .totop{color:var(--ink);font-family:var(--mono)}
+.totrow .totst{color:var(--dim)}
+.totrow .tottrue{color:var(--faint);font-size:10.5px}
+.totrow .totmark{font-size:10.5px;text-align:right}
+.totrow.pruned{opacity:.45}
+.totrow.visited{background:color-mix(in srgb,var(--now) 5%,transparent)}
+.totrow.trying{border-color:var(--now);background:color-mix(in srgb,var(--now) 11%,transparent)}
+.totrow.onpath{border-color:var(--hit);background:color-mix(in srgb,var(--hit) 12%,transparent)}
+/*  评估器判 impossible、而真值说能到 24 —— 剪掉的枝再也回不来 */
+.totrow.wrong{opacity:1;border-color:var(--miss);background:color-mix(in srgb,var(--miss) 11%,transparent)}
+.totleaves{display:flex;flex-wrap:wrap;gap:4px;margin:4px 0 2px 96px}
+.totleaf{font-size:10.5px;font-family:var(--mono);color:var(--dim);border:1px solid var(--line);
+  border-radius:4px;padding:1px 5px;background:var(--panel)}
+.totleaf.solve{border-color:var(--hit);color:var(--hit)}
+.totleaf.onpath{background:color-mix(in srgb,var(--hit) 16%,var(--panel));font-weight:700}
+/*  Q-learning 补厚：学出来的 vs 真值，两张网格并排 */
+.qpair{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start}
+.qpane{flex:1 1 220px;min-width:200px}
+.qpane-t{font-size:11px;color:var(--faint);margin-bottom:5px;line-height:1.4}
+/*  策略跟最优不一样 / 压根没学到 */
+.qcell.qwrong{box-shadow:inset 0 0 0 1.5px var(--miss)}
+.qcell.qnone{opacity:.55}
+/*  GCN 补厚：当前节点那一行的聚合系数（两档归一化的差别在这儿看得见） */
+.gcncoef{font-size:11px;color:var(--dim);margin:6px 0 2px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.gcnc{font-family:var(--mono);border:1px solid var(--line);border-radius:4px;padding:1px 5px;background:var(--panel)}
 
 /* 思维树 ToT */
 .totwrap { display:flex; flex-direction:column; align-items:center; gap:10px; margin:14px 0; }

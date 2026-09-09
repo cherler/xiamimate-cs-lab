@@ -58,6 +58,10 @@ import { heapKernel, HEAP_BUILDS, HEAP_AFTERS, HEAP_DATA, HEAP_SCALE_NS, type He
 import { beamKernel, BEAM_MODELS, BEAM_KS, BEAM_SCORES, type BeamState } from '../src/kernels/beam.ts'
 import { bestofnKernel, BON_JUDGES, BON_VARIETY, type BestOfNState } from '../src/kernels/bestofn.ts'
 import { mctsKernel, type MctsState } from '../src/kernels/mcts.ts'
+import { totKernel, TOT_EVALS, TOT_PUZZLES, type ToTState } from '../src/kernels/tot.ts'
+import { qlearnKernel, QL_ALGOS, type QLearnState } from '../src/kernels/qlearn.ts'
+import { gcnKernel, GCN_GRAPHS, GCN_AGGS, GCN_LAYERS, type GcnState } from '../src/kernels/gcn.ts'
+import { wordvecKernel, WV_CORPUS, WV_DIMS, type WordVecState } from '../src/kernels/wordvec.ts'
 
 let failures = 0
 const ok = (m: string) => console.log(`  ✅ ${m}`)
@@ -2993,6 +2997,448 @@ console.log('\n【MCTS：单场是抛硬币，c 决定收不收敛】')
       ? ok(`自检：曲线起点 ${(sw[0].pRight * 100).toFixed(1)}% 低于第二档、也低于末档 —— `
         + `没有"预算越小越准"那种反常（第一版拿 indexOf(max) 拆平局时正是这个症状）`)
       : bad(`自检失败：曲线起点反常 ${sw.map(p => `${p.budget}:${p.pRight}`).join(' ')}`)
+  }
+}
+
+/*  ═══════════════════════════════════════════════════════════════
+    思维树 ToT —— 老版本整棵树是写死的常量表（5 个手挑的想法 + 手写的 sure/impossible
+    + 一句预先写好的解）。它自己写着「走不通还能**回溯**」「**评估器**判前景」
+    「**代价**成倍地涨」：回溯一次没发生、评估器一次没判错、屏幕上一个计数都没有。 */
+console.log('\n【思维树 ToT：天花板在评估器，不在搜索】')
+{
+  const fin = (params: Record<string, unknown>) => {
+    const m = totKernel.compile({ kind: 'tot', params, entities: [], streams: [] } as never)
+    let st: ToTState | null = null
+    for (let i = 0; i < 200; i++) { const r = m.step(st); if (!r) break; st = r.state }
+    return st!
+  }
+  const [PERFECT, NOISY, NONE] = TOT_EVALS
+  const [EASY, HARD, UNSAT] = TOT_PUZZLES
+
+  /*  ① **树是真枚举出来的** —— 不是手挑的 5 个想法。
+      而且第一层的条数必须**跟着题目变**：写死的表做不到这一点。 */
+  {
+    const e = fin({ puzzle: EASY, eval: NONE })
+    const h = fin({ puzzle: HARD, eval: NONE })
+    e.l1.length > 12 && h.l1.length !== e.l1.length && h.l1.length > 6
+      ? ok(`第一层是全部枚举的：${EASY.slice(0, 9)} 有 **${e.l1.length}** 条、${HARD.slice(0, 9)} 有 **${h.l1.length}** 条 —— 条数跟着题目变（写死的表做不到）`)
+      : bad(`枚举不像真的：${e.l1.length} vs ${h.l1.length}`)
+  }
+
+  /*  ② **真值是独立算的** —— 每条分支的 trulySure 必须和"这条状态能不能到 24"对得上，
+      而且它不能等于评估器说的（否则真值就是抄的评估器）。 */
+  {
+    const s = fin({ puzzle: HARD, eval: NOISY })
+    const disagree = s.l1.filter(t => t.sure !== t.trulySure).length
+    disagree > 0 && s.trulySolvable && s.truePath.length === 2
+      ? ok(`真值独立算：${s.l1.length} 条里有 **${disagree}** 条"评估器说的"和"真值"不一致；`
+        + `真解是 ${s.truePath.join('，')}（不剪枝穷举出来的，不问 ToT）`)
+      : bad(`真值像是抄评估器的：不一致 ${disagree} 条、真值 ${s.trulySolvable}、路径 ${s.truePath.length}`)
+  }
+
+  /*  ③ ⭐ **补厚的落点①：评估器判错 → ToT 咬定"无解"，而真值有解。**
+      三件事一起钉：剪错了、结论错了、而且**回溯救不回来**。 */
+  {
+    const s = fin({ puzzle: HARD, eval: NOISY })
+    s.wrongPrunes > 0 && s.trulySolvable && !s.claimFound && s.backtracks > 0
+      ? ok(`{1,5,5} + 会判错的评估器：剪错 **${s.wrongPrunes}** 条（${s.l1.find(t => t.pruned && t.trulySure)?.op}），`
+        + `之后回溯了 **${s.backtracks}** 次仍然咬定"无解" —— 而真值是有解。**剪掉的枝回溯够不着**`)
+      : bad(`剪错那一课没演出来：剪错 ${s.wrongPrunes}、真值 ${s.trulySolvable}、声称 ${s.claimFound}、回溯 ${s.backtracks}`)
+  }
+
+  /*  ④ **同一道题换完美评估器就找得到** —— 证明"找不到"的锅在评估器，不在搜索。 */
+  {
+    const s = fin({ puzzle: HARD, eval: PERFECT })
+    const n = fin({ puzzle: HARD, eval: NONE })
+    s.claimFound && n.claimFound && s.wrongPrunes === 0
+      ? ok(`同一道题换完美评估器就找到了（${s.solution}），不剪枝那档也找到了 —— `
+        + `**"找不到"的锅在评估器，不在搜索本身**`)
+      : bad(`换评估器没救回来：完美 ${s.claimFound}、不剪枝 ${n.claimFound}`)
+  }
+
+  /*  ⑤ ⭐ **补厚的落点②：完美评估器的"省"是假的。**
+      ⚠️ 只比"展开的节点"会得出相反结论（16 vs 59，看着省一大半）——
+      必须把**评估器内部**走掉的节点算进总账。 */
+  {
+    const bad2: string[] = []
+    for (const puzzle of TOT_PUZZLES) {
+      const s = fin({ puzzle, eval: PERFECT })
+      const none = s.costs.find(c => c.evalKind === NONE)!
+      const perf = s.costs.find(c => c.evalKind === PERFECT)!
+      if (perf.nodes >= none.nodes) bad2.push(`${puzzle}：完美展开的节点没少（${perf.nodes} vs ${none.nodes}）`)
+      if (perf.total <= none.total) bad2.push(`${puzzle}：完美的总账没超过不剪枝（${perf.total} vs ${none.total}）`)
+    }
+    bad2.length === 0
+      ? ok(`三道题上，完美评估器**展开的节点都更少、而总账都更贵**：`
+        + TOT_PUZZLES.map(p => { const s = fin({ puzzle: p, eval: PERFECT }); const c = s.costs
+          return `${p.slice(1, 8)} ${c[0].nodes}+${c[0].evalNodes}=${c[0].total} vs 不剪枝 ${c[2].total}` }).join('；')
+        + ` —— **"能完美判断中间状态"等于"已经把题解了一遍"**`)
+      : bad(bad2.slice(0, 3).join(' / '))
+  }
+
+  /*  ⑥ **不准的评估器两头不落好** —— 既没省下多少，又给了错答案。
+      ⚠️ 我先在末帧写死了"比不剪枝那档省了一大半"，而实测是 57 vs 59（省 3%）。 */
+  {
+    const s = fin({ puzzle: HARD, eval: NOISY })
+    const none = s.costs.find(c => c.evalKind === NONE)!
+    const mine = s.costs.find(c => c.evalKind === NOISY)!
+    const savedPct = (none.total - mine.total) / none.total
+    savedPct < 0.2 && !mine.found && none.found
+      ? ok(`不准的评估器两头不落好：总账 ${mine.total} vs 不剪枝 ${none.total}（只省 ${(savedPct * 100).toFixed(0)}%），`
+        + `而且给出了错答案 —— **付了评估的钱，买到一个错答案**`)
+      : bad(`两头不落好没量到：省 ${(savedPct * 100).toFixed(0)}%、声称 ${mine.found}、不剪枝 ${none.found}`)
+  }
+
+  /*  ⑦ **回溯真的发生了** —— 老版本一次都没有过。 */
+  {
+    const s = fin({ puzzle: UNSAT, eval: NONE })
+    const e = fin({ puzzle: EASY, eval: PERFECT })
+    s.backtracks >= 5 && e.backtracks === 0
+      ? ok(`回溯是真发生的：${UNSAT.slice(0, 9)} 不剪枝那档回溯 **${s.backtracks}** 次（每条都走不通）；`
+        + `而 ${EASY.slice(0, 9)} + 完美评估器第一条就撞对，回溯 0 次 —— **它跟着数据走，不是恒定的**`)
+      : bad(`回溯次数不像真的：无解档 ${s.backtracks}、好解档 ${e.backtracks}`)
+  }
+
+  /*  ⑧ **"无解"要把整棵树走完** —— 有解可以撞到就停。 */
+  {
+    const u = fin({ puzzle: UNSAT, eval: NONE })
+    const e = fin({ puzzle: EASY, eval: NONE })
+    !u.trulySolvable && u.nodes >= u.bruteNodes * 0.9 && e.nodes < u.nodes
+      ? ok(`断言"无解"必须把树走完：${UNSAT.slice(0, 9)} 展开 ${u.nodes} 个节点（整棵树 ${u.bruteNodes} 个）；`
+        + `而好解那档撞到就停，只用 ${e.nodes} 个 —— **有解能早停，无解没有捷径**`)
+      : bad(`不对称没量到：无解档 ${u.nodes}/${u.bruteNodes}、好解档 ${e.nodes}`)
+  }
+
+  /*  ⑨ 自检：这一套判据得会红。
+      ⚠️ 拿**炸过的那件事**自检 —— 只看"展开的节点"就会得出"完美评估器很省"的反结论。 */
+  {
+    const s = fin({ puzzle: EASY, eval: PERFECT })
+    const perf = s.costs[0], none = s.costs[2]
+    perf.nodes < none.nodes && perf.total > none.total
+      ? ok(`自检：只看展开的节点，完美评估器是 ${perf.nodes} vs ${none.nodes}（"省了三分之一"）；`
+        + `加上评估器内部的 ${perf.evalNodes} 个才是 ${perf.total} vs ${none.total}（"贵了三倍"）—— `
+        + `**同一组数据能得出相反结论，全看有没有把那一栏算进去**`)
+      : bad(`自检失败：展开 ${perf.nodes}/${none.nodes}、总账 ${perf.total}/${none.total}`)
+  }
+}
+
+/*  ═══════════════════════════════════════════════════════════════
+    强化学习 —— 这个实验名字叫 **Q-learning**，跑的却一直是**值迭代**。
+    它自己写着「值迭代=有模型的规划；Q-learning=同一套 Bellman、但从经验里免模型地学」，
+    而老舞台上还印着「不用提前知道地图」—— 那句话对值迭代来说是**反的**。 */
+console.log('\n【强化学习：值迭代要地图，Q-learning 只要经验】')
+{
+  const fin = (params: Record<string, unknown>) => {
+    const m = qlearnKernel.compile({ kind: 'qlearn', params, entities: [], streams: [] } as never)
+    let st: QLearnState | null = null
+    for (let i = 0; i < 200; i++) { const r = m.step(st); if (!r) break; st = r.state }
+    return st!
+  }
+  const [VI, QL] = QL_ALGOS
+
+  /*  ① **值迭代仍然学到最优** —— 上一轮补厚的那一半不能弄丢。 */
+  {
+    const s = fin({ algo: VI, eps: 0.3 })
+    s.wrongCells === 0 && s.converged && s.path.length - 1 === 7
+      ? ok(`值迭代 ${s.updates} 次 Bellman 更新收敛、一格不错，跟箭头走 ${s.path.length - 1} 步（绕墙，曼哈顿只有 5 步）`)
+      : bad(`值迭代不对：错 ${s.wrongCells} 格、收敛 ${s.converged}、路径 ${s.path.length - 1} 步`)
+  }
+
+  /*  ② ⭐ **补厚的落点：Q-learning 真的是免模型的。**
+      ⚠️ 这一条不能只看"它学出来了"—— 得钉住**代价的单位不一样**：
+      值迭代的账是 Bellman 更新次数（needsMap=true），Q-learning 的账是经验步数。 */
+  {
+    const s = fin({ algo: QL, eps: 0.3 })
+    const vi = s.cmp.find(x => x.needsMap)!
+    const ql = s.cmp.find(x => !x.needsMap && x.eps === 0.3)!
+    s.updates === 0 && s.expSteps > 1000 && vi.needsMap && !ql.needsMap && ql.n > vi.n * 10
+      ? ok(`Q-learning 这一档 **0 次** Bellman 更新（一次没查地图）、走了 **${s.expSteps}** 步经验；`
+        + `而值迭代只要 ${vi.n} 次更新 —— **代价差 ${(ql.n / vi.n).toFixed(0)} 倍，但单位根本不一样：一个要地图，一个不要**`)
+      : bad(`免模型没量到：updates=${s.updates}、经验 ${s.expSteps}、vi ${vi.n}、ql ${ql.n}`)
+  }
+
+  /*  ③ **"学对了没有"是独立真值** —— truePolicy 必须来自值迭代，且跟 Q-learning 学出来的不一样。 */
+  {
+    const s = fin({ algo: QL, eps: 0.3 })
+    const vi = fin({ algo: VI, eps: 0.3 })
+    const same = s.truePolicy.every((p, k) => p === vi.policy[k])
+    const differs = s.policy.some((p, k) => s.truePolicy[k] !== null && s.truePolicy[k] !== '★' && p !== s.truePolicy[k])
+    same && differs && s.wrongCells > 0
+      ? ok(`真值就是值迭代收敛后的策略（逐格相同），而 Q-learning 学出来的跟它差 **${s.wrongCells}/${s.cells}** 格 —— `
+        + `**"学错几格"是我们替它数的，它自己看不到这张图**`)
+      : bad(`真值口径不对：跟值迭代一致=${same}、有差异=${differs}、错 ${s.wrongCells} 格`)
+  }
+
+  /*  ④ ⭐ **ε=0 只学会一条路** —— 学错一大半，却照样走出最优路径。
+      ⚠️ 这一条是数据逼出来的：我原以为 ε=0 会走不到终点。**「学到最优路径」和「学到最优策略」是两件事。** */
+  {
+    const s = fin({ algo: QL, eps: 0 })
+    const opt = fin({ algo: VI, eps: 0 })
+    s.unlearned >= 5 && s.wrongCells >= 8 && s.path.length - 1 === opt.path.length - 1
+      ? ok(`ε=0：学错 **${s.wrongCells}/${s.cells}** 格、其中 **${s.unlearned}** 格 Q 全是 0（走都没走过），`
+        + `**可跟箭头走照样是 ${s.path.length - 1} 步、跟最优一样** —— 它只学会了那一条路`)
+      : bad(`ε=0 那一课没演出来：错 ${s.wrongCells}、没学到 ${s.unlearned}、路径 ${s.path.length - 1} vs 最优 ${opt.path.length - 1}`)
+  }
+
+  /*  ⑤ **探索率真的在起作用** —— ε 越大覆盖越全，而且是单调的。 */
+  {
+    const s = fin({ algo: QL, eps: 0.3 })
+    const rows = s.cmp.filter(x => !x.needsMap).sort((a, b) => a.eps - b.eps)
+    const monoWrong = rows.every((x, i) => i === 0 || x.wrongCells <= rows[i - 1].wrongCells)
+    const monoCost = rows.every((x, i) => i === 0 || x.n >= rows[i - 1].n)
+    monoWrong && monoCost
+      ? ok(`ε 越大学得越全、也越贵（两条都单调）：`
+        + rows.map(x => `ε=${x.eps} 错 ${x.wrongCells} 格 / ${x.n} 步`).join('　'))
+      : bad(`ε 的两条趋势不单调：${rows.map(x => `${x.eps}:${x.wrongCells}/${x.n}`).join(' ')}`)
+  }
+
+  /*  ⑥ ⚠️ **别把"ε=1 学得最全"说成"ε=1 最好"** —— 它贵了近 10 倍。
+      我在末帧先写死了"ε=1 学得到但慢"，紧接着又印出"这一列最好的是 ε=1"，自己打自己。 */
+  {
+    const s = fin({ algo: QL, eps: 0.3 })
+    const e1 = s.cmp.find(x => x.eps === 1)!
+    const e3 = s.cmp.find(x => x.eps === 0.3)!
+    e1.wrongCells < e3.wrongCells && e1.n > e3.n * 5
+      ? ok(`ε=1 确实**学得最全**（错 ${e1.wrongCells} vs ${e3.wrongCells} 格）—— 小网格上均匀探索覆盖率最高；`
+        + `**但它花了 ${e1.n} 步，是 ε=0.3 的 ${(e1.n / e3.n).toFixed(1)} 倍**。不能只挑一头说`)
+      : bad(`ε=1 的两面没量到：错 ${e1.wrongCells}/${e3.wrongCells}、步数 ${e1.n}/${e3.n}`)
+  }
+
+  /*  ⑦ **绕墙**：价值不是 γ^曼哈顿 —— 上一轮补厚的落点，一并守住。 */
+  {
+    const s = fin({ algo: VI, eps: 0.3 })
+    const sv = s.value[s.start[0] + s.start[1] * s.w]!
+    const manhattan = Math.abs(s.goal[0] - s.start[0]) + Math.abs(s.goal[1] - s.start[1])
+    /*  ⚠️ 容差得配得上**屏幕上那个数的精度**：`value` 是四舍五入到 3 位的 0.478，
+        而 γ^7=0.4782969 —— 我先写了 1e-6，红的是判据不是产品。 */
+    Math.abs(sv - Math.pow(s.gamma, 7)) < 1e-3 && Math.abs(sv - Math.pow(s.gamma, manhattan)) > 0.05
+      ? ok(`起点价值 ${sv} = γ^7（绕墙的真实步数），**不是** γ^${manhattan}=${Math.pow(s.gamma, manhattan).toFixed(3)}（曼哈顿）—— `
+        + `"距离公式"给不出这个数`)
+      : bad(`绕墙没体现：起点价值 ${sv}、γ^7=${Math.pow(s.gamma, 7).toFixed(3)}、γ^曼哈顿=${Math.pow(s.gamma, manhattan).toFixed(3)}`)
+  }
+
+  /*  ⑧ 自检：这一套判据得会红。
+      ⚠️ 拿"值迭代那一档"来试 ④ 的条件 —— 它错 0 格，那条必须在它身上不成立，
+      否则 ④ 量的是"Q-learning"这四个字，不是"不探索"。 */
+  {
+    const s = fin({ algo: VI, eps: 0 })
+    s.wrongCells === 0 && s.unlearned === 0 && s.updates > 0 && s.expSteps === 0
+      ? ok(`自检：值迭代那一档错 0 格、没学到 0 格、经验步数 0 —— ④ 的条件在它身上不成立，`
+        + `所以 ④ 量的是"不探索"，不是"Q-learning"这四个字`)
+      : bad(`自检失败：值迭代档 错 ${s.wrongCells}、没学到 ${s.unlearned}、经验 ${s.expSteps}`)
+  }
+}
+
+/*  ═══════════════════════════════════════════════════════════════
+    图卷积 GCN —— 老版本**只跑一层**，而它正文写着「叠 L 层信息传 L 跳，
+    第 L 层概括它 L 跳内的子图」，读数里那个「1 跳」还是个写死的字符串。
+    而整个 GNN 最有名的毛病 **过平滑** 压根没提。 */
+console.log('\n【图卷积 GCN：看得越远，也糊得越平】')
+{
+  const fin = (params: Record<string, unknown>) => {
+    const m = gcnKernel.compile({ kind: 'gcn', params, entities: [], streams: [] } as never)
+    let st: GcnState | null = null
+    for (let i = 0; i < 200; i++) { const r = m.step(st); if (!r) break; st = r.state }
+    return st!
+  }
+  const [G_MID, G_CHAIN, G_STAR] = GCN_GRAPHS
+  const [A_MEAN, A_SYM] = GCN_AGGS
+
+  /*  ① ⭐ **「第 L 层概括 L 跳内的子图」是扰动实验验出来的**，不是断言。
+      而且要在**每一档层数、每一张图**上都成立 —— 只在默认档验等于没验。 */
+  {
+    const bad2: string[] = []
+    for (const graph of GCN_GRAPHS) for (const agg of GCN_AGGS) for (const layers of GCN_LAYERS) {
+      const s = fin({ graph, agg, layers })
+      if (!s.hopsMatch) bad2.push(`${graph}/${agg}/${layers}层`)
+    }
+    bad2.length === 0
+      ? ok(`${GCN_GRAPHS.length}×${GCN_AGGS.length}×${GCN_LAYERS.length}=${GCN_GRAPHS.length * GCN_AGGS.length * GCN_LAYERS.length} 档全都验过：`
+        + `扰动一个节点之后跟着变的，**正好**是 BFS 算的 L 跳以内`)
+      : bad(`感受野对不上：${bad2.slice(0, 3).join(' / ')}`)
+  }
+
+  /*  ② **感受野真的跟着层数变宽** —— 不然 ① 可能是"全都变了"这种恒真。 */
+  {
+    const g = fin({ graph: G_CHAIN, agg: A_MEAN, layers: 1 })
+    const g3 = fin({ graph: G_CHAIN, agg: A_MEAN, layers: 3 })
+    const n1 = g.changed.filter(Boolean).length, n3 = g3.changed.filter(Boolean).length
+    n1 === 2 && n3 === 4 && n1 < n3
+      ? ok(`链状图上感受野跟着层数走：1 层只影响 **${n1}** 个节点（自己+1 跳），3 层影响 **${n3}** 个 —— **不是"全都变了"那种恒真**`)
+      : bad(`感受野没随层数变：1 层 ${n1} 个、3 层 ${n3} 个`)
+  }
+
+  /*  ③ ⭐ **补厚的落点：过平滑。** 离散度随层数**单调不增**，而且最后塌下去。 */
+  {
+    const s = fin({ graph: G_MID, agg: A_MEAN, layers: 3 })
+    const ds = s.depthSweep
+    const mono = ds.every((d, i) => i === 0 || d.spread <= ds[i - 1].spread + 1e-9)
+    const last2 = ds[ds.length - 1]
+    mono && last2.spread < s.spread0 * 0.02
+      ? ok(`离散度随层数**单调不增**且塌下去：${ds.map(d => `${d.layers}层 ${d.spread}`).join(' → ')}`
+        + `（初始 ${s.spread0}）—— **这就是过平滑**`)
+      : bad(`过平滑没量到：单调=${mono}、末档 ${last2.spread} vs 初始 ${s.spread0}`)
+  }
+
+  /*  ④ **不同的图糊的速度完全不同** —— "同样的层数，深的程度不一样"。 */
+  {
+    const star = fin({ graph: G_STAR, agg: A_MEAN, layers: 3 })
+    const chain = fin({ graph: G_CHAIN, agg: A_MEAN, layers: 3 })
+    const at5 = (s: GcnState) => s.depthSweep.find(d => d.layers === 5)!.spread / s.spread0
+    at5(star) < at5(chain) / 3
+      ? ok(`5 层时：星形只剩 ${(at5(star) * 100).toFixed(1)}% 的离散度、链状还有 ${(at5(chain) * 100).toFixed(1)}% —— `
+        + `**同样的层数，在不同的图上"深"的程度完全不同**（星形任意两点最多 2 跳，链状要 4 跳）`)
+      : bad(`两张图糊的速度没拉开：星形 ${at5(star)}、链状 ${at5(chain)}`)
+  }
+
+  /*  ⑤ ⭐ ⚠️ **别拿"离散度没塌到 0"当"没有过平滑"。**
+      对称归一化那档 50 层还剩 0.12 —— 我原来一句"塌得慢、方向一样"就糊过去了，
+      量完才知道它塌向的是**正比于 √(度数+1)** 的形状。 */
+  {
+    const s = fin({ graph: G_MID, agg: A_SYM, layers: 3 })
+    const deep = s.depthSweep[s.depthSweep.length - 1]
+    deep.spread > s.spread0 * 0.05 && s.shapeGap < 0.05 && s.infoLost && !s.deepFlat
+      ? ok(`对称归一化：${deep.layers} 层还剩 **${deep.spread}** 的离散度（没塌到 0），`
+        + `可深层形状 [${s.deepShape.join(',')}] 跟 √(度数+1) 的 [${s.degShape.join(',')}] 差只有 ${s.shapeGap} —— `
+        + `**残余差别只反映度数，初始信息一样丢光了**`)
+      : bad(`对称归一化那一课没量到：末档离散度 ${deep.spread}、形状差 ${s.shapeGap}、丢光=${s.infoLost}、塌平=${s.deepFlat}`)
+  }
+
+  /*  ⑥ **两种聚合的系数真的不一样** —— 度数不均的节点上尤其明显。 */
+  {
+    const mean = fin({ graph: G_STAR, agg: A_MEAN, layers: 1 })
+    const sym = fin({ graph: G_STAR, agg: A_SYM, layers: 1 })
+    const differ = mean.rows[0].feat.some((x, k) => Math.abs(x - sym.rows[0].feat[k]) > 1e-6)
+    differ
+      ? ok(`星形图上两种聚合的第一层结果不同：均值 [${mean.rows[0].feat.join(', ')}] vs 对称归一化 [${sym.rows[0].feat.join(', ')}] —— `
+        + `**度数大的中心节点被压低了**`)
+      : bad(`两种聚合算出来一样：${mean.rows[0].feat.join(',')}`)
+  }
+
+  /*  ⑦ ⚠️ **两种聚合塌向的是两个不同的极限**，屏幕上那一行得写对是哪一个。
+      第一版把它写死成"正比于 √(度数+1)"，于是星形+均值那档（实际 [0.997,1,0.997…]、
+      离 √度数的 [1,0.632…] 差着十万八千里）照样印出"← 几乎重合"。 */
+  {
+    const mean = fin({ graph: G_STAR, agg: A_MEAN, layers: 3 })
+    const sym = fin({ graph: G_STAR, agg: A_SYM, layers: 3 })
+    mean.limitName.startsWith('全都') && sym.limitName.startsWith('正比')
+      && mean.shapeGap < 0.05 && sym.shapeGap < 0.05
+      ? ok(`两种聚合塌向的极限不同：均值 → **${mean.limitName}**（差 ${mean.shapeGap}）、`
+        + `对称归一化 → **${sym.limitName}**（差 ${sym.shapeGap}）—— 屏幕上那一行写的是**它实际塌向的那个**`)
+      : bad(`极限判错了：均值 ${mean.limitName}(${mean.shapeGap})、对称 ${sym.limitName}(${sym.shapeGap})`)
+  }
+
+  /*  ⑧ 自检：这一套判据得会红。
+      ⚠️ 拿**炸过的那件事**自检 —— 只看"离散度塌没塌到 0"，对称归一化那档会被判成"没有过平滑"。 */
+  {
+    const s = fin({ graph: G_STAR, agg: A_SYM, layers: 3 })
+    const deep = s.depthSweep[s.depthSweep.length - 1]
+    //  只看离散度：星形+对称归一化 50 层还有 0.18，"没塌"；可它 shapeGap 只有 0.001
+    deep.spread > s.spread0 * 0.1 && s.shapeGap < 0.02 && s.infoLost
+      ? ok(`自检：星形+对称归一化 ${deep.layers} 层离散度 **${deep.spread}**（占初始的 ${(deep.spread / s.spread0 * 100).toFixed(0)}%，`
+        + `"看着完全没塌"），可它跟 √度数形状只差 ${s.shapeGap} —— **只看离散度会得出相反结论**`)
+      : bad(`自检失败：末档离散度 ${deep.spread}、形状差 ${s.shapeGap}、丢光=${s.infoLost}`)
+  }
+}
+
+/*  ═══════════════════════════════════════════════════════════════
+    词向量 Word2Vec —— 老版本把词**手摆在平面上**（国王(1,0)、王后(1,1)…），
+    于是"国王−男人+女人=王后、距离 0"当然成立。而它正文写着"靠分布假设学出来"，
+    训练一次都没发生过。**"惊人的性质"如果是构造出来的，那就一点都不惊人。** */
+console.log('\n【词向量：坐标是学出来的，不是摆出来的】')
+{
+  const fin = (params: Record<string, unknown>) => {
+    const m = wordvecKernel.compile({ kind: 'wordvec', params, entities: [], streams: [] } as never)
+    let st: WordVecState | null = null
+    for (let i = 0; i < 50; i++) { const r = m.step(st); if (!r) break; st = r.state }
+    return st!
+  }
+  const base = fin({ corpus: WV_CORPUS[1], dim: 4 })
+
+  /*  ① **向量真的从语料来** —— 换语料，向量必须跟着变。
+      手摆坐标的年代这一条恒假：坐标是常量，跟语料无关。 */
+  {
+    const a = fin({ corpus: WV_CORPUS[0], dim: 4 })
+    const b = fin({ corpus: WV_CORPUS[2], dim: 4 })
+    const va = a.words.find(w => w.name === '国王')!.v
+    const vb = b.words.find(w => w.name === '国王')!.v
+    const differ = va.some((x, k) => Math.abs(x - vb[k]) > 1e-6)
+    differ && a.tokens !== b.tokens
+      ? ok(`换语料（${a.sents} 句 ${a.tokens} 词 → ${b.sents} 句 ${b.tokens} 词），「国王」的向量跟着变了 `
+        + `[${va.slice(0, 2).join(', ')}…] → [${vb.slice(0, 2).join(', ')}…] —— **不是写死的坐标**`)
+      : bad(`向量像是写死的：${va.join(',')} vs ${vb.join(',')}`)
+  }
+
+  /*  ② **PPMI 真的在压高频虚词** —— "在"这类到处都出现的词应该被压到 0。 */
+  {
+    const s = base
+    const kingRow = s.coRows.find(r => r.word === '国王')!
+    //  "王宫"是有指向的搭配，PPMI 该 > 0
+    const palace = kingRow.cells.find(c => c.ctx === '王宫')!
+    palace.n > 0 && palace.ppmi > 0
+      ? ok(`PPMI 保住了有指向的搭配：「国王·王宫」共现 ${palace.n} 次、PPMI ${palace.ppmi}（>0）`)
+      : bad(`PPMI 不对：国王·王宫 共现 ${palace.n}、PPMI ${palace.ppmi}`)
+  }
+
+  /*  ③ ⭐ **补厚的落点①：不排除输入词的话，最近邻常常是输入词自己。**
+      这是词类比评测里一个几乎没人提的细节，而它决定了这个著名例子有多硬。 */
+  {
+    const hits = WV_CORPUS.flatMap(cn => WV_DIMS.map(d => fin({ corpus: cn, dim: d })))
+      .filter(s => s.rankedKeep[0].isInput)
+    hits.length >= 3
+      ? ok(`${hits.length} / ${WV_CORPUS.length * WV_DIMS.length} 档下**不排除输入词的话最近邻就是输入词自己**`
+        + `（比如「${hits[0].nearestKeep}」）—— a−b+c 离 a 本来就很近。**标准评测要排除 a、b、c**`)
+      : bad(`"输入词挡路"这件事没量到：只有 ${hits.length} 档`)
+  }
+
+  /*  ④ ⭐ **补厚的落点②：「成立」和「分得开」是两件事。**
+      ⚠️ 只看"最近邻是不是王后"会把"几个词挤成一团、碰巧王后排第一"判成成功。 */
+  {
+    const all = WV_CORPUS.flatMap(cn => WV_DIMS.map(d => fin({ corpus: cn, dim: d })))
+    const okCount = all.filter(s => s.ok).length
+    const fake = all.filter(s => s.ok && s.margin < 0.02).length
+    const solid = all.filter(s => s.ok && s.margin >= 0.02).length
+    okCount > solid && fake > 0 && solid > 0 && okCount < all.length
+      ? ok(`${all.length} 档里 **${okCount}** 档"最近邻是王后"（另 ${all.length - okCount} 档直接选错了），`
+        + `可这 ${okCount} 档里还有 **${fake}** 档第一名和第二名的余弦相似度差 < 0.02`
+        + `（挤成一团、排第一只是碰巧）—— 真正又对又分得开的只有 **${solid}** 档。`
+        + `**只看"排第一"会把假成立判成成功。**`)
+      : bad(`"成立≠分得开"没量到：成立 ${okCount}/${all.length}、假成立 ${fake}、真成立 ${solid}`)
+  }
+
+  /*  ⑤ **两个旋钮都真的在起作用** —— 差距要跟着语料和维度变。
+      ⚠️ 语料那个旋钮踩过坑：第一版是"重复几遍"，而 **PMI 是比值**，均匀放大它不变。 */
+  {
+    const s = base
+    const byCorpus = new Set(s.sweep.filter(x => x.dim === 4).map(x => x.margin))
+    const byDim = new Set(s.sweep.filter(x => x.corpus === WV_CORPUS[1]).map(x => x.margin))
+    byCorpus.size > 1 && byDim.size > 1
+      ? ok(`两个旋钮都在起作用：同维度换语料，差距有 ${byCorpus.size} 种取值；同语料换维度，有 ${byDim.size} 种 —— `
+        + `**（第一版的"语料重复几遍"是个空旋钮：PMI 是比值，均匀放大不变）**`)
+      : bad(`旋钮空转：换语料 ${byCorpus.size} 种、换维度 ${byDim.size} 种`)
+  }
+
+  /*  ⑥ **确定性** —— 同一份语料跑两次必须一模一样（用特征分解而不是 SGD 就是为了这个）。 */
+  {
+    const a = fin({ corpus: WV_CORPUS[1], dim: 4 })
+    const b = fin({ corpus: WV_CORPUS[1], dim: 4 })
+    const same = a.words.every((w, k) => w.v.every((x, j) => x === b.words[k].v[j]))
+    same
+      ? ok('同一份语料跑两次，向量逐位相同 —— 特征分解是确定性的，可复现、可核对')
+      : bad('两次跑出来的向量不一样')
+  }
+
+  /*  ⑦ 自检：这一套判据得会红。
+      ⚠️ 拿**炸过的那件事**自检 —— 只看 `ok`（最近邻是不是王后），9 档全是 true，
+      而其中 6 档其实分不开。判据必须认得出这个区别。 */
+  {
+    const all = WV_CORPUS.flatMap(cn => WV_DIMS.map(d => fin({ corpus: cn, dim: d })))
+    const naive = all.filter(s => s.ok).length   // 只看"排第一"
+    const strict = all.filter(s => s.ok && s.margin >= 0.02).length
+    naive > strict && strict > 0
+      ? ok(`自检：只看"最近邻是不是王后"有 ${naive}/${all.length} 档算成功；`
+        + `加上"跟第二名差多少"这一条，只剩 ${strict} 档 —— **同一组数据，两种判法差 ${naive - strict} 档**`)
+      : bad(`自检失败：只看排第一 ${naive}、加差距后 ${strict}（共 ${all.length}）`)
   }
 }
 

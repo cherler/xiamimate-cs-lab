@@ -187,7 +187,7 @@ import { beamKernel, BEAM_MODELS, BEAM_KS, BEAM_SCORES, type BeamState } from '@
 import { BeamStage } from './stages/BeamStage.tsx'
 import { rnnKernel, type RNNState } from '@engine/kernels/rnn.ts'
 import { RNNStage } from './stages/RNNStage.tsx'
-import { wordvecKernel, type WordVecState } from '@engine/kernels/wordvec.ts'
+import { wordvecKernel, WV_CORPUS, WV_DIMS, type WordVecState } from '@engine/kernels/wordvec.ts'
 import { WordVecStage } from './stages/WordVecStage.tsx'
 import { lstmKernel, type LSTMState } from '@engine/kernels/lstm.ts'
 import { LSTMStage } from './stages/LSTMStage.tsx'
@@ -199,7 +199,7 @@ import { selfconsistKernel, type SelfConsistState } from '@engine/kernels/selfco
 import { SelfConsistStage } from './stages/SelfConsistStage.tsx'
 import { bestofnKernel, BON_JUDGES, BON_VARIETY, type BestOfNState } from '@engine/kernels/bestofn.ts'
 import { BestOfNStage } from './stages/BestOfNStage.tsx'
-import { totKernel, type ToTState } from '@engine/kernels/tot.ts'
+import { totKernel, TOT_EVALS, TOT_PUZZLES, type ToTState } from '@engine/kernels/tot.ts'
 import { ToTStage } from './stages/ToTStage.tsx'
 import { collisionKernel, type CollisionState } from '@engine/kernels/collision.ts'
 import { mvccKernel, type MvccState } from '@engine/kernels/mvcc.ts'
@@ -444,11 +444,11 @@ import { DiffPolicyStage } from './stages/DiffPolicyStage.tsx'
 import { VLAStage } from './stages/VLAStage.tsx'
 import { LeRobotStage } from './stages/LeRobotStage.tsx'
 import { CollisionStage } from './stages/CollisionStage.tsx'
-import { gcnKernel, type GcnState } from '@engine/kernels/gcn.ts'
+import { gcnKernel, GCN_GRAPHS, GCN_AGGS, GCN_LAYERS, type GcnState } from '@engine/kernels/gcn.ts'
 import { GcnStage } from './stages/GcnStage.tsx'
 import { pagerankKernel, type PageRankState } from '@engine/kernels/pagerank.ts'
 import { PageRankStage } from './stages/PageRankStage.tsx'
-import { qlearnKernel, type QLearnState } from '@engine/kernels/qlearn.ts'
+import { qlearnKernel, QL_ALGOS, QL_EPS, type QLearnState } from '@engine/kernels/qlearn.ts'
 import { QLearnStage } from './stages/QLearnStage.tsx'
 import { recsysKernel, RS_SCENES, RS_DIMS, RS_LAMBDAS, type RecSysState } from '@engine/kernels/recsys.ts'
 import { RecSysStage } from './stages/RecSysStage.tsx'
@@ -4673,37 +4673,68 @@ const rnn: Experiment<RNNState> = {
   ],
 }
 
+/** 词向量各阶段的中文名 —— 读数、tone、tickLabel 共用一份 */
+const STAGE_WV: Record<WordVecState['stage'], string> = {
+  intro: '语料', count: '数共现', ppmi: '算 PPMI', embed: '降维得向量', analogy: '做类比', done: '结论',
+}
+
 const wordvec: Experiment<WordVecState> = {
   id: 'wordvec',
   group: '深度学习算法',
   title: '词向量 Word2Vec',
-  subtitle: '意思变成位置，语义关系变成可加减的方向',
+  subtitle: '从共现里学出来的位置——而不是摆上去的',
   kernel: wordvecKernel,
-  defaultDoc: { kind: 'wordvec', params: {}, entities: [], streams: [] },
-  params: [],
-  paramsNote: `**词向量把每个词映射成稠密向量,让"意思"变成"位置"**。靠分布假设学出来:出现在相似上下文的词(猫/狗都跟宠物、喂食共现)向量就相近,skip-gram/CBOW 让共现的词向量相互靠近。
-
-- **惊人性质**:语义关系体现为向量方向——国王−男人+女人≈王后("国王减男人"得到"王室"方向,再加"女人"就落到"王后")。
-- **本实验**:用两条可解释语义轴(王室度×性别)给几个词定坐标,现场演示国王(1,0)−男人(0,0)=王室方向(1,0),+女人(0,1)=(1,1),离它最近的词正是王后(1,1)距离 0。每步向量加减、最近邻距离都可手算。
-
-词向量是 NLP 从符号迈向语义的关键一步,也是所有大模型输入层的地基。`,
-  bounds: [
-    '词摆进平面:横轴王室度、纵轴性别',
-    '国王−男人+女人:向量加减(可核)',
-    '(1,0)−(0,0)+(0,1)=(1,1)=王后,最近邻距离 0',
-    '真实词向量几百维、从海量文本自动学',
+  defaultDoc: { kind: 'wordvec', params: { corpus: WV_CORPUS[1], dim: 4 }, entities: [], streams: [] },
+  /*  2026-09-09 补厚：老版本把词**手摆在平面上**（国王(1,0)、男人(0,0)、女人(0,1)、王后(1,1)），
+      于是"国王−男人+女人=王后、距离 0"当然成立 —— **那不是学出来的，是摆出来的**。
+      而它正文写着「靠分布假设学出来，skip-gram 就是让共现的词向量相互靠近」，训练一次没发生过。
+      **"惊人的性质"如果是构造出来的，那就一点都不惊人。** */
+  params: [
+    { key: 'corpus', label: '语料', kind: 'enum', options: [...WV_CORPUS] },
+    { key: 'dim', label: '维度', kind: 'number', options: [...WV_DIMS] },
   ],
-  tabs: [{ id: 'space', label: '语义空间' }],
+  paramsNote: `词向量把"意思"变成**位置**、把"语义关系"变成**方向**。靠**分布假设**学出来：出现在相似上下文里的词，向量就相近。
+
+- **这一屏的向量是真从语料里算的**：**数共现**（窗口 ±2）→ **PPMI**（正逐点互信息，把"在/很/的"这类到处都出现的词自动压掉）→ 对 PPMI 矩阵做**特征分解**取前 d 个方向。Levy & Goldberg 2014 证明过：**skip-gram 本质上就是在隐式分解 PMI 矩阵**。（用特征分解而不是 SGD 是为了**确定性**：同一份语料每次跑出同一组向量、可复现可核对。）
+- 语料是 22 条编出来的句子（"国王 在 王宫 里 加冕 他 登上 王位"这种）。**句子是编的，但向量不是** —— 向量只从这些句子的共现里算出来。
+
+- **补厚的落点①：那个几乎没人提的细节。** 词类比评测里要**把 a、b、c 三个输入词排除掉**再取最近邻，否则最近的常常就是**输入词自己**：a−b+c 这个向量离 a 和 c 本来就很近（毕竟只挪了一小步）。实测 9 档里有 **8 档**不排除的话最近邻是「**国王**」。**「国王−男人+女人=王后」这个著名例子有多硬，很大程度上取决于这一步。**（Linzen 2016 专门写过。）
+
+- **补厚的落点②：「成立」和「分得开」是两件事。** 少语料 / 低维那几档，第一名和第二名的余弦相似度**差不多是 0** —— 王后、王子、公主**挤成一团分不开**，"最近邻是王后"只是排序碰巧。9 档里 **8 档**最近邻是「王后」（另 1 档——中语料 2 维——直接选成了「女孩」），**而这 8 档里还有 2 档是"分不开"的假成立**，真正**又对又分得开**的只有 **6 档**（差距从 0.347 到 0.819）。**只看"排第一"会把这种情况判成成功。**
+
+- ⚠️ **语料那个旋钮踩过一次坑**：第一版是"每条模板重复几遍"（1/4/16），结果三档跑出来**一模一样** —— 因为 **PMI 是个比值**，把所有计数均匀放大 N 倍不改变它。现在改成"用多少条模板"，才真的改变了共现结构。
+
+- **别把类比当成词向量的证明**：它在精心挑的例子上很漂亮，换一批关系（反义词、动词时态）成功率就掉得厉害。`,
+  bounds: [
+    '22 条编好的句子（已分词）、词表约 30 个词;**窗口 ±4** 数共现（先设的 ±2，结果「国王·他」「王后·她」全是 0，而表旁边的说明写着"性别方向就藏在这一列里" —— 说明跟它旁边的表打架）',
+    'PPMI = max(0, log( p(a,b)/(p(a)p(b)) ));降维用 Jacobi 特征分解（对称矩阵，**确定性**，不是 SGD）',
+    '类比用**余弦相似度**排名;两种口径都给（排除输入词 / 不排除）',
+    '「分得开吗」= 第一名减第二名的余弦相似度;< 0.02 判为"挤成一团"',
+    '语料档改变的是**用几条模板**，不是重复几遍 —— PMI 是比值，均匀放大它不变（第一版栽在这儿）',
+    '⚠️ 这是个**玩具**:22 句话、几十个词。真实 word2vec 在几十亿词上训,那个性质是要足够数据才长出来的',
+    '未做:真的 skip-gram/CBOW 的 SGD 训练、负采样、子词、多义词（一个词一个向量的根本局限）、更大规模的类比测评集',
+  ],
+  tabs: [{ id: 'vec', label: '共现→向量→类比' }],
   Stage: WordVecStage,
-  tone: s => (s.phase === 'done' ? { key: 'good', label: `=${s.nearest}` } : s.stage === 'find' ? { key: 'good', label: s.nearest } : { key: 'idle', label: s.stage === 'sub' ? '王室方向' : s.stage === 'add' ? '加女人' : '语义空间' }),
-  metric: s => { const order: Record<string, number> = { show: 0.15, sub: 0.4, add: 0.65, find: 0.9, done: 1 }; return order[s.stage] ?? 0 },
-  tickLabel: s => (s.phase === 'done' ? '毕' : s.stage === 'sub' ? '减' : s.stage === 'add' ? '加' : s.stage === 'find' ? '找' : '摆'),
+  tone: s => (s.phase !== 'done'
+    ? { key: 'idle', label: STAGE_WV[s.stage] }
+    : s.ok && s.margin >= 0.02 ? { key: 'good', label: `${s.nearest}（差 ${s.margin}）` }
+      : s.ok ? { key: 'bad', label: `分不开（差 ${s.margin}）` } : { key: 'bad', label: `→${s.nearest}` }),
+  metric: s => { const o: Record<string, number> = { intro: 0.1, count: 0.3, ppmi: 0.5, embed: 0.7, analogy: 0.9, done: 1 }; return o[s.stage] ?? 0 },
+  tickLabel: s => (s.phase === 'done' ? '毕' : STAGE_WV[s.stage].slice(0, 2)),
   whyInRail: true,
   readouts: s => [
-    { label: '类比', value: '国王−男人+女人' },
-    { label: '本步', value: s.stage === 'sub' ? `方向=(${s.dir.join(',')})` : s.stage === 'add' || s.stage === 'find' || s.phase === 'done' ? `结果=(${s.result.join(',')})` : '摆词' },
-    { label: '最近的词', value: s.stage === 'find' || s.phase === 'done' ? `${s.nearest}(${s.ranked[0]?.d})` : '?', tone: s.phase === 'done' ? 'good' : undefined },
-    { label: '维度', value: '2(真实:几百维)' },
+    { label: '当前', value: STAGE_WV[s.stage] },
+    { label: '语料', value: `${s.sents} 句 / ${s.tokens} 词（词表 ${s.vocab.length}）` },
+    /*  ⭐ 两种口径并排 —— 不排除输入词的话最近邻常常就是输入词自己 */
+    { label: `最近的词（排除输入词）`, value: s.phase === 'done' ? `${s.nearest}（期望 ${s.expected}）` : '?',
+      tone: s.phase === 'done' ? (s.ok ? 'good' : 'bad') : undefined },
+    { label: '不排除输入词的话', value: s.phase === 'done' ? s.nearestKeep : '?',
+      tone: s.phase === 'done' && s.nearestKeep !== s.nearest ? 'bad' : undefined },
+    /*  ⭐ "成立"和"分得开"是两件事 */
+    { label: '跟第二名差多少', value: s.phase === 'done' ? `${s.margin}${s.margin < 0.02 ? '（挤成一团，分不开）' : ''}` : '—',
+      tone: s.phase === 'done' ? (s.margin < 0.02 ? 'bad' : 'good') : undefined },
+    { label: '9 档里又对又分得开的', value: `${s.sweep.filter(x => x.ok && x.margin >= 0.02).length} / ${s.sweep.length}` },
   ],
 }
 
@@ -4963,36 +4994,72 @@ const bestofn: Experiment<BestOfNState> = {
   ],
 }
 
+/** ToT 各阶段的中文名 —— 读数、tone、舞台三处共用一份，别各写各的 */
+const STAGE_TONE: Record<ToTState['stage'], string> = {
+  root: '根', generate: '生成分支', evaluate: '评估前景', prune: '剪枝', expand: '深入（可回溯）', done: '结论',
+}
+
 const tot: Experiment<ToTState> = {
   id: 'tot',
   group: '大模型算法',
   title: '思维树 ToT',
-  subtitle: '推理展开成一棵搜索树：生成→评估→剪枝→深入',
+  subtitle: '生成→评估→剪枝→深入——而它的天花板在评估器',
   kernel: totKernel,
-  defaultDoc: { kind: 'tot', params: {}, entities: [], streams: [] },
-  params: [],
-  paramsNote: `**思维树 ToT = 把推理组织成一棵搜索树**——思维链一条道走到黑、错一步没回头;自洽采多条独立线投票、每条内部还是直线。ToT 更进一步:逐层 生成→评估→剪枝→深入。
+  defaultDoc: { kind: 'tot', params: { puzzle: TOT_PUZZLES[1], eval: TOT_EVALS[1] }, entities: [], streams: [] },
+  /*  2026-09-09 补厚：上一版把"单层假树"做成了"两层树"，但整棵树仍然是**写死的常量表**
+      （5 个手挑的想法 + 手写的 sure/impossible + 一句预先写好的解）。它自己写着
+      「走不通还能**回溯**」「**评估器**给每个分支判前景」「**代价**成倍地涨」——
+      回溯一次没发生过、评估器一次没判错过、屏幕上一个计数都没有。 */
+  params: [
+    { key: 'puzzle', label: '题目', kind: 'enum', options: [...TOT_PUZZLES] },
+    { key: 'eval', label: '评估器', kind: 'enum', options: [...TOT_EVALS] },
+  ],
+  paramsNote: `**ToT = 把推理组织成一棵搜索树**：每步①**生成**多个想法（分支）②用**评估器**判每个分支的前景③**剪掉**没希望的④沿有希望的**再往深处展开**，走不通就**回溯**换分支。比思维链（一条道走到黑）、自洽（多条独立线投票）更进一步。
 
-- **机制**:每步生成多个想法(分支)、评估器给每个判前景(sure/impossible)、剪掉没希望的、沿有希望的**再往深处展开一层**,走不通还能回溯换分支——像下棋在脑中推演多步、剪掉臭棋。
-- **本实验(两层真树)**:24 点用 {2,3,4} 凑 24。第一层 5 个想法:{12,2}/{8,3}/{6,4} 判 **sure**、{7,2}/{2,3} 判 **impossible** → 剪掉;对留下的每条**再展开第二层**,都能到 24;第一条到 24 的叶子回溯到根 → **3×4=12、12×2=24**。
-- **取舍**:擅长要探索/试错/规划的难题(24点、字谜、走迷宫);代价是分支多、评估多,更贵更慢。`,
+- **树是真搜出来的**：第一层枚举**所有**「挑两个数做一次运算」的结果（减和除跟顺序有关，所以 {2,3,4} 有 **18** 条、{1,5,5} 有 **10** 条），第二层再枚举一次。不是手挑的 5 个想法。
+- **「有没有解」是独立真值**：另跑一遍**不剪枝的穷举**当真相。⚠️ 这一条要紧——**ToT 剪错了枝，也会一口咬定"无解"**，问它自己是问不出来的。
+
+- **补厚的落点①：评估器判错会怎样。** 「像大模型那样」那档的规矩听起来很有道理——**「别把数弄得比目标还大」**。在 **{1,5,5}** 上它把**唯一的解**剪掉了：5×5=25 已经超过 24、看着没救，可 **25−1 恰好是 24**。于是 ToT 说「无解」，而真值是有解。
+  - **剪掉的枝再也回不来。** 它后面还回溯了 9 次，一点用没有——**回溯只能在"留下的枝"之间换**。这就是 ToT 的天花板：不在搜索，在评估器。
+  - 而且它**连省都没省下多少**：总账 57 个节点，不剪枝那档 59 个，只省 3%。**一个不准的评估器两头不落好**——付了评估的钱，买到一个错答案。
+
+- **补厚的落点②：「完美评估器」的省是假的。** 屏幕上的代价表有一栏叫**「评估器内部」**：完美评估器每判一次前景，内部都真的把剩下的数穷举了一遍。{2,3,4} 上它展开 24 个节点、看着比不剪枝的 36 省，可**内部走了 117 个，总账 141**——**比不剪枝还贵**。
+  - **能完美判断中间状态有没有希望，本来就等于已经把题解了一遍。** 这是"现实里没有完美评估器"的算术版本，也是导览那句「**评估中间状态往往比解题本身还难**」的账。
+
+- **补厚的落点③：回溯真的发生了。** {1,5,5} 那档要试 9 条走不通的分支才撞到解（或者撞不到）。而**思维链一条线 = 1 次生成、0 次评估，错一步就一路错到底**——三者的账并排摆在屏幕上。
+- **无解那档（{3,3,8}）**：要断言"无解"就得把整棵树走完，**"有解"可以撞到就停，"无解"没有捷径**。`,
   bounds: [
-    '24 点:用 {2,3,4} 凑 24,展开两层搜索树',
-    '第一层生成 5 想法 → 评估(3 sure / 2 impossible)→ 剪枝',
-    '对留下的 3 条各展开第二层,都到 24;解路径 3×4=12→12×2=24',
-    '比 CoT(单线)/自洽(独立多线)更进一步:广度生成 + 评估剪枝 + 深度搜索(可回溯)',
+    '3 个数凑 24;加减乘除,减和除**跟顺序有关**(所以第一层是 10~18 条,不是 5 条)',
+    '三道题:{2,3,4} 好解 / {1,5,5} 只有一条路通 / {3,3,8} **真无解**(整数三个数凑不出 24)',
+    '「有没有解」= 另跑一遍不剪枝穷举的结果,**不问 ToT 自己**',
+    '「剪错了几条」= 评估器判 impossible、而穷举说这条能到 24,逐条对出来的',
+    '代价分三栏:展开的节点 / **评估器内部走的节点** / 总账 —— 完美评估器的"省"全藏在第二栏',
+    '⚠️「不评估」那档记 0 次评估调用;第一版不管哪档都 +1,三档并排的表直接失去意义',
+    '树只有两层(3 个数 → 两次运算);没有更深的树、没有 beam 宽度、没有 LLM 真的在生成想法',
+    '未做:4 个数的 24 点(第一层 24 条、三层树)、每层保留前 k 个的 BFS 变体、把搜索换成 MCTS、评估器给连续分数而非二值',
   ],
   tabs: [{ id: 'tree', label: '想法树搜索' }],
   Stage: ToTStage,
-  tone: s => (s.phase === 'done' ? { key: 'good', label: '解出' } : s.stage === 'prune' ? { key: 'bad', label: '剪枝' } : s.stage === 'evaluate' ? { key: 'idle', label: '评估' } : s.stage === 'expand' ? { key: 'good', label: '找到解' } : { key: 'idle', label: '展开' }),
-  metric: s => { const order: Record<string, number> = { root: 0.1, generate: 0.35, evaluate: 0.55, prune: 0.75, expand: 0.95, done: 1 }; return order[s.stage] ?? 0 },
-  tickLabel: s => (s.phase === 'done' ? '解' : s.stage === 'generate' ? '生' : s.stage === 'evaluate' ? '评' : s.stage === 'prune' ? '剪' : s.stage === 'expand' ? '搜' : '根'),
+  tone: s => (s.phase !== 'done'
+    ? { key: 'idle', label: STAGE_TONE[s.stage] }
+    : s.claimFound === s.trulySolvable
+      ? { key: 'good', label: s.claimFound ? '解出' : '确认无解' }
+      : { key: 'bad', label: `剪错 ${s.wrongPrunes} 条` }),
+  metric: s => { const order: Record<string, number> = { root: 0.1, generate: 0.3, evaluate: 0.5, prune: 0.7, expand: 0.85, done: 1 }; return order[s.stage] ?? 0 },
+  tickLabel: s => (s.phase === 'done' ? (s.claimFound ? '解' : '无') : s.stage === 'generate' ? '生' : s.stage === 'evaluate' ? '评' : s.stage === 'prune' ? '剪' : s.stage === 'expand' ? '溯' : '根'),
   whyInRail: true,
   readouts: s => [
-    { label: '阶段', value: s.stage === 'root' ? '根' : s.stage === 'generate' ? '生成想法' : s.stage === 'evaluate' ? '评估前景' : s.stage === 'prune' ? '剪枝' : s.stage === 'expand' ? '展开第二层' : s.phase === 'done' ? '解出' : '待走' },
-    { label: '第一层分支', value: s.l1.length ? `${s.l1.length}` : '—' },
-    { label: '剪枝/留下', value: s.kept ? `剪 ${s.l1.filter(t => t.pruned).length} / 留 ${s.kept}` : '—', tone: s.stage === 'prune' ? 'bad' : undefined },
-    { label: '解', value: s.solL1 >= 0 ? s.solution : '搜索中', tone: s.solL1 >= 0 ? 'good' : undefined },
+    { label: '当前步', value: STAGE_TONE[s.stage] },
+    { label: '剪枝后留下 / 一共生成', value: s.l1.length ? `${s.kept} / ${s.l1.length}` : '—' },
+    /*  ⭐ 评估器判的旁边永远摆着真值 —— 剪错的枝回溯够不着 */
+    { label: '评估器剪错了几条', value: s.stage === 'root' || s.stage === 'generate' ? '—' : String(s.wrongPrunes),
+      tone: s.wrongPrunes > 0 ? 'bad' : s.stage === 'root' || s.stage === 'generate' ? undefined : 'good' },
+    { label: '回溯次数', value: String(s.backtracks) },
+    { label: `ToT 说的（真值：${s.trulySolvable ? '有解' : '无解'}）`,
+      value: s.phase === 'done' ? (s.claimFound ? `有解 ${s.solution}` : '无解') : '搜索中',
+      tone: s.phase === 'done' ? (s.claimFound === s.trulySolvable ? 'good' : 'bad') : undefined },
+    /*  ⭐ 总账把"完美评估器很省"这个错觉拆掉 */
+    { label: '总账（展开 + 评估器内部）', value: `${s.nodes} + ${s.evalNodes} = ${s.nodes + s.evalNodes}` },
   ],
 }
 
@@ -5034,33 +5101,59 @@ const gcn: Experiment<GcnState> = {
   id: 'gcn',
   group: '深度学习算法',
   title: '图卷积 GCN',
-  subtitle: '每个节点聚合邻居的特征更新自己，信息沿边传播',
+  subtitle: '每层聚合一次邻居——看得越远，也糊得越平',
   kernel: gcnKernel,
-  defaultDoc: { kind: 'gcn', params: {}, entities: [], streams: [] },
-  params: [],
-  paramsNote: `**图卷积 GCN:每个节点聚合邻居信息更新自己**——社交关系、分子、知识图谱是图(节点数不定、每个节点邻居数还不一样),普通网络吃不了。
-
-- **机制**:最简单一层=把自己 + 所有邻居的特征平均,再乘可学权重 W、过激活;于是节点表示融进一跳邻居,叠 L 层信息传 L 跳,第 L 层节点概括它 L 跳内的子图。
-- **本实验**:5 节点小图,节点 0、4 带初始特征 1(其余 0),看 GCN 一层逐个节点把自己+邻居平均——特征沿边渗开、相连节点变相似,每个平均值可手算。
-
-GCN 是节点分类、推荐、分子性质预测的核心,和词向量、注意力同属表示学习。`,
-  bounds: [
-    '5 节点小图,节点 0、4 初始特征=1、其余 0',
-    '一层=每节点把(自己+邻居)特征平均(可核)',
-    '新特征 [0.333,0.333,0.25,0.333,0.5];信息渗一跳',
-    '叠 L 层传 L 跳;真实 GCN 聚合后乘权重 W 过激活',
+  defaultDoc: { kind: 'gcn', params: { graph: GCN_GRAPHS[0], agg: GCN_AGGS[0], layers: 3 }, entities: [], streams: [] },
+  /*  2026-09-09 补厚：老版本**只跑一层**，而它正文写着「叠 L 层信息传 L 跳，第 L 层概括它
+      L 跳内的子图」—— 层数写死是 1，读数里那个「1 跳 / 一层的感受野」还是个**写死的字符串**。
+      而整个图神经网络最有名的毛病 **过平滑** 压根没提。 */
+  params: [
+    { key: 'graph', label: '图', kind: 'enum', options: [...GCN_GRAPHS] },
+    { key: 'agg', label: '聚合方式', kind: 'enum', options: [...GCN_AGGS] },
+    { key: 'layers', label: '层数', kind: 'number', options: [...GCN_LAYERS] },
   ],
-  tabs: [{ id: 'graph', label: '邻域聚合' }],
+  paramsNote: `社交网络、分子、知识图谱都是**图**——节点数不定、邻居数还不一样，普通网络吃不了。**GCN** 让每个节点**聚合自己+所有邻居**的特征来更新自己；叠 L 层，信息传 L 跳。
+
+- **两种聚合并排**：**均值**（自己和每个邻居权重都是 1/(deg+1)，最好手算）vs **对称归一化** Â = D^(−1/2)(A+I)D^(−1/2)（权重 1/√((deg_i+1)(deg_j+1))，度数大的邻居被压低）——**后者才是 Kipf & Welling 那篇里的 GCN**。
+
+- **补厚的落点①：「第 L 层概括 L 跳内的子图」是扰动实验验出来的。** 把节点 0 的初始特征 **+1**，跑完 L 层，看哪些节点的输出跟着变 —— 变的那些**正好**是 L 跳以内的。⚠️ "L 跳以内"是另拿 **BFS** 算的，**不问 GCN 自己**。
+
+- **补厚的落点②：过平滑（over-smoothing）—— 图神经网络最有名的毛病。** 「叠得越深看得越远」只说了一半。聚合的本质是**跟邻居取平均**：取一次是"融合邻域"，取很多次就是**把整张图抹平**。
+  - 原图 + 均值聚合，节点特征的**离散度**（max−min）：1 层 0.25 → 3 层 0.082 → 10 层 0.016 → 50 层 **0.004**。
+  - 节点分类要的是"不同节点长得不一样"，深层 GCN 恰恰把这个抹没了。**所以实践中的 GCN 大多只有 2~3 层**：不是算不动，是**再深就没信息了**。
+
+- **补厚的落点③：别拿"离散度没塌到 0"当"没有过平滑"。** 对称归一化那档 50 层还剩 **0.12** 的离散度 —— 可它塌向的是**正比于 √(度数+1)** 的形状（实测 [0.864, 0.864, 1, 0.871, 0.714] vs √度数的 [0.866, 0.866, 1, 0.866, 0.707]，**几乎重合**）。换一组完全不同的初始特征跑深了**还是这个形状** —— **残余的那点差别只反映度数，跟节点原本携带的信息一点关系都没有。信息一样丢光了，只是丢法不同。**
+
+- **同样的层数，在不同的图上"深"的程度完全不同**：链状图上信息一层只走一跳，5 个点要 4 层才通到头（谱隙小，传得慢也糊得慢）；星形图上任意两点最多 2 跳，**一层就糊、两层基本平了**（均值聚合 5 层离散度就只剩 0.031）。`,
+  bounds: [
+    '5 个节点的小图 × 三种连法（原图 / 链状 / 星形）;节点特征是**标量**不是向量',
+    '两种聚合系数:均值 1/(deg+1) / 对称归一化 1/√((deg_i+1)(deg_j+1))',
+    '「L 跳感受野」由**扰动实验**验:节点 0 特征 +1 → 看第 L 层谁跟着变;真值另拿 BFS 算',
+    '过平滑用**离散度**(节点特征 max−min)量,扫 1/2/3/5/10/20/50 层',
+    '「信息丢光了」两种判法都查:形状收敛到同一个 **或** 离散度塌到初始的 2% 以下（只查前一种会漏掉均值聚合那档）',
+    '**没做可学权重 W、没做激活** —— 因为过平滑是聚合本身带来的，跟 W 无关;真实 GCN 每个节点是向量',
+    '未做:残差/跳跃连接、PairNorm 等缓解过平滑的办法;GraphSAGE 采样、GAT 注意力聚合;真实数据集上的节点分类准确率',
+  ],
+  tabs: [{ id: 'agg', label: '邻域聚合' }],
   Stage: GcnStage,
-  tone: s => (s.phase === 'done' ? { key: 'good', label: '渗一跳' } : s.cur >= 0 ? { key: 'idle', label: `→${s.result}` } : { key: 'idle', label: '聚合' }),
-  metric: s => (s.phase === 'done' ? 1 : s.newFeat.filter(x => x !== null).length / 5),
-  tickLabel: s => (s.phase === 'done' ? '毕' : s.cur >= 0 ? `${s.cur}` : '⋯'),
+  tone: s => (s.phase !== 'done'
+    ? { key: 'idle', label: s.cur >= 0 ? `点${s.cur}` : `第${s.layer}层` }
+    : s.spread < s.spread0 * 0.1 ? { key: 'bad', label: `糊了（${s.spread}）` } : { key: 'good', label: `${s.layers} 跳` }),
+  metric: s => (s.phase === 'done' ? 1 : Math.min(0.95, s.layer / Math.max(1, s.layers))),
+  tickLabel: s => (s.phase === 'done' ? '毕' : s.cur >= 0 ? `${s.cur}` : `L${s.layer}`),
   whyInRail: true,
   readouts: s => [
-    { label: '当前节点', value: s.cur >= 0 && s.phase !== 'done' ? `${s.cur}` : '—' },
-    { label: '聚合', value: s.agg.length ? `自己+邻居(${s.agg.length}个)` : '—' },
-    { label: '新特征', value: s.cur >= 0 && s.phase !== 'done' ? `${s.result}` : '—', tone: s.phase === 'done' ? 'good' : undefined },
-    { label: '感受野', value: '一层 = 1 跳' },
+    { label: '当前', value: s.cur >= 0 ? `第 ${s.layer} 层 · 节点 ${s.cur}` : s.phase === 'done' ? `${s.layers} 层完成` : `第 ${s.layer} 层` },
+    /*  ⭐ 感受野不再是写死的"1 跳" —— 跟着层数走，而且是扰动实验验过的 */
+    { label: '感受野', value: `${s.layers} 跳（${s.hopsMatch ? '扰动实验验过 ✓' : '⚠️ 跟 BFS 对不上'}）`,
+      tone: s.hopsMatch ? 'good' : 'bad' },
+    /*  ⭐ 过平滑：离散度塌下去 */
+    { label: `节点特征离散度（初始 ${s.spread0}）`, value: String(s.spread),
+      tone: s.spread < s.spread0 * 0.1 ? 'bad' : undefined },
+    { label: '深层（50 层）还剩多少', value: `${s.depthSweep[s.depthSweep.length - 1].spread}`
+      + (s.infoLost ? '（初始信息已丢光）' : '（还没完全丢光）'),
+      tone: s.infoLost ? 'bad' : undefined },
+    { label: '聚合方式', value: s.aggName },
   ],
 }
 
@@ -5128,34 +5221,61 @@ const qlearn: Experiment<QLearnState> = {
   id: 'qlearn',
   group: '机器学习算法',
   title: '强化学习 Q-learning',
-  subtitle: '靠 Bellman 一轮轮把终点奖励倒推成价值——还会自动绕开墙',
+  subtitle: '值迭代要地图，Q-learning 只要经验',
   kernel: qlearnKernel,
-  defaultDoc: { kind: 'qlearn', params: {}, entities: [], streams: [] },
-  params: [],
-  paramsNote: `**值迭代:给每个状态估价值,反复用 Bellman 规则把终点奖励一圈圈倒推**——强化学习让智能体试错,做对给奖励;难点是奖励延迟(走迷宫只有到终点才 +1,中间没反馈)。
-
-- **机制**:价值初始全 0,每轮做一次 Bellman 扫描 V(s)=max_a[即时奖励+γ×邻居价值];于是终点的 +1 顺规则往外传——挨着终点 0.9、再外 0.81…每远一步打 γ=0.9 折,某轮没格子再变就收敛。学好后往价值最高的邻居走=最优策略,不用提前知道地图。
-- **本实验**:5×4 网格中间竖一堵墙(留缺口)。价值靠**真迭代**从终点扩散、**自动绕过墙**:起点价值=γ^7=0.478 ≠ γ^曼哈顿5=0.59——这正是"距离公式"给不出、只有真迭代才认墙的东西,每格价值仍=γ^绕墙最短路可手算核对。
-- **值迭代 vs Q-learning**:同一套 Bellman;值迭代有模型地规划,Q-learning 从经验里免模型地学同一个价值。
-
-RL 是 AlphaGo、机器人、推荐、大模型 RLHF 的底子,AI 求职大热门。`,
-  bounds: [
-    '5×4 走迷宫带墙,终点 +1 奖励,γ=0.9',
-    '每轮 Bellman 扫描:V(s)=max_a[奖励+γ×邻居价值](可核)',
-    '价值真迭代扩散、绕墙:起点=γ^7=0.478≠γ^曼哈顿(0.59)',
-    '收敛=某轮无格再变;不用提前知道地图;RL 是 RLHF 底子',
+  defaultDoc: { kind: 'qlearn', params: { algo: QL_ALGOS[1], eps: 0.3 }, entities: [], streams: [] },
+  /*  2026-09-09 补厚：上一轮把"γ^曼哈顿"那个假倒推换成了真值迭代。这一轮补的是
+      **它自己最后那句话**：「值迭代=有模型的规划；Q-learning=同一套 Bellman、但从经验里
+      免模型地学」—— 这个实验的名字叫 Q-learning，跑的却一直是值迭代。
+      而且老舞台上写着「不用提前知道地图」，那句话对值迭代来说是**反的**。 */
+  params: [
+    { key: 'algo', label: '算法', kind: 'enum', options: [...QL_ALGOS] },
+    { key: 'eps', label: '探索率 ε', kind: 'number', options: [...QL_EPS] },
   ],
-  tabs: [{ id: 'grid', label: '价值倒推' }],
+  paramsNote: `5×4 走迷宫（灰=墙），只有**终点 +1**、γ=0.9。价值初始全 0，智能体不知道路。
+
+- **值迭代（知道地图）**：每轮扫全图，每格取 **max_a[奖励 + γ·邻居价值]**。价值像波纹从终点一圈圈往外传、**遇墙自动绕**，所以起点价值 = γ^绕墙真实步数（0.478）而**不是** γ^曼哈顿（0.59）—— 这是"距离公式"给不出、只有真迭代才有的。**160 次 Bellman 更新**就收敛。
+  - ⚠️ **但"邻居价值"这四个字就是"有模型"**：它要读得到四个邻居的价值，那等于**手里有一张地图**。
+
+- **Q-learning（只有经验）**：ε-greedy 走出一条条轨迹，只用走过的那一步更新
+  **Q(s,a) ← Q(s,a) + α[ r + γ·max Q(s',a') − Q(s,a) ]**
+  —— 式子里**只有 s、a、r、s'**，没有一处枚举邻居、没有一处查地图。撞墙就原地不动，它是**撞了才知道**那儿有墙的。
+
+- **"学对了没有"是独立真值**：屏幕上右边那张网格是**另跑一遍值迭代**算出的最优策略。⚠️ **Q-learning 看不到它** —— "学错几格"是我们替它数的，它自己无从得知。
+
+- **补厚的落点①：两种代价的单位根本不一样。** 值迭代 160 次更新 vs Q-learning ε=0.3 的 **4826 步经验**。值迭代看着便宜十几倍，**但它要求你有地图**。**"免模型"不是免费的，它的价格就是那几千步经验。**
+
+- **补厚的落点②：ε=0 那一行。** 它学错 **10/16** 格、其中 **8 格压根没去过**，**可它跟箭头走照样是 7 步**（跟最优一样）—— **它只学会了那一条路**。「学到最优路径」和「学到最优策略」是两件事。
+- **ε 得连着经验步数一起看**：ε=0 花 3374 步换 6/16 格、ε=0.1 花 3745 步换 8/16、ε=0.3 花 4826 步换 11/16、ε=1 花 **45914** 步换 15/16。**乱走反而学得最全（小网格上均匀探索覆盖率最高），但贵 9.5 倍。** 跟 MCTS 里那个 c 是同一课。`,
+  bounds: [
+    '5×4 网格 + 一堵留缺口的竖墙;只有终点 +1、γ=0.9、α=0.5;起点 (0,2)、终点 (4,1)',
+    'Q-learning 跑 400 个 episode（每个最多 200 步）,ε-greedy、平局随机拆、种子化可复现',
+    '**更新式里只有 s/a/r/s′** —— 撞墙=原地不动+奖励 0,不查地图',
+    '真值 = 另跑一遍值迭代到收敛的最优策略,**Q-learning 看不到它**;"学错几格"逐格比出来的',
+    '"没学到" = 那一格 Q 全 0（走都没走过），不是"学错了"',
+    '格子只有 16 个可走非终点格 —— 这是个玩具:真实 RL 的状态空间大到没法建表,那才需要函数逼近（DQN）',
+    '未做:随机转移（滑地板）、负奖励/陷阱、SARSA 与 Q-learning 的 on/off-policy 对照、经验回放、DQN（用网络代替 Q 表）',
+  ],
+  tabs: [{ id: 'grid', label: '价值扩散' }],
   Stage: QLearnStage,
-  tone: s => (s.phase === 'done' ? { key: 'good', label: `最优 ${s.path.length - 1} 步` } : s.converged ? { key: 'good', label: '已收敛' } : { key: 'idle', label: `第${s.sweep}轮` }),
-  metric: s => { const filled = s.value.filter(x => x !== null && x > 0).length; return s.phase === 'done' ? 1 : filled / (s.w * s.h) },
-  tickLabel: s => (s.phase === 'done' ? '毕' : s.sweep === 0 ? '始' : `${s.sweep}`),
+  tone: s => (s.phase !== 'done'
+    ? { key: 'idle', label: `第${s.sweep}轮` }
+    : s.wrongCells === 0 ? { key: 'good', label: '学到最优' } : { key: 'bad', label: `错 ${s.wrongCells} 格` }),
+  metric: s => (s.phase === 'done' ? 1 : Math.min(0.95, 1 - s.wrongCells / Math.max(1, s.cells))),
+  tickLabel: s => (s.phase === 'done' ? '毕' : `${s.sweep}`),
   whyInRail: true,
   readouts: s => [
-    { label: 'Bellman 扫描', value: s.phase === 'done' ? '收敛' : `第 ${s.sweep} 轮` },
-    { label: '折扣 γ', value: `${s.gamma}` },
-    { label: '本轮变了', value: s.phase === 'done' ? '0 格' : `${s.changed} 格` },
-    { label: '最优路线', value: s.phase === 'done' ? `${s.path.length - 1} 步` : '学习中', tone: s.phase === 'done' ? 'good' : undefined },
+    { label: s.algo.startsWith('Q-learning') ? 'episode' : 'Bellman 扫描轮', value: `第 ${s.sweep} 轮` },
+    /*  ⭐ 「学对了没有」对着另跑一遍值迭代的真值数，不问算法自己 */
+    { label: '策略跟最优不一样的格子', value: `${s.wrongCells} / ${s.cells}`,
+      tone: s.wrongCells === 0 ? 'good' : 'bad' },
+    { label: s.algo.startsWith('Q-learning') ? '根本没学到（走都没走过）' : '还没传到的格子',
+      value: String(s.unlearned), tone: s.unlearned > 0 ? 'bad' : undefined },
+    /*  ⭐ 两种代价的单位不一样 —— 那正是"免模型"的价格 */
+    { label: s.algo.startsWith('Q-learning') ? '经验步数（不需要地图）' : 'Bellman 更新（要求有地图）',
+      value: s.algo.startsWith('Q-learning') ? `${s.expSteps} 步` : `${s.updates} 次` },
+    { label: '从起点跟箭头走',
+      value: s.phase === 'done' ? (s.path.length > 1 ? `${s.path.length - 1} 步` : '走不到') : '学习中' },
   ],
 }
 

@@ -5582,10 +5582,20 @@ function WordVecDiagram() {
           <div className="gd-card i"><h4>分布假设</h4><p>词的意思<em>由上下文决定</em>:猫/狗都挨着"宠物、喂食",所以向量相近。</p></div>
           <div className="gd-card i"><h4>skip-gram / CBOW</h4><p>拿海量文本,不断把<em>共现的词向量相互拉近</em>,相似词自然聚成一团。</p></div>
         </div>
-        <div className="gd-note">{Icn.info}<span>真实词向量是<b>几百维</b>、从语料自动学(这里手工用 2 维好画)。类比、近义、聚类都靠向量运算。</span></div>
+        <div className="gd-note">{Icn.info}<span>真实词向量是<b>几百维</b>、从语料自动学(这张图为了好画只用 2 维)。<b>实验里那些坐标是真从共现算出来的</b>:数共现 → PPMI → 特征分解。Levy & Goldberg 2014 证明过,<b>skip-gram 本质上就是在隐式分解 PMI 矩阵</b>。</span></div>
       </Sec>
 
-      <Sec n={3} title="它奠定了什么：大模型的输入层">
+      {/*  2026-09-09 补厚：老版本三节讲完就收，而这个著名例子**有多硬**从来没交代过。
+           实测值见 tests/thicken-ml.test.ts，别按记忆填。 */}
+      <Sec n={3} title="这个著名例子到底有多硬">
+        <div className="gd-lane">
+          <div className="gd-card miss"><h4>要先把输入词排除掉</h4><p>a−b+c 这个向量<em>离 a 和 c 本来就很近</em>(才挪了一小步)。不排除的话最近邻常常就是<b>「国王」自己</b>——实测 9 档里有 <b>8 档</b>是这样。所以标准评测都要排除 a、b、c。<em>(Linzen 2016 专门写过。)</em></p></div>
+          <div className="gd-card o"><h4>「排第一」≠「分得开」</h4><p>少语料/低维那几档,第一名和第二名的余弦相似度<em>差不多是 0</em>——王后、王子、公主<b>挤成一团</b>,"最近邻是王后"只是排序碰巧。<b>只看排第一会把假成立判成成功。</b></p></div>
+        </div>
+        <div className="gd-note">{Icn.info}<span>9 档(3 档语料 × 3 档维度)里 <b>8 档</b>最近邻是「王后」,可其中还有 2 档是"分不开"的假成立,真正<b>又对又分得开</b>的只有 <b>6 档</b>;还有 1 档(中语料 2 维)直接选成了「女孩」。<b>别把一个漂亮例子当成普遍规律</b>——换一批关系(反义词、动词时态)成功率掉得厉害。</span></div>
+      </Sec>
+
+      <Sec n={4} title="它奠定了什么：大模型的输入层">
         <div className="gd-note" style={{ marginTop: 0 }}>{Icn.info}<span>词向量让文字能被<b>数学处理</b>,是 NLP 从符号迈向语义的关键一步。今天所有大模型<b>第一层就是一张词向量表(embedding)</b>,把每个 token 变成向量再送进 Transformer;BERT/GPT 更进一步给出随上下文变化的向量。</span></div>
       </Sec>
 
@@ -5955,8 +5965,18 @@ function ToTDiagram() {
         <div className="gd-note">{Icn.info}<span>①<b>生成</b>多个想法分支(挑两数运算)②<b>评估</b>每个前景(剩两数能到 24?sure/impossible)③<b>剪枝</b>掉死路④沿有希望的<b>搜索</b>,{'{12,2}'}→12×2=24 解出,走不通可<b>回溯</b>换分支。</span></div>
       </Sec>
 
-      <Sec n={3} title="它是什么：想法层面的树搜索">
-        <div className="gd-note" style={{ marginTop: 0 }}>{Icn.info}<span>本质是把经典<b>树搜索(BFS/DFS、乃至 A* 那种带评估函数的搜索)</b>搬到"想法"层面:模型当<b>生成器</b>产出分支、评估器当<b>启发函数</b>。擅长需探索/试错/规划的难题(24点、字谜、走迷宫);代价:分支多、评估多,更贵更慢——拿算力换难题成功率。</span></div>
+      {/*  2026-09-09 补厚：老版本三节讲完就收，而 ToT 的**天花板**从来没画过。
+           实测值见 tests/thicken-ml.test.ts，别按记忆填。 */}
+      <Sec n={3} title="天花板不在搜索，在评估器">
+        <div className="gd-lane">
+          <div className="gd-card miss"><h4>剪掉的枝回溯够不着</h4><p>{'{1,5,5}'} 凑 24,唯一的解是 <em>5×5=25 → 25−1=24</em>。评估器那条听着很有道理的规矩「<em>别把数弄得比目标还大</em>」一眼把它判成死路——<em>ToT 咬定"无解"</em>,而且回溯 9 次也够不着它。<b>它没有任何办法知道自己错了。</b></p></div>
+          <div className="gd-card o"><h4>"完美评估器"的省是假的</h4><p>{'{2,3,4}'} 上它只展开 <em>24</em> 个节点、看着比不剪枝的 36 省;可评估器<em>内部又走了 117 个</em>,总账 <b>141</b>——<em>比不剪枝贵三倍</em>。<b>能完美判断中间状态有没有希望,等于已经把题解了一遍。</b></p></div>
+        </div>
+        <div className="gd-note">{Icn.info}<span>所以真实 ToT 只能用<b>便宜但会判错</b>的评估器。而不准的评估器<b>两头不落好</b>:{'{1,5,5}'} 那档总账 57、不剪枝 59,<b>只省 3%</b>,还给了个错答案——<b>付了评估的钱,买到一个错答案</b>。导览里那句「评估中间状态往往比解题本身还难」不是修辞,是上面这两笔账。</span></div>
+      </Sec>
+
+      <Sec n={4} title="它是什么：想法层面的树搜索">
+        <div className="gd-note" style={{ marginTop: 0 }}>{Icn.info}<span>本质是把经典<b>树搜索(BFS/DFS、乃至 A* 那种带评估函数的搜索)</b>搬到"想法"层面:模型当<b>生成器</b>产出分支、评估器当<b>启发函数</b>。擅长需探索/试错/规划的难题(24点、字谜、走迷宫);代价:分支多、评估多,更贵更慢——拿算力换难题成功率。而<b>"无解"比"有解"还贵</b>:有解撞到就停,要断言无解<b>必须把整棵树走完</b>。</span></div>
       </Sec>
 
       <Flow
@@ -6020,6 +6040,10 @@ function CollisionDiagram() {
   )
 }
 
+/*  实测值（原图 + 均值聚合），别按记忆填 —— 判据在 tests/thicken-ml.test.ts 里量。
+    [层数, 离散度]，初始离散度是 1。 */
+const GCN_SPREAD: [number, number][] = [[1, 0.25], [2, 0.112], [3, 0.082], [5, 0.051], [10, 0.016], [20, 0.004], [50, 0.004]]
+
 function GcnDiagram() {
   const pos = [[0.22, 0.28], [0.22, 0.72], [0.48, 0.5], [0.72, 0.5], [0.92, 0.5]]
   const edges = [[0, 1], [0, 2], [1, 2], [2, 3], [3, 4]]
@@ -6056,8 +6080,39 @@ function GcnDiagram() {
       <Sec n={3} title="威力：叠 L 层传 L 跳">
         <div className="gd-lane">
           <div className="gd-card hit"><h4>多跳感受野</h4><p>一层一跳、<em>叠 L 层传 L 跳</em>,第 L 层节点概括它 L 跳内的整个子图。</p></div>
-          <div className="gd-card i"><h4>它能干啥</h4><p><em>节点分类、推荐、分子性质预测</em>;和词向量、注意力同属表示学习。</p></div>
+          <div className="gd-card i"><h4>怎么验的</h4><p>把一个节点的初始特征 <em>+1</em>,看第 L 层谁跟着变——变的那些<b>正好</b>是 BFS 算的 L 跳以内。<em>不是一句断言。</em></p></div>
         </div>
+      </Sec>
+
+      {/*  2026-09-09 补厚：老版本三节讲完就收，而「叠得越深看得越远」的**另一半**从没画过。
+           实测值见 tests/thicken-ml.test.ts，别按记忆填。 */}
+      <Sec n={4} title="另一半：看得越远，也糊得越平">
+        <div className="gd-graph">
+          <svg viewBox="0 0 200 82" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+            <text x="6" y="8" fontSize="5" fill="var(--faint)">节点特征的离散度（max−min）随层数变化　原图 + 均值聚合</text>
+            {[0, 0.5, 1].map(v => (
+              <g key={v}>
+                <line x1="24" y1={70 - v * 52} x2="192" y2={70 - v * 52} stroke="var(--line-soft)" strokeWidth="0.4" />
+                <text x="21" y={72 - v * 52} fontSize="4.5" fill="var(--faint)" textAnchor="end">{v}</text>
+              </g>
+            ))}
+            <polyline points={GCN_SPREAD.map(([, sp], i) => `${30 + i * 27},${70 - sp * 52}`).join(' ')}
+              fill="none" stroke="var(--now)" strokeWidth="1.4" />
+            {GCN_SPREAD.map(([L, sp], i) => (
+              <g key={L}>
+                <circle cx={30 + i * 27} cy={70 - sp * 52} r="1.8" fill="var(--now)" />
+                <text x={30 + i * 27} y="78" fontSize="4.5" fill="var(--faint)" textAnchor="middle">{L}</text>
+              </g>
+            ))}
+            <text x="150" y="30" fontSize="5" fill="var(--miss)">节点之间的差别</text>
+            <text x="150" y="37" fontSize="5" fill="var(--miss)">被一层层抹平</text>
+          </svg>
+        </div>
+        <div className="gd-lane">
+          <div className="gd-card miss"><h4>过平滑 over-smoothing</h4><p>聚合的本质是<em>跟邻居取平均</em>:取一次是融合邻域,<b>取很多次就是把整张图抹平</b>。节点分类要的是"不同节点长得不一样",深层 GCN 恰恰把这个抹没了——<b>所以实践中的 GCN 大多只有 2~3 层</b>,不是算不动,是<em>再深就没信息了</em>。</p></div>
+          <div className="gd-card o"><h4>别拿"没塌到 0"当"没事"</h4><p>换成<em>对称归一化</em>,50 层还剩 <b>0.12</b> 的离散度、看着没塌;可它塌向的是<em>正比于 √(度数+1)</em> 的形状——换一组初始特征跑深了<b>还是这个形状</b>。<b>残余的差别只反映度数,跟节点原本的信息毫无关系。</b></p></div>
+        </div>
+        <div className="gd-note">{Icn.info}<span><b>同样的层数,在不同的图上"深"的程度完全不同</b>:链状图上一层只走一跳、5 个点要 4 层才通到头;星形图上任意两点最多 2 跳,<b>一层就糊、5 层离散度只剩 0.031</b>。缓解办法有残差/跳跃连接、PairNorm 之类。<em>节点分类、推荐、分子性质预测</em>都建在这套东西上;和词向量、注意力同属表示学习。</span></div>
       </Sec>
 
       <Flow
@@ -6122,15 +6177,14 @@ function PageRankDiagram() {
   )
 }
 
+/*  实测值（值迭代收敛后），别按记忆填 —— 判据在 tests/thicken-ml.test.ts 里量。
+    ⚠️ 老版本这里是 `γ^曼哈顿距离` 加一个"朝终点方向"的箭头 —— 那正是内核已经改掉的**假算法**：
+    它偷看了终点坐标、还当墙不存在。真值绕墙走，起点是 γ^7=0.478 而不是 γ^5=0.59。 */
+const QL_V: (number | null)[] = [0.387, 0.43, null, 0.81, 0.9, 0.43, 0.478, null, 0.9, 1, 0.478, 0.531, null, 0.81, 0.9, 0.531, 0.59, 0.656, 0.729, 0.81]
+const QL_POL: (string | null)[] = ['→', '↓', null, '→', '↓', '→', '↓', null, '→', '★', '→', '↓', null, '→', '↑', '→', '→', '→', '→', '↑']
+
 function QLearnDiagram() {
-  const W = 5, H = 4, goal = [4, 1], gamma = 0.9
-  const dist = (c: number, r: number) => Math.abs(c - goal[0]) + Math.abs(r - goal[1])
-  const pol = (c: number, r: number) => {
-    if (c === goal[0] && r === goal[1]) return ''
-    const dc = goal[0] - c, dr = goal[1] - r
-    if (Math.abs(dc) >= Math.abs(dr) && dc !== 0) return dc > 0 ? '→' : '←'
-    return dr > 0 ? '↓' : '↑'
-  }
+  const W = 5, H = 4, goal = [4, 1]
   const cell = 26, ox = 6, oy = 6
   return (
     <Shell icon={Icn.star} title="强化学习 Q-learning 原理"
@@ -6143,29 +6197,37 @@ function QLearnDiagram() {
         <div className="gd-graph">
           <svg viewBox={`0 0 ${ox * 2 + W * cell} ${oy * 2 + H * cell}`} preserveAspectRatio="xMidYMid meet" aria-hidden="true">
             {Array.from({ length: H }, (_, r) => Array.from({ length: W }, (_, c) => {
+              const i = c + r * W
               const isGoal = c === goal[0] && r === goal[1]
-              const v = isGoal ? 1 : Math.round(Math.pow(gamma, dist(c, r)) * 100) / 100
+              const wall = QL_V[i] === null
+              const v = QL_V[i] ?? 0
               return (
                 <g key={`${c}-${r}`}>
                   <rect x={ox + c * cell} y={oy + r * cell} width={cell - 2} height={cell - 2} rx="2"
-                    fill={isGoal ? 'color-mix(in srgb,var(--miss) 22%,var(--panel))' : `color-mix(in srgb,var(--hit) ${Math.round(v * 55)}%,var(--panel))`}
-                    stroke={isGoal ? 'var(--miss)' : 'var(--line)'} strokeWidth="0.5" />
-                  {isGoal ? <text x={ox + c * cell + cell / 2 - 1} y={oy + r * cell + cell / 2 + 3} textAnchor="middle" fontSize="9" fill="var(--miss)">★</text>
+                    fill={wall ? 'var(--sunk-2)' : isGoal ? 'color-mix(in srgb,var(--miss) 22%,var(--panel))' : `color-mix(in srgb,var(--hit) ${Math.round(v * 55)}%,var(--panel))`}
+                    stroke={wall ? 'var(--line)' : isGoal ? 'var(--miss)' : 'var(--line)'} strokeWidth="0.5" />
+                  {wall ? null : isGoal
+                    ? <text x={ox + c * cell + cell / 2 - 1} y={oy + r * cell + cell / 2 + 3} textAnchor="middle" fontSize="9" fill="var(--miss)">★</text>
                     : <><text x={ox + c * cell + 3} y={oy + r * cell + 7} fontSize="4.5" fill="var(--faint)">{v}</text>
-                      <text x={ox + c * cell + cell / 2 - 1} y={oy + r * cell + cell / 2 + 5} textAnchor="middle" fontSize="8" fill="var(--hit)">{pol(c, r)}</text></>}
+                      <text x={ox + c * cell + cell / 2 - 1} y={oy + r * cell + cell / 2 + 5} textAnchor="middle" fontSize="8" fill="var(--hit)">{QL_POL[i]}</text></>}
                 </g>
               )
             }))}
           </svg>
         </div>
-        <div className="gd-note">{Icn.info}<span>给每格估一个<b>价值</b>(从这出发未来总回报)。<b>Bellman</b>:格子价值=即时奖励+γ×下一格价值。终点的 +1 顺规则<b>一圈圈倒推</b>:0.9→0.81→0.729…每远一步 ×γ=0.9(未来打折)。<b>策略=往价值最高的邻居走</b>(箭头),从起点跟着走=最优路线。</span></div>
+        <div className="gd-note">{Icn.info}<span>给每格估一个<b>价值</b>(从这出发未来总回报)。<b>Bellman</b>:格子价值=即时奖励+γ×下一格价值。终点的 +1 顺规则<b>一圈圈倒推</b>:0.9→0.81→0.729…每远一步 ×γ=0.9。灰色是<b>墙</b>——价值<b>自动绕过去</b>:起点(左下起第二行最左)是 <b>0.478=γ⁷</b>(绕墙的真实步数),<b>而不是</b> γ⁵=0.59(曼哈顿)。这正是"距离公式"给不出、只有真迭代才有的。</span></div>
       </Sec>
 
-      <Sec n={3} title="妙处：靠试错自己学，不用知道地图">
+      {/*  2026-09-09 补厚：老版本这一节标题是「妙处：靠试错自己学，**不用知道地图**」——
+           而上面画的是**值迭代**，它每更新一格都要读四个邻居的价值，那恰恰**就是**要地图。
+           这一节改成把两条路的账摆开。 */}
+      <Sec n={3} title="同一套 Bellman，两条路，代价单位不一样">
         <div className="gd-lane">
-          <div className="gd-card hit"><h4>无需地图</h4><p>反复走迷宫、用 Bellman 一点点更新,<em>在试错中悟出</em>价值和策略。</p></div>
-          <div className="gd-card i"><h4>它撑起了什么</h4><p><em>AlphaGo、机器人控制、推荐、大模型 RLHF</em> 都是它——AI 求职大热门。</p></div>
+          <div className="gd-card o"><h4>值迭代 · 有模型的规划</h4><p>每格取 max_a[奖励 + γ×<em>邻居价值</em>]。<b>160 次</b>更新就收敛、一格不错——<em>但"邻居价值"这四个字就是"手里有地图"</em>。</p></div>
+          <div className="gd-card hit"><h4>Q-learning · 免模型地学</h4><p>更新式里<em>只有 s、a、r、s′</em>:我在哪、做了什么、拿到多少、到了哪。<b>一次都不查地图</b>,撞墙也是撞了才知道——代价是 <b>4826 步</b>真实经验。</p></div>
+          <div className="gd-card miss"><h4>而它只学得到走过的地方</h4><p>ε=0(不探索)学错 <em>10/16</em> 格、<em>8 格压根没去过</em>;<b>可跟箭头走照样 7 步、跟最优一样</b>——<em>它只学会了那一条路</em>。「学到最优路径」和「学到最优策略」是两件事。</p></div>
         </div>
+        <div className="gd-note">{Icn.info}<span><b>"免模型"不是免费的,它的价格就是那几千步经验。</b>而"学错几格"是拿另跑一遍值迭代的结果比出来的——<b>Q-learning 看不到那张图</b>,它自己无从得知。<em>AlphaGo、机器人控制、推荐、大模型 RLHF</em> 都建在这套东西上。</span></div>
       </Sec>
 
       <Flow

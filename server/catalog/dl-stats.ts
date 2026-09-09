@@ -8,7 +8,7 @@
 import { backpropKernel } from '../../src/kernels/backprop.ts'
 import { diffusionKernel } from '../../src/kernels/diffusion.ts'
 import { ganKernel } from '../../src/kernels/gan.ts'
-import { gcnKernel } from '../../src/kernels/gcn.ts'
+import { gcnKernel, GCN_GRAPHS, GCN_AGGS } from '../../src/kernels/gcn.ts'
 import { lstmKernel } from '../../src/kernels/lstm.ts'
 import { normKernel } from '../../src/kernels/norm.ts'
 import { rnnKernel } from '../../src/kernels/rnn.ts'
@@ -158,35 +158,86 @@ export const DL_STATS_ENTRIES: CatalogEntry[] = [
     ],
   },
 
-  // ── 图卷积 GCN ──
+  // ── 图卷积 GCN：看得越远，也糊得越平 ──
   {
     id: 'gcn', title: '图卷积 GCN', kernel: gcnKernel as Kernel<unknown>,
-    doc: trivialDoc('gcn'),
+    /*  2026-09-09 补厚：老那三条 fact 全建立在"只跑一层"上（"一层聚合后节点 4 的新特征"）。
+        现在层数是旋钮、默认 3 层，那些问法都不成立了。 */
+    doc: { kind: 'gcn', params: { graph: GCN_GRAPHS[0], agg: GCN_AGGS[0], layers: 3 }, entities: [], streams: [] },
     facts: [
       {
-        id: 'node4', label: '一层聚合后节点 4 的新特征', kind: 'number',
-        ask: '5 节点小图、初始只有节点 0 和 4 特征为 1，GCN 一层聚合（自己+邻居取平均）后，节点 4 的新特征是多少?',
-        compute: t => { const f = last(t); return { answer: String((f.newFeat as number[])[4]), step: t.length - 1, evidence: String(f.log ?? '') } },
-        distractors: numDistractors,
-      },
-      {
-        id: 'node2', label: '一层聚合后节点 2 的新特征', kind: 'number',
-        ask: 'GCN 一层聚合后，度最大的节点 2 的新特征是多少?',
-        compute: t => { const f = last(t); return { answer: String((f.newFeat as number[])[2]), step: t.length - 1, evidence: String(f.log ?? '') } },
-        distractors: numDistractors,
-      },
-      {
-        id: 'argmax', label: '一层后新特征最高的节点', kind: 'choice',
-        ask: 'GCN 一层邻域平均之后，哪个节点的新特征最高?',
+        id: 'layer1_node2', label: '第一层之后节点 2 的特征', kind: 'number', genre: 'count',
+        ask: '5 节点小图（边：0-1、0-2、1-2、2-3、3-4），初始特征 [1,0,0,0,1]。均值聚合（自己+所有邻居取平均），'
+          + '**第一层之后**度最大的节点 2 的新特征是多少？（节点 2 的邻居是 0、1、3，加上自己一共 4 个）',
         compute: t => {
-          const nf = last(t).newFeat as number[]
-          let best = 0; for (let k = 1; k < nf.length; k++) if (nf[k] > nf[best]) best = k
-          return { answer: `节点 ${best}`, step: t.length - 1, evidence: `新特征 [${nf.join(', ')}]` }
+          const rows = last(t).rows as { layer: number; feat: number[] }[]
+          return { answer: String(rows[0].feat[2]), step: t.length - 1,
+            evidence: `第一层 [${rows[0].feat.join(', ')}]（节点 2 = (1+0+0+0)/4）` }
         },
-        distractors: (a, t) => {
-          const n = (last(t).newFeat as number[]).length
-          return Array.from({ length: n }, (_, k) => `节点 ${k}`).filter(x => x !== a).slice(0, 3)
+        distractors: numDistractors,
+      },
+      {
+        /*  ⚠️ 计数题要自带数据 */
+        id: 'spread_10', label: '叠到 10 层时的离散度', kind: 'number', genre: 'count',
+        ask: '实测的离散度（节点特征 max−min）随层数是：初始 1、1 层 0.25、2 层 0.112、3 层 0.082、5 层 0.051、'
+          + '10 层 ?、20 层 0.004、50 层 0.004。**10 层那一档是多少？**',
+        compute: t => {
+          const ds = last(t).depthSweep as { layers: number; spread: number }[]
+          return { answer: String(ds.find(d => d.layers === 10)!.spread), step: t.length - 1,
+            evidence: `离散度 ${ds.map(d => `${d.layers}层 ${d.spread}`).join('、')}` }
         },
+        distractors: numDistractors,
+      },
+      {
+        /*  ⭐ 补厚的落点①：过平滑 */
+        id: 'oversmoothing', label: '为什么 GCN 大多只有两三层', kind: 'choice', genre: 'concept',
+        ask: 'CNN 动辄几十上百层，而实践中的 GCN 大多只叠两三层。为什么?',
+        compute: t => {
+          const ds = last(t).depthSweep as { layers: number; spread: number }[]
+          return {
+            answer: '层层取平均等于把整张图抹平，节点表示会糊成一样（过平滑）',
+            step: t.length - 1,
+            evidence: `实测离散度：初始 ${last(t).spread0} → ${ds.map(d => `${d.layers}层 ${d.spread}`).join('、')}`,
+          }
+        },
+        distractors: a => [a,
+          '图的节点数太多，再深就算不动了，是显存和时间的限制',
+          '图的边太稀疏，深层拿不到足够的梯度，会梯度消失',
+          '节点没有顺序，深层网络需要位置信息才能继续叠下去',
+        ].filter(o => o !== a).slice(0, 3),
+      },
+      {
+        /*  ⭐ 补厚的落点②：别拿"离散度没到 0"当"没有过平滑" */
+        id: 'sym_still_smooth', label: '对称归一化的离散度没塌到 0', kind: 'choice', genre: 'concept',
+        ask: '换成对称归一化之后，叠到 50 层离散度还剩 0.12、没有塌到 0。这说明它躲过了过平滑吗?',
+        compute: t => ({
+          answer: '没有 —— 它塌向正比于 √(度数+1) 的形状，残余差别只反映度数',
+          step: t.length - 1,
+          evidence: '换一组完全不同的初始特征跑深了还是这个形状 —— 节点原本携带的信息一样丢光了，只是丢的方式不同',
+        }),
+        distractors: a => [a,
+          '躲过了 —— 离散度还在，说明节点之间仍然保留着差别',
+          '躲过了 —— 度归一化本来就是为了防止特征被抹平而设计的',
+          '看图而定 —— 稀疏图上躲得过，稠密图上躲不过',
+        ].filter(o => o !== a).slice(0, 3),
+      },
+      {
+        /*  ⭐ 「L 跳」是验出来的 */
+        id: 'receptive_field', label: '感受野这件事怎么验', kind: 'choice', genre: 'concept',
+        ask: '「第 L 层的节点表示概括了它 L 跳内的子图」——这一屏是怎么验证这句话的?',
+        compute: t => {
+          const f = last(t)
+          return {
+            answer: '扰动一个节点的初始特征，看第 L 层哪些节点跟着变，再跟 BFS 算的跳数比',
+            step: t.length - 1,
+            evidence: `实测：扰动节点 ${f.probeSrc} 之后跟着变的节点，跟另拿 BFS 算的 ${f.layers} 跳内${f.hopsMatch ? '完全一致' : '对不上'}`,
+          }
+        },
+        distractors: a => [a,
+          '把每层的特征值打印出来，看数字有没有一层层往外扩散开',
+          '数一数每个节点聚合时用到了几个邻居，加起来就是感受野',
+          '看最终特征里还剩多少初始值的比例，比例越高说明传得越远',
+        ].filter(o => o !== a).slice(0, 3),
       },
     ],
   },

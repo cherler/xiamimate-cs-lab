@@ -17,7 +17,7 @@ import { softmaxKernel } from '../../src/kernels/softmax.ts'
 import { linregKernel } from '../../src/kernels/linreg.ts'
 import { logregKernel } from '../../src/kernels/logreg.ts'
 import { pagerankKernel } from '../../src/kernels/pagerank.ts'
-import { qlearnKernel } from '../../src/kernels/qlearn.ts'
+import { qlearnKernel, QL_ALGOS } from '../../src/kernels/qlearn.ts'
 import { recsysKernel } from '../../src/kernels/recsys.ts'
 import { svmKernel } from '../../src/kernels/svm.ts'
 import { trivialDoc, numDistractors, last, type CatalogEntry, type Kernel, type Frame } from '../catalog-shared.ts'
@@ -323,31 +323,81 @@ export const ML_ENTRIES: CatalogEntry[] = [
     ],
   },
 
-  // ── 强化学习 Q-learning：把未来总回报倒推回每一步 ──
+  // ── 强化学习：值迭代要地图，Q-learning 只要经验 ──
   {
     id: 'qlearn', title: '强化学习 Q-learning', kernel: qlearnKernel as Kernel<unknown>,
-    doc: trivialDoc('qlearn'),
+    /*  2026-09-09 补厚：这个实验名字叫 Q-learning，跑的却一直是**值迭代**。
+        老那条 fact 的答案里还写着「全程不需要提前知道地图」—— 对值迭代来说那句话是**反的**。
+        现在两条路都在，默认档是真的 Q-learning。 */
+    doc: { kind: 'qlearn', params: { algo: QL_ALGOS[1], eps: 0.3 }, entities: [], streams: [] },
     facts: [
       {
-        id: 'path_len', label: '最优路径的步数',
-        ask: '学好价值后，从起点跟着策略箭头走到终点，一共要走几步？',
-        kind: 'number',
-        compute: t => { const f = last(t); const path = f.path as string[]; return { answer: String(path.length - 1), step: t.length - 1, evidence: String(f.log ?? '') } },
+        id: 'path_len', label: '跟着学出的策略走几步到终点', kind: 'number', genre: 'count',
+        ask: '学完之后，从起点跟着策略箭头走到终点，一共要走几步？（提示：绕墙，比曼哈顿距离长）',
+        compute: t => { const f = last(t); const path = f.path as string[]
+          return { answer: String(path.length - 1), step: t.length - 1,
+            evidence: `路径 ${path.join(' → ')}` } },
         distractors: numDistractors,
       },
       {
-        id: 'start_value', label: '起点格子的价值',
-        ask: '折扣 γ=0.9、只有终点 +1。学好后，起点 (0,2) 这个格子的价值是多少？',
-        kind: 'number',
-        compute: t => { const f = last(t); const [sc, sr] = f.start as [number, number]; const w = f.w as number; const value = f.value as (number | null)[]; return { answer: String(value[sc + sr * w]), step: t.length - 1, evidence: String(f.log ?? '') } },
-        distractors: (a, t) => { const vals = (last(t).value as (number | null)[]).filter((v): v is number => v !== null).map(String); return [...new Set(vals)].filter(x => x !== a).slice(0, 3) },
+        /*  ⚠️ 计数题要自带数据 */
+        id: 'unlearned_eps0', label: 'ε=0 时有几格根本没学到', kind: 'number', genre: 'count',
+        ask: '实测四档探索率的账是——ε=0：3374 步经验、学错 10 格（其中 8 格 Q 全是 0）；ε=0.1：3745 步、错 8 格（2 格全 0）；'
+          + 'ε=0.3：4826 步、错 5 格（0 格全 0）；ε=1：45914 步、错 1 格。**ε=0 那一档有几格是"走都没走过"（Q 全 0）**？',
+        compute: t => {
+          const cmp = last(t).cmp as { eps: number; unlearned: number }[]
+          const e0 = cmp.find(x => x.eps === 0)!
+          return { answer: String(e0.unlearned), step: t.length - 1,
+            evidence: `ε=0 学错 ${(cmp.find(x => x.eps === 0)!).unlearned} 格是"没去过"的，不探索就只会重复第一次撞对的那条路` }
+        },
+        distractors: numDistractors,
       },
       {
-        id: 'delayed_reward', label: '怎么应对延迟奖励',
-        ask: '走迷宫只有终点才 +1、中间每步都没反馈，Q-learning 靠什么学出该往哪走？',
-        kind: 'choice',
-        compute: t => ({ answer: '用 Bellman 规则给每个格子估一个价值 = 即时奖励 + γ×下一格价值，于是终点的 +1 顺着规则从终点一圈圈倒推开（每远一步打 γ 折）；学好后站在任一格往价值最高的邻居走就是最优策略，全程不需要提前知道地图', step: t.length - 1, evidence: String(last(t).log ?? '') }),
-        distractors: () => ['给中间每一步都人工设计一个小奖励来引导', '提前把整张地图和最优路线告诉智能体', '随机乱走，记住哪一次最快到终点就照抄那条'],
+        /*  ⭐ 补厚的落点①：值迭代要地图 */
+        id: 'vi_needs_map', label: '值迭代凭什么算得那么快', kind: 'choice', genre: 'concept',
+        ask: '同一张迷宫，值迭代 160 次 Bellman 更新就收敛了，Q-learning 却要走几千步经验。值迭代凭什么这么快?',
+        compute: t => {
+          const cmp = last(t).cmp as { algo: string; n: number; needsMap: boolean }[]
+          return {
+            answer: '它每更新一格都要读得到四个邻居的价值 —— 那等于手里有地图',
+            step: t.length - 1,
+            evidence: `实测：值迭代 ${cmp[0].n} 次更新（需要地图），Q-learning ε=0.3 走了 ${cmp[3].n} 步经验（不需要地图）`,
+          }
+        },
+        distractors: a => [a,
+          '它的学习率更大，每一次更新对价值的修正幅度都更强',
+          '它从终点往回算，而 Q-learning 只能从起点往前摸索',
+          '它一次更新一整行，而 Q-learning 一次只更新一个格子',
+        ].filter(o => o !== a).slice(0, 3),
+      },
+      {
+        /*  ⭐ 补厚的落点②：学到最优路径 ≠ 学到最优策略 */
+        id: 'path_vs_policy', label: 'ε=0 学错一大半却照样走对', kind: 'choice', genre: 'concept',
+        ask: 'ε=0（完全不探索）那一档学错了 10/16 格、8 格压根没去过,可从起点跟着箭头走照样是 7 步、跟最优一样。这说明什么?',
+        compute: t => ({
+          answer: '它只学会了那一条路 —— 学到最优路径和学到最优策略是两件事',
+          step: t.length - 1,
+          evidence: '不探索就只会重复第一次撞对的那条路；把它放到没走过的格子上就抓瞎了',
+        }),
+        distractors: a => [a,
+          '说明探索没有用 —— 反正最后都能走到终点，ε 调不调都一样',
+          '说明这道题太简单 —— 换张大地图 ε=0 也照样能学到最优',
+          '说明那 10 格判错了 —— 能走出最优路线就等于策略是对的',
+        ].filter(o => o !== a).slice(0, 3),
+      },
+      {
+        id: 'delayed_reward', label: '怎么应对延迟奖励', kind: 'choice', genre: 'concept',
+        ask: '走迷宫只有终点才 +1、中间每步都没反馈,靠什么学出该往哪走?',
+        compute: t => ({
+          answer: '给每格估一个价值 = 即时奖励 + γ×下一格价值，让终点的 +1 一圈圈倒推',
+          step: t.length - 1,
+          evidence: '每远一步打一次 γ 折；学好后站在任一格往价值最高的邻居走就是最优策略',
+        }),
+        distractors: a => [a,
+          '给中间每一步都人工设计一个小奖励，一步步把它引导过去',
+          '提前把整张地图和最优路线告诉智能体，让它照着走',
+          '随机乱走很多遍，记住哪一次最快到终点就照抄那一条',
+        ].filter(o => o !== a).slice(0, 3),
       },
     ],
   },
