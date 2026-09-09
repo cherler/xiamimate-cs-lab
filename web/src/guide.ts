@@ -5419,31 +5419,56 @@ export const GUIDES: Record<string, Guide> = {
       hook: '八个皇后互不攻击，怎么不重不漏地试？',
       what: '这一屏讲的是**回溯法**，拿 N 皇后当例子：在 N×N 的棋盘上放 N 个皇后，让它们互不攻击（同行、同列、同对角线都不行）。这类问题的共同点是**答案是一组选择的组合，而且要满足一堆约束**。穷举所有摆法是天文数字，回溯的做法是**边摆边检查**：一行一行放，每放一个就看跟前面的有没有冲突，**一冲突就立刻退回上一行换个位置** —— 后面那些行连试都不用试。数独、迷宫、拼图、编译器的寄存器分配，骨架都是它。',
       terms: '**状态空间树**：把「第一行放哪、第二行放哪……」的所有可能画成一棵树。回溯就是在这棵树上做深度优先搜索。\u3000**剪枝**：**回溯法的全部价值所在**。一旦发现当前这个部分解已经不可能成立，就把整棵子树砍掉。剪得越早，省掉的分支越多 —— 屏幕上那些「冲突」标记就是剪枝点。\u3000**回溯（backtrack）**：退回上一步、撤销刚才的选择、换一个再试。写代码时要记得**把状态恢复原样**（把刚放的皇后拿走），忘了这一步是最常见的 bug。\u3000**约束检查**：同列、同主对角线、同副对角线。两个格子在同一对角线上的判据是「行差的绝对值等于列差的绝对值」。实现时常用三个布尔数组分别标记列和两个方向的对角线，把检查降到 O(1)。\u3000**跟暴力枚举的区别**：暴力是摆满 N 个再检查，回溯是**摆一个检查一个**。两者的复杂度差好几个数量级，而代码复杂度几乎一样。\u3000**解的数量**：8 皇后有 92 组解（去掉旋转对称是 12 组）。而 N 到 30 左右，即使有剪枝也已经算不动了 —— 这是 NP 类问题的本色。',
-      watch: '看在哪些位置发生了冲突、回溯了几次。把剪枝去掉改成摆满再判，尝试次数会暴涨好几个数量级。',
+      watch: '盯读数里那一对数：**访问节点数** 和 **不剪枝要访问几个**。把「剪枝」换成「放满 N 个再检查」——同一棵树、同一份代码，只差"什么时候检查"，8×8 找全部解就从 **2056** 个节点涨到 **19,173,960** 个（差 **9327 倍**），而**两边得出的还是同样那 92 个解**。',
     },
+    /*  ⚠️ 2026-09-09 补厚：新增 nodes/bruteNodes/totalSolutions/scale 等字段。
+        `st.xxx ?? …` 是给旧快照的兜底。 */
     step: (s: never) => {
-      const st = s as { phase: string; act: string; row: number; col: number; skip: number[]; cols: number[]; placed: number; n: number; backtracks: number }
+      const st = s as { phase: string; act: string; row: number; col: number; skip: number[]; cols: number[]
+                        placed: number; n: number; backtracks: number
+                        nodes?: number; bruteNodes?: number; totalNodes?: number; totalSolutions?: number
+                        totalBacktracks?: number; goal?: string; prune?: string; omitted?: number; drawn?: number }
       const solved = st.act === 'solved' || st.phase === 'done'
+      const brute = !!st.prune?.startsWith('放满')
       return [
-        { k: '本步输入', v: solved ? `盘上 ${st.placed}/${st.n} 个皇后` : st.act === 'backtrack' ? `第 ${st.row} 行列 ${st.col} 下面走进死胡同` : `第 ${st.row} 行,从左找安全列` },
-        { k: '判定规则', v: `行内挑**不被已放皇后攻击**的列(同列或对角|Δ行|=|Δ列| 都算攻击);找到就落子进下一行,整行没有安全位就**回溯**——退回上一行换下一列。` },
-        { k: '本步结果', v: solved
-            ? `拼出无冲突布局 [${st.cols.join(',')}]——**解出**(回溯 ${st.backtracks} 次)。`
-            : st.act === 'place' ? `列 ${st.col} 安全,**落子**${st.skip && st.skip.length ? `(列 ${st.skip.join('、')} 被攻击、跳过)` : ''}。`
-            : `**撤回**第 ${st.row} 行的皇后,回上一行换下一个。` },
+        { k: '本步输入', v: st.phase === 'done' ? `${st.goal ?? '搜索'}走完` : st.act === 'solved' ? `盘上 ${st.placed}/${st.n} 个皇后`
+          : st.act === 'backtrack' ? `第 ${st.row} 行下面走进死胡同` : `第 ${st.row} 行，从左找列` },
+        { k: '判定规则', v: brute
+          ? `**这一档放的时候不检查** —— 一直放满 ${st.n} 个才整盘验一次，也就是老老实实枚举 ${st.n}^${st.n} 种摆法。`
+          : `行内挑**不被已放皇后攻击**的列（同列或对角 |Δ行|=|Δ列| 都算攻击）；找到就落子进下一行，整行没有安全位就**回溯**。` },
+        { k: '本步结果', v: st.phase === 'done'
+          ? (st.totalNodes === undefined
+            ? `拼出无冲突布局 [${st.cols.join(',')}]——**解出**（回溯 ${st.backtracks} 次）。`
+            : `访问 **${st.totalNodes}** 个节点、回溯 ${st.totalBacktracks} 次，${st.totalSolutions === 0 ? '**一个解都没有**' : `找到 **${st.totalSolutions}** 个解`}。`)
+          : st.act === 'solved' ? `拼出无冲突布局 [${st.cols.join(',')}]。`
+            : st.act === 'place' ? `列 ${st.col} ${brute ? '先放上（还没检查）' : '安全，**落子**'}${st.skip && st.skip.length ? `（列 ${st.skip.join('、')} 被攻击、跳过）` : ''}。`
+              : `**撤回**第 ${st.row} 行的皇后，回上一行换下一个。` },
+        ...(st.phase === 'done' && st.bruteNodes !== undefined
+          ? [{ k: '这说明什么', v: st.totalSolutions === 0
+            ? `⚠️ **"没找到"和"没找"是两件事** —— 这里是整棵搜索树都走完了才下的结论。**回溯保证找完，"找不到"也是一个结论。**`
+            : `不剪枝要访问 **${st.bruteNodes.toLocaleString('en-US')}** 个节点，而这一档只用了 **${st.totalNodes}** 个 —— 差 **${(st.bruteNodes / Math.max(1, st.totalNodes ?? 1)).toFixed(0)} 倍**。` +
+              `**回溯不是穷举得更快，是根本没去穷举那些一看就不可能的分支。**` +
+              ((st.omitted ?? 0) > 0 ? `　（逐帧只画了前 ${st.drawn} 步，计数是另一趟全量跑的）` : '') }]
+          : []),
       ]
     },
     verdict: (s: never) => {
-      const st = s as { phase: string; act: string; placed: number; n: number; backtracks: number }
-      return (st.act === 'solved' || st.phase === 'done') ? `解出(回溯 ${st.backtracks} 次)` : `${st.placed}/${st.n}` 
+      const st = s as { phase: string; act: string; placed: number; n: number; backtracks: number
+                        totalNodes?: number; totalSolutions?: number }
+      if (st.phase !== 'done') return st.act === 'solved' ? '找到解' : `${st.placed}/${st.n}`
+      if (st.totalNodes === undefined) return `解出(回溯 ${st.backtracks} 次)`
+      return st.totalSolutions === 0 ? '确认无解' : `${st.totalSolutions} 解·${st.totalNodes} 节点`
     },
     read: [
-      { at: '读数', is: '盘上皇后数、累计试列次数、回溯次数。', anchor: '.scdim' },
-      { at: '棋盘', is: '♛=皇后;绿格=刚落子(安全)、红格=正被撤回(回溯)、✕=本行被攻击跳过的列。', anchor: '.nqboard' },
+      { at: '读数', is: '盘上皇后数、试列/回溯次数，以及**访问节点数**和**不剪枝要访问几个** —— 这一对才是回溯的价值，还有解的个数。', anchor: '.scdim' },
+      { at: '棋盘', is: '♛=皇后；绿格=刚落子(安全)、红格=正被撤回(回溯)、✕=本行被攻击跳过的列。', anchor: '.nqboard' },
+      { at: '规模表', is: '换 N 扫一遍，剪枝 vs 不剪枝的节点数并排。**N=2、N=3 一个解都没有** —— 而那是走完整棵树之后的结论。', anchor: '.qsscale' },
     ],
     try: [
-      { act: '按「下一步」逐行放', watch: '安全就落子往下走;整行没位就红格撤回、回上一行。' },
-      { act: '盯着皇后进出', watch: '一落一撤、换个位置再来——这就是"试错+撤销"的回溯。' },
+      { act: '把「剪枝」换成「放满 N 个再检查」', watch: '同一棵树、只差"什么时候检查"：节点数从 2056 涨到 19,173,960（差 9327 倍），而解还是那 92 个。' },
+      { act: '把「棋盘 N」调到 2 或 3', watch: '**一个解都没有** —— 而那是整棵树走完之后的结论。"没找到"和"没找"是两件事。' },
+      { act: '换成「每步检查 + 首行对称剪枝」', watch: '节点数正好砍半（2056 → 1028），而**解一个不少**（还是 92 个）。' },
+      { act: '把「目标」在"找第一个"和"找全部"之间切', watch: '8×8 找第一个只要 113 个节点，找全部要 2056 个 —— "找一个"和"找完"是两件事。' },
     ],
     terms: [],
   },
@@ -5513,31 +5538,56 @@ export const GUIDES: Record<string, Guide> = {
       hook: '只想要最大的那个，何必把全部排好？',
       what: '这一屏讲的是**二叉堆**和它撑起的**优先队列**。很多场景不需要全部排好序，只需要**随时能取出当前最大（或最小）的那个** —— 任务调度取优先级最高的、Dijkstra 取距离最近的、合并 K 个有序链表取最小的头。为此把全部数据排好序太浪费。堆给出的是刚刚好的结构：**取最值 O(1)，插入和删除 O(log n)**，而且完全用一个数组就能存下，不需要任何指针。',
       terms: '**堆的性质**：**每个父节点都不小于（大顶堆）或不大于（小顶堆）它的孩子**。注意它只约束父子，**兄弟之间毫无关系** —— 所以堆不是排好序的数组，从头读出来并不有序。这是最常见的误解。\u3000**用数组存**：完全二叉树可以按层序铺进数组，第 i 个节点的孩子就是第 2i+1 和 2i+2 个，父亲是 (i−1)/2。**不用指针、内存连续、缓存友好** —— 这是堆在工程上讨喜的重要原因。\u3000**上浮（sift up）**：插入时先放到数组末尾，再一路跟父亲比、比父亲大就往上换。\u3000**下沉（sift down）**：删除堆顶时，把最后一个元素挪到根上，再一路跟**较大的那个孩子**比、比孩子小就往下换。\u3000**建堆是 O(n) 不是 O(n log n)**：一个反直觉但重要的结论。从最后一个非叶节点倒着往前逐个下沉，**大部分节点都在底层、下沉不了几层**，加权求和之后总量是线性的。\u3000**堆排序**：反复取堆顶放到数组末尾。它是原地的、最坏也是 n log n，但**缓存局部性差**，实测常常慢于快排。',
-      watch: '看插入时的上浮和删除时的下沉。堆不是排好序的数组 —— 从头读出来并不有序，这是最常见的误解。',
+      watch: '默认档是**逐个插入 + 升序输入** —— 那是它最惨的一档：每个新元素都是当前最大，一路浮到根。走完看底下那张表：n=512 时它要 **3595** 次比较，而自底向上（Floyd）只要 **1006** 次、增长指数 **1.10 vs 1.35**。**「建堆是 O(n)」这句话就量在那个指数上。** 还有一件事顺手看掉：建完堆之后数组**不是有序的** —— 读数里直接印着。',
     },
+    /*  ⚠️ 2026-09-09 补厚：新增 build/after/compares/buildCompares/heapSorted/buildSweep 等。
+        `st.xxx ?? …` 是给旧快照的兜底。 */
     step: (s: never) => {
-      const st = s as { phase: string; act: string; stage: string; arr: number[]; node: number; child: number; heapN: number; sortedFrom: number }
+      const st = s as { phase: string; act: string; stage: string; arr: number[]; node: number; child: number
+                        heapN: number; sortedFrom: number
+                        build?: string; after?: string; dataKind?: string; n?: number
+                        compares?: number; buildCompares?: number; totalCompares?: number
+                        heapSorted?: boolean; builtArr?: number[]
+                        buildSweep?: { build: string; slope: number; rows: { n: number; compares: number }[] }[] }
+      const isUp = st.build?.startsWith('逐个插入')
       return [
-        { k: '本步输入', v: st.act === '' ? `乱序数组 [${st.arr.join(',')}]` : st.act === 'extract' ? `堆顶 ${st.arr[st.sortedFrom]} 要取出` : st.stage === 'build' ? `建堆:节点 ${st.node >= 0 ? st.arr[st.node] : '—'} sift-down` : `复原:堆顶下沉` },
-        { k: '判定规则', v: `完全二叉树 + **父≥子**=最大堆,堆顶永远最大。孩子在 2i+1/2i+2;sift-down=节点比更大的孩子小就**交换、往下沉**到位。取最大=堆顶↔末尾、堆减一、再下沉复原。` },
-        { k: '本步结果', v: st.act === 'sift' ? `${st.arr[st.node]} 比孩子小 → 交换下沉。`
-            : st.act === 'extract' ? `最大值和末尾对调,排到数组尾就位,堆缩到 ${st.heapN}。`
-            : st.act === 'done' ? `新堆顶 **${st.arr[0]}** 是剩下的最大;反复取顶=堆排序 O(n log n)。`
-            : st.stage === 'build' && st.node === 0 ? `**最大堆建成**,堆顶 ${st.arr[0]}=全体最大。`
-            : `节点已 ≥ 孩子,到位。` },
+        { k: '本步输入', v: st.act === '' ? `${st.dataKind ?? '乱序'}数组 [${st.arr.join(',')}]`
+          : st.act === 'extract' ? `堆顶 ${st.arr[st.sortedFrom]} 要取出`
+            : st.act === 'done' ? `走完`
+              : st.stage === 'build' ? `建堆：节点 ${st.node >= 0 ? st.arr[st.node] : '—'} ${isUp ? 'sift-up' : 'sift-down'}` : `复原：堆顶下沉` },
+        { k: '判定规则', v: `完全二叉树 + **父 ≥ 子** = 最大堆，堆顶永远最大。孩子在 2i+1/2i+2。` +
+          (isUp ? `　建堆用「**逐个插入**」：一个个进堆、每个跟父亲比，比父亲大就**往上浮**。`
+            : `　建堆用「**自底向上**」：从最后一个非叶节点倒着往前，每个都**往下沉**。`) },
+        { k: '本步结果', v: st.act === 'sift' ? (isUp ? `比父亲大 → 交换上浮。` : `比孩子小 → 交换下沉。`)
+          : st.act === 'extract' ? `最大值和末尾对调，排到数组尾就位，堆缩到 ${st.heapN}。`
+            : st.act === 'done' ? (st.buildCompares === undefined
+              ? `新堆顶 **${st.arr[0]}**；反复取顶 = 堆排序。`
+              : `建堆共 **${st.buildCompares}** 次比较${st.after !== '只建堆' ? `，全程 ${st.totalCompares} 次` : ''}。`)
+              : `已经满足堆序，到位。` },
+        ...(st.phase === 'done' && st.buildSweep
+          ? [{ k: '这说明什么', v: `两种建法各扫一遍：自底向上（Floyd）增长指数 **${st.buildSweep[0].slope.toFixed(2)}（线性）**、逐个插入 **${st.buildSweep[1].slope.toFixed(2)}**。` +
+            `**"建堆 O(n)"是量出来的** —— 越靠近叶子的节点越多、能沉的高度越小，加起来收敛到线性。\n\n` +
+            (st.heapSorted
+              ? `另外：建完堆的数组这一档**碰巧**有序，那是巧合。`
+              : `另外：建完堆的数组是 [${(st.builtArr ?? []).join(',')}] —— **不是有序的**。堆只保证父 ≥ 子，**只有堆顶是全体最大**。`) }]
+          : []),
       ]
     },
     verdict: (s: never) => {
-      const st = s as { phase: string; act: string; stage: string; arr: number[] }
-      return st.phase === 'done' ? `顶=${st.arr[0]}` : st.stage === 'build' ? '建堆' : '取最大'
+      const st = s as { phase: string; act: string; stage: string; arr: number[]; buildCompares?: number }
+      if (st.phase !== 'done') return st.stage === 'build' ? '建堆' : '取最大'
+      return st.buildCompares === undefined ? `顶=${st.arr[0]}` : `建堆 ${st.buildCompares} 次比较`
     },
     read: [
-      { at: '读数', is: '堆顶(最大)、堆内元素数、当前阶段。', anchor: '.scdim' },
-      { at: '树+数组', is: '上=完全二叉树(琥珀=正下沉的节点、绿=更大的孩子),下=同一堆压进数组(#k=下标,绿"已排"=取出的最大)。', anchor: '.hpwrap' },
+      { at: '读数', is: '堆顶、堆内元素数、比较/交换次数，以及**建堆共比较几次**和**建完堆后数组有序吗**（答案是"否" —— 最常见的误解）。', anchor: '.scdim' },
+      { at: '树+数组', is: '上=完全二叉树（琥珀=正在移位的节点、绿=参与比较的那一侧），下=同一个堆压进数组（#k=下标）。', anchor: '.hpwrap' },
+      { at: '建法扫描表', is: '两种建法在 n=8…512 上各建一次堆，只计数不出帧。**指数 1.0 就是那个 O(n)**。', anchor: '.qsscale' },
     ],
     try: [
-      { act: '按「下一步」建堆', watch: '节点比孩子小就下沉,整棵树变成父≥子、堆顶最大。' },
-      { act: '看取最大', watch: '堆顶和末尾对调、最大排到尾,新顶下沉复原——这就是堆排序的一趟。' },
+      { act: '默认档（逐个插入 + 升序）走完，看建法扫描表', watch: 'n=512 要 3595 次比较、指数 1.35 —— 每个新元素都是当前最大，一路浮到根。' },
+      { act: '把「建堆方式」换成自底向上（Floyd）', watch: '同一份数据掉到 1006 次、指数 1.10 —— **这就是那个 O(n)**。' },
+      { act: '把「数据」换成「完全逆序」', watch: '两种建法**一模一样**（511 vs 511）—— 降序输入本来就是个最大堆，插入一次都不浮。**差多少取决于数据形状。**' },
+      { act: '看读数里「建完堆后数组有序吗」', watch: '答案是**否**。堆只保证父 ≥ 子，兄弟之间完全没有大小关系 —— 想要有序得反复取堆顶，那就是堆排序。' },
     ],
     terms: [],
   },

@@ -165,11 +165,11 @@ import { convKernel, type ConvState } from '@engine/kernels/conv.ts'
 import { ConvStage } from './stages/ConvStage.tsx'
 import { binsearchKernel, type BinSearchState } from '@engine/kernels/binsearch.ts'
 import { BinSearchStage } from './stages/BinSearchStage.tsx'
-import { nqueensKernel, type NQueensState } from '@engine/kernels/nqueens.ts'
+import { nqueensKernel, NQ_NS, NQ_GOALS, NQ_PRUNES, type NQueensState } from '@engine/kernels/nqueens.ts'
 import { NQueensStage } from './stages/NQueensStage.tsx'
 import { unionfindKernel, UF_UNIONS, UF_COMPRESS, UF_SEQS, type UnionFindState } from '@engine/kernels/unionfind.ts'
 import { UnionFindStage } from './stages/UnionFindStage.tsx'
-import { heapKernel, type HeapState } from '@engine/kernels/heap.ts'
+import { heapKernel, HEAP_BUILDS, HEAP_AFTERS, HEAP_DATA, type HeapState } from '@engine/kernels/heap.ts'
 import { HeapStage } from './stages/HeapStage.tsx'
 import { quicksortKernel, QS_DATA, QS_PIVOTS, QS_PARTS, type QuickSortState } from '@engine/kernels/quicksort.ts'
 import { QuickSortStage } from './stages/QuickSortStage.tsx'
@@ -4123,18 +4123,30 @@ const nqueens: Experiment<NQueensState> = {
   title: '回溯 · N 皇后',
   subtitle: '走不通就退回上一步，换一个再试',
   kernel: nqueensKernel,
-  defaultDoc: { kind: 'nqueens', params: {}, entities: [], streams: [] },
-  params: [],
-  paramsNote: `**回溯是"系统化的试错"**:把问题拆成一步步选择,每步试一个候选、走下去;一旦约束破了(走不通)就撤销这步、退回上层换下一个——像走迷宫撞死胡同就原路退回换个岔口。
+  defaultDoc: { kind: 'nqueens', params: { n: 6, goal: '找出全部解', prune: '每步都检查（正常回溯）' }, entities: [], streams: [] },
+  /*  2026-09-09 补厚：老版本写死 4×4、只找第一个解。而它自己那句
+      「靠**提前剪掉不可能的分支**避免真的枚举所有组合」——**剪掉了多少从来没量过**，
+      而那个比值就是回溯全部的价值所在。 */
+  params: [
+    { key: 'n', label: '棋盘 N', kind: 'number', options: [...NQ_NS] },
+    { key: 'goal', label: '目标', kind: 'enum', options: [...NQ_GOALS] },
+    { key: 'prune', label: '剪枝', kind: 'enum', options: [...NQ_PRUNES] },
+  ],
+  paramsNote: `**回溯是"系统化的试错"**:每步试一个候选、走下去;一旦约束破了就撤销这步、退回上层换下一个——像走迷宫撞死胡同就原路退回换个岔口。
 
-- **本质**:深度优先地穷举"选择树",靠提前剪掉不可能的分支避免真枚举所有组合。
-- **N 皇后**:招牌例子,N×N 棋盘放 N 个皇后,任两个不能同行/同列/同对角线;一行放一个,行内找不被已放皇后攻击的列,找到就落子进下一行,整行没安全位就回溯。
-- **本实验**:4×4 找第一个解 [1,3,0,2],看皇后一落一撤。`,
+- **N 皇后**:N×N 棋盘放 N 个皇后,任两个不能同行/同列/同对角线;一行放一个,行内找不被已放皇后攻击的列,找到就落子进下一行,整行没安全位就回溯。
+
+- **补厚补的是"剪掉了多少"——把"不剪枝"做成一个档**:「放满 N 个再检查」就是老老实实枚举 Nᴺ 种摆法。同一棵树、同一份代码,**只差"什么时候检查"**:
+  - **8×8 找全部解**:正常回溯访问 **2056** 个节点,不剪枝要 **19,173,960** 个 —— **差 9327 倍**,而**两边都得出同样的 92 个解**。
+  - 这就是那句话的实际含义:**回溯不是穷举得更快,是根本没去穷举那些一看就不可能的分支。**
+- **N=2、N=3 一个解都没有** —— 而那是**整棵搜索树走完**之后的结论。⚠️ **"没找到"和"没找"是两件事**:回溯保证找完,"找不到"也是一个结论。
+- **首行对称剪枝**:第一行只枚举到中列为止,落在严格左半边的解镜像过去还有一个。8×8 上节点数正好砍半(2056 → 1028),而**解一个不少**(还是 92 个)。⚠️ N 为奇数时**中间那列不能跳**(它的镜像首行还在中间列,搜索本身会找到,再镜像就是重复计数)——第一版写成只枚举 ⌊N/2⌋ 列,N=5 少了 2 个解,而**只比个数根本发现不了**。所以判据比的是**解的集合**。`,
   bounds: [
-    '4×4 棋盘,放 4 个互不攻击的皇后',
-    '一行一个,行内挑安全列;整行无处放→回溯',
-    'safe 判定=同列或|Δ行|=|Δ列|(对角);可核',
-    '第一个解 [1,3,0,2];共 13 步、回溯 4 次',
+    'N ∈ {2,3,4,5,6,8};目标 找第一个解 / 找全部解;剪枝 正常 / 不剪 / 加首行对称',
+    '"不剪枝"= 放的时候不检查、放满 N 个再整盘验一次(真的枚举 Nᴺ)',
+    '**逐帧最多画 90 步**,超出的只计数 —— 8×8 找全部解要两千多个节点,画不下。**计数是另一趟只计数跑出来的,全量精确**',
+    '解的个数对得上已知值:N=4 是 2、N=5 是 10、N=6 是 4、N=8 是 92',
+    '未做:位运算加速(用三个整数记列/两条对角线)、旋转对称(八重对称只留 1/8)、Knuth 的 DLX',
   ],
   tabs: [{ id: 'board', label: '试错+撤销' }],
   Stage: NQueensStage,
@@ -4145,8 +4157,13 @@ const nqueens: Experiment<NQueensState> = {
   readouts: s => [
     { label: '盘上皇后', value: `${s.placed}/${s.n}` },
     { label: '本步', value: s.act === 'place' ? `第${s.row}行落列${s.col}` : s.act === 'backtrack' ? `撤第${s.row}行` : s.act === 'solved' ? '找到解' : '待走' },
-    { label: '试列/回溯', value: `${s.tries} / ${s.backtracks}` },
-    { label: '布局', value: s.placed === s.n ? `[${s.cols.join(',')}]` : '拼装中', tone: s.placed === s.n ? 'good' : undefined },
+    { label: '试列 / 回溯', value: `${s.tries} / ${s.backtracks}` },
+    /*  ⭐ 这一对是补厚的落点：回溯的价值不是"穷举得更快"，
+        而是**根本没去穷举那些一看就不可能的分支**。 */
+    { label: '访问节点数', value: `${s.nodes}` },
+    { label: '不剪枝要访问', value: s.bruteNodes.toLocaleString('en-US'),
+      tone: s.prune.startsWith('放满') ? 'bad' : 'good' },
+    { label: '解的个数', value: `${s.totalSolutions}`, tone: s.totalSolutions === 0 ? 'bad' : 'good' },
   ],
 }
 
@@ -4206,19 +4223,34 @@ const heap: Experiment<HeapState> = {
   title: '二叉堆 / 优先队列',
   subtitle: '父永远≥子，堆顶永远最大',
   kernel: heapKernel,
-  defaultDoc: { kind: 'heap', params: {}, entities: [], streams: [] },
-  params: [],
-  paramsNote: `**堆是优先队列的标准实现**:一棵完全二叉树,满足堆序——每个父≥两个孩子(最大堆),于是堆顶永远是全体最大,取最大 O(1) 看、O(log n) 移除。
+  defaultDoc: { kind: 'heap', params: { data: '已经排好序', build: '逐个插入 sift-up', after: '只建堆' }, entities: [], streams: [] },
+  /*  2026-09-09 补厚：老版本写死 7 个数、一种建法、只取一次堆顶。而它自己写着
+      「建堆 **O(n)**」—— 那是这个结构最反直觉的一件事，屏幕上却既没有第二种建法可比、
+      也从没数过一次比较。默认档开在**逐个插入 + 升序**上：那正是它最惨的一档。 */
+  params: [
+    { key: 'data', label: '数据', kind: 'enum', options: [...HEAP_DATA] },
+    { key: 'build', label: '建堆方式', kind: 'enum', options: [...HEAP_BUILDS] },
+    { key: 'after', label: '之后做什么', kind: 'enum', options: [...HEAP_AFTERS] },
+  ],
+  paramsNote: `**堆是优先队列的标准实现**:一棵完全二叉树,满足堆序——每个父 ≥ 两个孩子(最大堆),于是堆顶永远是全体最大,取最大 O(1) 看、O(log n) 移除。
 
-- **压进数组**:下标 i 的孩子在 2i+1/2i+2,父在 (i-1)/2,纯下标算不用指针。
+- **压进数组**:下标 i 的孩子在 2i+1/2i+2,父在 (i−1)/2,纯下标算不用指针。
 - **核心操作 sift-down(下沉)**:节点比孩子小就和更大的孩子交换、一路沉到位。
-- **建堆与堆排序**:建堆=从最后一个非叶节点倒着 sift-down(O(n));取最大=堆顶和末尾对调、堆减一、再 sift-down 复原,反复做就是堆排序。
-- **本实验**:7 个数先建堆,再取一次堆顶 9 排到尾。`,
+
+- **补厚补的是那句「建堆是 O(n)」—— 它现在是量出来的**。两种建法做成旋钮,各在 n=8…512 上扫一遍(只计数不出帧),最小二乘出增长指数:
+  - **自底向上 sift-down(Floyd)**:从最后一个非叶节点倒着往前,每个都往下沉。指数 **≈1.05,线性**。为什么?**越靠近叶子的节点越多,而它们能下沉的高度越小** —— 一半的节点是叶子、根本不用沉,四分之一只沉一层……加起来收敛到 O(n)。
+  - **逐个插入 sift-up**:一个个 push、每个往上浮。**越晚进来的越可能一路浮到根**。
+- ⚠️ **而"差多少"取决于数据形状 —— 这一点比"O(n) vs O(n log n)"更值得记**:
+  - **升序输入(默认档)**:n=512 时 **1006 vs 3595**,差 **3.6 倍**(指数 1.10 vs **1.35**)。每个新元素都是当前最大,一路浮到根 —— 逐个插入最惨的一档。
+  - **随机**:953 vs 1125,**只差 1.18 倍** —— 渐进差别是真的,但常数把它盖住了大半。
+  - **完全逆序**:511 vs 511,**一模一样** —— 降序输入本来就是个最大堆,插入一次都不浮。
+- **另一个常见误解:堆不是排好序的。** 建完堆之后数组**不是有序的**,堆只保证"每个父亲 ≥ 它的孩子",也就是**只有堆顶是全体最大**;兄弟之间、隔房的叔侄之间完全没有大小关系。想要有序得反复"取堆顶" —— **那就是堆排序**。`,
   bounds: [
-    '7 个数 [3,9,2,1,7,5,8] 建最大堆',
-    '孩子在 2i+1/2i+2;sift-down 比孩子小就下沉(可核)',
-    '堆顶=全体最大;取最大=对调末尾+下沉复原',
-    '建堆 O(n)、取最大 O(log n);反复取=堆排序',
+    '动画跑 n=12;建法扫描静默跑 n=8…512,两条路是同一份 runHeap() 代码',
+    '比较次数把**每一次父子比较**都算上(挑较大孩子那一次也算);两种建法用同一把尺,否则没法比',
+    '**逐帧最多 95 步**,堆排序档会超,超出只计数、屏幕上明说',
+    '"堆不是有序的"按建完堆的数组实判,不是断言',
+    '未做:d 叉堆、可并堆(左偏树/斐波那契堆)、原地建堆的缓存行为、优先队列的 decrease-key',
   ],
   tabs: [{ id: 'tree', label: '树+数组' }],
   Stage: HeapStage,
@@ -4229,8 +4261,12 @@ const heap: Experiment<HeapState> = {
   readouts: s => [
     { label: '堆顶(最大)', value: `${s.arr[0]}`, tone: 'good' },
     { label: '堆内元素', value: `${s.heapN}` },
-    { label: '本步', value: s.act === 'sift' ? `${s.arr[s.node]} 下沉` : s.act === 'extract' ? `取顶 ${s.arr[s.sortedFrom]}` : s.act === 'done' ? '复原完成' : '到位' },
-    { label: '阶段', value: s.stage === 'build' ? '建堆' : '取最大' },
+    { label: '本步', value: s.act === 'sift' ? `${s.arr[s.node]} 移位` : s.act === 'extract' ? `取顶 ${s.arr[s.sortedFrom]}` : s.act === 'done' ? '走完' : '到位' },
+    { label: '比较 / 交换', value: `${s.compares} / ${s.swaps}` },
+    /*  ⭐ 补厚的落点：「建堆是 O(n)」这句话只能量出来。 */
+    { label: '建堆共比较', value: `${s.buildCompares} 次` },
+    { label: '建完堆后有序吗', value: s.heapSorted ? '是（巧合）' : '否 —— 只有堆顶最大',
+      tone: s.heapSorted ? undefined : 'bad' },
   ],
 }
 

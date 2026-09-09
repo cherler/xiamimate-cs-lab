@@ -53,6 +53,8 @@ import { astarKernel, ASTAR_MAPS, ASTAR_WEIGHTS, ASTAR_HEURISTICS, type AStarSta
 import { unionfindKernel, UF_UNIONS, UF_COMPRESS, UF_SEQS, UF_SCALE_NS, type UnionFindState } from '../src/kernels/unionfind.ts'
 import { mergesortKernel, MS_DATA, MS_TIES, MS_PASSES, MS_SCALE_NS, type MergeSortState } from '../src/kernels/mergesort.ts'
 import { fastpowKernel, FP_OPS, FP_BASES, FP_EXPS, type FastPowState } from '../src/kernels/fastpow.ts'
+import { nqueensKernel, NQ_NS, NQ_GOALS, NQ_PRUNES, type NQueensState } from '../src/kernels/nqueens.ts'
+import { heapKernel, HEAP_BUILDS, HEAP_AFTERS, HEAP_DATA, HEAP_SCALE_NS, type HeapState } from '../src/kernels/heap.ts'
 
 let failures = 0
 const ok = (m: string) => console.log(`  ✅ ${m}`)
@@ -2377,6 +2379,260 @@ console.log('\n【快速幂：不取模的快速幂在真实场景里用不了�
     s.exact && !s.overflowed
       ? ok(`自检：2¹³ 这种小指数下整数乘法**照样对**（中间量 ${s.maxInter.toExponential(2)} 没越界）—— 上面那条"静默算错"量的确实是溢出，不是恒真`)
       : bad(`自检失败：2¹³ 也算错了（对=${s.exact}、溢=${s.overflowed}）`)
+  }
+}
+
+// ═══ N 皇后：剪掉了多少，是可以量的 ═══════════════════════
+console.log('\n【N 皇后：回溯不是穷举得更快，是根本没去穷举】')
+{
+  const go = (p: P) => run(nqueensKernel.compile(doc('nqueens', p)), 400) as NQueensState[]
+  const fin = (p: P) => last(go(p))
+  const [FIRST, ALL] = NQ_GOALS
+  const [PRUNE, BRUTE, SYM] = NQ_PRUNES
+  const KNOWN: Record<number, number> = { 2: 0, 3: 0, 4: 2, 5: 10, 6: 4, 8: 92 }
+
+  /*  ① **底线**：解的个数必须对得上已知值，而且每个解都得**真的合法**
+      （判据自己逐对验一遍冲突，不信实验的自我声明）。 */
+  const wrongSol: string[] = []
+  for (const n of NQ_NS) {
+    const s = fin({ n, goal: ALL, prune: PRUNE })
+    if (s.totalSolutions !== KNOWN[n]) wrongSol.push(`N=${n}：${s.totalSolutions} 个解，已知是 ${KNOWN[n]} 个`)
+    for (const sol of s.solutions) {
+      for (let r = 0; r < n && wrongSol.length < 3; r++) for (let t = 0; t < r; t++) {
+        if (sol[t] === sol[r] || Math.abs(sol[t] - sol[r]) === Math.abs(t - r)) {
+          wrongSol.push(`N=${n} 的解 [${sol.join(',')}] 里第 ${t} 行和第 ${r} 行互相攻击`); break
+        }
+      }
+    }
+  }
+  wrongSol.length === 0
+    ? ok(`${NQ_NS.length} 个 N 的解数全部对得上已知值（${NQ_NS.map(n => `${n}→${KNOWN[n]}`).join('、')}），且每个解判据都逐对验过没有冲突`)
+    : bad(wrongSol.slice(0, 3).join(' / '))
+
+  /*  ② **主菜：剪枝剪掉了多少。** 同样的 N 和目标，不剪枝的节点数必须远大于剪枝的，
+      **而两边得出的解必须一模一样** —— 只快不对等于没用。 */
+  const cut: string[] = []
+  for (const n of NQ_NS) {
+    const a = fin({ n, goal: ALL, prune: PRUNE })
+    const b = fin({ n, goal: ALL, prune: BRUTE })
+    if (b.totalNodes <= a.totalNodes) cut.push(`N=${n}：不剪枝 ${b.totalNodes} 个节点，没多过剪枝的 ${a.totalNodes}`)
+    const setA = a.solutions.map(x => x.join(',')).sort().join('|')
+    const setB = b.solutions.map(x => x.join(',')).sort().join('|')
+    if (setA !== setB) cut.push(`N=${n}：剪枝和不剪枝得到的**解不一样**`)
+  }
+  cut.length === 0
+    ? ok(`每个 N 上不剪枝的节点数都多过剪枝的，**而两边的解集合逐个相同**（N=8：${fin({ n: 8, goal: ALL, prune: PRUNE }).totalNodes} vs ${fin({ n: 8, goal: ALL, prune: BRUTE }).totalNodes.toLocaleString('en-US')}，差 ${(fin({ n: 8, goal: ALL, prune: BRUTE }).totalNodes / fin({ n: 8, goal: ALL, prune: PRUNE }).totalNodes).toFixed(0)} 倍）`)
+    : bad(cut.slice(0, 3).join(' / '))
+
+  /*  ③ **"不剪枝要访问多少"是闭式算的（Σ Nᴸ），必须在小 N 上跟真跑一遍逐个吻合。**
+      ⚠️ 内核里那个数走闭式，是因为 N=8 真跑要 1900 万次递归、而 `compile()` 是同步的，
+      浏览器会卡死（探针实测 2 分钟超时）。**但"拿公式代替测量"和"测量确认过的公式"
+      是两件事** —— 这条判据就是那个确认：N≤6 上真跑一遍暴力搜索，逐个对。 */
+  {
+    const bad3: string[] = []
+    //  判据自己写一遍朴素枚举（放满 N 个再检查），只数节点
+    const bruteReal = (n: number) => {
+      let nodes = 0
+      const cols = new Array(n).fill(-1)
+      const go = (r: number) => {
+        if (r === n) return
+        for (let c = 0; c < n; c++) { cols[r] = c; nodes++; go(r + 1) }
+        cols[r] = -1
+      }
+      go(0)
+      return nodes
+    }
+    for (const n of NQ_NS.filter(x => x <= 6)) {
+      const claimed = fin({ n, goal: ALL, prune: PRUNE }).bruteNodes
+      const real = bruteReal(n)
+      if (claimed !== real) bad3.push(`N=${n}：闭式说 ${claimed}，真跑一遍是 ${real}`)
+      const full = n ** n
+      if (!(claimed >= full && claimed < full * n)) bad3.push(`N=${n}：${claimed} 不在 Nᴺ=${full} 的量级上`)
+    }
+    bad3.length === 0
+      ? ok(`"不剪枝要访问多少"那个闭式（Σ Nᴸ），在 N≤6 上跟**真跑一遍暴力枚举**的结果逐个吻合（${NQ_NS.filter(x => x <= 6).map(n => `${n}→${bruteReal(n)}`).join('、')}）—— 所以 N=8 那个 19,173,960 是可信的`)
+      : bad(bad3.slice(0, 3).join(' / '))
+  }
+
+  /*  ④ **"没找到"和"没找"是两件事。** N=2、N=3 必须解数为 0，而且是**走完整棵树**的 ——
+      判据顺带核对：不剪枝那一档同样是 0（两条路都确认了无解）。 */
+  {
+    const bad4: string[] = []
+    for (const n of [2, 3]) {
+      const a = fin({ n, goal: ALL, prune: PRUNE })
+      const b = fin({ n, goal: ALL, prune: BRUTE })
+      if (a.totalSolutions !== 0 || b.totalSolutions !== 0) bad4.push(`N=${n} 竟然有解（${a.totalSolutions}/${b.totalSolutions}）`)
+      if (a.totalNodes === 0) bad4.push(`N=${n} 一个节点都没访问 —— 那是"没找"，不是"没找到"`)
+    }
+    //  而 N≥4 必须有解 —— 不钉这一条，上面那条可能只是"全都无解"
+    const has = NQ_NS.filter(n => n >= 4).every(n => fin({ n, goal: ALL, prune: PRUNE }).totalSolutions > 0)
+    bad4.length === 0 && has
+      ? ok(`N=2、N=3 剪枝与不剪枝**两条路都确认无解**（各自访问过节点、走完整棵树），而 N≥4 全都有解 —— "没找到"是个结论，不是"没找"`)
+      : bad(bad4.slice(0, 3).join(' / ') || 'N≥4 里有档也无解')
+  }
+
+  /*  ⑤ **对称剪枝：省一半而答案一个不少。**
+      ⚠️ 这里必须比**解的集合**，不能只比个数 —— 第一版把奇数 N 的中间列整个跳过了，
+      N=5 少了 2 个解（8 vs 10），而"8 个"这个数字看起来也挺合理，只比个数根本发现不了。 */
+  const symBad: string[] = []
+  for (const n of NQ_NS) {
+    const a = fin({ n, goal: ALL, prune: PRUNE })
+    const b = fin({ n, goal: ALL, prune: SYM })
+    const setA = a.solutions.map(x => x.join(',')).sort().join('|')
+    const setB = b.solutions.map(x => x.join(',')).sort().join('|')
+    if (setA !== setB) symBad.push(`N=${n}：对称剪枝后解集合变了（${a.totalSolutions} → ${b.totalSolutions}）`)
+    if (n >= 4 && !(b.totalNodes < a.totalNodes)) symBad.push(`N=${n}：对称剪枝没省下节点（${b.totalNodes} vs ${a.totalNodes}）`)
+  }
+  symBad.length === 0
+    ? ok(`首行对称剪枝：${NQ_NS.length} 个 N 上**解的集合逐个相同**（不只是个数），而节点数一律更少（N=8：${fin({ n: 8, goal: ALL, prune: SYM }).totalNodes} vs ${fin({ n: 8, goal: ALL, prune: PRUNE }).totalNodes}）`)
+    : bad(symBad.slice(0, 3).join(' / '))
+
+  /*  ⑥ **"找一个"和"找完"是两件事** —— 找第一个解的节点数必须明显少于找全部。 */
+  {
+    const f = fin({ n: 8, goal: FIRST, prune: PRUNE })
+    const a = fin({ n: 8, goal: ALL, prune: PRUNE })
+    f.totalSolutions === 1 && f.totalNodes < a.totalNodes / 5
+      ? ok(`8×8 找第一个解只访问 ${f.totalNodes} 个节点（找全部要 ${a.totalNodes} 个）—— "找一个"和"找完"是两件事`)
+      : bad(`找一个 vs 找完没拉开：${f.totalNodes}（${f.totalSolutions} 解） vs ${a.totalNodes}`)
+  }
+
+  /*  ⑦ **画不下的部分要如实交代**：帧数有上限，而计数必须是全量的。 */
+  {
+    const s = fin({ n: 8, goal: ALL, prune: PRUNE })
+    const frames = go({ n: 8, goal: ALL, prune: PRUNE })
+    s.omitted > 0 && s.drawn < s.totalNodes && frames.length <= s.drawn + 1
+      ? ok(`8×8 找全部解逐帧只画了 ${s.drawn} 步、还有约 ${s.omitted} 步画不下，而计数（${s.totalNodes} 个节点）是另一趟全量跑的 —— 画不下就明说`)
+      : bad(`帧数上限没交代清楚：drawn=${s.drawn}、omitted=${s.omitted}、实际帧 ${frames.length}、节点 ${s.totalNodes}`)
+  }
+
+  /*  ⑧ 自检：这一套判据得会红 —— 拿 4×4 冒充"剪枝差很多"的档，② 那条的倍数必须小得多。 */
+  {
+    const small = fin({ n: 4, goal: ALL, prune: BRUTE }).totalNodes / fin({ n: 4, goal: ALL, prune: PRUNE }).totalNodes
+    const bigR = fin({ n: 8, goal: ALL, prune: BRUTE }).totalNodes / fin({ n: 8, goal: ALL, prune: PRUNE }).totalNodes
+    small < 30 && bigR > 1000
+      ? ok(`自检：N=4 上剪枝只省 ${small.toFixed(0)} 倍、N=8 上省 ${bigR.toFixed(0)} 倍 —— 差距随 N 拉开，上面那条量的是真趋势，不是恒真`)
+      : bad(`倍数没有随 N 拉开：N=4 省 ${small.toFixed(0)}×、N=8 省 ${bigR.toFixed(0)}×`)
+  }
+}
+
+// ═══ 二叉堆：「建堆 O(n)」是量出来的 ═══════════════════════
+console.log('\n【二叉堆：建堆 O(n)，而差多少取决于数据形状】')
+{
+  const go = (p: P) => run(heapKernel.compile(doc('heap', p)), 400) as HeapState[]
+  const fin = (p: P) => last(go(p))
+  const [FLOYD, INSERT] = HEAP_BUILDS
+  const [BUILD, ONE, SORT] = HEAP_AFTERS
+  const [RAND, SORTED, REV] = HEAP_DATA
+
+  /*  ① **底线**：建完堆必须真的满足堆序（判据自己逐个父子验一遍），
+      而堆排序档跑完必须真的有序、且元素还是原来那一批。 */
+  const broken: string[] = []
+  for (const data of HEAP_DATA) for (const build of HEAP_BUILDS) {
+    const s = fin({ data, build, after: BUILD })
+    const a = s.builtArr
+    for (let i = 1; i < a.length; i++) {
+      const p2 = (i - 1) >> 1
+      if (a[p2] < a[i]) { broken.push(`${data}/${build}：#${p2}(${a[p2]}) < #${i}(${a[i]})，不满足堆序`); break }
+    }
+    const sorted = fin({ data, build, after: SORT }).arr
+    if (!sorted.every((v, k) => k === 0 || sorted[k - 1] <= v)) broken.push(`${data}/${build}：堆排序跑完不是有序的`)
+    if (JSON.stringify([...sorted].sort((x, y) => x - y)) !== JSON.stringify(sorted)) broken.push(`${data}/${build}：排完的元素变了`)
+  }
+  broken.length === 0
+    ? ok(`${HEAP_DATA.length * HEAP_BUILDS.length} 种组合：建完堆逐个父子验过都满足堆序，堆排序跑完都真的有序`)
+    : bad(broken.slice(0, 3).join(' / '))
+
+  /*  ② **主菜：「建堆 O(n)」。** 自底向上那条曲线的增长指数必须接近 1（线性），
+      而且判据**自己按闭式核对一遍比较次数的量级** —— 不信状态里的字段。 */
+  const on: string[] = []
+  for (const data of HEAP_DATA) {
+    const s = fin({ data, build: FLOYD, after: BUILD })
+    const sw = s.buildSweep.find(x => x.build === FLOYD)!
+    if (sw.slope > 1.15) on.push(`${data}：自底向上的增长指数 ${sw.slope}，不像线性`)
+    /*  ⚠️ 线性不等于"比较次数 ÷ n 恒定" —— 它是**收敛到一个常数**。
+        Floyd 的比较次数趋近 2n，小 n 上这个比值是 1.25、大 n 上才逼近 2。
+        第一版要求全程波动 < 1.5 倍，红了，而红的是我的阈值不是产品。
+        正确的判法：看**最大那两个 n 之间**还差多少 —— 已经收敛就该差不到一成。 */
+    const perN = sw.rows.map(r => r.compares / r.n)
+    const tailRatio = perN[perN.length - 1] / perN[perN.length - 2]
+    if (tailRatio > 1.1) on.push(`${data}：n=${sw.rows[sw.rows.length - 2].n}→${sw.rows[sw.rows.length - 1].n} 时每元素比较次数还在涨 ${((tailRatio - 1) * 100).toFixed(0)}%，没收敛`)
+  }
+  on.length === 0
+    ? ok(`自底向上（Floyd）在三档数据上的增长指数都 ≤1.15，且"比较次数 ÷ n"在最大两个 n 之间已经**收敛**（差 <10%）—— **这就是那个 O(n)**`)
+    : bad(on.slice(0, 3).join(' / '))
+
+  /*  ③ **而"差多少取决于数据形状"** —— 这一条比"O(n) vs O(n log n)"更值得记，
+      所以三档都钉：升序差好几倍、随机只差一点、完全逆序一模一样。 */
+  {
+    const at = (data: string, build: string) => {
+      const sw = fin({ data, build, after: BUILD }).buildSweep.find(x => x.build === build)!
+      return last(sw.rows).compares
+    }
+    const rSorted = at(SORTED, INSERT) / at(SORTED, FLOYD)
+    const rRand = at(RAND, INSERT) / at(RAND, FLOYD)
+    const rRev = at(REV, INSERT) / at(REV, FLOYD)
+    rSorted > 3 && rRand < 1.3 && Math.abs(rRev - 1) < 1e-9
+      ? ok(`差多少取决于数据形状：升序 ${at(SORTED, INSERT)}/${at(SORTED, FLOYD)} = ${rSorted.toFixed(1)} 倍、随机 ${rRand.toFixed(2)} 倍、完全逆序 **一模一样**（${at(REV, INSERT)} vs ${at(REV, FLOYD)}）—— 降序输入本来就是个最大堆`)
+      : bad(`三档的倍数不对：升序 ${rSorted.toFixed(2)}、随机 ${rRand.toFixed(2)}、逆序 ${rRev.toFixed(2)}`)
+  }
+
+  /*  ④ **逐个插入在升序上确实是 O(n log n) 那一档** —— 指数必须明显高于 Floyd。 */
+  {
+    const s = fin({ data: SORTED, build: INSERT, after: BUILD })
+    const up = s.buildSweep.find(x => x.build === INSERT)!
+    const down = s.buildSweep.find(x => x.build === FLOYD)!
+    up.slope > down.slope + 0.15 && up.slope > 1.25
+      ? ok(`升序输入下逐个插入的增长指数 ${up.slope}，明显高于自底向上的 ${down.slope} —— 每个新元素都是当前最大、一路浮到根`)
+      : bad(`两条曲线的指数没拉开：逐个插入 ${up.slope}、自底向上 ${down.slope}`)
+  }
+
+  /*  ⑤ **"堆不是排好序的"** —— 三档数据、两种建法，建完堆的数组都不该是有序的。
+      ⚠️ 而这一条要能红：如果哪天数据换成"本来就有序"且恰好也是堆，它会碰巧有序，
+      那时该改的是文案，不是判据。所以这里报的是实测值，不是断言。 */
+  {
+    const sortedFlags = HEAP_DATA.flatMap(data => HEAP_BUILDS.map(build => ({
+      data, build, sorted: fin({ data, build, after: BUILD }).heapSorted,
+    })))
+    const anySorted = sortedFlags.filter(x => x.sorted)
+    anySorted.length === 0
+      ? ok(`${sortedFlags.length} 种组合建完堆之后**没有一个是有序的** —— 堆只保证父 ≥ 子，只有堆顶是全体最大`)
+      : bad(`有 ${anySorted.length} 种组合建完堆恰好有序（${anySorted[0].data}/${anySorted[0].build}）—— 屏幕上那句"不是有序的"得改成按实测说`)
+  }
+
+  /*  ⑥ **取堆顶真的取到的是最大值** —— 每取一次，排到尾部的那个必须是当时堆里最大的。 */
+  {
+    const frames = go({ data: RAND, build: FLOYD, after: SORT })
+    const bad6: string[] = []
+    for (const f of frames) {
+      if (f.act !== 'extract') continue
+      const heapPart = f.arr.slice(0, f.heapN)
+      const taken = f.arr[f.heapN]
+      if (heapPart.some(v => v > taken)) bad6.push(`取出的 ${taken} 不是当时最大（堆里还有 ${Math.max(...heapPart)}）`)
+    }
+    bad6.length === 0
+      ? ok(`堆排序全过程：每一次"取堆顶"排到尾部的都确实是当时堆里最大的那个（判据逐次核对）`)
+      : bad(bad6.slice(0, 2).join(' / '))
+  }
+
+  /*  ⑦ **建堆的账要跟全程的账分开** —— 只建堆时两者相等，取过堆顶之后全程必须更多。 */
+  {
+    const b = fin({ data: RAND, build: FLOYD, after: BUILD })
+    const o = fin({ data: RAND, build: FLOYD, after: ONE })
+    const t2 = fin({ data: RAND, build: FLOYD, after: SORT })
+    b.buildCompares === b.totalCompares && o.totalCompares > o.buildCompares && t2.totalCompares > o.totalCompares
+      ? ok(`建堆 ${b.buildCompares} 次比较；再取一次堆顶涨到 ${o.totalCompares}；全取完 ${t2.totalCompares} —— 三档的账分得开`)
+      : bad(`账对不上：只建堆 ${b.buildCompares}/${b.totalCompares}、取一次 ${o.totalCompares}、全取完 ${t2.totalCompares}`)
+  }
+
+  /*  ⑧ 自检：这一套判据得会红 —— 拿"完全逆序"冒充"两种建法差很多"的档，③ 那条必须抓住。 */
+  {
+    const at = (build: string) => {
+      const sw = fin({ data: REV, build, after: BUILD }).buildSweep.find(x => x.build === build)!
+      return last(sw.rows).compares
+    }
+    at(INSERT) === at(FLOYD)
+      ? ok(`自检：完全逆序那一档两种建法的比较次数**完全相等**（${at(FLOYD)}）—— 上面那条"差多少"量的确实是数据形状，不是恒成立的算法差别`)
+      : bad(`自检失败：完全逆序档两种建法竟然不等（${at(INSERT)} vs ${at(FLOYD)}）`)
   }
 }
 

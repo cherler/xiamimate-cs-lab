@@ -127,9 +127,27 @@ const nav = async name => {
  * 判据当场报「没有讲解浮层」，49 个实验全红。
  * 而 `.ctl`（那排播放控件）本来就被浮层划成中立区：按它是在推进轨迹，不是在问问题。
  */
+/**
+ * 往前走一步。
+ *
+ * ⚠️ **走完要等"日志真的出现"，不能只等一个固定的 150ms。**
+ * 【1】那条判据拿「日志至少一行」当"实验起得来"的活体信号，而 150ms 在慢一点的
+ * 那一帧上不够 —— 2026-09-09 一天之内，**海明码**和 **TCP 连接管理**先后各红过一次，
+ * 复跑就绿。红的是判据自己的时序，跟被测的实验毫无关系，而报出来的话
+ * （「XX 起不来」）会把人往那个实验身上引。
+ *
+ * 现在改成**轮询等日志出现**（最多 2 秒）：真起不来的实验照样红、而且红得更快，
+ * 只是慢一帧的那些不再误伤。
+ */
 const stepOne = async () => {
-  const next = await p.$('.axis .ctl .step:not([disabled]) >> nth=-1')
-  if (next) { await next.click(); await p.waitForTimeout(150) }
+  const next = await p.$('.axis .ctl .step[aria-label="下一步"]:not([disabled])')
+    ?? await p.$('.axis .ctl .step:not([disabled]) >> nth=-1')
+  if (!next) return
+  await next.click()
+  for (let k = 0; k < 20; k++) {
+    if (await p.evaluate(() => document.querySelectorAll('.log li').length > 0)) return
+    await p.waitForTimeout(100)
+  }
 }
 /**
  * 把序列编辑器**展开**。预置按钮（`.seqacts .pcard`）只在展开态可见 ——

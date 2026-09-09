@@ -537,21 +537,60 @@ const CATALOG_CORE: CatalogEntry[] = [
     id: 'nqueens',
     title: '回溯 · N 皇后',
     kernel: nqueensKernel as Kernel<unknown>,
-    doc: trivialDoc('nqueens'),
+    /*  2026-09-09 补厚：默认档改成 6×6 找全部解 —— "剪掉了多少"和"无解也是结论"
+        这两件事，在只找第一个解的 4×4 上都看不见。 */
+    doc: { kind: 'nqueens', params: { n: 6, goal: '找出全部解', prune: '每步都检查（正常回溯）' }, entities: [], streams: [] },
     facts: [
       {
-        id: 'backtracks', label: '4 皇后求第一个解的回溯次数',
-        ask: '4 皇后用回溯法求出第一个解，一共回溯(退回上一行重试)了几次?',
-        kind: 'number',
-        compute: t => ({ answer: String(last(t).backtracks), step: t.length - 1, evidence: String(last(t).log ?? '') }),
+        id: 'sols_6', label: '6×6 棋盘上 N 皇后有几个解', kind: 'number', genre: 'count',
+        ask: '6×6 的棋盘上，摆 6 个互不攻击的皇后，一共有多少种摆法?',
+        compute: t => {
+          const f = last(t)
+          return { answer: String(f.totalSolutions), step: t.length - 1,
+            evidence: `整棵搜索树走完，访问了 ${f.totalNodes} 个节点、回溯 ${f.totalBacktracks} 次` }
+        },
         distractors: numDistractors,
       },
       {
-        id: 'tries', label: '4 皇后求第一个解的落子尝试次数',
-        ask: '4 皇后求第一个解的过程中，一共尝试落子多少次?',
-        kind: 'number',
-        compute: t => ({ answer: String(last(t).tries), step: t.length - 1, evidence: `终态 tries=${last(t).tries}` }),
+        id: 'prune_ratio', label: '剪枝把节点数砍到多少', kind: 'number', genre: 'count',
+        ask: '6×6 找全部解：不做任何剪枝（放满 6 个再检查）要访问多少个搜索树节点?',
+        compute: t => {
+          const f = last(t)
+          return { answer: String(f.bruteNodes), step: t.length - 1,
+            evidence: `而每步都检查的正常回溯只访问 ${f.totalNodes} 个 —— 差 ${((f.bruteNodes as number) / (f.totalNodes as number)).toFixed(0)} 倍` }
+        },
         distractors: numDistractors,
+      },
+      {
+        id: 'fast_why', label: '回溯比暴力快在哪', kind: 'choice', genre: 'concept',
+        ask: '常说"回溯比暴力枚举快得多"。它到底快在哪里?',
+        compute: t => {
+          const f = last(t)
+          return {
+            answer: '它根本没去枚举那些一看就不可能的分支 —— 不是把同样的组合过得更快，而是那些组合压根没被生成',
+            step: t.length - 1,
+            evidence: `实测 ${f.n}×${f.n} 找全部解：每步检查访问 ${f.totalNodes} 个节点，放满再检查要 ${f.bruteNodes} 个，而两边得出的解一模一样`,
+          }
+        },
+        distractors: a => [a,
+          '快在枚举的顺序上 —— 先试更可能成功的位置，于是平均更早撞上答案',
+          '快在剪枝把总组合数变少了 —— 加了约束之后，合法的摆法本身就没那么多了',
+          '快在它是深度优先的 —— 深度优先比广度优先省内存，因此每一步也跑得更快',
+        ].filter(o => o !== a).slice(0, 3),
+      },
+      {
+        id: 'no_solution', label: '"没找到"和"没找"是两件事', kind: 'choice', genre: 'concept',
+        ask: '把棋盘调成 3×3，回溯跑完之后一个解都没有。这个结果说明了什么?',
+        compute: t => ({
+          answer: '说明 3×3 上确实不存在合法摆法 —— 这是把整棵搜索树都走完之后得出的结论，本身就是个答案',
+          step: t.length - 1,
+          evidence: '实测：3×3 访问 5 个节点、回溯 5 次后穷尽了所有分支，解的个数为 0；N=2 同理',
+        }),
+        distractors: a => [a,
+          '说明搜索提前停下了 —— 回溯只保证找到解时正确，不保证把所有分支都走完',
+          '说明剪枝剪过头了 —— 某些合法分支被约束判定误伤，换成不剪枝就能找到',
+          '说明棋盘太小 —— 3 个皇后本来就放不下 3 个互不攻击的位置，不需要搜索也知道',
+        ].filter(o => o !== a).slice(0, 3),
       },
     ],
   },
