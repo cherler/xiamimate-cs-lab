@@ -370,5 +370,68 @@ rows.length >= 200 && rows.reduce((n, r) => n + r.concept + r.count, 0) >= 700
     : bad('自检失败：规则⑤b 抓不住人为造的重名，等于空跑')
 }
 
+/* ⑨ 「永远选最长的」蒙对率 —— 规则⑥的**端到端**版本，只许降不许涨。
+      ⑥ 钉的是「正确项比干扰项长多少」，那是**长度差**；这条钉的是
+      「一个不读题、永远挑最长选项的人能考多少分」，那是**结果**。
+      区别要紧：微调几个字的长度能让⑥变好看，却一分都改不了这个数。
+
+      随机基线 = 25%（四选一）。2026-09-10 首次实测：**82.3%** ——
+      也就是说这套题里 80% 的题，不看题干就能选对。而 AI 面试官的
+      「掌握度」分母正建在这些 factId 上，那个数跟着一起是假的。
+
+      ⚠️ 这条判据钉的是 **fact 级的确定量**（答案是不是唯一最长），不是
+      抽样出题的命中率 —— 后者每次跑都差 0.5 个百分点（shuffle + 随机挑
+      odd-one-out），拿它当上限会随机变红。两个数意思一样：772/961 = 80.3%
+      对上端到端的 82.3%。
+
+      ## 为什么只记账不修
+
+      查过了，**没有生成期的机械解**（全是实测，不是推测）：
+        · 每个 fact 的干扰项**恰好 3 条**，没有池子可挑 —— odd-one-out 那套
+          「挑长度配得上的」在这里无从下手（那边是从别的 fact 的真命题里挑）。
+        · 772 条里，干扰项池中根本没有够长的占 655 条。
+        · 规则⑥写的修法「把理由从选项挪进讲解」机械化之后只覆盖 **18/772 = 2.3%**
+          （四个选项都含同一个分隔符的只有 32 条）。
+      所以这是一笔 772 条的**内容账**，要作者侧逐条改写。先封顶，别让它涨。 */
+{
+  const longestWins: string[] = []
+  let concepts = 0
+  for (const e of CATALOG) {
+    let t: Record<string, unknown>[] = []
+    try { t = traceOf(e) as Record<string, unknown>[] } catch { continue }
+    for (const f of e.facts) {
+      if (genreOf(f, t) !== 'concept') continue
+      let ans = '', ds: string[] = []
+      try {
+        ans = String(f.compute(t as never).answer)
+        ds = f.distractors(ans, t as never).filter((d: string) => d !== ans)
+      } catch { continue }
+      if (!ans || ds.length < 3) continue
+      concepts++
+      const L = (x: string) => [...x].length
+      if (L(ans) > Math.max(...ds.map(L))) longestWins.push(`${e.id}/${f.id}`)
+    }
+  }
+  /*  772 是 2026-09-10 的实测值。**只许降不许涨。**
+      降到 240（= 961 的 25%，随机基线）才算这笔债还清。 */
+  const LONGEST_DEBT_CAP = 772
+  concepts >= 800
+    ? ok(`扫过 ${concepts} 条原理 fact`)
+    : bad(`只扫到 ${concepts} 条原理 fact —— 解析不出来的话，下面这条等于空跑`)
+  longestWins.length <= LONGEST_DEBT_CAP
+    ? ok(`「答案是唯一最长」的还有 ${longestWins.length} / ${concepts} 条`
+      + `（上限 ${LONGEST_DEBT_CAP}，只许降；随机基线 ${Math.round(concepts * 0.25)}）`)
+    : bad(`靠长度就能蒙对的题变多了：${longestWins.length} > 上限 ${LONGEST_DEBT_CAP}`
+      + `：${longestWins.slice(0, 5).join(' ')}`)
+
+  //  自检：判法本身得能分辨好坏，不是永远为真
+  const L = (x: string) => [...x].length
+  const leak = ['正确答案写得又长又全面还带理由', '短的', '也短', '很短']
+  const fair = ['四个选项差不多长一', '四个选项差不多长二', '四个选项差不多长三', '四个选项差不多长四']
+  L(leak[0]) > Math.max(...leak.slice(1).map(L)) && !(L(fair[0]) > Math.max(...fair.slice(1).map(L)))
+    ? ok('自检：答案独长的那组会被抓住，四个等长的那组不会误伤 —— 它能红')
+    : bad('自检失败：⑨的判法要么抓不住独长，要么误伤等长')
+}
+
 console.log(failures === 0 ? '\n本套全部通过' : `\n本套失败 ${failures} 项`)
 if (failures > 0) process.exit(1)

@@ -25,7 +25,32 @@ export function PageRankStage({ state }: StageProps<PageRankState>) {
             <defs><marker id="prarr" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 z" fill="var(--faint)" /></marker></defs>
             {edges.map(([a, b], k) => {
               const A = pos[a], B = pos[b]
+              /**
+               * ⚠️ **自环要单独画。**
+               *
+               * 原来一律按直线算：自环时 `dx=dy=0` → `len=0` → `ux/uy = NaN`，
+               * 于是吐出 `<line x1="NaN" y1="NaN" …>`，浏览器一条边报一次错
+               * （实测「有蜘蛛陷阱」那档 12 条控制台报错），而线**一根都没画出来**。
+               *
+               * 最要命的不是报错，是**那一档要演的东西恰恰看不见**：
+               * 正文写着「⚠️ C 只链自己 —— 走进去就出不来」、读数写着「陷阱 C 吃掉 85%」，
+               * 图上却没有任何自环。看图的人得不到那句话的证据。
+               */
+              if (a === b) {
+                const cx = px(A.x), cy = py(A.y), r = rad(rank[a])
+                //  从节点左上出去、绕上方一圈、从右上箭头指回自己
+                const sx = cx - r * 0.62, sy = cy - r * 0.78
+                const ex = cx + r * 0.62, ey = cy - r * 0.78
+                const lift = r + 26
+                return (
+                  <path key={k} fill="none" stroke="var(--faint)" strokeWidth="1.2"
+                    opacity="0.7" markerEnd="url(#prarr)"
+                    d={`M ${sx} ${sy} C ${cx - lift} ${cy - lift}, ${cx + lift} ${cy - lift}, ${ex} ${ey}`} />
+                )
+              }
               const dx = px(B.x) - px(A.x), dy = py(B.y) - py(A.y), len = Math.hypot(dx, dy)
+              //  两个节点重叠也会除零 —— 画不出方向就干脆不画，别吐 NaN 出去
+              if (!(len > 0)) return null
               const ux = dx / len, uy = dy / len
               const x1 = px(A.x) + ux * rad(rank[a]), y1 = py(A.y) + uy * rad(rank[a])
               const x2 = px(B.x) - ux * (rad(rank[b]) + 6), y2 = py(B.y) - uy * (rad(rank[b]) + 6)

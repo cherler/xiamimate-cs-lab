@@ -324,6 +324,29 @@ export function GuideOverlay({ cards, title, onRequestClose, onReopen, closedRef
           代价是 7 个实验的图在 720p 上多缺一截）。 */
       const depth = hitStage ? Math.max(0, Math.ceil(row!.bottom - g!.top) + 8) : 0
       root.style.setProperty('--guide-h', `${depth}px`)
+
+      /**
+       * `--guide-bottom`：把卡片顶到**底部控件条之上**。
+       *
+       * CSS 里原来是写死的 `bottom:132px`。而走带(.axis)+坞(.dock)是流式的、
+       * 坞底钉在列底、高度往上长 —— 坞一展开走带就上移，正好长进卡片里。
+       * 实测 1440×900：坞收起时走带被压掉 55px、最后几个刻度点不动；
+       * 坞一展开，走带和坞条**两条全被盖住**，`elementFromPoint` 返回的是这张卡。
+       * **盖住的正是驱动实验的那两条控件** —— 卡片是来讲解的，不该挡住手。
+       *
+       * 按走带真实顶边算，坞折叠/展开都跟得上。
+       *
+       * ⚠️ 这条不会跟上面那条留位打架：`--guide-h` 加的是 .stagewrap **内部**的
+       * padding，改不了 .stagerow 的 flex 高度，也就动不了走带的位置。
+       * （文件里那段「一帧一个来回」的警告说的是拿 .stagewrap 当参照系，不是这里。）
+       */
+      const ax = document.querySelector('.axis')?.getBoundingClientRect()
+      if (ax && ax.height > 0) {
+        //  12px 是卡片下缘与走带之间留的一口气；地板 132 与 CSS 兜底值一致。
+        root.style.setProperty('--guide-bottom', `${Math.max(132, Math.round(window.innerHeight - ax.top) + 12)}px`)
+      } else {
+        root.style.removeProperty('--guide-bottom')
+      }
     }
     set()
     const el = box.current
@@ -331,7 +354,21 @@ export function GuideOverlay({ cards, title, onRequestClose, onReopen, closedRef
     //  折叠、翻页、换实验都会改高度 —— 盯着元素本身比列依赖靠谱
     const ro = new ResizeObserver(set)
     ro.observe(el)
-    return () => { ro.disconnect(); root.style.setProperty('--guide-w', '0px'); root.style.setProperty('--guide-h', '0px') }
+    /**
+     * 还要盯 `.stagerow`：**坞一折叠/展开，走带整条上下移，而卡片自己没变大小**
+     * —— 只观察卡片的话 ResizeObserver 不会响，`--guide-bottom` 就停在旧值上，
+     * 卡片继续盖着控件。而 .stagerow 是吸收这个变化的那一格（实测 380↔336），
+     * 它的高度一变就说明底部控件条动了。
+     * 窗口缩放同理（innerHeight 变了但两个元素都没 resize 的情况兜底）。
+     */
+    const row = document.querySelector('.stagerow')
+    if (row) ro.observe(row)
+    window.addEventListener('resize', set)
+    return () => {
+      ro.disconnect(); window.removeEventListener('resize', set)
+      root.style.setProperty('--guide-w', '0px'); root.style.setProperty('--guide-h', '0px')
+      root.style.removeProperty('--guide-bottom')
+    }
   }, [closedRef, dropped, pos, folded, idx, cards])
 
   /**

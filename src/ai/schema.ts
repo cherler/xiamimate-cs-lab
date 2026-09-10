@@ -913,8 +913,20 @@ export function validateDocument(raw: SimDocument): Violation[] {
     if (!k) err('streams', '缺少 keys')
     else if (k.values.length === 0) err('streams.keys', '键序列为空')
     else if (k.values.some(v => typeof v !== 'number' || v < 0)) err('streams.keys', '键必须是非负整数')
-    else if (doc.params.method !== '拉链' && k.values.length > size)
-      err('streams.keys', `开放定址下键数 ${k.values.length} 超过表长 ${size}，必然装不下`, k.values.length)
+    /**
+     * ⚠️ 这里原来还有一条：开放定址下 `键数 > 表长` 判不合法。**已经去掉。**
+     *
+     * 它挡掉的是一件**本来就该演给人看**的事：装填因子 α > 1 时开放定址必然装不下。
+     * 而内核早就完整地演了 —— 探遍全表 → `slot = -1` → 日志写
+     * 「探遍全表仍无空槽 —— 表已满，插入失败」→ 舞台的 tone 里就有「装不下」这一档。
+     * 实测 10 个键塞 7 槽：7 个进表、3 个装不下，ASL 成功 2.29 / 失败 7，全都算得出来。
+     *
+     * 挡掉它的代价是：用户把表长点成 7，**整屏清空只剩一行「配置不合法」** ——
+     * 一个合法的教学档变成了看起来像坏了。「只演成功的样子等于没演」。
+     *
+     * 拉链法不受影响（本来就不会满）；其余几条校验（键必须非负、序列不能空、
+     * 再散列步长要与表长互质）都留着 —— 那些是**真的算不下去**，不是"结果不好看"。
+     */
   }
 
   if (doc.kind === 'huffman') {

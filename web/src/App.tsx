@@ -43,12 +43,14 @@ import * as sync from './sync.ts'
  * 没有 href 的就渲染成「开发中」的占位灰钮；没列进来的职业（后端/具身/安全）这颗按钮不显示。
  * 游戏做完部署到 /cslab/<x> 后，把 href 填上即可（照 llm 那样）。
  */
+//  ⚠️ href **带尾斜杠**。生产 Caddy 对不带斜杠的路径会 `redir 308` 一次
+//     (`@cardsRoot path /cslab/cards` → `/cslab/cards/`)，每次进子应用白走一跳。
 const VIZ_OF_DISC: Record<string, { icon: string; label: string; href?: string; tip: string }> = {
   /*  ⚠️ tip 原来写「服务器推理」—— 说反了。那一页是 `experiments/qwen-browser/`：
       **纯浏览器**跑真模型（transformers.js + WebGPU，没有服务器），首次要下模型权重。
       2026-09-08 顺着「按钮打不开」查出来的（路径当时还没进 vite 的子应用表，见 vite.config.ts）。 */
-  llm:  { icon: '🔬', label: 'Transformer 图解', href: '/cslab/explainer', tip: '在浏览器里看 Qwen 怎么想：真实分词 + 下一词预测。纯浏览器推理（transformers.js + WebGPU），可切 0.5B / 1.5B —— 首次载入要下模型权重' },
-  algo: { icon: '🎴', label: '算法卡牌', href: '/cslab/cards', tip: '卡是算法、敌人是有性质的数据，血条是时间预算' },
+  llm:  { icon: '🔬', label: 'Transformer 图解', href: '/cslab/explainer/', tip: '在浏览器里看 Qwen 怎么想：真实分词 + 下一词预测。纯浏览器推理（transformers.js + WebGPU），可切 0.5B / 1.5B —— 首次载入要下模型权重' },
+  algo: { icon: '🎴', label: '算法卡牌', href: '/cslab/cards/', tip: '卡是算法、敌人是有性质的数据，血条是时间预算' },
   /*  408 那一轨原来挂着「🕹️ 探索游戏」(games/xiami-world,/cslab/world)。
       **2026-09-10 用户拍板从虾米CS课堂里去掉:完成度太差。**
 
@@ -91,7 +93,20 @@ const ZERO_STEP = -1
  */
 
 export default function App() {
-  const [expId, setExpId] = useState(EXPERIMENTS[0].id)
+  /**
+   * 当前实验。初值认 `?exp=<id>` —— **深链接与刷新保持**。
+   *
+   * ⚠️ 在这之前 `?exp=` **根本没被读**（只认 show / ratio / tour）：
+   * 刷新一下就跳回第一个实验，链接发给别人打开的也是第一个。
+   * 我自己写探针时就写了 `?exp=cache`，一直"正常"——只因为 cache 恰好是默认那个。
+   *
+   * 认不出的 id 一律回落到第一个：URL 是外来输入，坏值不该让整页白屏。
+   */
+  const [expId, setExpId] = useState(() => {
+    if (typeof location === 'undefined') return EXPERIMENTS[0].id
+    const want = new URLSearchParams(location.search).get('exp')
+    return want && EXPERIMENTS.some(e => e.id === want) ? want : EXPERIMENTS[0].id
+  })
   const [overrides, setOverrides] = useState<Record<string, Record<string, number | string>>>({})
   const [index, setIndex] = useState(ZERO_STEP)
   const [tab, setTab] = useState(EXPERIMENTS[0].tabs[0].id)
@@ -512,6 +527,19 @@ export default function App() {
 
   function selectExp(id: string) {
     const e = EXPERIMENTS.find(x => x.id === id)!
+    /**
+     * 把当前实验写进地址栏 —— **用 `replaceState`，不进 history 栈。**
+     *
+     * 这样刷新还停在原处、地址栏那串可以直接发给同学。
+     * 而**不**进 history 是有意的：本仓那条纪律是「**返回是上一层，不是上一页**」。
+     * 每切一个实验就压一条历史的话，逛过二十个实验之后按「后退」会倒着走一遍实验，
+     * 而用户按后退想要的是"回到我进来之前的地方"。
+     */
+    try {
+      const u = new URL(location.href)
+      u.searchParams.set('exp', id)
+      history.replaceState(history.state, '', u.toString())
+    } catch { /* 展示模式的 file:// 之类，写不了就算了，不影响切实验 */ }
     setExpId(id); setTab(e.tabs[0].id); setIndex(ZERO_STEP); setPlaying(false); setProblemId(null)
     setSeqText(t => ({ ...t, [id]: undefined })); setSeqValues(v => ({ ...v, [id]: undefined }))
     setEntities(e => ({ ...e, [id]: undefined }))
@@ -555,8 +583,24 @@ export default function App() {
         不跟着调的话，用户一按就撞校验，屏幕上只剩一行"配置不合法" ——
         内核那条校验没错，错的是让人先撞了才知道。见 `types.ts` 的 `syncs`。 */
     const spec = exp.params.find(x => x.key === key)
-    const extra = spec?.syncs?.(v, { ...doc.params, [key]: v }) ?? null
-    setOverrides(o => ({ ...o, [exp.id]: { ...(o[exp.id] ?? {}), [key]: v, ...(extra ?? {}) } }))
+    const sync = spec?.syncs?.(v, { ...doc.params, [key]: v }, doc) ?? null
+    setOverrides(o => ({ ...o, [exp.id]: { ...(o[exp.id] ?? {}), [key]: v, ...(sync?.params ?? {}) } }))
+    /*  联动还能换**预置数据**（2026-09-10 扩的，见 types.ts 的 SyncResult）。
+        四处「一点就清空」里有三处的冲突方不在参数里，而在流 / 表格上：
+        浮点的操作数个数由「做什么」定、虚地址的页表由地址位数定、
+        TCP 的丢包轮次不能超过总轮数。只改参数救不回来 —— 试过，参数联动了照样不合法。
+
+        写进的是**跟用户编辑同一个 store**（seqValues / entities），
+        所以它跟序列编辑器、表格编辑是同一份真源；不像 `stream` 选择器那样
+        在每次重算 doc 时无条件覆盖，把用户刚填的东西盖掉。 */
+    if (sync?.streams && exp.sequence) {
+      const vals = sync.streams[exp.sequence.stream]
+      if (vals) {
+        setSeqValues(s => ({ ...s, [exp.id]: vals as number[] }))
+        setSeqText(t => ({ ...t, [exp.id]: formatSequence(vals as number[], exp.sequence!) }))
+      }
+    }
+    if (sync?.entities) setEntities(e => ({ ...e, [exp.id]: sync.entities }))
     setIndex(0); setPlaying(false)
   }
   function seek(i: number) { setIndex(i); }
@@ -757,6 +801,19 @@ export default function App() {
 
   return (
     <>
+    {/**
+      * 跳过导航 —— **必须是整页第一个可聚焦元素**，所以排在平台横条之前。
+      *
+      * 实测：默认的 408 轨下 `▶ 播放` 是第 **87** 次 Tab（前 86 次全耗在
+      * 左侧 49 个目录按钮上），底部坞第 102、右侧实验控制第 103。
+      * 算法轨有 71 个目录项，只会更长。焦点环本身没问题，问题是**到不了**。
+      *
+      * 放在 `<ChromeHeader/>` 后面试过一版：它变成第 14 个 Tab ——
+      * 平台横条自己有十几个控件排在前头。跳过链接排在第 14 位就失去了意义。
+      *
+      * 平时缩到屏幕外，只在拿到焦点时落下来，鼠标用户完全无感。
+      */}
+    <a className="skiplink" href="#stage-main">跳到实验台</a>
     {/* 平台横条在 .app 外面：它要通栏，而 .app 是 1420px 居中的。
         没并入主站时这两个组件什么都不渲染（连占位的空 div 都不留）。 */}
     <ChromeHeader />
@@ -924,7 +981,9 @@ export default function App() {
         </nav>
 
         {/* 中：舞台 + 轴 + 日志 */}
-        <div className="col main">
+        {/*  `tabIndex={-1}` 是给上面那条跳过链接用的：不加的话 <div> 收不了焦点，
+             点了链接只滚动、焦点还留在链接上，下一个 Tab 又回到目录里。 */}
+        <div className="col main" id="stage-main" tabIndex={-1}>
         <header className="exphead">
           <h1>{exp.title}</h1>
           {/*  招牌上写**这一屏在问什么**，不写它属于哪一类 ——

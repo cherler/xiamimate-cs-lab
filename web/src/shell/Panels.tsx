@@ -65,7 +65,17 @@ export function StepLog({
             >
               <span className="i">{i + 1}</span>
               <span className={`r ${tone.key}`}>{tone.label}</span>
-              <span className="x">{model.describe(s)}</span>
+              {/**
+                * ⚠️ **必须走 rich()。** 原来是 `{model.describe(s)}` 直出字符串，
+                * 而内核的 describe() 里普遍写着 `**…**`：实测 **286 个实验里 261 个、
+                * 2426 行日志里 1804 行**含裸星号 —— 也就是几乎整条逐步日志上，
+                * 该加粗的地方印的是四个星号加汉字。
+                *
+                * 不是个别实验写错，是这一处渲染漏了：rich.tsx 的文件头写着
+                * 「全仓库唯一一份实现，被四层文本共用」，逐步日志一直不在那四层里。
+                * （实测这 2426 行的星号**全部成对**，不会把后半句错染成粗体。）
+                */}
+              <span className="x">{rich(model.describe(s))}</span>
             </li>
           )
         })}

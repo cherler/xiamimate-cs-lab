@@ -513,7 +513,44 @@ import { FloatStage } from './stages/FloatStage.tsx'
 import { PipelineStage } from './stages/PipelineStage.tsx'
 import { VmStage } from './stages/VmStage.tsx'
 import { MultiplyStage } from './stages/MultiplyStage.tsx'
-import type { AnyExperiment, Experiment } from './types.ts'
+import type { AnyExperiment, Experiment, SyncResult } from './types.ts'
+import type { SimDocument } from '@engine/core/document.ts'
+
+/**
+ * 虚地址实验：把**页表与访问序列**跟着「虚地址位数 / 页大小」一起调到合法。
+ *
+ * 这一对参数是物理上互相定死的：页内偏移占 log2(页大小) 位，剩下才是页号。
+ * 但真正拦路的不只是它们 —— 页表里有 ≥ 页数 的页号、序列里有 ≥ 2^位数 的地址，
+ * 一样判不合法。用户点一下「12 位」，整屏清空只剩一行红字（实测）。
+ *
+ * ⚠️ 我先试过只调参数那一手（自动把页大小降到 1KB）——**参数联动了，还是不合法**，
+ * 因为页表里有 4、5 号页。只改一半等于没改，而且还悄悄动了用户选的页大小。
+ *
+ * 三样一起调，都是"物理上必须如此"：
+ *   · 页数至少留 2（页号 ≥ 1 位），不然这个实验没东西可演
+ *   · 页表只留页号 < 页数 的那几行
+ *   · 地址按位宽取模（不是丢掉）—— 丢掉会改变访问次数，取模保住了步数
+ */
+function vmFit(bits: number, pageSize: number, doc: SimDocument): SyncResult | null {
+  let size = pageSize
+  //  页号至少 1 位：2^bits / 页大小 ≥ 2
+  while (size > 1024 && Math.pow(2, bits) / size < 2) size /= 2
+  const pages = Math.pow(2, bits) / size
+  const out: SyncResult = {}
+  if (size !== pageSize) out.params = { pageSizeBytes: size }
+
+  const ptes = doc.entities.filter(e => e.type === 'pte')
+  const kept = ptes.filter(e => Number(e.id) < pages)
+  if (kept.length !== ptes.length) out.entities = [...kept, ...doc.entities.filter(e => e.type !== 'pte')]
+
+  const seq = doc.streams.find(s => s.name === 'virtualAddresses')
+  if (seq) {
+    const cap = Math.pow(2, bits)
+    const vals = (seq.values as number[]).map(v => (typeof v === 'number' && v >= cap ? v % cap : v))
+    if (vals.some((v, i) => v !== seq.values[i])) out.streams = { virtualAddresses: vals }
+  }
+  return Object.keys(out).length ? out : null
+}
 
 const pct = (n: number) => (n * 100).toFixed(1) + '%'
 const hex = (n: number) => '0x' + n.toString(16).toUpperCase()
@@ -679,7 +716,21 @@ const tcp: Experiment<TcpState> = {
     { key: 'variant', label: '算法版本', kind: 'enum', options: ['Reno', 'Tahoe'] },
     { key: 'initialSsthresh', label: '慢启动门限', kind: 'number', options: [4, 8, 16, 32], unit: 'MSS' },
     { key: 'initialCwnd', label: '初始窗口', kind: 'number', options: [1, 2, 4], unit: 'MSS' },
-    { key: 'rounds', label: '模拟轮数', kind: 'number', options: [12, 20, 30], unit: 'RTT' },
+    /*  丢包事件写在第几轮，是**表格里的数据**，而轮数是参数 —— 两边不通气的话，
+        默认预置里那次第 13 轮的丢包，一旦把轮数点成 12 就越界：
+        整屏清空只剩「配置不合法 · 丢包轮次 13 超出 1..12」（实测）。
+        物理上必须如此：一场只跑 12 轮的仿真里，不存在"第 13 轮"。
+        钳到最后一轮，不删行 —— 删了那次丢包，这个实验就没东西可演了。 */
+    { key: 'rounds', label: '模拟轮数', kind: 'number', options: [12, 20, 30], unit: 'RTT',
+      syncs: (v, _params, doc) => {
+        const n = Number(v)
+        const rows = doc.entities.filter(e => e.type === 'loss')
+        if (!rows.some(e => Number(e.at) > n)) return null
+        return {
+          entities: doc.entities.map(e =>
+            e.type === 'loss' && Number(e.at) > n ? { ...e, at: n } : e),
+        }
+      } },
   ],
   entitySpec: {
     tables: [{
@@ -1096,7 +1147,8 @@ const arq: Experiment<ArqState> = {
       /*  停止等待的窗口按定义就是 1 —— 不是"建议 1"。
           不联动的话，默认窗口 4 会让人一按 SW 就撞
           「配置不合法 · 停止等待的窗口只能是 1」，整屏只剩一行错误。 */
-      syncs: v => (v === 'SW' ? { windowSize: 1 } : null),
+      //  返回值 2026-09-10 扩成三块(params/streams/entities),这里只用 params。
+      syncs: v => (v === 'SW' ? { params: { windowSize: 1 } } : null),
     },
     {
       key: 'windowSize', label: '发送窗口', kind: 'number', options: [1, 2, 4, 6], unit: '帧',
@@ -1176,7 +1228,23 @@ const float: Experiment<FloatState> = {
   },
   params: [
     { key: 'format', label: '精度', kind: 'enum', options: ['single', 'double'] },
-    { key: 'operation', label: '做什么', kind: 'enum', options: ['encode', 'add', 'sub'] },
+    /**
+     * 操作数**个数由这个旋钮定**：编码要 1 个、加减要 2 个。
+     *
+     * 不联动的话，一点「加」就撞上「加减需要 2 个操作数」，整屏清空只剩一行红字 ——
+     * 而副标题写着「编码七步 · **加减四步**」，那半个实验因此一直点不出来。
+     * （这不是校验写错了：一个数没法相加。错的是让人先撞了才知道。）
+     *
+     * 只在**当前不够 2 个**时补一个，够了就不动 —— 不覆盖用户已经填好的那一对。
+     * 补的是 0.75：阶码小、能精确表示，跟多数第一操作数摆一起「对阶」那一步最明显。
+     */
+    { key: 'operation', label: '做什么', kind: 'enum', options: ['encode', 'add', 'sub'],
+      syncs: (v, _params, doc) => {
+        if (v === 'encode') return null                     // 编码用第一个就行，多一个不碍事
+        const cur = (doc.streams.find(s => s.name === 'operands')?.values ?? []) as number[]
+        if (cur.length >= 2) return null                    // 用户已经填了两个，别动
+        return { streams: { operands: [cur[0] ?? 8.5, 0.75] } }
+      } },
   ],
   sequence: {
     stream: 'operands', label: '操作数',
@@ -1295,9 +1363,29 @@ const vm: Experiment<VmState> = {
     streams: [{ name: 'virtualAddresses', values: VM_PRESETS_SEQ[0].values }],
   },
   params: [
-    { key: 'pageSizeBytes', label: '页大小', kind: 'number', options: [1024, 2048, 4096], unit: 'B' },
+    /**
+     * ⚠️ **别在这里加 syncs。** 我试过，没用，而且有害。
+     *
+     * 「虚地址位数=12」会让整屏清空（配置不合法）。看着像页大小与虚地址位数
+     * 互相定死（偏移占 log2(页大小) 位，剩下才是页号），于是我给两边挂了 syncs
+     * 让它自动调到 1024 —— 实测参数确实联动了，**可还是不合法**：
+     * 真正的冲突方是**页表项和访问序列**（12 位 + 1KB 页 → 页号只有 0..3，
+     * 而预置页表里有 ≥4 号页、访问序列里有 ≥4096 的地址，见 src/ai/schema.ts 的校验）。
+     *
+     * syncs 只能改参数、够不着 entities/streams，于是那一手只做到了
+     * 「把用户刚调好的页大小悄悄改掉，问题一点没修」—— types.ts 里那句
+     * 「别拿它做推荐」说的就是这个。已撤回。
+     *
+     * 这一类（参数的合法范围由用户也能编辑的表格/流数据决定）另有三处：
+     * 散列表「表长=7」、IEEE 754「做什么=add/sub」、TCP「模拟轮数=12」。
+     * 修法是策划决定（换预置数据？砍掉这个选项？还是让 syncs 也能换预置数据？），
+     * 留给用户拍板 —— 当前表现是可恢复的（按「重置」就回来）。
+     */
+    { key: 'pageSizeBytes', label: '页大小', kind: 'number', options: [1024, 2048, 4096], unit: 'B',
+      syncs: (v, params, doc) => vmFit(Number(params.virtualBits), Number(v), doc) },
     { key: 'tlbEntries', label: 'TLB 项数', kind: 'number', options: [1, 2, 4, 8], unit: '项' },
-    { key: 'virtualBits', label: '虚地址位数', kind: 'number', options: [12, 16], unit: '位' },
+    { key: 'virtualBits', label: '虚地址位数', kind: 'number', options: [12, 16], unit: '位',
+      syncs: (v, params, doc) => vmFit(Number(v), Number(params.pageSizeBytes), doc) },
   ],
   sequence: {
     chips: true,
@@ -9947,7 +10035,21 @@ export const SOFT_LINKS: Record<string, string[]> = {
   '经典算法': ['dijkstra', 'mst', 'topo', 'traverse'],
   //  注意力/Transformer 也是深度学习——真身在计算机学科的「Transformer 原理」，软链进这里。
   '深度学习算法': ['attention', 'scaledmask', 'mha', 'rope', 'forward'],
-  '大模型算法': ['sampling', 'specdec', 'bpe', 'quant', 'moe'],
+  /*  ⚠️ 这里原来还有一行 `'大模型算法': ['sampling','specdec','bpe','quant','moe']`，
+      **删掉了 —— 它把大模型轨的实验软链进了大模型轨自己的组。**
+
+      上一行注释写的是「软链进这里（算法轨）」，作者显然以为「大模型算法」也是算法轨的组。
+      它不是：DISCIPLINES 里 `llm` 的 groups 含「大模型算法」，而 `algo` 的 groups 不含。
+      那五个实验的真身也在 llm（4 个在「Transformer 原理」、1 个在「大模型推理」），
+      于是**同一个页签里各出现两次**：目录编号排到 68，计数条按去重算 63 ——
+      点 ↗ 那份会同时高亮两行、面包屑跳到另一个组。
+      408 / 算法两轨没这问题，因为它们的软链确实来自别的轨。
+
+      作者原本想让算法轨也看得到这五个。**2026-09-10 用户拍板不做**：
+      `DISCIPLINE_OF_GROUP` 是组→学科一对一，同名组不能同时属于两轨，
+      要做就得给算法轨另造一个组名；而顶条只有三个页签，学算法的人想看采样解码
+      点一下就切过去了。**为一个"顺手看看"造一个新分组不值。**
+      这里不留 TODO —— 留着会让下一个人以为还欠着东西。 */
   //  B+树是数据库索引地基、布隆过滤器是缓存穿透/LSM 读加速的常客——真身在地基轨，软链进后端。
   '数据库系统': ['bplus', 'bloom'],
   //  信号量/生产者消费者、银行家(死锁)本身就是后端并发面试核心——真身在 408「操作系统」，软链进后端轨。

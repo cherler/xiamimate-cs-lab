@@ -28,6 +28,20 @@ export type ParamWhen = {
   note: string
 }
 
+/**
+ * `syncs` 的返回值：改一个参数时，顺带要跟着调的东西。
+ *
+ * 三块都可省。三块都不给就返回 `null`（表示"这次不用联动"）。
+ */
+export type SyncResult = {
+  /** 要覆盖的别的参数 */
+  params?: Record<string, number | string>
+  /** 要换掉的流（键 = 流名，如 `operands` / `virtualAddresses`） */
+  streams?: Record<string, (number | string)[]>
+  /** 要换掉的实体表（页表项、丢包事件…）。整张换，不做逐行合并。 */
+  entities?: Entity[]
+}
+
 export type ParamSpecBase = {
   when?: ParamWhen
   /**
@@ -44,8 +58,28 @@ export type ParamSpecBase = {
    *
    * 只写"物理上必须如此"的联动，别拿它做"我觉得这样搭配更好看"的推荐 ——
    * 那会把用户刚调好的值悄悄改掉。
+   *
+   * ## 为什么它还要能换预置数据（2026-09-10 扩的）
+   *
+   * 原来它只能改**参数**。可实测撞到的四处「一点就把整屏清空」里，
+   * 有三处的冲突方根本不在参数里，而在**用户也能编辑的流 / 表格数据**上：
+   *   · IEEE 754「做什么 = 加/减」—— 要 2 个操作数，而预置只有 1 个（流）
+   *   · 虚地址「12 位」—— 页号只剩 0..3，而预置页表里有 ≥4 号页（表格）
+   *   · TCP「模拟轮数 = 12」—— 而丢包事件写在第 13 轮（表格）
+   *
+   * 我先试过只改参数那一手（给虚地址两边挂 syncs 让页大小自动降到 1KB）——
+   * **参数确实联动了，可还是不合法**，因为真正拦路的是页表。那一手只做到了
+   * 「悄悄改掉用户刚调好的页大小、问题一点没修」，已撤回。
+   *
+   * 所以返回值扩成三块。**只有这一个调用点会写它们**，跟用户在序列编辑器 /
+   * 表格里的编辑走同一个 store，不会像 `stream` 选择器那样把用户的编辑盖掉
+   * （那条在 App.tsx 里排在 seqLive 之后，每次重算都覆盖一遍）。
+   *
+   * 第三个参数是**当前这份 doc**（含用户已经改过的流与表格）。没有它就只能盲写：
+   * 比如浮点从「编码」换到「加」时该补一个操作数，可用户要是已经填了两个，
+   * 再补就把他的第二个覆盖了。**要判断"现在够不够"，就得看得见现在是什么。**
    */
-  syncs?: (v: number | string, params: Record<string, unknown>) => Record<string, number | string> | null
+  syncs?: (v: number | string, params: Record<string, unknown>, doc: SimDocument) => SyncResult | null
   /**
    * 这个参数不是仿真的输入，而是**在几条现成的流之间做选择**。
    * 选中之后由 App 把对应的数据写进那条流 —— 内核读到的仍然只有流。

@@ -153,7 +153,12 @@ export function GuidedNote({
           <ol className="gnacts">
             {tasks.map((t, i) => (
               <li key={i} data-param={t.param} data-preset={t.preset}>
-                <b>{i + 1}</b><span><em>{t.act}</em>{t.watch}</span>
+                {/*  ⚠️ 这两处**必须走 rich()**。原来写的是 `<em>{t.act}</em>{t.watch}`
+                     —— 直出原始字符串，于是 brief.ts 里 tasks 写的 `**已经排好**`
+                     在屏幕上就是四个星号加汉字。34 个实验的「实验操作」都这样。
+                     同一个文件里另外五处（111/114/116/123/146）全都走了 rich()，
+                     只有这一处漏了 —— **一个文件里五对一，正是判据该钉的形状**。 */}
+                <b>{i + 1}</b><span><em>{rich(t.act)}</em>{rich(t.watch)}</span>
               </li>
             ))}
           </ol>

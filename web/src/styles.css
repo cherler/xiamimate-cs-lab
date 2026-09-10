@@ -106,7 +106,15 @@
   --scrim:#1b243066;             /* 弹层遮罩 */
 
   /* ── 深色的那一份值，只写这一处 ── */
-  --dk-void:#14141C; --dk-panel:#1C1C27; --dk-panel-2:#232331; --dk-line:#2E2E3F;
+  /*  ⚠️ `--dk-void` 原来是 #14141C（偏紫）。而平台页眉页脚在深色下是
+      `--surface-card` = **#171D24（蓝灰）** —— 两者在页眉底下那条边上撞出一道
+      肉眼看得见的接缝（实测：header rgb(23,29,36) / body rgb(20,20,28)）。
+      跟已知的「浅色下三块同为纯白」是两回事：那个是**同色**，这个是**异色**。
+
+      页底改成跟平台**一模一样**的 #171D24，缝就没了。面板那几档（#1C1C27…）
+      故意没跟着调 —— 它们落在新底色上是「卡片浮在页面上」的关系，
+      不是边到边的拼接，一点色相差反而帮着分层。 */
+  --dk-void:#171D24; --dk-panel:#1C1C27; --dk-panel-2:#232331; --dk-line:#2E2E3F;
   /* ── 三级灰：**层级不再靠"更暗"，靠字号 / 字距 / 大小写** ──
    *
    * 原来是 ink 13.68 / dim 5.14 / faint 2.55（压在 --panel 上）。
@@ -760,12 +768,23 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{
 .gnplain>.gnph{flex:1 1 420px;min-width:0}
 /*  「这一屏在跑什么」：接在大白话后面的机制段。跟大白话同一档字号（都是要读的），
     靠一条竖线和小标题区分,不另起卡片 —— 卡片会让人以为是两件事。 */
+/*  ⚠️ 字号原来是 `--t-ui`（11px）。而这个刻度自己带着角色说明：
+    `--t-body` 是「正文 · 逐步日志」，`--t-ui` 是「按钮 · 参数 · 位串 · chip」。
+    **扫盲层是要读的正文，却挂在控件档上** —— 上面那行注释还写着
+    「跟大白话同一档字号（**都是要读的**）」，自己说了是要读的。
+
+    行宽同理：实测行盒 597px、142 个段落落在 50–59 字/行。
+    按本仓纪律「一个汉字≈2ch，想要一行 40 字就写 84ch」收到 84ch。
+    （`flex:1 1 420px` 那条只定最小宽，收的是最大宽。） */
 .gnplain .gnph{margin:0;padding:0 0 0 13px;border-left:2px solid var(--line);
-  font-size:var(--t-ui);line-height:2;color:var(--ink)}
+  font-size:var(--t-body);line-height:2;color:var(--ink);max-width:84ch}
 .gnplain .gnphk{display:block;color:var(--dim);font-size:var(--t-meta);letter-spacing:.02em;margin-bottom:2px}
 /*  「盯着看什么」横跨所有栏 —— 它是收尾的一句话，不该被切成一栏 */
+/*  ⚠️ 同上：这是「这一屏盯着看什么」，一句要读的收尾话，原来挂在 `--t-meta`
+    （9.5px，刻度里写着「小标题 · 分组名 · 序号 · 字段名」）—— 标注档。
+    9.5px 的中文正文低于通常的可读下限。它跟上面那段是同一层意思，同一档字号。 */
 .gnplain .gnpw{flex:1 1 100%;margin:14px 0 0;padding:11px 14px;border-radius:8px;line-height:1.9;
-  background:var(--panel-2);border-left:3px solid var(--now);font-size:var(--t-meta);color:var(--dim)}
+  background:var(--panel-2);border-left:3px solid var(--now);font-size:var(--t-body);color:var(--dim);max-width:84ch}
 .gnplain .gnpw b{color:var(--now);margin-right:2px}
 
 /*  ── 第 0 步的起点卡 ──
@@ -1160,3 +1179,15 @@ body[data-show][data-tour] *{cursor:none!important}
 .aipanel-x:hover{color:var(--ink);border-color:var(--faint);background:var(--panel)}
 .aipanel-body{flex:1 1 auto;overflow:auto;padding:16px 18px}
 .aipanel-body .aic{max-width:760px;margin:0 auto}
+
+/*  ── 跳过目录 ──
+    键盘用户的第一个 Tab。平时缩到看不见（不是 display:none —— 那样连焦点都收不到），
+    拿到焦点才落下来。实测在这之前，`▶ 播放` 要按 87 次 Tab 才够得着。 */
+/*  `fixed` 不是 `absolute`：absolute 的定位基准是文档，页面往下滚之后
+    「top:0」落在文档顶端、屏幕上根本看不见 —— 而跳过链接恰恰是随时可能被
+    Tab 到的东西。fixed 才是"贴在视口上沿"。 */
+.skiplink{position:fixed;left:12px;top:-48px;z-index:60;
+  padding:8px 14px;border-radius:0 0 8px 8px;
+  background:var(--now);color:#fff;font-size:var(--t-ui);font-weight:600;
+  text-decoration:none;transition:top .12s ease}
+.skiplink:focus{top:0}

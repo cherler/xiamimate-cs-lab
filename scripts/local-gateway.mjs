@@ -63,7 +63,12 @@ const MIME = {
 /** 静态目录。**带扩展名的资源不回退 index.html** —— 回退等于把 404 谎报成 200。 */
 async function serveStatic(res, root, p, spa) {
   const asset = /\.[a-z0-9]+$/i.test(p) && !p.endsWith('.html')
-  const cands = asset ? [p] : [p, `${p}/index.html`, `${p}.html`, spa]
+  /*  ⚠️ 候选列表要跟 Caddy 的 `try_files {path} {path}/` **一一对应**。
+      原来多一档 `${p}.html` —— Caddy 没有这一档，于是 `/cslab/foo`
+      在网关上 200、上线 404。当前四个 dist 里除 index.html 外没有别的 .html，
+      所以触发不了；但这个文件的契约就是「照 Caddy 抄，改一边要改另一边」，
+      不对齐的地方留着，早晚变成一次"本地能开、线上打不开"。 */
+  const cands = asset ? [p] : [p, `${p}/index.html`, spa]
   for (const c of cands) {
     if (!c) continue
     const f = join(root, c)

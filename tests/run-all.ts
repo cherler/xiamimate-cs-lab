@@ -32,6 +32,7 @@ const SUITES = [
   ['「看懂这一屏」覆盖率(欠账不许变多)', 'guide-coverage.test.ts'],
   ['隐藏的学科一个都不露面', 'hidden-discipline.test.ts'],
   ['AI 学伴的计费真接上了', 'billing-wired.test.ts'],
+  ['概念卡解析:坏 JSON 也要救得回来', 'review-cards.test.ts'],
   ['AI 学伴题型纪律(不许全是计数题)', 'fact-genre.test.ts'],
   ['导览大白话纪律(通俗解释的写法)', 'plain-language.test.ts'],
   ['AI 学伴提示词纪律(出题工艺规则还在)', 'prompt-rules.test.ts'],

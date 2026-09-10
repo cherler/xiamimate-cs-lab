@@ -1445,7 +1445,19 @@
     舞台的内容顶部对齐（FitBox），右下角在多数实验里是空的 ——
     Transformer Explainer 的说明卡也是这么放的：浮在图的空白处。
     右偏移随右列宽度走：右列收起时它跟着往右贴。 */
-.guide{position:fixed;right:calc(var(--sidew) + 42px);bottom:132px;
+/*  ⚠️ bottom 原来写死 132px —— **那是这张卡最要命的一处**。
+    底部控件条(走带 .axis + 坞 .dock)是流式的、坞底钉在列底、高度往上长：
+    坞一展开走带就上移，正好长进卡片里。实测 1440×900：
+      坞收起 —— 卡 655–768、走带 713–772 → 走带被压掉 55px，最后几个刻度点不动
+      坞展开 —— 走带 637–695、坞条 707–754 → **两条全被盖住**
+    `elementFromPoint` 在那些控件中心返回的是这张卡，真实点击直接超时。
+    (1280×720 不复现，因为那个高度下这张卡根本不渲染。)
+
+    现在按走带的真实顶边算 —— `--guide-bottom` 由 GuideOverlay 量出来发布，
+    坞一折叠/展开就跟着重算。写死的 132px 只作兜底。
+    这不会跟 `--guide-h` 那条留位打架：留位加在 .stagewrap **内部**的 padding 上，
+    改不了 .stagerow 的 flex 高度，也就动不了走带的位置 —— 单向收敛，不来回。 */
+.guide{position:fixed;right:calc(var(--sidew) + 42px);bottom:var(--guide-bottom, 132px);
   width:min(380px,34vw);max-width:calc(100vw - 36px);
   /*  ⚠️ 不再纯粹跟着坞走，给一条 120px 的地板。
       坞为了给舞台腾地方降到了 104，而讲解卡里最长的一张（试一试那条）要 110px ——
@@ -1513,7 +1525,9 @@
 /*  ⚠️ 默认位置跟着右栏宽度走（`--sidew` 现在是随屏宽的 clamp）。写死一个数的那版，
     右栏一加宽它就压到走带右端「第 N 步 / 共 N 步」上去了。
     `cursor:grab` —— 它现在也能拖（见 GuideOverlay）；能拖的东西要长得像能拖。 */
-.guide-fab{position:fixed;right:calc(var(--sidew) + 42px);bottom:132px;z-index:40;display:inline-flex;
+/*  收起态那颗按钮同理 —— 上面那段注释里「右栏一加宽它就压到走带右端」说的就是这件事，
+    它跟展开态是同一个病根。一起跟着 --guide-bottom 走。 */
+.guide-fab{position:fixed;right:calc(var(--sidew) + 42px);bottom:var(--guide-bottom, 132px);z-index:40;display:inline-flex;
   align-items:center;gap:7px;padding:8px 14px;border-radius:999px;cursor:grab;
   touch-action:none;user-select:none;
   background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--f-tag);
@@ -7004,3 +7018,29 @@ tr.rscold td { box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--miss) 40%,tran
 .lib-foot{margin:2px 0 0;font-size:var(--lib-sub);color:var(--faint);line-height:1.8;
   border-top:1px dashed var(--line);padding-top:12px;max-width:78ch}
 .lib-foot b{color:var(--dim)}
+
+/*  ── 窄屏（手机）──────────────────────────────────────────────
+    ⚠️ **这是本仓第一条 `@media (max-width)`** —— 在这之前一条都没有。
+    后果最明显的地方是第 0 步那张导览卡（`.gnote`）：390×844 上实测卡片宽 358，
+    而 `.gnbody` 的右栏是**硬写的 232px**，于是左栏只剩 124px、
+    扫盲层被挤进 88px 宽的一条、纵向拉到 **3220px**；关闭键 44×90、文字竖着排。
+    而这一层恰恰是「用户看不懂实验是因为不认识屏幕上的词」那一层 ——
+    手机上等于没有。
+
+    改法是让它**竖排**：两栏改一栏，右栏的左边框变成上边框。
+    只在这里写，桌面端一条规则都不受影响。 */
+@media (max-width: 720px){
+  /*  两栏 → 一栏。右栏那 232px 是桌面上「实验操作」贴边的宽度，竖排之后没有意义。 */
+  .gnbody{grid-template-columns:minmax(0,1fr);overflow-y:auto}
+  .gnside{border-left:0;border-top:1px solid var(--line)}
+  /*  底部那道渐隐原来给右栏让出 232px；竖排之后要通到底，否则右边缺一块。 */
+  .gnote-read .gnbody:after{right:0}
+  /*  桌面上 44vh 是为了「读的那一列不被右栏撑高」；竖排之后两块前后相接，
+      再封 44vh 就等于把下半截裁掉 —— 交给外层滚动。 */
+  .gnote{max-height:none}
+  /*  扫盲层的两段在窄屏上不再并排（桌面是 `gap:0 30px` 的两列）。 */
+  .gnplain{gap:0}
+  .gnplain>.gnph{flex:1 1 100%}
+  /*  关闭键被挤成 44px 宽、文字竖排。它是这张卡唯一的出口，不能挤。 */
+  .gnx{flex:0 0 auto;white-space:nowrap}
+}
