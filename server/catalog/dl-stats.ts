@@ -416,11 +416,11 @@ export const DL_STATS_ENTRIES: CatalogEntry[] = [
           const runs = t.filter(f => f.phase === 'run').sort((a, b) => Number(a.m) - Number(b.m))
           const first = runs[0], lastf = runs[runs.length - 1]
           const answer = Number(lastf.exKurt) > Number(first.exKurt)
-            ? `从平顶（超额峰度≈${first.exKurt}）一路趋向钟形（→${lastf.exKurt}，接近高斯的 0）`
+            ? `从平顶（峰度≈${first.exKurt}）趋向钟形`
             : `峰度基本不变`
           return { answer, step: t.indexOf(lastf), evidence: `m=${first.m} 超额峰度 ${first.exKurt} → m=${lastf.m} 超额峰度 ${lastf.exKurt}` }
         },
-        distractors: a => pick3(a, [a, '从钟形逐渐摊平成均匀分布', '始终保持均匀的平顶不变', '越来越尖、峰度冲向正无穷']),
+        distractors: a => pick3(a, [a, '从钟形一路逐渐摊平成均匀分布的那种样子', '始终保持均匀的那种平顶形状不变', '越来越尖、峰度一路冲向正无穷']),
       },
     ],
   },
