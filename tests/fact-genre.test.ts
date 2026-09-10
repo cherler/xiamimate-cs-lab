@@ -18,6 +18,7 @@
  *
  * 跑法：npx tsx tests/fact-genre.test.ts（也在 npm test 里）
  */
+import { reachableIds } from './reachable.ts'
 import { CATALOG, traceOf, genreOf } from '../server/catalog.ts'
 import { CONCEPT_FACTS } from '../server/catalog/concepts.ts'
 import { FILL_FACTS } from '../server/catalog/concepts-fill.ts'
@@ -395,7 +396,9 @@ rows.length >= 200 && rows.reduce((n, r) => n + r.concept + r.count, 0) >= 700
       所以这是一笔 772 条的**内容账**，要作者侧逐条改写。先封顶，别让它涨。 */
 {
   const longestWins: string[] = []
-  let concepts = 0
+  const liveLeaks: string[] = []          //  其中**用户点得到**的那些
+  const reach = reachableIds()
+  let concepts = 0, liveConcepts = 0
   for (const e of CATALOG) {
     let t: Record<string, unknown>[] = []
     try { t = traceOf(e) as Record<string, unknown>[] } catch { continue }
@@ -408,8 +411,12 @@ rows.length >= 200 && rows.reduce((n, r) => n + r.concept + r.count, 0) >= 700
       } catch { continue }
       if (!ans || ds.length < 3) continue
       concepts++
+      if (reach.has(e.id)) liveConcepts++
       const L = (x: string) => [...x].length
-      if (L(ans) > Math.max(...ds.map(L))) longestWins.push(`${e.id}/${f.id}`)
+      if (L(ans) > Math.max(...ds.map(L))) {
+        longestWins.push(`${e.id}/${f.id}`)
+        if (reach.has(e.id)) liveLeaks.push(`${e.id}/${f.id}`)
+      }
     }
   }
   /*  **只许降不许涨。** 每还一批就把这个数压到当天的实测值 ——
@@ -452,6 +459,41 @@ rows.length >= 200 && rows.reduce((n, r) => n + r.concept + r.count, 0) >= 700
       + `（上限 ${LONGEST_DEBT_CAP}，只许降；随机基线 ${Math.round(concepts * 0.25)}）`)
     : bad(`靠长度就能蒙对的题变多了：${longestWins.length} > 上限 ${LONGEST_DEBT_CAP}`
       + `：${longestWins.slice(0, 5).join(' ')}`)
+
+  /**
+   * ⑩ **用户点得到的题里，一条都不许漏。**
+   *
+   * ⑨ 那个只许降的上限管的是全量 961 条，其中三成多落在点不到的实验上
+   * （隐藏的具身智能轨 + 已下线的孤儿组，见 server/catalog/dormant.ts）。
+   * 那些数字降不降，用户一点感觉都没有。真正该守住的是这一条：
+   * **在用户实际做得到的题上，「不读题、永远挑最长选项」这一招必须完全失效。**
+   *
+   * 2026-09-10 首测时全量 772 条会漏、点得到的 324 条；当晚逐条改写清零。
+   * 这条判据从此不是"只许降"而是**零容忍** —— 新加一道会漏的题就当场红。
+   * 新题写不出等长选项时，别改这条判据，去把三个干扰项写厚
+   * （做法见 scripts/quiz-rebalance.mjs 与 scripts/quiz-distractors.mjs）。
+   */
+  liveLeaks.length === 0
+    ? ok(`点得到的 ${liveConcepts} 条原理题里，没有一条能靠"挑最长的"蒙对`)
+    : bad(`点得到的题里有 ${liveLeaks.length} 条的答案是唯一最长，靠长度就能蒙对：`
+      + `${liveLeaks.slice(0, 8).join(' ')}${liveLeaks.length > 8 ? ' …' : ''}`)
+
+  /**
+   * ⑩ 的自检 —— **这条比判据本身更要紧**。
+   *
+   * ⑩ 是"零容忍"，而零容忍最容易变成"什么都没测"：只要 reachableIds() 返回空集，
+   * liveLeaks 就恒为 0，判据永远绿、一个字都没查。这正是今晚栽过的那种病
+   * （id→group 的口径漏掉 mkLib，整批库层被当成点不到，清单却看着一切正常）。
+   * 所以要证明这个集合**既不是空的、也不是全集**：拿一条明知点得到的、
+   * 和一条明知点不到的分别对一下。
+   */
+  const MUST_REACH = 'binsearch'     // 408 轨「数据结构」，首页第一个就是它
+  const MUST_NOT = 'rsa'             // 密码学 —— 安全轨 2026-09-02 下线，组成了孤儿
+  reach.has(MUST_REACH) && !reach.has(MUST_NOT)
+    ? ok(`自检：点得到的集合有 ${reach.size} 个实验，含 ${MUST_REACH}、不含已下线的 ${MUST_NOT} —— ⑩ 真的在查东西`)
+    : bad(`自检失败：${reach.has(MUST_REACH) ? '' : `${MUST_REACH} 明明点得到却不在集合里；`}`
+      + `${reach.has(MUST_NOT) ? `${MUST_NOT} 所在的组早已下线却算成点得到；` : ''}`
+      + `⑩ 要么在空跑，要么口径错了`)
 
   //  自检：判法本身得能分辨好坏，不是永远为真
   const L = (x: string) => [...x].length
