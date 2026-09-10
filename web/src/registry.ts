@@ -9922,7 +9922,16 @@ export type Discipline = {
   icon: string
   sub: string
   groups: string[]          // 该学科下的子模块（= 现有 group 名）
-  status: 'active' | 'planned'
+  /**
+   * active  正常显示
+   * planned 显示，但打上「即将」灰标、点了不换实验
+   * hidden  **一整轨都不露面**：顶条没有这个页签、guide 的「其他学科」里不出现、
+   *         搜索也搜不到它底下的实验（靠 VISIBLE_DISCIPLINES / DISCIPLINE_OF_GROUP 一起做到）。
+   *
+   * ⚠️ 别拿 planned 当隐藏用 —— 它照样渲染一颗页签，只是灰的。
+   *    2026-09-10 用户说「具身智能好像不属于 CS，把它隐藏掉」，翻成 planned 是不够的。
+   */
+  status: 'active' | 'planned' | 'hidden'
   /** 该学科自己的 guide 页：一条「从地基 → 某职业/造物」的路（CS 就是 408→大模型推理机制）。 */
   guide: { from: string; to: string; toIcon: string; url?: string }
 }
@@ -9975,7 +9984,9 @@ export const DISCIPLINES: Discipline[] = [
     guide: { from: '一次注意力', to: '大模型推理引擎', toIcon: '🤖' },
   },
   {
-    key: 'embodied', title: '具身智能', icon: '🦾', status: 'active',
+    //  2026-09-10 用户拍板隐藏：这门课叫「虾米CS课堂」，具身智能不算 CS 专业课。
+    //  **实验、guide、内核一个都没删** —— 只是不露面，改回 'active' 就整轨回来。
+    key: 'embodied', title: '具身智能', icon: '🦾', status: 'hidden',
     sub: '机器人学 → 感知 · 控制 · 规划 → 具身智能',
     // 从零到具身智能工程师：机器人学基础(运动学/雅可比)→感知(卡尔曼/SLAM)→控制(PID/力控)
     // →规划(RRT)→具身学习(模仿/RL/VLA)→开源实战(LeRobot/MuJoCo)。分组随实验增量补齐。
@@ -10038,9 +10049,19 @@ export const GROUP_ANCHOR: Record<string, string> = {
 }
 
 export const ANCHOR_BY_KEY: Record<string, Anchor> = Object.fromEntries(ANCHORS.map(a => [a.key, a]))
+/**
+ * 会露面的学科 —— **界面上凡是「列出学科」的地方都读这个，不要读 DISCIPLINES。**
+ * DISCIPLINES 仍是全量（测试要按它核内容覆盖），这里只管显不显示。
+ */
+export const VISIBLE_DISCIPLINES: Discipline[] = DISCIPLINES.filter(d => d.status !== 'hidden')
+
+/**
+ * 子模块 → 学科。**只收会露面的学科**，所以它同时也是「这个实验能不能被导航到」的判据：
+ * 搜索、跨轨跳转都先查它，隐藏轨底下的实验因此一并搜不到（App.tsx 的 searchResults）。
+ */
 export const DISCIPLINE_OF_GROUP: Record<string, Discipline> = (() => {
   const m: Record<string, Discipline> = {}
-  for (const d of DISCIPLINES) for (const g of d.groups) m[g] = d
+  for (const d of VISIBLE_DISCIPLINES) for (const g of d.groups) m[g] = d
   return m
 })()
 

@@ -9,7 +9,7 @@
  */
 import { chromium } from 'playwright'
 
-const PAGE = process.env.CHECK_URL || `http://127.0.0.1:${process.env.PORT || 5187}/lab/cards/`
+const PAGE = process.env.CHECK_URL || `http://127.0.0.1:${process.env.PORT || 5187}/cslab/cards/`
 
 // 200 局时通关率的抽样噪声能到 ±6 点(实测 sort:n=200 报 14%、n=600/1000 都是 ~20.7%),
 // 足以让一条贴边的流派假红一次 —— 而假红比不测更糟(它教你忽略判据)。

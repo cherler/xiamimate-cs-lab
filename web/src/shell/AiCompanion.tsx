@@ -1,14 +1,14 @@
 /**
  * AI 学伴面板（坞的一个页签）。
  *
- * 三种用法，都打后端 /lab/ai/*（独立进程 server/index.ts，dev 由网关/vite 代理转发）：
+ * 三种用法，都打后端 /cslab/ai/*（独立进程 server/index.ts，dev 由网关/vite 代理转发）：
  *   出题  —— 引擎算钉死答案，大模型只写题面；选完当场判对错 + 看讲解。
  *   答疑  —— 把当前实验的真实运行轨迹当唯一依据回答，问轨迹外会诚实说不知道。
  *   复习  —— 钉死事实卡 + 概念卡 + 小结。
  *
- * 后端目前只接了部分实验（见 /lab/ai/experiments）；没接的给一句友好提示，不报错。
+ * 后端目前只接了部分实验（见 /cslab/ai/experiments）；没接的给一句友好提示，不报错。
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import { EXPERIMENTS, DISCIPLINE_OF_GROUP } from '../registry.ts'
 import { Md, mdInline } from './md.tsx'
 
@@ -42,7 +42,7 @@ let supportedPromise: Promise<Map<string, number>> | null = null
 export function loadAiFacts(): Promise<Map<string, number>> {
   if (SUPPORTED) return Promise.resolve(SUPPORTED)
   if (!supportedPromise) {
-    supportedPromise = fetch('/lab/ai/experiments')
+    supportedPromise = fetch('/cslab/ai/experiments')
       .then(r => r.json())
       .then((d: { experiments: { id: string; facts?: number }[] }) => {
         SUPPORTED = new Map(d.experiments.map(e => [e.id, e.facts ?? 0]))
@@ -54,13 +54,131 @@ export function loadAiFacts(): Promise<Map<string, number>> {
 }
 const loadSupported = loadAiFacts   // 内部沿用旧名（返回值有 .has(id)，判断是否接入不变）
 
+/**
+ * 这一次调用花了多少 —— **服务端一直在返回,以前前端收下就丢了。**
+ *
+ * 每个 AI 学伴响应都带 `billing: { metered, credits, tokens, note }`
+ * （server/llm.ts 的 Meter 出的）。2026-09-10 之前界面上一处都不显示,
+ * 于是「计费没接通、全程免费」和「接通了、正常扣分」**在屏幕上长得一模一样** ——
+ * 那正是这套东西白送了一路却没人发现的原因。
+ *
+ * 截在 postJSON 这一层而不是六个调用点上:新加的接口自动就带上了,漏不掉。
+ */
+export type Billing = {
+  metered: boolean; credits: number; tokens: number; note: string
+  /** 这一次走的是游客试用额度（没登录）；下面两个字段才有意义 */
+  guest?: boolean; used?: number; limit?: number
+}
+let lastBilling: Billing | null = null
+const billingSubs = new Set<() => void>()
+function setBilling(b: Billing | null) {
+  lastBilling = b
+  for (const fn of billingSubs) fn()
+}
+/** 给 React 订阅用（useSyncExternalStore 的两个参数）。 */
+export const subscribeBilling = (fn: () => void) => { billingSubs.add(fn); return () => { billingSubs.delete(fn) } }
+export const getBilling = () => lastBilling
+
+/**
+ * 游客标识 —— **跟主站共用同一个 key**（`xm:vid`，见 tools-frontend 的 lib/usage.ts）。
+ *
+ * 线上 `/cslab/` 与主站同源，localStorage 是同一份，所以这里读到的就是主站那个 id。
+ * 各写各的会让同一个人在两边各拿一份游客额度 —— 而额度桶是全平台共用的一份，
+ * 那就等于把限流开了个口子。**共用 key 是有意的，别改名。**
+ *
+ * 未登录时后端靠 (visitor_id, IP) 计当天用量；登录了就走账户，这个 id 不起作用。
+ */
+/**
+ * 后端回的错分两类，**说法不该一样**：
+ *   · 额度用完（guest_limit / no_credits）—— 这不是故障，是正常的业务答复。
+ *     写成「出错了：…」会让人以为产品坏了，转身就走。
+ *   · 其余（网络、500、模型挂了）—— 那才是出错了。
+ */
+export class AiError extends Error {
+  constructor(message: string, readonly code = '') { super(message); this.name = 'AiError' }
+}
+const QUOTA_CODES = new Set(['guest_limit', 'no_credits', 'guest_unidentified'])
+function fmtErr(e: unknown): string {
+  const msg = (e as Error)?.message ?? String(e)
+  const code = e instanceof AiError ? e.code : ''
+  return QUOTA_CODES.has(code) ? msg : `出错了：${msg}`
+}
+
+const VISITOR_KEY = 'xm:vid'
+function visitorId(): string {
+  try {
+    let v = localStorage.getItem(VISITOR_KEY)
+    if (!v) {
+      v = 'v_' + (crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2) + Date.now().toString(36))
+      localStorage.setItem(VISITOR_KEY, v)
+    }
+    return v
+  } catch { return '' }   // 隐私模式：拿不到就只按 IP 计，宁可严一点
+}
+
 async function postJSON<T>(path: string, body: unknown): Promise<T> {
+  const vid = visitorId()
   const r = await fetch(path, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(vid ? { 'X-Visitor-Id': vid } : {}) },
+    body: JSON.stringify(body),
   })
   const data = await r.json()
-  if (!r.ok) throw new Error((data as { error?: string })?.error ?? `HTTP ${r.status}`)
+  if (!r.ok) throw new AiError((data as { error?: string })?.error ?? `HTTP ${r.status}`,
+                               (data as { code?: string })?.code ?? '')
+  const b = (data as { billing?: Billing })?.billing
+  //  没带 billing 的接口（比如 /quiz 走引擎不调模型）不去覆盖上一次的结果
+  if (b && typeof b.note === 'string') {
+    setBilling(b)
+    /**
+     * 真扣了分就通知页眉那颗积分胶囊重新拉余额 —— 跟主站 lib/api.ts 同一个约定
+     * （`xm-credits-changed`）。不发的话胶囊要等切页/刷新才变：
+     * **面板说"还剩 3 积分"、胶囊说"今日 4 积分"，同一屏两个数**。
+     * 没计上费（metered=false）时不发 —— 余额没动，白拉一次。
+     */
+    if (b.metered) {
+      try { window.dispatchEvent(new CustomEvent('xm-credits-changed')) } catch { /* 老浏览器 */ }
+    }
+  }
   return data as T
+}
+
+/**
+ * 本次消耗条。三种状态**分开说**,因为用户该做的事完全不同：
+ *   扣了分   → 正常，告诉他花了几分
+ *   没调模型 → 这一步本来就免费（引擎出题），不是漏计
+ *   该扣没扣 → **异常**，必须显眼：闸口没通/没登录，钱在流而账没记
+ */
+function BillingNote() {
+  const b = useSyncExternalStore(subscribeBilling, getBilling, getBilling)
+  if (!b) return null
+  if (!b.metered && b.note === '未调用大模型') {
+    return <p className="aic-bill">这一步没调用大模型（引擎现出的题），<b>不计费</b>。</p>
+  }
+  if (b.metered && b.guest) {
+    /**
+     * ⚠️ **单位是积分，不是"次"。**
+     *
+     * 这里一度写成「今天还剩 4 / 5 次」—— 那是积分制**之前**的说法，早废弃了。
+     * 全平台一律按积分讲：页眉那颗胶囊未登录时写「◈ 今日 N 积分 · 未登录」，
+     * 登录后写余额；`/v1/guest/quota` 返回的 limit/used/left 也都是积分。
+     * 把积分换算成"次"看着更好懂，实际是把口径拆成两套 ——
+     * 一次调用未必正好 1 分（token 多就不止），"次"根本对不上账。
+     */
+    const left = Math.max(0, (b.limit ?? 0) - (b.used ?? 0))
+    return (
+      <p className="aic-bill">
+        本次消耗 <b>{b.credits}</b> 积分（{b.tokens} tokens）——
+        今日游客额度还剩 <b>{left}</b> 积分
+        {left === 0 && <>，<b>登录</b>后每天领 10 积分</>}
+      </p>
+    )
+  }
+  if (b.metered) {
+    return <p className="aic-bill">本次消耗 <b>{b.credits}</b> 积分（{b.tokens} tokens）。</p>
+  }
+  //  metered=false 又不是"没调模型" —— 模型真调了、钱真花了、账没记上
+  return <p className="aic-bill aic-bill-warn">⚠️ 调用了大模型但<b>没能计费</b>：{b.note}</p>
 }
 
 type Mode = 'quiz' | 'ask' | 'review' | 'interview'
@@ -107,6 +225,8 @@ export function AiCompanion({ expId, onCite, onFactAnswer, drillFactId, onDrillC
         <button className={mode === 'review' ? 'on' : ''} onClick={() => setMode('review')}>复习</button>
         <button className={mode === 'interview' ? 'on' : ''} onClick={() => setMode('interview')}>面试</button>
       </div>
+      {/*  本次消耗：四个模式共用一条，就摆在页签下方——**花了钱要让人看见**。 */}
+      <BillingNote />
       {/*  访问过的模式全保持挂载,只切显示——状态不随页签切换丢失。 */}
       {visited.has('quiz') && <div style={{ display: mode === 'quiz' ? undefined : 'none' }}><QuizView expId={expId} onCite={onCite} onFactAnswer={onFactAnswer} drillFactId={drillFactId} onDrillConsumed={onDrillConsumed} /></div>}
       {visited.has('ask') && <div style={{ display: mode === 'ask' ? undefined : 'none' }}><AskView expId={expId} onCite={onCite} /></div>}
@@ -153,7 +273,7 @@ function QuizView({ expId, onCite, onFactAnswer, drillFactId, onDrillConsumed }:
     try {
       //  题面与选项一并回传:「找错的」那种题型服务端推不回来。
       //  但「哪个是对的」由服务端拿引擎认识的字符串校验,客户端说了不算。
-      const d = await postJSON<{ explanation: string; source: string }>('/lab/ai/explain',
+      const d = await postJSON<{ explanation: string; source: string }>('/cslab/ai/explain',
         { expId, factId, question: q.question, options: q.options, correctIndex: q.correctIndex })
       if (d.source === 'llm' && d.explanation) setWhy(w => ({ ...w, [factId]: d.explanation }))
     } catch { /* 兜底讲解已经在题目里了,取不到就用它 */ }
@@ -164,9 +284,9 @@ function QuizView({ expId, onCite, onFactAnswer, drillFactId, onDrillConsumed }:
   async function gen(factId?: string) {
     setLoading(true); setError(''); setPicked({}); setDrilled(!!factId)
     try {
-      const d = await postJSON<{ questions: Question[] }>('/lab/ai/quiz', { expId, factId })
+      const d = await postJSON<{ questions: Question[] }>('/cslab/ai/quiz', { expId, factId })
       setQs(d.questions)
-    } catch (e) { setError((e as Error).message) } finally { setLoading(false) }
+    } catch (e) { setError(fmtErr(e)) } finally { setLoading(false) }
   }
 
   //  从进度面板「去练最弱那条」跳进来:自动出那条 factId 的题。
@@ -184,7 +304,7 @@ function QuizView({ expId, onCite, onFactAnswer, drillFactId, onDrillConsumed }:
     <div className="aic-body">
       {drilled && qs && <p className="aic-hint">这是你在本实验<b>最弱的一条</b>——练到掌握它就出师。</p>}
       <button className="aic-go" disabled={loading} onClick={() => gen()}>{loading ? '出题中…' : qs ? '换一组' : '出一组题'}</button>
-      {error && <p className="aic-err">出错了：{error}</p>}
+      {error && <p className="aic-err">{error}</p>}
       {qs && answeredCount > 0 && (
         <p className="aic-tally">本组已答 {answeredCount}/{qs.length} · 对 <b>{correctCount}</b> 道
           {answeredCount === qs.length && <span className="aic-tally-pct">　正确率 {Math.round(correctCount / qs.length * 100)}%</span>}</p>
@@ -254,7 +374,7 @@ function AskView({ expId, onCite }: { expId: string; onCite?: (step: number) => 
   useEffect(() => {
     let live = true
     setSuggest([]); setAnswer(''); setAsked('')
-    fetch(`/lab/ai/suggest?expId=${encodeURIComponent(expId)}`).then(r => r.json())
+    fetch(`/cslab/ai/suggest?expId=${encodeURIComponent(expId)}`).then(r => r.json())
       .then(d => { if (live) setSuggest(d.questions ?? []) }).catch(() => { })
     return () => { live = false }
   }, [expId])
@@ -263,9 +383,9 @@ function AskView({ expId, onCite }: { expId: string; onCite?: (step: number) => 
     if (!question.trim() || loading) return
     setLoading(true); setError(''); setAnswer(''); setProv(null); setAsked(question)
     try {
-      const d = await postJSON<{ answer: string; provenance?: { step: number; evidence: string } }>('/lab/ai/ask', { expId, question, factId })
+      const d = await postJSON<{ answer: string; provenance?: { step: number; evidence: string } }>('/cslab/ai/ask', { expId, question, factId })
       setAnswer(d.answer); if (d.provenance) setProv(d.provenance)
-    } catch (e) { setError((e as Error).message) } finally { setLoading(false) }
+    } catch (e) { setError(fmtErr(e)) } finally { setLoading(false) }
   }
 
   return (
@@ -284,7 +404,7 @@ function AskView({ expId, onCite }: { expId: string; onCite?: (step: number) => 
         <button className="aic-go" disabled={loading || !q.trim()} onClick={() => ask(q)}>{loading ? '助教思考中…' : '问'}</button>
       </>}
       {loading && <p className="aic-hint" style={{ opacity: .7 }}>助教思考中…</p>}
-      {error && <p className="aic-err">出错了：{error}</p>}
+      {error && <p className="aic-err">{error}</p>}
       {answer && <div className="aic-answer"><Md text={answer} /></div>}
       {answer && prov && <CiteChip step={prov.step} evidence={prov.evidence} onCite={onCite} />}
     </div>
@@ -300,15 +420,15 @@ function ReviewView({ expId }: { expId: string }) {
   async function gen() {
     setLoading(true); setError('')
     try {
-      const d = await postJSON<ReviewPack>('/lab/ai/review', { expId })
+      const d = await postJSON<ReviewPack>('/cslab/ai/review', { expId })
       setPack(d)
-    } catch (e) { setError((e as Error).message) } finally { setLoading(false) }
+    } catch (e) { setError(fmtErr(e)) } finally { setLoading(false) }
   }
 
   return (
     <div className="aic-body">
       <button className="aic-go" disabled={loading} onClick={gen}>{loading ? '生成中…' : pack ? '重新生成' : '生成复习包'}</button>
-      {error && <p className="aic-err">出错了：{error}</p>}
+      {error && <p className="aic-err">{error}</p>}
       {pack && (
         <>
           {pack.summary && <div className="aic-summary"><b>复习小结</b><Md text={pack.summary} /></div>}
@@ -350,19 +470,19 @@ function InterviewView({ expId }: { expId: string }) {
   async function post(nextHistory: Turn[]) {
     setLoading(true); setError(''); setRef('')     // 新问题来了，清掉上题的参考答案
     try {
-      const d = await postJSON<{ reply: string; done: boolean }>('/lab/ai/interview', bodyFor(nextHistory))
+      const d = await postJSON<{ reply: string; done: boolean }>('/cslab/ai/interview', bodyFor(nextHistory))
       setHistory([...nextHistory, { role: 'interviewer', text: d.reply }])
       setDone(d.done)
-    } catch (e) { setError((e as Error).message) } finally { setLoading(false) }
+    } catch (e) { setError(fmtErr(e)) } finally { setLoading(false) }
   }
 
   async function showRef() {
     if (refLoading || ref) return
     setRefLoading(true); setError('')
     try {
-      const d = await postJSON<{ answer: string }>('/lab/ai/interview-answer', bodyFor(history))
+      const d = await postJSON<{ answer: string }>('/cslab/ai/interview-answer', bodyFor(history))
       setRef(d.answer)
-    } catch (e) { setError((e as Error).message) } finally { setRefLoading(false) }
+    } catch (e) { setError(fmtErr(e)) } finally { setRefLoading(false) }
   }
 
   const TOTAL_ROUNDS = 3   // 与后端 interview.ts 的 MAX_ROUNDS 对齐:答满 3 轮进总评
@@ -417,7 +537,7 @@ function InterviewView({ expId }: { expId: string }) {
                   </div>
                 </>}
           </>}
-      {error && <p className="aic-err">出错了：{error}</p>}
+      {error && <p className="aic-err">{error}</p>}
     </div>
   )
 }

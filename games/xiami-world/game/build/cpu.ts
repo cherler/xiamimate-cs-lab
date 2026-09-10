@@ -677,7 +677,7 @@ requestAnimationFrame(frame)
 HUB = mountHub({
   title: '搭机器 · CPU 流水线',
   key: 'cpu',
-  //  回房子 = 回同目录的首页(/lab/world/ 或本地 dev 的 /),相对当前文档解析
+  //  回房子 = 回同目录的首页(/cslab/world/ 或本地 dev 的 /),相对当前文档解析
   links: [
     { label: '← 回房子 · 路由器', href: new URL('./', location.href).href },
     //  cache 就长在 CPU 和内存之间 —— 从这台机器往里走一层

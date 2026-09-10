@@ -10,7 +10,7 @@
  */
 import { getEntry, traceOf, type CatalogEntry } from './catalog.ts'
 import { servableFacts, askWithData } from './quiz.ts'
-import { generate, type Principal } from './llm.ts'
+import { generate, type Principal, type Billing } from './llm.ts'
 
 export type Card = { front: string; back: string; source: 'engine' | 'llm' }
 export type ReviewPack = {
@@ -19,7 +19,7 @@ export type ReviewPack = {
   summary: string
   factCards: Card[]
   conceptCards: Card[]
-  billing: { metered: boolean; credits: number; tokens: number; note: string }
+  billing: Billing
 }
 
 function traceText(entry: CatalogEntry): string {
@@ -63,7 +63,7 @@ export type ReviewOptions = { principal?: Principal; useLLM?: boolean }
 
 export async function buildReview(expId: string, opts: ReviewOptions = {}): Promise<ReviewPack> {
   const entry = getEntry(expId)
-  if (!entry) throw new Error(`未知实验：${expId}（可用：见 /lab/ai/experiments）`)
+  if (!entry) throw new Error(`未知实验：${expId}（可用：见 /cslab/ai/experiments）`)
   const facts = factCards(entry)
 
   if (opts.useLLM === false) {
@@ -100,7 +100,7 @@ export async function buildReview(expId: string, opts: ReviewOptions = {}): Prom
   return { expId, title: entry.title, summary, factCards: facts, conceptCards, billing: combineBilling(billings) }
 }
 
-type Billing = { metered: boolean; credits: number; tokens: number; note: string }
+
 function combineBilling(bs: Billing[]): Billing {
   if (bs.length === 0) return { metered: false, credits: 0, tokens: 0, note: '未接入积分' }
   return {

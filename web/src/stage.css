@@ -4409,6 +4409,11 @@ tr.rscold td { box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--miss) 40%,tran
 .aic-modes button { flex:1; padding:5px 0; font-size:12px; color:var(--dim);
   background:var(--sunk-1); border:1px solid var(--line); border-radius:6px; cursor:pointer; }
 .aic-modes button.on { color:var(--ink); background:var(--panel); border-color:var(--now); font-weight:600; }
+/*  本次消耗条：平常是一行淡字，别抢戏；「该扣没扣」那一档要显眼 —— 那是钱在流而账没记。 */
+.aic-bill { margin:0; font-size:11.5px; color:var(--faint); }
+.aic-bill b { color:var(--ink); font-variant-numeric:tabular-nums; }
+.aic-bill-warn { color:var(--miss); padding:5px 8px; border:1px solid var(--miss); border-radius:6px; }
+.aic-bill-warn b { color:var(--miss); }
 .aic-body { display:flex; flex-direction:column; gap:9px; }
 .aic-suggest { display:flex; flex-direction:column; gap:6px; }
 .aic-sug { text-align:left; padding:8px 11px; font-size:12px; color:var(--ink); background:var(--sunk-1);

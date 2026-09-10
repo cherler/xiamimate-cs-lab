@@ -3,8 +3,8 @@
  *
  * ## 为什么需要它
  *
- * 线上只有 `xiamimate.com` 一个域名，主站与 `/lab` 是**同源**的：主站在根上，
- * 本仓在 `/lab/*`，平台页眉制品在 `/chrome/*`，账号与进度接口在 `/v1/*`。
+ * 线上只有 `xiamimate.com` 一个域名，主站与 `/cslab` 是**同源**的：主站在根上，
+ * 本仓在 `/cslab/*`，平台页眉制品在 `/chrome/*`，账号与进度接口在 `/v1/*`。
  * 而本机是各跑各的 dev server（主站 :3000、本仓 :5178、后端 :8200），
  * **`:5178` 拿不到 `/chrome` 也拿不到 `/v1`** —— 于是「并入」这件事在本地
  * 根本看不见，只有部署后才暴露，而暴露的方式通常是「点进去一片空白」。
@@ -14,11 +14,11 @@
  *
  * ## 用法
  *
- *   VITE_BASE=/lab/ npm run web            # 本仓 dev，挂在 /lab/ 下（另开一个终端）
+ *   VITE_BASE=/cslab/ npm run web            # 本仓 dev，挂在 /cslab/ 下（另开一个终端）
  *   node scripts/local-gateway.mjs         # 网关
  *   node scripts/local-gateway.mjs --lab=static   # 改用 web/dist/（测将来发的东西）
  *
- * 然后开 http://127.0.0.1:8090/lab/ —— 顶上应当出现平台页眉「虾米伙伴 › 虾米做实验」。
+ * 然后开 http://127.0.0.1:8090/cslab/ —— 顶上应当出现平台页眉「虾米伙伴 › 虾米CS课堂」。
  *
  * ⚠️ **直接开 :5178 永远看不到平台页眉**，因为 `/chrome/*` 在主站那个源上。
  * 两个「看起来都对」的地址只有一个是并入后的真形态。
@@ -42,9 +42,12 @@ const API = arg('api', 'http://127.0.0.1:8200')
 const LAB_AI = arg('lab-ai', 'http://127.0.0.1:8300')
 
 const LAB_OUT = join(ROOT, 'web', 'dist')
-//  monorepo 里的两个游戏:各自 vite build 到自家 dist(base=/lab/cards|/lab/world),静态挂载。
+//  算法卡牌:vite build 到自家 dist(base=/cslab/cards),静态挂载。
+//  探索游戏(games/xiami-world)2026-09-10 已从课堂摘掉,不再挂 /cslab/world。
 const CARDS_OUT = join(ROOT, 'games', 'algo-cards', 'dist')
-const WORLD_OUT = join(ROOT, 'games', 'xiami-world', 'dist')
+//  Transformer 图解的两个入口:**不需要构建**,直接挂源码目录(依赖走 CDN、模型走 ModelScope)。
+const EXPLAINER_OUT = join(ROOT, 'experiments', 'explainer-hub')
+const EXPLAINER_LIVE_OUT = join(ROOT, 'experiments', 'qwen-browser')
 const MAIN_OUT = join(MAIN_REPO, 'out')
 // 主站 dev 服务 public/chrome，构建产物落 out/chrome —— 哪个在就用哪个。
 const CHROME_DIR = [join(MAIN_OUT, 'chrome'), join(MAIN_REPO, 'public', 'chrome')]
@@ -71,7 +74,7 @@ async function serveStatic(res, root, p, spa) {
   res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' }).end('not found')
 }
 
-/** 透传到上游。**原样转发 path** —— 本仓 dev 也跑在 /lab/ 下（VITE_BASE）。 */
+/** 透传到上游。**原样转发 path** —— 本仓 dev 也跑在 /cslab/ 下（VITE_BASE）。 */
 async function proxy(req, res, base) {
   try {
     const r = await fetch(base + req.url, {
@@ -111,28 +114,34 @@ const server = createServer(async (req, res) => {
   //    所以这一条必须与页面同一个源，不能让前端直接 fetch 到 :8200 去（那是跨源）。
   if (p.startsWith('/v1/')) return proxy(req, res, API)
 
-  //  /lab/ai/* —— AI 学伴后端(server/index.ts, :8300)，是独立进程，必须排在 /lab/* 之前。
+  //  /cslab/ai/* —— AI 学伴后端(server/index.ts, :8300)，是独立进程，必须排在 /cslab/* 之前。
   //    线上 caddy 同样要有这条(见 deploy/caddy-snippet)。
-  if (p.startsWith('/lab/ai/')) return proxy(req, res, LAB_AI)
+  if (p.startsWith('/cslab/ai/')) return proxy(req, res, LAB_AI)
 
-  //  /lab/cards/*、/lab/world/* —— monorepo 里的两个游戏,静态挂各自 dist。
-  //    与 /lab/ai/* 同理:**必须排在通用 /lab/* 之前**,否则会落到本仓静态根 404。
-  //    handle_path 语义:剥掉 /lab/cards 前缀,产物按根目录摆(游戏 build 时 base=/lab/cards/ 配套)。
+  //  /cslab/cards/* —— 算法卡牌,静态挂它的 dist。
+  //    与 /cslab/ai/* 同理:**必须排在通用 /cslab/* 之前**,否则会落到本仓静态根 404。
+  //    handle_path 语义:剥掉 /cslab/cards 前缀,产物按根目录摆(游戏 build 时 base=/cslab/cards/ 配套)。
   //    线上 caddy 同样要有这两条(见 deploy/caddy-snippet)。
-  if (p === '/lab/cards') { res.writeHead(308, { location: '/lab/cards/' }); return res.end() }
-  if (p.startsWith('/lab/cards/')) return serveStatic(res, CARDS_OUT, p.slice('/lab/cards'.length) || '/index.html', null)
-  if (p === '/lab/world') { res.writeHead(308, { location: '/lab/world/' }); return res.end() }
-  if (p.startsWith('/lab/world/')) return serveStatic(res, WORLD_OUT, p.slice('/lab/world'.length) || '/index.html', null)
+  if (p === '/cslab/cards') { res.writeHead(308, { location: '/cslab/cards/' }); return res.end() }
+  if (p.startsWith('/cslab/cards/')) return serveStatic(res, CARDS_OUT, p.slice('/cslab/cards'.length) || '/index.html', null)
 
-  // ③ /lab → 308 /lab/（caddy-snippet 的 @labRoot）
-  if (p === '/lab') { res.writeHead(308, { location: '/lab/' }); return res.end() }
+  //  /cslab/explainer{,-live}/* —— Transformer 图解两个入口,同样排在通用 /cslab/* 之前。
+  //    ⚠️ **-live 那条必须先判**:否则 `/cslab/explainer-live/x` 会被下面那条
+  //       startsWith('/cslab/explainer') 抢走(这里是前缀匹配,不像 Caddy 的 path 有斜杠边界)。
+  if (p === '/cslab/explainer-live') { res.writeHead(308, { location: '/cslab/explainer-live/' }); return res.end() }
+  if (p.startsWith('/cslab/explainer-live/')) return serveStatic(res, EXPLAINER_LIVE_OUT, p.slice('/cslab/explainer-live'.length) || '/index.html', null)
+  if (p === '/cslab/explainer') { res.writeHead(308, { location: '/cslab/explainer/' }); return res.end() }
+  if (p.startsWith('/cslab/explainer/')) return serveStatic(res, EXPLAINER_OUT, p.slice('/cslab/explainer'.length) || '/index.html', null)
 
-  // ④ /lab/* → 本仓
-  if (p.startsWith('/lab/')) {
+  // ③ /cslab → 308 /cslab/（caddy-snippet 的 @cslabRoot）
+  if (p === '/cslab') { res.writeHead(308, { location: '/cslab/' }); return res.end() }
+
+  // ④ /cslab/* → 本仓
+  if (p.startsWith('/cslab/')) {
     if (LAB_MODE === 'dev') return proxy(req, res, LAB_DEV)
     // 静态模式才剥前缀：handle_path 的行为，产物按根目录摆。
     // **不给 spa 兜底**，与 caddy-snippet 一致 —— 本仓没有前端路由。
-    return serveStatic(res, LAB_OUT, p.slice('/lab'.length) || '/index.html', null)
+    return serveStatic(res, LAB_OUT, p.slice('/cslab'.length) || '/index.html', null)
   }
 
   // ⑤ 其余全归主站
@@ -141,8 +150,8 @@ const server = createServer(async (req, res) => {
 })
 
 server.listen(PORT, '127.0.0.1', () => {
-  console.log(`本地网关 http://127.0.0.1:${PORT}/lab/`)
-  console.log(`  /lab/*    → ${LAB_MODE === 'dev' ? `${LAB_DEV}（记得 VITE_BASE=/lab/）` : LAB_OUT}`)
+  console.log(`本地网关 http://127.0.0.1:${PORT}/cslab/`)
+  console.log(`  /cslab/*    → ${LAB_MODE === 'dev' ? `${LAB_DEV}（记得 VITE_BASE=/cslab/）` : LAB_OUT}`)
   console.log(`  /chrome/* → ${CHROME_DIR ?? '（主站未构建，会 404 → 页眉降级为不显示）'}`)
   console.log(`  /v1/*     → ${API}`)
   console.log(`  其余      → ${MAIN_MODE === 'dev' ? MAIN_DEV : MAIN_OUT}`)

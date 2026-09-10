@@ -33,25 +33,25 @@ npm run demo:tcp
 | | 独立形态 | 并入形态 |
 |---|---|---|
 | 起法 | `npm run web` | `npm run web:lab` + `npm run gateway` |
-| base | `/` | `/lab/` |
+| base | `/` | `/cslab/` |
 | 平台页眉页脚 | 无 | 有（加载主站 `/chrome` 制品） |
 | 学习进度 | 只存本机 | 登录后与账号双向合并 |
 | 外观 | 跟随系统 | 跟平台的「随系统 / 白天 / 黑夜」 |
 | 冒烟 | `npm run smoke -- http://127.0.0.1:5178/` | `npm run smoke:platform` |
 
-**并入形态的本机入口是 `http://127.0.0.1:3000/lab`**，与虾米看股、虾米看AI 一致 ——
-主站的 `next.config.ts` 把 `/lab/*` 转给本仓的 dev server。
+**并入形态的本机入口是 `http://127.0.0.1:3000/cslab`**，与虾米看股、虾米看AI 一致 ——
+主站的 `next.config.ts` 把 `/cslab/*` 转给本仓的 dev server。
 **不要直接开 `:5178`**：那儿拿不到 `/chrome` 也拿不到 `/v1`，
 两个「看起来都对」的地址只有一个是并入后的样子。
 
 ```bash
-# 终端 1（本仓）        VITE_BASE=/lab/ 的 dev server（:5178）
+# 终端 1（本仓）        VITE_BASE=/cslab/ 的 dev server（:5178）
 npm run web:lab
 # 终端 2（tools-frontend）主站 :3000，rewrites 负责分流
 npm run dev
 # 终端 3（tools-backend）账号与进度接口 :8200
 bash scripts/dev.sh
-# 然后开 http://127.0.0.1:3000/lab
+# 然后开 http://127.0.0.1:3000/cslab
 ```
 
 ⚠️ **必须用 `npm run web:lab`，不能用 `npm run web`。** 后者挂在根上，

@@ -10,14 +10,14 @@
  */
 import { getEntry, traceOf, genreOf, type CatalogEntry } from './catalog.ts'
 import { servableFacts, askWithData } from './quiz.ts'
-import { generate, type Principal } from './llm.ts'
+import { generate, type Principal, type Billing } from './llm.ts'
 
 export type AskResult = {
   expId: string
   answer: string
   grounding: { title: string; step: number | null; frames: number; usedTrace: string }
   provenance?: { step: number; evidence: string }   // 点选"常见疑问"来的问题→对应 fact 的出处,给 citation chip
-  billing: { metered: boolean; credits: number; tokens: number; note: string }
+  billing: Billing
 }
 
 /*  常见疑问:直接用每个 fact 自带的"这在考什么"当可点问题——用户不用打字,点一个就问。
@@ -64,7 +64,7 @@ export async function askAboutExperiment(
   expId: string, question: string, opts: AskOptions = {},
 ): Promise<AskResult> {
   const entry = getEntry(expId)
-  if (!entry) throw new Error(`未知实验：${expId}（可用：见 /lab/ai/experiments）`)
+  if (!entry) throw new Error(`未知实验：${expId}（可用：见 /cslab/ai/experiments）`)
   if (!question || !question.trim()) throw new Error('问题不能为空')
   // 点选常见疑问带来的 factId → 定位该 fact 的出处(step/evidence),既聚焦轨迹上下文、又给 citation chip
   let prov: { step: number; evidence: string } | undefined

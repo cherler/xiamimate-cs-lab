@@ -9,7 +9,7 @@
  * 大模型只能让题面更好读，永远不能让答案变错。这是「焊死引擎」的实现。
  */
 import { getEntry, traceOf, genreOf, type CatalogEntry, type Fact, type FactGenre } from './catalog.ts'
-import { generate, type Principal } from './llm.ts'
+import { generate, type Principal, type Billing } from './llm.ts'
 import { prompt } from './prompts/loader.ts'
 
 export type Question = {
@@ -137,7 +137,7 @@ export async function buildQuiz(expId: string, opts: BuildOptions = {}): Promise
 }
 function buildQuizImpl(expId: string, opts: BuildOptions = {}): Question[] {
   const entry = getEntry(expId)
-  if (!entry) throw new Error(`未知实验：${expId}（可用：见 /lab/ai/experiments）`)
+  if (!entry) throw new Error(`未知实验：${expId}（可用：见 /cslab/ai/experiments）`)
   const trace = traceOf(entry)
   if (trace.length === 0) throw new Error(`实验 ${expId} 跑不出 trace`)
 
@@ -251,7 +251,7 @@ export async function explainQuestion(
     return fallback
   }
 }
-type Billing = { metered: boolean; credits: number; tokens: number; note: string }
+
 
 /**
  * 端给用户看的事实(出题 / 答疑的可点问题 / 复习闪卡)。

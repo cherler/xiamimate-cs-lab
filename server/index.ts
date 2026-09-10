@@ -1,19 +1,19 @@
 /**
- * 虾米课堂 · AI 学伴后端（Node/TS）。
+ * 虾米CS课堂 · AI 学伴后端（Node/TS）。
  *
  * 为什么后端用 TS 而不是照抄 stock-lab 的 Python：我们有 121 个 TS 内核，
  * 后端直接 import 它们跑 trace 出题/验答，零重写。计费闸口协议(见 llm.ts)语言无关，照搬。
  *
- * 路由（都挂在 /lab/ai 下，线上由 Caddy/gateway 把 /lab/* 分流到本仓）：
- *   GET  /lab/ai/health        健康检查
- *   GET  /lab/ai/experiments   可出题的实验清单
- *   POST /lab/ai/quiz          出题 { expId, count?, useLLM? } —— 全同步,不走大模型
- *   POST /lab/ai/explain       某道题的讲解 { expId, factId, useLLM? } —— 答完才调,按需生成
- *   GET  /lab/ai/suggest       常见疑问 ?expId=（返回每个 fact 的可点问题,答疑不用打字）
- *   POST /lab/ai/ask           答疑 { expId, question, step?, factId?, useLLM? }（喂真实 trace+要点当依据;factId 来自点选疑问、附出处）
- *   POST /lab/ai/review        复习包 { expId, useLLM? }（钉死事实卡 + 概念卡 + 小结）
- *   POST /lab/ai/interview     模拟面试 { expId | expIds[]+trackTitle, history, useLLM? }（AI 面试官:问→答→点评+追问→评分;传 expIds 即整轨跨主题面试）
- *   POST /lab/ai/interview-answer 看参考答案 { expId | expIds[]+trackTitle, history, useLLM? }（给面试官刚问那道题一个基于钉死要点的参考答案）
+ * 路由（都挂在 /cslab/ai 下，线上由 Caddy/gateway 把 /cslab/* 分流到本仓）：
+ *   GET  /cslab/ai/health        健康检查
+ *   GET  /cslab/ai/experiments   可出题的实验清单
+ *   POST /cslab/ai/quiz          出题 { expId, count?, useLLM? } —— 全同步,不走大模型
+ *   POST /cslab/ai/explain       某道题的讲解 { expId, factId, useLLM? } —— 答完才调,按需生成
+ *   GET  /cslab/ai/suggest       常见疑问 ?expId=（返回每个 fact 的可点问题,答疑不用打字）
+ *   POST /cslab/ai/ask           答疑 { expId, question, step?, factId?, useLLM? }（喂真实 trace+要点当依据;factId 来自点选疑问、附出处）
+ *   POST /cslab/ai/review        复习包 { expId, useLLM? }（钉死事实卡 + 概念卡 + 小结）
+ *   POST /cslab/ai/interview     模拟面试 { expId | expIds[]+trackTitle, history, useLLM? }（AI 面试官:问→答→点评+追问→评分;传 expIds 即整轨跨主题面试）
+ *   POST /cslab/ai/interview-answer 看参考答案 { expId | expIds[]+trackTitle, history, useLLM? }（给面试官刚问那道题一个基于钉死要点的参考答案）
  *
  * 鉴权/计费：浏览器请求的 xm_session Cookie 原样转发给主站（见 llm.ts 的 Principal）。
  * 本机开发未配 XM_API_BASE 时全程透明、不计费、不报错。
@@ -24,7 +24,7 @@ import { askAboutExperiment, suggestQuestions } from './ask.ts'
 import { buildReview } from './review.ts'
 import { interview, interviewAnswer, type Turn } from './interview.ts'
 import { listExperiments } from './catalog.ts'
-import type { Principal } from './llm.ts'
+import { QuotaRefused, type Principal } from './llm.ts'
 
 process.loadEnvFile('.env')
 
@@ -48,24 +48,42 @@ function readBody(req: IncomingMessage): Promise<string> {
   })
 }
 
-// 浏览器请求：把 xm_session Cookie 原样转发，主站自己解出是谁。本进程不知道也伪造不了 user_id。
+/**
+ * 浏览器请求：把 xm_session Cookie 原样转发，主站自己解出是谁。
+ * 本进程不知道也伪造不了 user_id。
+ *
+ * ⚠️ **没有 Cookie 也要返回主体**（2026-09-10 改）。原来这里 `return null`，
+ * 于是未登录的人连闸口都不打 —— **无限白拿真的大模型回答**，
+ * 钱在真花、账一分没记、页面上看不出任何异样。
+ *
+ * 现在把游客的两个识别维度一并转发，主站落到「游客试用」那条路：
+ *   · X-Visitor-Id  —— 浏览器本机持久的匿名 id（与主站共用 localStorage 的 xm:vid）
+ *   · X-Forwarded-For —— **原样转发**。主站的 client_ip 从右往左跳过内网段取第一个
+ *     公网地址；不转发的话它看到的是本进程的内网地址，全部游客挤进同一个桶。
+ */
 function principalOf(req: IncomingMessage): Principal {
-  const cookie = req.headers['cookie'] ?? ''
-  if (cookie && /(^|;\s*)xm_session=/.test(cookie)) return { kind: 'browser', cookie }
-  return null
+  const raw = req.headers['cookie'] ?? ''
+  const cookie = /(^|;\s*)xm_session=/.test(raw) ? raw : ''
+  const h = req.headers
+  const visitorId = String(h['x-visitor-id'] ?? '').trim().slice(0, 64)
+  const xff = String(h['x-forwarded-for'] ?? '').trim()
+  //  代理链只会往右追加,把对端地址接在最右边;主站从右往左找,所以够不到客户端塞的值。
+  const peer = req.socket.remoteAddress ?? ''
+  const forwardedFor = [xff, peer].filter(Boolean).join(', ')
+  return { kind: 'browser', cookie, visitorId, forwardedFor }
 }
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`)
   const path = url.pathname
   try {
-    if (req.method === 'GET' && path === '/lab/ai/health') {
+    if (req.method === 'GET' && path === '/cslab/ai/health') {
       return send(res, 200, { ok: true, service: 'lab-ai', experiments: listExperiments().length })
     }
-    if (req.method === 'GET' && path === '/lab/ai/experiments') {
+    if (req.method === 'GET' && path === '/cslab/ai/experiments') {
       return send(res, 200, { experiments: listExperiments() })
     }
-    if (req.method === 'POST' && path === '/lab/ai/quiz') {
+    if (req.method === 'POST' && path === '/cslab/ai/quiz') {
       const raw = await readBody(req)
       let body: { expId?: string; count?: number; useLLM?: boolean; factId?: string } = {}
       try { body = raw ? JSON.parse(raw) : {} } catch { return send(res, 400, { error: '请求体不是合法 JSON' }) }
@@ -76,7 +94,7 @@ const server = createServer(async (req, res) => {
       return send(res, 200, { expId: body.expId, questions })
     }
 
-    if (req.method === 'POST' && path === '/lab/ai/explain') {
+    if (req.method === 'POST' && path === '/cslab/ai/explain') {
       //  讲解按需生成:用户答完某道题才来要。题面和答案都已经定死了,这里只补「为什么」。
       const raw = await readBody(req)
       let body: { expId?: string; factId?: string; useLLM?: boolean; question?: string; options?: string[]; correctIndex?: number } = {}
@@ -89,12 +107,12 @@ const server = createServer(async (req, res) => {
       })
       return send(res, 200, r)
     }
-    if (req.method === 'GET' && path === '/lab/ai/suggest') {
+    if (req.method === 'GET' && path === '/cslab/ai/suggest') {
       const expId = url.searchParams.get('expId') ?? ''
       if (!expId) return send(res, 400, { error: '缺少 expId' })
       return send(res, 200, { expId, questions: suggestQuestions(expId) })
     }
-    if (req.method === 'POST' && path === '/lab/ai/ask') {
+    if (req.method === 'POST' && path === '/cslab/ai/ask') {
       const raw = await readBody(req)
       let body: { expId?: string; question?: string; step?: number; factId?: string; useLLM?: boolean } = {}
       try { body = raw ? JSON.parse(raw) : {} } catch { return send(res, 400, { error: '请求体不是合法 JSON' }) }
@@ -105,7 +123,7 @@ const server = createServer(async (req, res) => {
       })
       return send(res, 200, result)
     }
-    if (req.method === 'POST' && path === '/lab/ai/review') {
+    if (req.method === 'POST' && path === '/cslab/ai/review') {
       const raw = await readBody(req)
       let body: { expId?: string; useLLM?: boolean } = {}
       try { body = raw ? JSON.parse(raw) : {} } catch { return send(res, 400, { error: '请求体不是合法 JSON' }) }
@@ -113,7 +131,7 @@ const server = createServer(async (req, res) => {
       const pack = await buildReview(body.expId, { useLLM: body.useLLM, principal: principalOf(req) })
       return send(res, 200, pack)
     }
-    if (req.method === 'POST' && path === '/lab/ai/interview') {
+    if (req.method === 'POST' && path === '/cslab/ai/interview') {
       const raw = await readBody(req)
       let body: { expId?: string; expIds?: string[]; trackTitle?: string; history?: Turn[]; useLLM?: boolean } = {}
       try { body = raw ? JSON.parse(raw) : {} } catch { return send(res, 400, { error: '请求体不是合法 JSON' }) }
@@ -121,7 +139,7 @@ const server = createServer(async (req, res) => {
       const result = await interview(body.expId ?? '', { expIds: body.expIds, trackTitle: body.trackTitle, history: body.history, useLLM: body.useLLM, principal: principalOf(req) })
       return send(res, 200, result)
     }
-    if (req.method === 'POST' && path === '/lab/ai/interview-answer') {
+    if (req.method === 'POST' && path === '/cslab/ai/interview-answer') {
       const raw = await readBody(req)
       let body: { expId?: string; expIds?: string[]; trackTitle?: string; history?: Turn[]; useLLM?: boolean } = {}
       try { body = raw ? JSON.parse(raw) : {} } catch { return send(res, 400, { error: '请求体不是合法 JSON' }) }
@@ -131,6 +149,11 @@ const server = createServer(async (req, res) => {
     }
     return send(res, 404, { error: `未知路由 ${req.method} ${path}` })
   } catch (e) {
+    //  额度被闸口明确拒了（登录用户没分 / 游客今天的体验额度用完）——
+    //  这不是"处理出错"，是正常的业务答复。回 402 + code，让前端说人话。
+    if (e instanceof QuotaRefused) {
+      return send(res, 402, { error: e.message, code: e.code })
+    }
     const msg = (e as Error).message
     console.error('[lab-ai] 处理出错:', msg)
     return send(res, 500, { error: msg })
@@ -138,7 +161,7 @@ const server = createServer(async (req, res) => {
 })
 
 server.listen(PORT, () => {
-  console.log(`虾米课堂 AI 学伴后端 → http://127.0.0.1:${PORT}/lab/ai/health`)
+  console.log(`虾米CS课堂 AI 学伴后端 → http://127.0.0.1:${PORT}/cslab/ai/health`)
   console.log(`可出题实验：${listExperiments().map(e => e.id).join(', ')}`)
   const billed = process.env.XM_API_BASE ? '已接入主站计费' : '未配 XM_API_BASE（本地透明模式，不计费）'
   console.log(`计费：${billed}`)

@@ -8,7 +8,7 @@
  *
  * ## 三件本仓特有的事
  *
- * 1. **路径必须写死 `/chrome/…`，不能带 base。** 本仓构建时 `VITE_BASE=/lab/`，
+ * 1. **路径必须写死 `/chrome/…`，不能带 base。** 本仓构建时 `VITE_BASE=/cslab/`，
  *    但制品在站点根上（`xiamimate.com/chrome/chrome.js`），走 Vite 的资源前缀会 404。
  *
  * 2. **取不到就整个不渲染。** 本机 dev（:5178）、`web:single` 打出来的单文件、
@@ -29,7 +29,7 @@ const CHROME_JS = '/chrome/chrome.js'
 const CHROME_CSS = '/chrome/chrome.css'
 const CHROME_MANIFEST = '/chrome/manifest.json'
 /** 与主站 lib/modules.ts 里的 key 一致；漏了或写错的表现是页眉显示「模块广场」 */
-const MODULE_KEY = 'lab'
+const MODULE_KEY = 'cslab'
 
 interface ChromeApi {
   header(selector: string, options?: { module?: string; headerPadding?: string }): void

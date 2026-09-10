@@ -3,7 +3,7 @@
  * 学科是骨架、guide 页是那件职业/造物（CS 就是 408→大模型推理引擎）。
  * 节点可点，直接跳进对应实验；未开放的学科先亮出它们的 guide 主题占位。
  */
-import { DISCIPLINES, anchorOfExp, type Discipline } from '../registry.ts'
+import { VISIBLE_DISCIPLINES, anchorOfExp, type Discipline } from '../registry.ts'
 import type { AnyExperiment } from '../types.ts'
 
 type Props = {
@@ -15,8 +15,8 @@ type Props = {
 }
 
 export function LabGuide({ discKey, experiments, onPick, onSwitch, onClose }: Props) {
-  const disc = DISCIPLINES.find(d => d.key === discKey) ?? DISCIPLINES[0]
-  const others = DISCIPLINES.filter(d => d.key !== disc.key)
+  const disc = VISIBLE_DISCIPLINES.find(d => d.key === discKey) ?? VISIBLE_DISCIPLINES[0]
+  const others = VISIBLE_DISCIPLINES.filter(d => d.key !== disc.key)
 
   // 该学科的子模块 → 实验
   const groups = disc.groups.map(g => ({
@@ -102,4 +102,4 @@ export function LabGuide({ discKey, experiments, onPick, onSwitch, onClose }: Pr
 }
 
 // 供 App 判断当前学科（默认 cs）
-export function defaultDisc(): Discipline { return DISCIPLINES[0] }
+export function defaultDisc(): Discipline { return VISIBLE_DISCIPLINES[0] }

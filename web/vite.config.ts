@@ -6,34 +6,39 @@ import { dirname, resolve } from 'node:path'
 const here = dirname(fileURLToPath(import.meta.url))
 
 /**
- * **让 :5178 也能开挂在 /lab/ 下的那几个子应用。**
+ * **让 :5178 也能开挂在 /cslab/ 下的那几个子应用。**
  *
- * 坑:它们挂在 `/lab/cards`、`/lab/world`、`/lab/explainer`,但这些路由只配在
+ * 坑:它们挂在 `/cslab/cards`、`/cslab/explainer`,但这些路由只配在
  * **网关**(:8090)和线上 Caddy 里,Vite 自己不认识。而 Vite 对未知路径会**回退到 index.html**
- * —— 于是 `http://127.0.0.1:5178/lab/cards` 返回 **200**、却是实验室主页(标题「虾米课堂」),
+ * —— 于是 `http://127.0.0.1:5178/cslab/cards` 返回 **200**、却是实验室主页(标题「虾米课堂」),
  * 看起来像「打不开」,其实是拿到了另一个页面。**又一次「200 不代表拿到的是那个东西」。**
  *
  * 这条中间件把这些前缀直接指到各自的产物目录,所以 :5178 和 :8090 都能开。
  * 目录不存在时给一句人话提示,而不是回退成主页。
  *
- * ⚠️ 2026-09-08 补上 `/lab/explainer`。用户报「Transformer 图解按钮打不开」——
+ * ⚠️ 2026-09-08 补上 `/cslab/explainer`。用户报「Transformer 图解按钮打不开」——
  * 查下来这条路径**全仓只出现在 App.tsx 那颗按钮上**:没有产物、没有部署配置、
  * 也没进这张表,于是一直静静地回退成实验室主页。正是这段注释开头写的那个坑,
  * 只不过当时只把两个游戏挂进来了。它指的那份东西其实一直都在:
  * `experiments/qwen-browser/` —— 一张自带 CDN 依赖的静态页,不需要构建。
+ *
+ * ⚠️⚠️ **这是 `configureServer` 钩子 —— 只在 dev server 里跑,构建产物里一点都没有。**
+ * 也就是说:这张表让本地开得起来,**不等于上线开得起来**。上线要靠另外三处,
+ * 一处不到位就是「本地能开、线上 404」,而那个 404 长得跟"路由没配"一模一样:
+ *   · 线上   deploy/caddy-snippet.conf 里对应的 handle_path（explainer 两条 2026-09-10 才补）
+ *   · 网关   scripts/local-gateway.mjs 里对应的分支（它是照 Caddy 抄的,改一边要改另一边）
+ *   · 产物   deploy/README.md 「2 · 前端」那几条 rsync —— experiments/ 两个目录**直接摆源码**
  */
 function subappsPlugin() {
   const GAMES: Record<string, { dir: string; hint: string }> = {
-    '/lab/cards': { dir: resolve(here, '..', 'games', 'algo-cards', 'dist'),
+    '/cslab/cards': { dir: resolve(here, '..', 'games', 'algo-cards', 'dist'),
       hint: 'cd games/algo-cards && npm install && npm run build' },
-    '/lab/world': { dir: resolve(here, '..', 'games', 'xiami-world', 'dist'),
-      hint: 'cd games/xiami-world && npm install && npm run build' },
     /*  Transformer 图解是**两个入口**（用户 2026-09-08 拍板：「保留现在的两个吧」）：
-        `/lab/explainer` 是门厅，并排摆着"我们这份真模型"和"poloclub 那份真图解"。
+        `/cslab/explainer` 是门厅，并排摆着"我们这份真模型"和"poloclub 那份真图解"。
         两份都是源码目录、不需要构建（依赖走 CDN、模型走 ModelScope）。 */
-    '/lab/explainer': { dir: resolve(here, '..', 'experiments', 'explainer-hub'),
+    '/cslab/explainer': { dir: resolve(here, '..', 'experiments', 'explainer-hub'),
       hint: '它是 experiments/explainer-hub/index.html，不需要构建' },
-    '/lab/explainer-live': { dir: resolve(here, '..', 'experiments', 'qwen-browser'),
+    '/cslab/explainer-live': { dir: resolve(here, '..', 'experiments', 'qwen-browser'),
       hint: '它是 experiments/qwen-browser/index.html，不需要构建 —— 文件要是不见了，去 git 历史里找' },
   }
   const MIME: Record<string, string> = {
@@ -78,7 +83,7 @@ export default defineConfig(({ mode }) => {
     plugins: [react(), subappsPlugin()],
     /**
      * 挂在主站子路径下时要设 base，否则产物里的资源链接指向域名根 —— 表现是
-     * 「/lab/ 打开一片空白，控制台一堆 404」。线上：`VITE_BASE=/lab/`。
+     * 「/cslab/ 打开一片空白，控制台一堆 404」。线上：`VITE_BASE=/cslab/`。
      *
      * 留空（本机 `npm run web`、以及 `web:single` 的单文件产物）就是根挂载。
      * 单文件产物把 css/js 全内联了，base 对它没有影响。
@@ -114,11 +119,11 @@ export default defineConfig(({ mode }) => {
       hmr: { host: '127.0.0.1', clientPort: port, protocol: 'ws' },
       /**
        * AI 学伴后端是**另一个进程**（server/index.ts，默认 :8300），不在 Vite 里。
-       * 页面 fetch 的是同源的 /lab/ai/*，dev 下由这条 proxy 转给它。
-       * 线上同样要有对应规则（见 deploy/caddy-snippet：/lab/ai/* → 8300）。
+       * 页面 fetch 的是同源的 /cslab/ai/*，dev 下由这条 proxy 转给它。
+       * 线上同样要有对应规则（见 deploy/caddy-snippet：/cslab/ai/* → 8300）。
        */
       proxy: {
-        '/lab/ai': { target: 'http://127.0.0.1:8300', changeOrigin: false },
+        '/cslab/ai': { target: 'http://127.0.0.1:8300', changeOrigin: false },
       },
     },
     build: { outDir: 'dist', emptyOutDir: true },

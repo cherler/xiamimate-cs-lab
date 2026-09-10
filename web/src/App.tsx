@@ -9,7 +9,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { run } from '@engine/core/kernel.ts'
 import { validateDocument } from '@engine/ai/schema.ts'
 import type { SimDocument, Entity } from '@engine/core/document.ts'
-import { EXPERIMENTS, BASED_ON, USED_BY, DISCIPLINES, SOFT_LINKS, DISCIPLINE_OF_GROUP } from './registry.ts'
+import { EXPERIMENTS, BASED_ON, USED_BY, VISIBLE_DISCIPLINES, SOFT_LINKS, DISCIPLINE_OF_GROUP } from './registry.ts'
 import { AxisBand } from './shell/AxisBand.tsx'
 import { StartFrame } from './shell/StartFrame.tsx'
 import { WhyBand } from './shell/WhyBand.tsx'
@@ -38,20 +38,26 @@ import * as sync from './sync.ts'
  * 头部「可视化 / 游戏」位 —— 按当前职业(discipline key)换的一颗按钮。
  * 原来是写死的「🔬 Transformer 图解」，但那是**大模型职业**的东西，在算法/408 页上看着不搭。
  * 现在每个职业指向自己的可视化或配套游戏：
- *   llm  → Transformer 图解（现成，/lab/explainer）
- *   algo → 算法卡牌（xiamimate-algo-cards，还没配 /lab 同源部署，先占位）
- *   base → 408 探索游戏（在 xiami-world 项目里做，另一条会话在推进，先占位）
+ *   llm  → Transformer 图解（现成，/cslab/explainer）
+ *   algo → 算法卡牌（xiamimate-algo-cards，还没配 /cslab 同源部署，先占位）
  * 没有 href 的就渲染成「开发中」的占位灰钮；没列进来的职业（后端/具身/安全）这颗按钮不显示。
- * 游戏做完部署到 /lab/<x> 后，把 href 填上即可（照 llm 那样）。
+ * 游戏做完部署到 /cslab/<x> 后，把 href 填上即可（照 llm 那样）。
  */
 const VIZ_OF_DISC: Record<string, { icon: string; label: string; href?: string; tip: string }> = {
   /*  ⚠️ tip 原来写「服务器推理」—— 说反了。那一页是 `experiments/qwen-browser/`：
       **纯浏览器**跑真模型（transformers.js + WebGPU，没有服务器），首次要下模型权重。
       2026-09-08 顺着「按钮打不开」查出来的（路径当时还没进 vite 的子应用表，见 vite.config.ts）。 */
-  llm:  { icon: '🔬', label: 'Transformer 图解', href: '/lab/explainer', tip: '在浏览器里看 Qwen 怎么想：真实分词 + 下一词预测。纯浏览器推理（transformers.js + WebGPU），可切 0.5B / 1.5B —— 首次载入要下模型权重' },
-  algo: { icon: '🎴', label: '算法卡牌', href: '/lab/cards', tip: '卡是算法、敌人是有性质的数据，血条是时间预算' },
-  //  原来这里也是 🧩,和锚点「软件」同屏撞车;换成手柄,一眼就知道是游戏
-  base: { icon: '🕹️', label: '探索游戏', href: '/lab/world', tip: '在游戏里吃透 408 四门（xiami-world）' },
+  llm:  { icon: '🔬', label: 'Transformer 图解', href: '/cslab/explainer', tip: '在浏览器里看 Qwen 怎么想：真实分词 + 下一词预测。纯浏览器推理（transformers.js + WebGPU），可切 0.5B / 1.5B —— 首次载入要下模型权重' },
+  algo: { icon: '🎴', label: '算法卡牌', href: '/cslab/cards', tip: '卡是算法、敌人是有性质的数据，血条是时间预算' },
+  /*  408 那一轨原来挂着「🕹️ 探索游戏」(games/xiami-world,/cslab/world)。
+      **2026-09-10 用户拍板从虾米CS课堂里去掉:完成度太差。**
+
+      去掉的是**挂载与入口**,不是代码 —— `games/xiami-world/` 原样留在仓里,
+      `cd games/xiami-world && npx vite` 照样单独跑得起来。要放回来,
+      把这一条、web/vite.config.ts 的子应用表、主站 next.config.ts 的两条 rewrite、
+      deploy/caddy-snippet.conf 与 scripts/local-gateway.mjs 的分支一起加回去(五处)。
+
+      虾米CS课堂**还没上线、没有老用户**,所以不涉及谁的存档要保。 */
 }
 
 /**
@@ -106,7 +112,7 @@ export default function App() {
   const [store, setStore] = useState<progress.Store>(() => progress.load())
   /** 云端状态：没主站 / 没登录 / 已同步 / 正在写 / 写失败 —— 面板上如实显示 */
   const [cloud, setCloud] = useState<sync.CloudState>({ kind: 'unknown' })
-  //  每实验的 AI 学伴事实题数（掌握度分母）—— 开页面拉一次 /lab/ai/experiments。后端没起也不炸(空 Map)。
+  //  每实验的 AI 学伴事实题数（掌握度分母）—— 开页面拉一次 /cslab/ai/experiments。后端没起也不炸(空 Map)。
   const [aiFacts, setAiFacts] = useState<Map<string, number>>(new Map())
   useEffect(() => { loadAiFacts().then(setAiFacts).catch(() => {}) }, [])
   const [showProgress, setShowProgress] = useState(false)
@@ -663,7 +669,7 @@ export default function App() {
   }, {})
 
   //  学科为骨架：把子模块(group)按当前学科过滤。现有实验全在「计算机」下，默认展开它。
-  const activeDiscObj = DISCIPLINES.find(d => d.key === activeDisc) ?? DISCIPLINES[0]
+  const activeDiscObj = VISIBLE_DISCIPLINES.find(d => d.key === activeDisc) ?? VISIBLE_DISCIPLINES[0]
   //  子模块按学科**声明的 groups 顺序**渲染，而不是实验插入顺序——
   //  否则新加的组(如经典算法后建)会掉到目录最下面，跟声明的次序对不上。
   //  软链接：一个实验可在多个子模块目录里出现。原生实验(e.group===g) + 借来的(SOFT_LINKS[g])。
@@ -724,7 +730,7 @@ export default function App() {
   const discCount = discExpIds.size
   //  当前学科第一个实验（切换职业时自动选它，让面包屑/主区跟着换）。
   const firstExpOfDisc = (dk: string) => {
-    const d = DISCIPLINES.find(x => x.key === dk); if (!d) return undefined
+    const d = VISIBLE_DISCIPLINES.find(x => x.key === dk); if (!d) return undefined
     for (const g of d.groups) {
       if (grouped[g]?.length) return grouped[g]![0]
       const lid = (SOFT_LINKS[g] ?? [])[0]
@@ -764,7 +770,7 @@ export default function App() {
         * 用 <button>——它在 .app 顶层、不在 .nav 里，冒烟数 `.nav button` 不受影响；类名也避开 .chip/.tabs。
         */}
       <div className="disctabs" role="tablist" aria-label="学科">
-        {DISCIPLINES.map(d => (
+        {VISIBLE_DISCIPLINES.map(d => (
           <button key={d.key} type="button" role="tab"
             aria-selected={d.key === activeDisc}
             className={`disctab ${d.key === activeDisc ? 'on' : ''} ${d.status === 'planned' ? 'soon' : ''}`}
@@ -844,9 +850,9 @@ export default function App() {
              data-tip="AI 学伴：就着这个实验，焊死引擎出题 / 答疑 / 复习 / 当面试官（答案钉在真实步骤上、少幻觉）">
             💬 AI 学伴
           </button>
-          {/*  可视化 / 游戏位：跟着顶条职业换。大模型→Transformer 图解（现成）；
-               算法→算法卡牌、408→探索游戏（都还在开发，先占位，做完再接链接）；
-               其余职业暂不显示。映射见文件顶部 VIZ_OF_DISC。 */}
+          {/*  可视化 / 游戏位：跟着顶条职业换。大模型→Transformer 图解、算法→算法卡牌；
+               408 那颗（探索游戏）2026-09-10 已摘掉，其余职业本来就不显示。
+               映射见文件顶部 VIZ_OF_DISC；没列进来的职业这颗按钮不渲染。 */}
           {(() => {
             const v = VIZ_OF_DISC[activeDisc]
             if (!v) return null

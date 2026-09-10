@@ -17,13 +17,13 @@
  * ## 对应关系
  *
  *   npm run web           base = /        独立形态：没有平台页眉、进度只存本地
- *   npm run web:lab       base = /lab/    并入形态：跟线上一致（配 npm run gateway 看真形态）
+ *   npm run web:lab       base = /cslab/    并入形态：跟线上一致（配 npm run gateway 看真形态）
  *   npm run web:single    base = /        单文件产物：同独立形态
- *   线上                   base = /lab/    VITE_BASE=/lab/ 构建，Caddy handle_path 剥前缀
+ *   线上                   base = /cslab/    VITE_BASE=/cslab/ 构建，Caddy handle_path 剥前缀
  */
 
 /**
- * 构建时就定了：`VITE_BASE=/lab/` 出来的产物才是并入形态。
+ * 构建时就定了：`VITE_BASE=/cslab/` 出来的产物才是并入形态。
  *
  * ## 这两处的写法为什么绕
  *

@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Transformer 图解 · 两个入口 · 虾米课堂</title>
+<title>Transformer 图解 · 两个入口 · 虾米CS课堂</title>
 <!--
-  这一页是 `/lab/explainer` 的**门厅**。
+  这一页是 `/cslab/explainer` 的**门厅**。
 
   起因（用户 2026-09-08）：「应该还有一个基于开源项目 poloclub/transformer-explainer，
   倾向于两个都保留；另外添加返回虾米课堂的返回键。」
@@ -76,10 +76,10 @@ code{font-family:var(--mono);font-size:12px;background:var(--bg);border:1px soli
 </head>
 <body>
 <div class="wrap">
-  <a class="back" href="/lab/">← 返回虾米课堂</a>
+  <a class="back" href="/cslab/">← 返回虾米CS课堂</a>
 
   <header>
-    <p class="eyebrow">虾米课堂 · 大模型</p>
+    <p class="eyebrow">虾米CS课堂 · 大模型</p>
     <h1>Transformer 图解 · 两个入口</h1>
     <p class="sub">同一件事的两种看法：一个跑<b>真模型</b>但画面朴素，一个把<b>内部结构</b>整个画出来但模型是 GPT-2。
       两个都留着 —— 想验证"中文到底怎么分词、下一个字是什么"，走左边；想看清"一次前向里数据流过哪些块"，走右边。</p>
@@ -96,7 +96,7 @@ code{font-family:var(--mono);font-size:12px;background:var(--bg);border:1px soli
         <li>可切 0.5B / 1.5B，精度可选 q4f16 / q4 / q8</li>
         <li>首次载入要下模型权重（0.5B 约 460MB，之后缓存在浏览器里）</li>
       </ul>
-      <a class="go" href="/lab/explainer-live/">打开 →</a>
+      <a class="go" href="/cslab/explainer-live/">打开 →</a>
     </div>
 
     <div class="card">

@@ -17,7 +17,7 @@ const CUT = IMG(cutUrl), ROUTER = IMG(routerUrl), CORR = IMG(corrUrl)
 const iready = (i: HTMLImageElement) => i.complete && i.naturalWidth > 0
 let introRouter = { x: 0, y: 0, w: 0, h: 0 } // 房子里那台路由器的可点区域(renderIntro 里更新)
 let introCpu = { x: 0, y: 0, w: 0, h: 0 }    // 书房那台电脑 —— 点进去是第二台机器(CPU 流水线,另一个页面)
-/** 同目录下的另一个页面。相对当前文档解析,所以 /lab/world/ 与本地 dev 都对。 */
+/** 同目录下的另一个页面。相对当前文档解析,所以 /cslab/world/ 与本地 dev 都对。 */
 const pageUrl = (f: string) => new URL(f, location.href).href
 let W = 0, H = 0
 const DPR = Math.min(2, devicePixelRatio || 1)

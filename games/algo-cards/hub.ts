@@ -1,5 +1,5 @@
 /**
- * 「虾米课堂」游戏外壳 —— 返回主页 / 暂停 / 进度管理 / 跟主站账号同步。
+ * 「虾米CS课堂」游戏外壳 —— 返回主页 / 暂停 / 进度管理 / 跟主站账号同步。
  *
  * ⚠️ **这个文件有两份逐字节相同的拷贝**:`games/algo-cards/hub.ts` 与
  *    `games/xiami-world/game/hub.ts`。两个游戏是 git subtree 收进来的独立仓,
@@ -25,13 +25,13 @@ const PROGRESS_URL = '/v1/lab/progress'
  * 「现在是不是并入主站的那个形态」。
  *
  * 两个条件都要:①**不是 dev**。游戏被虾米课堂挂载时,吃的是构建产物(dist),
- * 所以 dev 一定是独立跑 —— 而算法卡牌的 dev base 本来就写死在 /lab/cards/ 下,
+ * 所以 dev 一定是独立跑 —— 而算法卡牌的 dev base 本来就写死在 /cslab/cards/ 下,
  * 光看路径分不出来,会白打一个必然 404 的 /v1/lab/progress,在控制台留红字、
- * 把「控制台无报错」那条判据废掉。②挂载路径在 /lab/ 下。
+ * 把「控制台无报错」那条判据废掉。②挂载路径在 /cslab/ 下。
  */
 const env = (import.meta as { env?: { DEV?: boolean } }).env
-export const onPlatform = () => !env?.DEV && location.pathname.startsWith('/lab/')
-export const homeUrl = () => '/lab/'
+export const onPlatform = () => !env?.DEV && location.pathname.startsWith('/cslab/')
+export const homeUrl = () => '/cslab/'
 
 export type HubOpts = {
   /** 显示在条上的游戏名。 */
@@ -168,9 +168,9 @@ export function mountHub(o: HubOpts): Hub {
   function render() {
     bar.innerHTML = ''
     const home = document.createElement(onPlatform() ? 'a' : 'button')
-    home.className = 'btn'; home.textContent = '← 虾米课堂'
+    home.className = 'btn'; home.textContent = '← 虾米CS课堂'
     if (onPlatform()) (home as HTMLAnchorElement).href = homeUrl()
-    else home.onclick = () => alert('现在是独立运行(没挂在 /lab/ 下),没有主站可回。')
+    else home.onclick = () => alert('现在是独立运行(没挂在 /cslab/ 下),没有主站可回。')
     const t = document.createElement('b'); t.textContent = o.title
     const extra = (o.links ?? []).map(l => { const a = document.createElement('a'); a.className = 'btn'; a.href = l.href; a.textContent = l.label; return a })
     const sp = document.createElement('div'); sp.className = 'sp'
@@ -198,7 +198,7 @@ export function mountHub(o: HubOpts): Hub {
       { label: '继续', cls: 'go', on: () => setPaused(false) },
       ...(o.actions?.() ?? []).map(wrapAction),
       { label: '进度', on: () => openPanel(true) },
-      ...(onPlatform() ? [{ label: '返回虾米课堂', on: () => { location.href = homeUrl() } }] : []),
+      ...(onPlatform() ? [{ label: '返回虾米CS课堂', on: () => { location.href = homeUrl() } }] : []),
     ], cloudText())
   }
   function openPanel(fromPause = false) {
@@ -207,7 +207,7 @@ export function mountHub(o: HubOpts): Hub {
       ...(o.actions?.() ?? []).map(wrapAction),
       {
         label: '清空这台机器上的进度', cls: 'danger', on: () => {
-          if (!confirm('清空本机进度?云端那份要在虾米课堂的进度页里单独清。')) return
+          if (!confirm('清空本机进度?云端那份要在虾米CS课堂的进度页里单独清。')) return
           try { localStorage.removeItem(lsKey) } catch { }
           o.reset(); if (fromPause || paused) openPause(); else closeMask()
         },

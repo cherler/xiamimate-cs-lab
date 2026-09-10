@@ -42,16 +42,50 @@ function providerConfig(p: Provider): { apiKey: string; baseURL: string; model: 
 }
 
 // ── 计费主体：浏览器转发 Cookie，后台用内网密钥 ──
+//
+// ⚠️ 浏览器那一路**连游客标识一起转发**（2026-09-10）。
+//    原来 `cookie` 为空就直接返回 null、连闸口都不打 —— 于是**未登录的人可以无限白拿
+//    真的大模型回答**：钱在真花，账一分没记，页面上看不出任何异样。
+//    现在 Cookie 为空也照打:主站那边认不出用户,就落到「游客试用」那条路,
+//    走跟跨境 /v1/ai/* 同一个 (visitor_id, IP) 每日额度桶。
+//    所以这两个头必须原样带过去,否则主站看到的是本进程的内网地址,
+//    全部游客会被归进同一个桶。
 export type Principal =
-  | { kind: 'browser'; cookie: string }
+  | { kind: 'browser'; cookie: string; visitorId?: string; forwardedFor?: string }
   | { kind: 'internal'; userId: string }
   | null
+
+/**
+ * 一次调用的账。**单位一律是积分** —— 全平台只有这一套口径，
+ * 别再换算成"次"（那是积分制之前的说法，早废弃了；而且一次调用未必正好 1 分）。
+ *
+ * 游客那三个字段是有意暴露的：他的积分是**每天重置的体验额度**、不累积，
+ * 所以除了"这次花了多少"，还得让他看见"今天还剩多少积分"。
+ */
+export type Billing = {
+  metered: boolean; credits: number; tokens: number; note: string
+  /** 这一次走的是游客试用额度（没登录），下面两个字段才有意义 */
+  guest?: boolean
+  /** 今天已用 / 每日上限（单位与积分相同） */
+  used?: number
+  limit?: number
+}
+
+/** 闸口**明确**拒绝这一次（402：没额度 / 游客日限用完）。跟"闸口连不上"是两回事。 */
+export class QuotaRefused extends Error {
+  constructor(readonly code: string, message: string) { super(message); this.name = 'QuotaRefused' }
+}
 
 function principalHeaders(pr: Principal): { headers: Record<string, string>; userId: string } | null {
   if (!pr) return null
   if (pr.kind === 'browser') {
-    if (!pr.cookie) return null
-    return { headers: { Cookie: pr.cookie }, userId: '' }
+    const headers: Record<string, string> = {}
+    if (pr.cookie) headers.Cookie = pr.cookie
+    if (pr.visitorId) headers['X-Visitor-Id'] = pr.visitorId
+    if (pr.forwardedFor) headers['X-Forwarded-For'] = pr.forwardedFor
+    //  三个都没有 = 既不知道是谁、也没法给游客计数 —— 那就没法限流，交给闸口去拒。
+    if (!Object.keys(headers).length) return null
+    return { headers, userId: '' }
   }
   const key = process.env.XM_INTERNAL_KEY ?? ''
   if (!key || !pr.userId) return null
@@ -65,6 +99,9 @@ class Meter {
   cost = 0
   tokens = 0
   note = '未接入积分(本地单机模式)'
+  guest = false
+  used = 0
+  limit = 0
   private base = ''
   private headers: Record<string, string> = {}
   private userId = ''
@@ -95,10 +132,36 @@ class Meter {
     if (this.userId) payload.user_id = this.userId
     try {
       const { status, data } = await post(base, '/v1/credits/reserve', payload, this.headers)
+      /**
+       * **402 和别的错要分开处理，这是限流有没有用的分界线。**
+       *
+       * 402 = 闸口认出了这个人，并且明确说"你没额度了"（登录用户余额为 0，
+       * 或游客今天的 5 分体验额度用完）。这时候**必须停下**——
+       * 继续调模型的话，钱照花、账照样记不上，"限流"就是一句空话。
+       *
+       * 其余（400 配置错、5xx、连不上）= 闸口**没能判断**。这时候放行并记日志：
+       * 挡住会让主站抖一下就把整个实验室弄瘫，而漏计的这几次有日志可查、金额有限。
+       * 两害相权取其轻 —— 但屏幕上会亮起「调用了大模型但没能计费」的警示条。
+       */
+      if (status === 402) {
+        const d = data as Record<string, unknown>
+        throw new QuotaRefused(String(d?.code ?? 'no_credits'),
+          String(d?.error ?? 'AI 额度不足。'))
+      }
       if (status >= 400) { this.note = `冻结失败(status=${status}),本次不计费`; return }
-      this.holdId = String((data as Record<string, unknown>)?.hold_id ?? '')
-      if (this.holdId) { this.active = true; this.note = '已冻结额度' }
+      const d = data as Record<string, unknown>
+      this.holdId = String(d?.hold_id ?? '')
+      if (this.holdId) {
+        this.active = true
+        this.guest = Boolean(d?.guest)
+        this.used = Number(d?.used ?? 0)
+        this.limit = Number(d?.limit ?? 0)
+        this.note = this.guest ? '游客体验额度' : '已冻结额度'
+      }
     } catch (e) {
+      //  ⚠️ 上面那句 402 的 throw 也会落到这里 —— **不能被当成"连不上"吞掉**，
+      //     吞掉的话限流就白做了。原样抛出去。
+      if (e instanceof QuotaRefused) throw e
       // 闸口连不上 ≠ 用户没钱。挡住调用会让主站抖一下就把整个实验室弄瘫；
       // 漏计的这一次有日志可查、金额有限。两害相权取其轻。
       console.warn('[llm] 积分闸口不可达,本次不计费:', (e as Error).message)
@@ -124,7 +187,9 @@ class Meter {
       const d = data as Record<string, unknown>
       this.cost = Number(d?.cost ?? 0)
       this.tokens = Number(d?.tokens ?? 0)
-      this.note = `本次消耗 ${this.cost} 积分`
+      this.note = this.guest
+        ? `本次消耗 ${this.cost} 积分（今日游客额度 ${this.used} / ${this.limit} 积分）`
+        : `本次消耗 ${this.cost} 积分`
     } catch (e) {
       console.error('[llm] 积分结算异常 hold=%s:', this.holdId, (e as Error).message)
       this.note = '结算异常,已记日志(冻结将由主站超时释放)'
@@ -143,8 +208,9 @@ class Meter {
     this.note = '调用失败,已退回冻结额度'
   }
 
-  summary(): { metered: boolean; credits: number; tokens: number; note: string } {
-    return { metered: this.active, credits: this.cost, tokens: this.tokens, note: this.note }
+  summary(): Billing {
+    const base = { metered: this.active, credits: this.cost, tokens: this.tokens, note: this.note }
+    return this.guest ? { ...base, guest: true, used: this.used, limit: this.limit } : base
   }
 }
 
@@ -174,7 +240,7 @@ export type GenOptions = {
 export type GenResult = {
   text: string
   usage: { input: number; output: number }
-  billing: { metered: boolean; credits: number; tokens: number; note: string }
+  billing: Billing
   provider: Provider
 }
 

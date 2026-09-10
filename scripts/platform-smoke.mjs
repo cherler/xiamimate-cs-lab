@@ -4,8 +4,8 @@
  *
  * ## 本机怎么起（默认入口 :3000，跟虾米看股、虾米看AI 一样）
  *
- *   本仓            npm run web:lab           Vite dev，VITE_BASE=/lab/，:5178
- *   tools-frontend  npm run dev               主站 :3000，next.config 把 /lab/* 转过去
+ *   本仓            npm run web:lab           Vite dev，VITE_BASE=/cslab/，:5178
+ *   tools-frontend  npm run dev               主站 :3000，next.config 把 /cslab/* 转过去
  *   tools-backend   bash scripts/dev.sh       账号与进度接口 :8200
  *   然后            node scripts/platform-smoke.mjs
  *
@@ -26,7 +26,7 @@
 import { chromium } from 'playwright'
 
 const BASE = (process.argv[2] ?? 'http://127.0.0.1:3000').replace(/\/$/, '')
-const LAB = `${BASE}/lab/`
+const LAB = `${BASE}/cslab/`
 
 let failures = 0
 const ok = (m) => console.log(`  ✅ ${m}`)
@@ -34,7 +34,7 @@ const bad = (m) => { failures++; console.log(`  ❌ ${m}`) }
 
 // ── 先确认三个上游都在，缺谁说谁 ────────────────────────
 for (const [what, path, hint] of [
-  ['入口', '/lab/', '起 npm run web:lab（VITE_BASE=/lab/），以及主站 npm run dev 或 npm run gateway'],
+  ['入口', '/cslab/', '起 npm run web:lab（VITE_BASE=/cslab/），以及主站 npm run dev 或 npm run gateway'],
   ['平台页眉制品', '/chrome/manifest.json', '在 xiamimate-tools-frontend 跑 node scripts/build-chrome-artifacts.mjs'],
   ['主站后端', '/v1/session', '在 xiamimate-tools-backend 跑 bash scripts/dev.sh'],
 ]) {
@@ -47,18 +47,18 @@ for (const [what, path, hint] of [
 /**
  * **入口回 200 不等于拿到的是本仓。**
  *
- * 这个前置检查栽过一次：主站 dev 的 rewrite 把 /lab/* 转给 :5178，而那边的
+ * 这个前置检查栽过一次：主站 dev 的 rewrite 把 /cslab/* 转给 :5178，而那边的
  * dev server 是用 `npm run web`（base = `/`）起的 —— HTML 照样回 200，
  * 但里面写的是 `src="/src/main.tsx"`，转回主站就是 404，页面一片空白。
- * 判据要挂在**内容**上：HTML 里的资源链接必须带 /lab 前缀。
+ * 判据要挂在**内容**上：HTML 里的资源链接必须带 /cslab 前缀。
  */
 {
-  const html = await fetch(`${BASE}/lab/`).then(r => r.text())
+  const html = await fetch(`${BASE}/cslab/`).then(r => r.text())
   const srcs = [...html.matchAll(/(?:src|href)="(\/[^"]*)"/g)].map(m => m[1])
-  const stray = srcs.filter(s => !s.startsWith('/lab/'))
+  const stray = srcs.filter(s => !s.startsWith('/cslab/'))
   if (stray.length) {
-    console.error(`✗ /lab/ 的 HTML 里有不带 /lab 前缀的资源链接：${stray.join(' ')}`)
-    console.error('  → 本仓的 dev server 用 npm run web:lab 起（VITE_BASE=/lab/），不是 npm run web')
+    console.error(`✗ /cslab/ 的 HTML 里有不带 /cslab 前缀的资源链接：${stray.join(' ')}`)
+    console.error('  → 本仓的 dev server 用 npm run web:lab 起（VITE_BASE=/cslab/），不是 npm run web')
     process.exit(1)
   }
 }
@@ -92,10 +92,27 @@ await page.goto(LAB, { waitUntil: 'networkidle' })
 await page.waitForTimeout(800)
 
 {
+  /**
+   * ⚠️ 这条原来写的是 `cur === '虾米做实验'` —— 钉死了模块的**中文名字面**。
+   * 名字改过两回（虾米做实验 → 虾米课堂 → 虾米CS课堂），它就红了两回。
+   * **判据钉意思不钉字面。**
+   *
+   * 它真正要验的是两件事，跟叫什么名字无关：
+   *   ① 页眉挂上了、而且**认出了当前模块** —— 没认出来会回落成「模块广场」，
+   *      那正是 MODULE_KEY 与主站 lib/modules.ts 的 key 对不上的表现。
+   *   ② 两个仓对同一个模块的**叫法一致** —— 页眉的名字来自主站 lib/modules.ts，
+   *      页面标题来自本仓 web/index.html。**一边改名另一边没跟上，这条就红。**
+   *      2026-09-10 key 从 lab 改成 cslab 时，主站的 chrome 产物没重建，
+   *      页眉当场回落成「模块广场」——就是①抓到的。
+   */
   const cur = await page.textContent('.xm-embedded-chrome.topbar .switch-cur').catch(() => null)
-  cur === '虾米做实验'
-    ? ok(`平台页眉挂上了，当前模块「${cur}」`)
-    : bad(`页眉没挂上或模块 key 不对（读到「${cur}」）—— 检查 lib/modules.ts 的 key=lab`)
+  const own = await page.title()
+  cur && cur !== '模块广场' && cur === own
+    ? ok(`平台页眉挂上了，当前模块「${cur}」——与本仓页面标题一致`)
+    : bad(`页眉模块名不对：页眉读到「${cur}」／本仓标题「${own}」。`
+        + `读到「模块广场」= 主站 lib/modules.ts 的 key 与本仓 PlatformChrome 的 MODULE_KEY 对不上`
+        + `（改完 key 记得跑主站的 node scripts/build-chrome-artifacts.mjs，产物里固化着旧清单）；`
+        + `两个名字不同 = 有一个仓改了名另一个没跟上`)
 }
 {
   //  账号区必须在最右边。制品自造类名把左右两块挤在一起的事出过（wiki/27 · 6.11 #4）。
@@ -152,20 +169,31 @@ await page.waitForTimeout(800)
 // ══ 2 · 路由：本仓自己的界面一点没少 ══════════════════════
 console.log('\n【路由】')
 {
+  /**
+   * ⚠️ 这条原来写的是 `s.exps === 30`。
+   *
+   * 它要验的是「挂到 /cslab 子路径之后，本仓界面一点没少」，却拿**写这条判据那天
+   * 恰好有几个实验**当替身。实验一路加到今天 49 个，它就一直红着 ——
+   * **红的是判据，不是产品。判据钉意思，不钉字面。**
+   *
+   * 改成拿页面自己印出来的「N 实验」跟目录里真渲染出来的按钮数**互校**：
+   * 挂错子路径 / 目录没渲染 / 学科切没了，两边就对不上或直接为 0。
+   */
   const s = await page.evaluate(() => ({
-    title: document.querySelector('.top h1')?.textContent,
+    title: document.title,
     exps: document.querySelectorAll('.nav button').length,
+    said: Number(document.body.innerText.match(/(\d+)\s*实验/)?.[1] ?? -1),
     ticks: document.querySelectorAll('.tick').length,
   }))
-  s.exps === 30 && s.ticks > 0
-    ? ok(`挂在 /lab/ 下照常跑：「${s.title}」· ${s.exps} 个实验 · ${s.ticks} 步`)
-    : bad(`本仓界面不完整：${JSON.stringify(s)}`)
+  s.exps > 0 && s.exps === s.said && s.ticks > 0
+    ? ok(`挂在 /cslab/ 下照常跑：「${s.title}」· 目录 ${s.exps} 个实验（页面自己也说 ${s.said} 个）· ${s.ticks} 步`)
+    : bad(`本仓界面不完整：${JSON.stringify(s)}（目录按钮数与页面自称的实验数要对得上）`)
   /**
    * 不存在的资源必须 404，不能是「200 + 首页 HTML」——
    * 那种坏法不报错、不 404，就是给错东西：浏览器把 HTML 当 JS 解析，
    * 控制台一句 `Unexpected token '<'`，而页面看上去只是"没渲染"。
    *
-   * **只有静态形态验得了。** dev 模式下网关把 /lab/* 原样转给 Vite，
+   * **只有静态形态验得了。** dev 模式下网关把 /cslab/* 原样转给 Vite，
    * 而 Vite 自己就会回退 index.html —— 那是它的开发行为，跟线上的 Caddy 无关。
    * 在 dev 下判它红等于误报，判它绿等于没验；所以如实说「这一条没验」。
    */
@@ -174,7 +202,7 @@ console.log('\n【路由】')
     console.log('  ⚠️  「不存在的资源回 404」这一条在 dev 模式下验不了'
       + '（Vite 自己会回退 index.html）—— 跑 npm run web:build:lab 后用 --lab=static 再验一次')
   } else {
-    const asset404 = await fetch(`${BASE}/lab/assets/根本不存在.js`).then(r => r.status)
+    const asset404 = await fetch(`${BASE}/cslab/assets/根本不存在.js`).then(r => r.status)
     asset404 === 404
       ? ok('不存在的资源回 404，不是 200 + 首页 HTML')
       : bad(`不存在的资源回了 ${asset404} —— 这会让"图挂了看不出来"`)
@@ -212,7 +240,15 @@ await page.waitForTimeout(900)
 
 // 答一道题（故意答错，错题本才有东西可验），等防抖推上去
 {
-  //  真题收进底部坞了，同一时刻只露一格 —— 先把那一格切出来才点得着
+  //  真题收进底部坞了，同一时刻只露一格 —— 先把那一格切出来才点得着。
+  //
+  //  ⚠️ 而且**坞默认是收起的**（.dock.folded → 页签 display:none），
+  //     直接点页签会一路等到 30 秒超时、**抛异常把整个脚本崩掉** ——
+  //     后面「错题本 / 外观 / 退出」那几节就一条都没跑，看着像"只坏了一条"。
+  //     所以先按「查看全部记录 →」把坞展开。
+  if (await page.locator('.dock.folded').count()) {
+    await page.click('.dockfold'); await page.waitForTimeout(200)
+  }
   await page.click('.dockbar button:has-text("真题")'); await page.waitForTimeout(160)
   await page.click('.probpick button >> nth=1')          // 选第一道真题
   await page.waitForTimeout(300)

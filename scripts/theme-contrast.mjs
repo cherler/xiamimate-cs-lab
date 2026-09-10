@@ -30,7 +30,7 @@
 import { chromium } from 'playwright'
 
 const args = process.argv.slice(2)
-const URL = args.find(a => !a.startsWith('--')) ?? 'http://127.0.0.1:3000/lab'
+const URL = args.find(a => !a.startsWith('--')) ?? 'http://127.0.0.1:3000/cslab'
 const ALL = args.includes('--all')
 const MIN = Number(args.find(a => a.startsWith('--min='))?.slice(6) ?? 4.5)
 

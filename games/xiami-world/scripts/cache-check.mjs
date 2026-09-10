@@ -16,6 +16,9 @@ import { chromium } from 'playwright'
 import { LEVELS, runCache, sweep } from '../game/build/cache-core.ts'
 
 const PORT = process.env.PORT || 5184
+//  打 dev 独立跑。BASE 留着是为了将来:
+//    (探索游戏 2026-09-10 已从虾米CS课堂去掉,不再挂 /cslab/world —— 现在只有独立模式)
+const BASE = (process.env.BASE || `http://127.0.0.1:${PORT}`).replace(/\/$/, '')
 let pass = 0, fail = 0
 const ok = (c, w) => { if (c) { pass++; console.log('  ✅ ' + w) } else { fail++; console.log('  ❌ ' + w) } }
 
@@ -24,7 +27,7 @@ const p = await b.newPage({ viewport: { width: 1500, height: 950 } })
 const errs = []
 p.on('pageerror', e => errs.push(String(e)))
 p.on('console', m => { if (m.type() === 'error') errs.push(m.text()) })
-await p.goto(`http://127.0.0.1:${PORT}/cache.html`, { waitUntil: 'networkidle' })
+await p.goto(`${BASE}/cache.html`, { waitUntil: 'networkidle' })
 await p.waitForTimeout(600)
 
 console.log('\nCache 页面冒烟 · 页面用的是不是那个内核\n')
@@ -129,7 +132,35 @@ for (const [i, L] of LEVELS.entries()) {
 /* ── ⑦ 课堂外壳:标题、返回主页、以及回前两台机器的路 ── */
 {
   const bar = await p.evaluate(() => document.body.innerText)
-  ok(bar.includes('虾米课堂'), '外壳条上有「虾米课堂」返回主页')
+  /**
+   * ⚠️ 这条原来钉的是模块名字面（'虾米课堂'），2026-09-10 改名成「虾米CS课堂」就红了。
+   *    它真正要验的是**外壳条第一颗控件是一条返回主站的路**。**判据钉意思不钉字面。**
+   *
+   * ⚠️ 改成 `#xm-hub a.btn` 之后又错过一次，值得记下来：
+   *    hub 只在**挂在平台上**时才把「回主站」渲染成 <a href>；dev 独立跑时它是
+   *    一颗 <button>（点了弹「没有主站可回」）。于是 `a.btn` 抓到的是它**后面**
+   *    那几颗跳转按钮，量到的 href 是 `http://127.0.0.1:5185/` —— 判据在量别的东西。
+   *    **量错却不自知，比没量更糟。**
+   *
+   * 所以：认准**第一个子节点**（那才是回主站那颗），再按当下的模式判：
+   *   挂在 /cslab/ 下 → 必须是 <a>，href 正好是 /cslab/
+   *   dev 独立跑     → 必须是 <button>（没有主站可回，不能留一条死链）
+   * 要连 href 一起验，就把这个脚本指向平台挂载点：
+   *   BASE=http://localhost:3000/cslab/world node scripts/xxx-check.mjs
+   *
+   * ⚠️ **2026-09-10 起没有平台模式了**：用户把探索游戏从虾米CS课堂去掉（完成度太差），
+   *    /cslab/world 不再挂载。所以现在只会走下面那条「dev 独立跑 → 必须是 <button>」，
+   *    上面那条 href 分支是留着的：哪天放回去，判据不用重写。
+   */
+  const home = await p.evaluate(() => {
+    const el = document.querySelector('#xm-hub')?.firstElementChild
+    return el ? { tag: el.tagName, href: el.getAttribute('href') } : null
+  })
+  const onPlatform = new URL(p.url()).pathname.startsWith('/cslab/')
+  const homeHref = onPlatform
+    ? (home?.tag === 'A' && home.href === '/cslab/' ? '/cslab/' : `${home?.tag}:${home?.href}`)
+    : (home?.tag === 'BUTTON' ? '/cslab/' : `${home?.tag}:${home?.href}`)
+  ok(homeHref === '/cslab/', `外壳条第一颗控件是回主站的路（${onPlatform ? "挂在 /cslab/ 下,量到 href=" : "dev 独立跑,是一颗按钮:"}${homeHref}）`)
   ok(bar.includes('回房子'), '有回房子(路由器)的路')
   ok(bar.includes('CPU'), '有回 CPU 流水线的路')
   ok(bar.includes('Cache'), '外壳条标题写着这是 Cache 那台')

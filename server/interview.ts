@@ -9,7 +9,7 @@
  * 出题机会骗人,判卷的标准答案不会。
  */
 import { getEntry, traceOf, type CatalogEntry } from './catalog.ts'
-import { generate, type Principal } from './llm.ts'
+import { generate, type Principal, type Billing } from './llm.ts'
 
 export type Turn = { role: 'interviewer' | 'candidate'; text: string }
 
@@ -18,7 +18,7 @@ export type InterviewResult = {
   reply: string
   round: number
   done: boolean          // 是否已到总评环节
-  billing: { metered: boolean; credits: number; tokens: number; note: string }
+  billing: Billing
 }
 
 const MAX_ROUNDS = 3     // 学生答满 3 轮后进入总评
@@ -87,10 +87,10 @@ function buildGround(track: boolean, entry: CatalogEntry | null, expIds: string[
 export type InterviewOptions = { expIds?: string[]; trackTitle?: string; history?: Turn[]; principal?: Principal; useLLM?: boolean }
 
 // 看参考答案:给面试官刚问的那道题一个**基于钉死要点**的参考答案(不是模型自由发挥,只用给定要点)。
-export async function interviewAnswer(expId: string, opts: InterviewOptions = {}): Promise<{ answer: string; billing: { metered: boolean; credits: number; tokens: number; note: string } }> {
+export async function interviewAnswer(expId: string, opts: InterviewOptions = {}): Promise<{ answer: string; billing: Billing }> {
   const track = !!(opts.expIds && opts.expIds.length > 1)
   const entry = track ? null : getEntry(expId)
-  if (!track && !entry) throw new Error(`未知实验：${expId}（可用：见 /lab/ai/experiments）`)
+  if (!track && !entry) throw new Error(`未知实验：${expId}（可用：见 /cslab/ai/experiments）`)
   const history = opts.history ?? []
   const lastQ = [...history].reverse().find(h => h.role === 'interviewer')?.text ?? '（上一题）'
   if (opts.useLLM === false) return { answer: '（未调用大模型）参考答案见实验要点。', billing: { metered: false, credits: 0, tokens: 0, note: '未调用大模型' } }
@@ -107,7 +107,7 @@ export async function interviewAnswer(expId: string, opts: InterviewOptions = {}
 export async function interview(expId: string, opts: InterviewOptions = {}): Promise<InterviewResult> {
   const track = !!(opts.expIds && opts.expIds.length > 1)
   const entry = track ? null : getEntry(expId)
-  if (!track && !entry) throw new Error(`未知实验：${expId}（可用：见 /lab/ai/experiments）`)
+  if (!track && !entry) throw new Error(`未知实验：${expId}（可用：见 /cslab/ai/experiments）`)
   const scopeName = track ? `${opts.trackTitle ?? '这条职业线'}（跨主题）` : entry!.title
 
   const history = opts.history ?? []
