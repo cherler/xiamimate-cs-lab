@@ -693,16 +693,16 @@ export const TRANSFORMER_ENTRIES: CatalogEntry[] = [
         ask: '不做缩放时，为什么 d 越大 softmax 越容易塌成近似 one-hot？',
         compute: t => {
           const f = last(t)
-          return { answer: 'Q·K 是 d 个乘积之和，方差随 d 增大（∝d），最大分数把其他越拉越开', step: t.length - 1, evidence: ev(f) }
+          return { answer: '方差随 d 增大，最大分数被拉开', step: t.length - 1, evidence: ev(f) }
         },
-        distractors: () => ['因为 softmax 只对高维生效', '因为温度会随 d 自动升高', '因为 key 的数量变多了'],
+        distractors: () => ['因为 softmax 只在高维时才生效', '因为温度会随着 d 自动升高', '因为 key 的数量一起变多了'],
       },
       {
         id: 'why_div_sqrtd', label: '除以 √d 的作用', kind: 'choice',
         ask: '注意力分数除以 √d_k 起到什么作用？',
         compute: t => {
           const f = last(t)
-          return { answer: '把分数方差拉回 1，softmax 不饱和、梯度不消失', step: t.length - 1, evidence: ev(f) }
+          return { answer: '把分数方差拉回 1，不再饱和', step: t.length - 1, evidence: ev(f) }
         },
         distractors: () => ['让 softmax 的输出之和等于 1', '增加模型的参数量', '把 logits 变成整数'],
       },
@@ -737,7 +737,7 @@ export const TRANSFORMER_ENTRIES: CatalogEntry[] = [
         ask: 'causal mask 是怎么让每个词“只看左边”的？',
         compute: t => {
           const s = fi(t, f => f.phase === 'row' && f.row === 0)
-          return { answer: '把未来位（j>i）的分数设为 −∞，softmax 后权重恰为 0', step: s, evidence: ev(t[s]) }
+          return { answer: '未来位设 −∞，权重恰为 0', step: s, evidence: ev(t[s]) }
         },
         distractors: () => ['把未来位的权重直接设成 0.5', '把未来的 token 从序列里删掉', '把未来位的分数设成最大值'],
       },
@@ -746,9 +746,9 @@ export const TRANSFORMER_ENTRIES: CatalogEntry[] = [
         ask: '开启因果掩码后，整张注意力矩阵呈什么形状？',
         compute: t => {
           const f = last(t)
-          return { answer: '下三角（每行只在自己及左侧的位置有权重）', step: t.length - 1, evidence: ev(f) }
+          return { answer: '下三角（只在自己及左侧有权重）', step: t.length - 1, evidence: ev(f) }
         },
-        distractors: () => ['上三角', '完整方阵（双向全满）', '对角矩阵'],
+        distractors: () => ['上三角（只在自己及右侧有权重）', '完整方阵（左右两边全都看得到）', '对角矩阵（只看自己这一个位置）'],
       },
     ],
   },

@@ -53,7 +53,7 @@ export const LLM_ALGO_ENTRIES: CatalogEntry[] = [
         ask: '把束宽 k 调成 1，束搜索就退化成了哪种解码方式?',
         compute: t => {
           const g = last(t).greedy as { seq: string; p: number }
-          return { answer: `贪心解码 —— 每步只留概率最高的那 1 条`, step: t.length - 1, evidence: `本例 k=1 一路走到「${g.seq}」，概率 ${g.p}` }
+          return { answer: `贪心解码 —— 每步只留概率最高的那一条`, step: t.length - 1, evidence: `本例 k=1 一路走到「${g.seq}」，概率 ${g.p}` }
         },
         distractors: () => ['全搜索 —— 枚举所有可能的序列再挑最优', '随机采样 —— 每步按概率分布随机抽一个词', '多数投票 —— 独立采样多条序列之后投票'],
       },
@@ -128,7 +128,7 @@ export const LLM_ALGO_ENTRIES: CatalogEntry[] = [
           const f = last(t)
           const fc = (f.fullCurve ?? []) as { n: number; best: number; trueBest: number }[]
           return {
-            answer: '先涨、到某个 N 见顶，然后掉头往下 —— 而代理分照涨',
+            answer: '先涨、到某个 N 见顶，然后掉头往下 —— 代理分照涨',
             step: t.length - 1,
             evidence: `实测：代理分数 ${fc.map(x => x.best).join('→')}，真实质量 ${fc.map(x => x.trueBest).join('→')}（N=${fc.map(x => x.n).join('、')}）`,
           }
@@ -176,7 +176,7 @@ export const LLM_ALGO_ENTRIES: CatalogEntry[] = [
         id: 'bon_vs_vote', label: 'Best-of-N 与自洽多数投票的区别', kind: 'choice', genre: 'concept',
         ask: 'Best-of-N 和「思维链自洽」都采样多个候选,它选出最终答案的方式有何不同?',
         compute: t => ({
-          answer: '靠一个外部打分器给每个候选打分，argmax 取单个最高的',
+          answer: '外部打分器给每个候选打分，argmax 取最高的',
           step: t.length - 1,
           evidence: '自洽是数票（答案得互相比对得上）；Best-of-N 是看分，适合没有"多数答案"可投的开放式生成',
         }),
@@ -229,7 +229,7 @@ export const LLM_ALGO_ENTRIES: CatalogEntry[] = [
           const f = last(t)
           const sw = f.sweep as { budget: number; pRight: number }[]
           return {
-            answer: '几乎什么都说明不了 —— 单场模拟就是抛硬币，得看重跑几百次的概率',
+            answer: '几乎说明不了什么 —— 单场模拟就是抛硬币，得重跑几百次',
             step: t.length - 1,
             evidence: `实测：这个配置重跑 500 次的选对率是 ${((f.pRight as number) * 100).toFixed(1)}%，`
               + `而预算加到 ${sw[sw.length - 1].budget} 轮才 ${(sw[sw.length - 1].pRight * 100).toFixed(1)}%`,
@@ -265,12 +265,12 @@ export const LLM_ALGO_ENTRIES: CatalogEntry[] = [
         id: 'mcts_ucb', label: 'UCB 在选择步平衡什么', kind: 'choice', genre: 'concept',
         ask: '每轮"选择"用的 UCB = 实测胜率 + c·√(ln N父/n子),这个公式在平衡哪两件事?',
         compute: t => ({
-          answer: '利用已经量到的胜率，和探索被试得太少的走法',
+          answer: '利用已经量到的胜率，和探索那些被试得太少的',
           step: t.length - 1,
           evidence: '第一项是已经量到的平均胜率；第二项随 n 变小而变大，未访问的记为 ∞，所以开局每个走法必被各试一遍',
         }),
         distractors: a => [a,
-          '只看胜率高低，谁的实测胜率最高就一直选谁',
+          '只看胜率高低，谁的实测胜率最高就一直选谁不放',
           '只看访问次数，谁被试得次数最少就优先选谁',
           '模拟走到底的步数和结果，越快分出胜负越好',
         ].filter(o => o !== a).slice(0, 3),
@@ -323,7 +323,7 @@ export const LLM_ALGO_ENTRIES: CatalogEntry[] = [
         kind: 'choice',
         compute: t => {
           const f = t.find(x => x.stage === 'retrieve') ?? last(t)
-          return { answer: '向量最近邻:把问题和每篇文档编码成向量,按相似度(点积 / 余弦)找最接近的 top-k——和词向量、k-NN 同源', step: t.indexOf(f), evidence: String(f.log ?? '') }
+          return { answer: '向量最近邻：按相似度找最接近的 top-k', step: t.indexOf(f), evidence: String(f.log ?? '') }
         },
         distractors: () => ['关键词全文匹配:看文档里有没有出现问题中的字词', '让模型逐篇通读所有文档再打分挑选', '从知识库里随机抽取几篇'],
       },
@@ -335,9 +335,10 @@ export const LLM_ALGO_ENTRIES: CatalogEntry[] = [
           const docs = last(t).docs as { t: string; sim: number | null }[]
           const ret = last(t).retrieved as number[]
           const names = ret.map(i => `「${docs[i].t}」(${docs[i].sim})`).join('、')
-          return { answer: `按相似度取最高的两篇:${names};汽车(0)、植物(0.02)等与问题不相关,相似度太低被丢掉`, step: t.length - 1, evidence: String(last(t).log ?? '') }
+          //  选项只说规则(和干扰项等长)，命中的那两篇挪进出处，讲解里会念
+          return { answer: '取相似度最高的两篇，别的太低', step: t.length - 1, evidence: `命中 ${names}；汽车(0)、植物(0.02) 与问题不相关，相似度太低被丢掉。${String(last(t).log ?? '')}` }
         },
-        distractors: () => ['检索相似度最低的两篇', '检索字数最多的两篇', '检索知识库里排在最前面的两篇'],
+        distractors: () => ['检索相似度最低的那两篇文档', '检索字数最多的那两篇文档内容', '检索知识库里排在最前面的两篇'],
       },
     ],
   },
@@ -410,7 +411,7 @@ export const LLM_ALGO_ENTRIES: CatalogEntry[] = [
         id: 'tot_vs_cot', label: 'ToT 与思维链 / 自洽的差别', kind: 'choice', genre: 'concept',
         ask: '思维树 ToT 相比思维链 CoT、自洽,组织推理的方式有什么根本不同?',
         compute: t => ({
-          answer: '推理组织成树：生成多个分支、评估前景、剪枝、深入，走不通能回溯',
+          answer: '组织成树：多分支、评估、剪枝，走不通还能回溯',
           step: t.length - 1,
           evidence: 'CoT 是一条直线，错一步没回头；自洽是多条独立直线再投票，每条内部仍是直线',
         }),

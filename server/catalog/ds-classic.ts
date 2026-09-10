@@ -194,9 +194,9 @@ export const DS_CLASSIC_ENTRIES: CatalogEntry[] = [
         kind: 'choice',
         compute: t => {
           const f = t.find(x => x.match === true)!
-          return { answer: '左上(dp[i−1][j−1])', step: t.indexOf(f), evidence: String(f.log ?? '') }
+          return { answer: '左上（dp[i−1][j−1]）', step: t.indexOf(f), evidence: String(f.log ?? '') }
         },
-        distractors: () => ['上(dp[i−1][j])', '左(dp[i][j−1])', '三个邻居里最小的再 +1'],
+        distractors: () => ['上（dp[i−1][j]）那一格', '左（dp[i][j−1]）那一格', '三个邻居里最小的再 +1'],
       },
     ],
   },
