@@ -26,6 +26,7 @@
  *    宁可少改一条，也不能改错一处。
  *
  * 跑法：
+ *   npx tsx scripts/quiz-leaky.ts                              先生成待修清单 quiz-leaky.json
  *   node scripts/quiz-rebalance.mjs <rewrites.json>            只过闸口，报告
  *   node scripts/quiz-rebalance.mjs <rewrites.json> --apply    过了的写回源码
  *
@@ -43,8 +44,15 @@ const APPLY = process.argv.includes('--apply')
 if (!file) { console.error('用法：node scripts/quiz-rebalance.mjs <rewrites.json> [--apply]'); process.exit(2) }
 
 const rewrites = JSON.parse(readFileSync(file, 'utf8'))
-const leaky = JSON.parse(readFileSync(
-  '/private/tmp/claude-501/-Users-liuzhenhai-projects-xiamimate/f1aa26be-4917-46d5-a491-49450ed248e5/scratchpad/leaky.json', 'utf8'))
+/**
+ * 待修清单由 `npx tsx scripts/quiz-leaky.ts` 生成（默认写 ./quiz-leaky.json）。
+ * 用 QUIZ_LEAKY 环境变量可以换个位置。清单不在就直接说清楚该跑哪一条命令 ——
+ * 这里原来写死过一个会话专用的绝对路径，换台机器就是一句看不懂的 ENOENT。
+ */
+const LEAKY = process.env.QUIZ_LEAKY ?? 'quiz-leaky.json'
+let leaky
+try { leaky = JSON.parse(readFileSync(LEAKY, 'utf8')) }
+catch { console.error(`读不到待修清单 ${LEAKY} —— 先跑：npx tsx scripts/quiz-leaky.ts`); process.exit(2) }
 const orig = new Map(leaky.map((r) => [`${r.exp}/${r.fid}`, r]))
 
 /** 源码：server/catalog.ts 本体 + server/catalog/ 下的每个文件 */
@@ -72,7 +80,7 @@ for (const r of rewrites) {
   const key = `${r.exp}/${r.fid}`
   const o = orig.get(key)
   const bad = (why) => fail.push(`${key}：${why}`)
-  if (!o) { bad('不在待修清单里（leaky.json 没有它）'); continue }
+  if (!o) { bad(`不在待修清单里（${LEAKY} 没有它）`); continue }
   //  省略 wrong = 沿用原来的三条（多数条目只需要动答案）
   const wrong = r.wrong ?? o.wrong
   if (!Array.isArray(wrong) || wrong.length !== 3) { bad(`干扰项要 3 条，给了 ${wrong?.length}`); continue }

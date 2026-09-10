@@ -15,3 +15,6 @@ web/public/models/
 _*.mjs
 _*.png
 _*.sh
+
+# 出题待修清单：scripts/quiz-leaky.ts 生成的中间产物，跟着源码走、不入库
+quiz-leaky.json

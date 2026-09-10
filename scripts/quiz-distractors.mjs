@@ -43,9 +43,16 @@ const file = process.argv[2]
 const APPLY = process.argv.includes('--apply')
 if (!file) { console.error('用法：node scripts/quiz-distractors.mjs <file.json> [--apply]'); process.exit(2) }
 
-const SP = '/private/tmp/claude-501/-Users-liuzhenhai-projects-xiamimate/f1aa26be-4917-46d5-a491-49450ed248e5/scratchpad'
+/**
+ * 待修清单由 `npx tsx scripts/quiz-leaky.ts` 生成（默认写 ./quiz-leaky.json）。
+ * 用 QUIZ_LEAKY 环境变量可以换个位置。这里原来写死过一个会话专用的绝对路径。
+ */
+const LEAKY = process.env.QUIZ_LEAKY ?? 'quiz-leaky.json'
 const rewrites = JSON.parse(readFileSync(file, 'utf8'))
-const orig = new Map(JSON.parse(readFileSync(`${SP}/leaky.json`, 'utf8')).map(r => [`${r.exp}/${r.fid}`, r]))
+let leakyRows
+try { leakyRows = JSON.parse(readFileSync(LEAKY, 'utf8')) }
+catch { console.error(`读不到待修清单 ${LEAKY} —— 先跑：npx tsx scripts/quiz-leaky.ts`); process.exit(2) }
+const orig = new Map(leakyRows.map(r => [`${r.exp}/${r.fid}`, r]))
 
 const SRC = ['server/catalog.ts', ...readdirSync('server/catalog').filter(f => f.endsWith('.ts')).map(f => join('server/catalog', f))]
 const lines = new Map(SRC.map(p => [p, readFileSync(p, 'utf8').split('\n')]))
@@ -71,7 +78,7 @@ for (const r of rewrites) {
   const key = `${r.exp}/${r.fid}`
   const o = orig.get(key)
   const bad = (why) => fail.push(`${key}：${why}`)
-  if (!o) { bad('不在待修清单里（leaky.json 没有它）'); continue }
+  if (!o) { bad(`不在待修清单里（${LEAKY} 没有它）`); continue }
   const w = r.wrong
   if (!Array.isArray(w) || w.length !== 3) { bad(`干扰项要 3 条，给了 ${w?.length}`); continue }
   if (w.some(x => typeof x !== 'string' || !x.trim())) { bad('有空干扰项'); continue }
