@@ -71,9 +71,9 @@ export const TRANSFORMER_ENTRIES: CatalogEntry[] = [
         ask: '算出 Q·K 分数后、做 softmax 之前要除以 √d，主要是为了什么？',
         compute: t => {
           const s = fi(t, f => f.phase === 'score' && f.qi === 0)
-          return { answer: '防止 softmax 饱和、梯度消失（点积会随维度变大）', step: s, evidence: ev(t[s]) }
+          return { answer: '防 softmax 饱和、梯度消失', step: s, evidence: ev(t[s]) }
         },
-        distractors: () => ['让注意力权重相加正好等于 1', '把 Q、K 投影到相同维度', '减少注意力的计算量'],
+        distractors: () => ['让注意力的权重相加起来正好等于 1', '把 Q 和 K 投影到相同的维度上去', '减少注意力这一步要做的计算量'],
       },
     ],
   },
@@ -110,16 +110,16 @@ export const TRANSFORMER_ENTRIES: CatalogEntry[] = [
           const s = fi(t, f => f.angleDeg === 90)
           return { answer: '方向无关（正交），相似度为 0', step: s, evidence: ev(t[s]) }
         },
-        distractors: () => ['两个向量长度都为 0', '两个向量完全相同', '任意两个向量的内积都是 0'],
+        distractors: () => ['两个向量的长度恰好都等于 0', '两个向量的方向是完全相同的', '任意两个向量之间的内积都是 0'],
       },
       {
         id: 'why_qk_dot', label: '注意力为何用 Q·K 打分', kind: 'choice',
         ask: '注意力凭什么用 Q·K 内积给每个 key 打分？',
         compute: t => {
           const s = fi(t, f => f.angleDeg === 0)
-          return { answer: '内积越大表示 query 与 key 方向越一致（越相关）', step: s, evidence: ev(t[s]) }
+          return { answer: '内积越大说明方向越一致（越相关）', step: s, evidence: ev(t[s]) }
         },
-        distractors: () => ['内积衡量两个向量的长度差', '内积总是非负，正好当权重', '内积等于两向量的欧氏距离'],
+        distractors: () => ['内积衡量的是两个向量之间的长度差', '内积总是非负的，正好拿来当作权重', '内积等于两个向量之间的欧氏距离'],
       },
       {
         /*  ⭐ 补厚的落点①：「高维近正交」是抽出来的，而且在低维是**假的** */
@@ -159,7 +159,7 @@ export const TRANSFORMER_ENTRIES: CatalogEntry[] = [
           const d = last(t).docs as { name: string; mag: number; cos: number; rankDot: number; rankCos: number }[]
           const d1 = d.find(x => x.name.startsWith('D1'))!
           return {
-            answer: '会系统性偏爱模长大的向量 —— 方向准但短的会被压下去',
+            answer: '会系统性偏爱模长大的向量 —— 方向准但短的吃亏',
             step: t.length - 1,
             evidence: `实测：方向最准的 D1（余弦 ${d1.cos}、模长 ${d1.mag}）按余弦排第 ${d1.rankCos}，`
               + `按原始内积却只排第 ${d1.rankDot}；按内积排第一的是「${last(t).topDot}」`,
@@ -209,7 +209,7 @@ export const TRANSFORMER_ENTRIES: CatalogEntry[] = [
         compute: t => {
           const f = last(t)
           return {
-            answer: '因为输出一个字都没变 —— 两条路的逐步 logits 逐位相同',
+            answer: '因为输出一个字都没变 —— 逐步 logits 逐位相同',
             step: t.length - 1,
             evidence: `实测：文本${f.sameOut ? '一样' : '不一样'}、逐步 logits ${f.sameLogits ? '逐位相同' : '对不上'}；`
               + `算量 ${f.macWithout} → ${f.macWith}`,
@@ -307,7 +307,7 @@ export const TRANSFORMER_ENTRIES: CatalogEntry[] = [
         compute: t => {
           const bs = last(t).basin as { flip: number; ok: number; okNear: number }[]
           return {
-            answer: '回到**原来那个**模式 —— 拿"汉明最近"当正确，曲线根本不下降',
+            answer: '回到原来那个模式 —— 拿汉明最近当正确，曲线不降',
             step: t.length - 1,
             evidence: `两个口径实测：回原模式 ${bs.map(x => `${(x.ok * 100).toFixed(0)}%`).join('/')}；`
               + `回汉明最近 ${bs.map(x => `${(x.okNear * 100).toFixed(0)}%`).join('/')} —— 后者几乎不随翻转位数变`,
@@ -327,7 +327,7 @@ export const TRANSFORMER_ENTRIES: CatalogEntry[] = [
           const cap = last(t).cap as { n: number; row: { m: number; ok: number }[] }[]
           const edge = (c: typeof cap[number]) => { const g = c.row.filter(x => x.ok >= 0.9); return g.length ? g[g.length - 1].m : 0 }
           return {
-            answer: '涨得比维度快得多 —— 维度翻一倍，能存的翻的不止一倍',
+            answer: '涨得比维度快得多 —— 维度翻倍，能存的不止翻倍',
             step: t.length - 1,
             evidence: `实测 N=${cap[0].n}：${cap[0].row.map(x => `M=${x.m} ${(x.ok * 100).toFixed(0)}%`).join('、')}；`
               + `N=${cap[1].n}：${cap[1].row.map(x => `M=${x.m} ${(x.ok * 100).toFixed(0)}%`).join('、')}。`
@@ -344,7 +344,7 @@ export const TRANSFORMER_ENTRIES: CatalogEntry[] = [
         id: 'attention_essence', label: '注意力的本质', kind: 'choice', genre: 'concept',
         ask: '这个实验想说明注意力的本质是什么?',
         compute: t => ({
-          answer: '按内容寻址的联想记忆 —— 一次注意力就是一步 Hopfield 检索',
+          answer: '按内容寻址的联想记忆 —— 一次注意力就是一步检索',
           step: t.length - 1,
           evidence: 'weights = softmax(β·query·keys)、output = Σ weights·patterns，把 output 当新 query 再来一次',
         }),
@@ -394,7 +394,7 @@ export const TRANSFORMER_ENTRIES: CatalogEntry[] = [
         ask: '归纳头靠什么规则决定回头把注意力放到哪些位置？',
         compute: t => {
           const s = fi(t, f => f.stage === 'scan')
-          return { answer: '找“前一个 token 正好是当前 token”的位置', step: s, evidence: ev(t[s]) }
+          return { answer: '找前一个 token 等于当前的位置', step: s, evidence: ev(t[s]) }
         },
         distractors: () => ['找出现次数最多的 token', '找与当前 token 距离最近的位置', '直接复制序列里最后一个 token'],
       },
@@ -429,18 +429,18 @@ export const TRANSFORMER_ENTRIES: CatalogEntry[] = [
         ask: '模型权重占多少显存，怎么估算？',
         compute: t => {
           const s = fi(t, f => f.phase === 'weight')
-          return { answer: '参数总量 × 每个参数的字节数', step: s, evidence: ev(t[s]) }
+          return { answer: '参数总量 × 每个参数占的字节数', step: s, evidence: ev(t[s]) }
         },
-        distractors: () => ['层数 × 序列长度', '词表大小 × 精度字节', 'KV 缓存 × 层数'],
+        distractors: () => ['层数 × 序列长度 × 批大小', '词表大小 × 每个词的精度字节', 'KV 缓存的大小 × 模型的层数'],
       },
       {
         id: 'kv_growth', label: 'KV 缓存随什么涨', kind: 'choice',
         ask: 'KV 缓存显存主要随什么线性增长？',
         compute: t => {
           const s = fi(t, f => f.phase === 'kv')
-          return { answer: '序列长度与并发数（batch）', step: s, evidence: ev(t[s]) }
+          return { answer: '序列长度与并发数 batch', step: s, evidence: ev(t[s]) }
         },
-        distractors: () => ['模型层数的平方', '词表大小', '训练步数'],
+        distractors: () => ['模型层数的平方，和序列长度无关', '词表大小，词表越大缓存越大', '训练步数，训得越久缓存越大'],
       },
     ],
   },
@@ -473,16 +473,16 @@ export const TRANSFORMER_ENTRIES: CatalogEntry[] = [
         ask: 'GQA 为什么能比 MHA 省 KV 缓存？',
         compute: t => {
           const f = last(t)
-          return { answer: 'KV 缓存 ∝ KV 头数，GQA 让多个 query 头共享少数 KV 头', step: t.length - 1, evidence: ev(f) }
+          return { answer: 'KV 缓存 ∝ KV 头数，多头共享少数 KV', step: t.length - 1, evidence: ev(f) }
         },
-        distractors: () => ['因为它减少了 query 头的数量', '因为它降低了每个头的维度', '因为它跳过了 softmax 计算'],
+        distractors: () => ['因为它把 query 头的数量减少了一大半还多', '因为它把每个注意力头的维度降低了', '因为它整个跳过了 softmax 那一步计算'],
       },
       {
         id: 'assign_meaning', label: 'assign 阶段做的事', kind: 'choice',
         ask: '逐 query 头的 assign 阶段，每个 query 头做的是什么事？',
         compute: t => {
           const s = fi(t, f => f.act === 'assign' && f.focus === 0)
-          return { answer: '被映射到某个 KV 头去读取它的 K、V', step: s, evidence: ev(t[s]) }
+          return { answer: '被映射到某个 KV 头去读 K、V', step: s, evidence: ev(t[s]) }
         },
         distractors: () => ['计算自己那份 softmax 权重', '把所有 query 头的输出相加', '直接生成下一个 token'],
       },
@@ -517,16 +517,16 @@ export const TRANSFORMER_ENTRIES: CatalogEntry[] = [
         ask: '随机单位向量两两余弦的标准差，随维度 d 增大怎么变化？',
         compute: t => {
           const f = last(t)
-          return { answer: '约等于 1/√d，d 越大越贴近 0（越正交）', step: t.length - 1, evidence: ev(f) }
+          return { answer: '约 1/√d，d 越大越贴近正交', step: t.length - 1, evidence: ev(f) }
         },
-        distractors: () => ['随 d 线性增大', '与 d 无关，恒为 0.5', '随 d 增大而增大'],
+        distractors: () => ['随 d 线性增大，维度越高越分散', '与 d 完全无关，恒定在 0.5 附近', '随 d 增大而增大，高维反而更像'],
       },
       {
         id: 'capacity', label: '嵌入为何有容量', kind: 'choice',
         ask: '为什么几百上千维的嵌入能装下十几万个词还几乎不打架？',
         compute: t => {
           const f = last(t)
-          return { answer: '高维随机方向几乎两两正交，可容纳指数级多的近正交方向', step: t.length - 1, evidence: ev(f) }
+          return { answer: '高维里随机方向几乎两两正交', step: t.length - 1, evidence: ev(f) }
         },
         distractors: () => ['因为每个词用一个整数编号', '因为维度越高向量模长越大', '因为训练时强制所有词向量正交'],
       },
@@ -561,7 +561,7 @@ export const TRANSFORMER_ENTRIES: CatalogEntry[] = [
         ask: 'RMSNorm 相比 LayerNorm，最关键的区别是什么？',
         compute: t => {
           const s = fi(t, f => f.phase === 'rms')
-          return { answer: 'RMSNorm 不减均值，只除以均方根 RMS', step: s, evidence: ev(t[s]) }
+          return { answer: 'RMSNorm 不减均值，只除以 RMS', step: s, evidence: ev(t[s]) }
         },
         distractors: () => ['RMSNorm 多用一个偏置参数', 'RMSNorm 用最大值代替均值来归一化', 'RMSNorm 不需要可学习增益'],
       },
@@ -572,7 +572,7 @@ export const TRANSFORMER_ENTRIES: CatalogEntry[] = [
           const f = last(t)
           return { answer: '单位均方根（RMS=1）的尺度', step: t.length - 1, evidence: ev(f) }
         },
-        distractors: () => ['零均值单位方差', '所有维度都变成 1', '和为 1 的概率分布'],
+        distractors: () => ['零均值、单位方差的那种标准尺度', '所有维度上的数值都被拉成了 1', '归一化成一个和为 1 的概率分布'],
       },
     ],
   },
@@ -605,7 +605,7 @@ export const TRANSFORMER_ENTRIES: CatalogEntry[] = [
         ask: 'RoPE 旋转后，query 与 key 的点积只依赖什么？',
         compute: t => {
           const f = last(t)
-          return { answer: '相对位置（点积只依赖位置差 (m−n)·θ）', step: t.length - 1, evidence: ev(f) }
+          return { answer: '相对位置（只依赖位置差 m−n）', step: t.length - 1, evidence: ev(f) }
         },
         distractors: () => ['绝对位置（每个位置一个固定编码）', '不编码任何位置信息', '只编码第一个 token 的位置'],
       },
@@ -616,7 +616,7 @@ export const TRANSFORMER_ENTRIES: CatalogEntry[] = [
           const s = fi(t, f => f.phase === 'rotate')
           return { answer: '旋转不改变向量的模长（保范）', step: s, evidence: ev(t[s]) }
         },
-        distractors: () => ['旋转能增加向量的维度', '旋转让所有向量指向同一方向', '旋转把位置编成整数'],
+        distractors: () => ['旋转能顺带把向量的维度增加', '旋转会让所有向量指向同一方向', '旋转把位置直接编成一个个整数'],
       },
     ],
   },
@@ -649,7 +649,7 @@ export const TRANSFORMER_ENTRIES: CatalogEntry[] = [
         ask: 'top-p（核采样）是按什么规则截断候选的？',
         compute: t => {
           const s = fi(t, f => (f.p as number) < 1)
-          return { answer: '把概率从大到小累加，保留累计刚超过 p 的那一小撮', step: s, evidence: ev(t[s]) }
+          return { answer: '概率从大到小累加，保留刚超过 p 的', step: s, evidence: ev(t[s]) }
         },
         distractors: () => ['保留概率最高的固定 p 个', '随机丢弃 p 比例的候选', '保留所有概率大于 p 的 token'],
       },
@@ -658,9 +658,9 @@ export const TRANSFORMER_ENTRIES: CatalogEntry[] = [
         ask: 'top-k 和 top-p 两把“截断刀”的关键区别是什么？',
         compute: t => {
           const s = fi(t, f => (f.p as number) < 1)
-          return { answer: 'top-k 按固定个数截断，top-p 按累计概率动态截断', step: s, evidence: ev(t[s]) }
+          return { answer: 'top-k 按固定个数，top-p 按累计概率', step: s, evidence: ev(t[s]) }
         },
-        distractors: () => ['两者的规则完全相同', 'top-k 按概率阈值、top-p 按个数', 'top-p 只在训练时使用'],
+        distractors: () => ['两者的截断规则其实完全相同，没差别', 'top-k 按概率阈值截、top-p 按个数截', 'top-p 只在训练时用，推理时用不上它'],
       },
     ],
   },

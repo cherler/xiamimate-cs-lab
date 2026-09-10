@@ -46,7 +46,7 @@ export const LLM_INFER_A_ENTRIES: CatalogEntry[] = [
         label: '连续 vs 静态批处理的关键区别',
         ask: '连续批处理和静态批处理最关键的区别是什么?',
         kind: 'choice',
-        compute: t => { const f = last(t); return { answer: '连续批处理每个 decode 步都把空出的槽立刻补给排队请求,静态批要等整批全部跑完才换下一批', step: t.length - 1, evidence: `末态完成 ${(f.finished as string[]).length} 个请求、共 ${String(f.step)} 调度步,空槽随时补` } },
+        compute: t => { const f = last(t); return { answer: '连续批每个 decode 步都补空槽，静态批要整批跑完', step: t.length - 1, evidence: `末态完成 ${(f.finished as string[]).length} 个请求、共 ${String(f.step)} 调度步,空槽随时补` } },
         distractors: () => [
           '连续批处理一次能容纳的请求更多,静态批受槽数限制',
           '连续批处理跳过 prefill 直接 decode,静态批要先 prefill',
@@ -76,7 +76,7 @@ export const LLM_INFER_A_ENTRIES: CatalogEntry[] = [
         label: 'FlashAttention 省的到底是什么',
         ask: 'FlashAttention 相比朴素注意力,省下来的到底是什么?',
         kind: 'choice',
-        compute: t => { const f = last(t); return { answer: '省的是 HBM 访存(长度 N 的分数向量从不落 HBM),结果与一次性 softmax 数学等价、不损精度', step: t.length - 1, evidence: `末态在线输出 ${String(f.out)} 与真值 softmax ${String(f.naive)} 的相对误差 ~0` } },
+        compute: t => { const f = last(t); return { answer: '省的是 HBM 访存，且与一次性 softmax 等价', step: t.length - 1, evidence: `末态在线输出 ${String(f.out)} 与真值 softmax ${String(f.naive)} 的相对误差 ~0` } },
         distractors: () => [
           '省的是计算量,分块后总的乘加次数变少了',
           '靠近似 softmax 换速度,会有一点可控的精度损失',
@@ -88,7 +88,7 @@ export const LLM_INFER_A_ENTRIES: CatalogEntry[] = [
         label: '在线 softmax 处理新块的关键操作',
         ask: '在线 softmax 每扫到一个新块,关键的那一步是做什么?',
         kind: 'choice',
-        compute: t => { const f = last(t); return { answer: '先按 exp(旧max − 新max) 把已累加的 l 和 O 缩放对齐到新的最大值,再加上本块的贡献', step: t.length - 1, evidence: `末态滚动 m=${String(f.m)}、l=${String(f.l)},逐块对齐累加得 O=${String(f.out)}` } },
+        compute: t => { const f = last(t); return { answer: '按 exp(Δmax) 把 l 和 O 缩放对齐再累加', step: t.length - 1, evidence: `末态滚动 m=${String(f.m)}、l=${String(f.l)},逐块对齐累加得 O=${String(f.out)}` } },
         distractors: () => [
           '先算完所有块的局部 softmax,最后一次性归一化',
           '每块独立算 softmax 后直接相加,不需要缩放',
@@ -126,7 +126,7 @@ export const LLM_INFER_A_ENTRIES: CatalogEntry[] = [
         label: '环形 all-reduce 为何带宽最优',
         ask: '环形 all-reduce 为什么比"人人给人人发"更省带宽?',
         kind: 'choice',
-        compute: t => { const f = last(t); return { answer: '每步每张卡只收发一个块,总通信量与卡数无关;人人对发是 G² 条消息、随卡数平方增长', step: t.length - 1, evidence: `${String(f.G)} 卡分 reduce-scatter+all-gather 共 2·(G−1)=${String(f.totalSteps)} 步,每步只搬一个块` } },
+        compute: t => { const f = last(t); return { answer: '每步每卡只收发一个块，总量与卡数无关', step: t.length - 1, evidence: `${String(f.G)} 卡分 reduce-scatter+all-gather 共 2·(G−1)=${String(f.totalSteps)} 步,每步只搬一个块` } },
         distractors: () => [
           '它把消息压缩后再发,所以单条消息更小',
           '它只让一张主卡收集再广播,减少了连接数',
@@ -164,7 +164,7 @@ export const LLM_INFER_A_ENTRIES: CatalogEntry[] = [
         label: 'chunked prefill 换来的收益',
         ask: 'chunked prefill 把长 prefill 切块交错,主要换来了什么?',
         kind: 'choice',
-        compute: t => { const f = last(t); return { answer: '正在解码的其它请求首字延迟大降(延迟更公平),而总时间几乎不变', step: t.length - 1, evidence: `块大小 ${String(f.chunk)}:B 首字在 t=${String(f.firstDecodeAt)} 吐出,总时间仍是 ${String(f.totalTime)}` } },
+        compute: t => { const f = last(t); return { answer: '解码中请求的首字延迟大降，总时间几乎不变', step: t.length - 1, evidence: `块大小 ${String(f.chunk)}:B 首字在 t=${String(f.firstDecodeAt)} 吐出,总时间仍是 ${String(f.totalTime)}` } },
         distractors: () => [
           'prefill 总耗时变短,因为切块后并行度更高',
           '总吞吐提升,因为 GPU 利用率被拉满',
@@ -202,7 +202,7 @@ export const LLM_INFER_A_ENTRIES: CatalogEntry[] = [
         label: '连续批处理引擎相对静态批的核心优势',
         ask: '这台连续批处理引擎相比静态批,核心优势在哪里?',
         kind: 'choice',
-        compute: t => { const f = last(t); return { answer: '请求算完随时归还 KV 块和槽位、立刻让给等待队列,新请求随时上——利用率和吞吐都更高', step: t.length - 1, evidence: `末态完成 ${(f.done as string[]).length}/4 请求、共生成 ${String(f.gen)} token;准入按 FCFS,遇放不下即停(队头阻塞)` } },
+        compute: t => { const f = last(t); return { answer: '算完随时归还 KV 块和槽位，让给排队的', step: t.length - 1, evidence: `末态完成 ${(f.done as string[]).length}/4 请求、共生成 ${String(f.gen)} token;准入按 FCFS,遇放不下即停(队头阻塞)` } },
         distractors: () => [
           '它能同时 prefill 全部请求,省掉排队环节',
           '它给每个请求单独分一张 GPU,互不干扰',
@@ -240,7 +240,7 @@ export const LLM_INFER_A_ENTRIES: CatalogEntry[] = [
         label: '专家并行 EP 的收益与代价',
         ask: '专家并行 EP 带来什么好处、代价又是什么?',
         kind: 'choice',
-        compute: t => { const f = last(t); return { answer: '把巨大的专家权重分片到多卡省显存;代价是 token 要 all-to-all 派发到专家所在卡,且路由不均会让热专家那张卡过载', step: t.length - 1, evidence: `每卡 ${String(f.expertsPerGpu)} 个专家;负载 [${(f.load as number[]).join(', ')}] 最忙 ${String(f.maxLoad)}、最闲 ${String(f.minLoad)}` } },
+        compute: t => { const f = last(t); return { answer: '专家分片省显存；代价是 all-to-all 和热专家', step: t.length - 1, evidence: `每卡 ${String(f.expertsPerGpu)} 个专家;负载 [${(f.load as number[]).join(', ')}] 最忙 ${String(f.maxLoad)}、最闲 ${String(f.minLoad)}` } },
         distractors: () => [
           '省显存且零通信,因为每卡自带全部专家',
           '省的是计算量,每卡只算 1/G 的乘法、没有额外通信',
@@ -278,7 +278,7 @@ export const LLM_INFER_A_ENTRIES: CatalogEntry[] = [
         label: 'DP 与 TP 铺注意力的权衡',
         ask: '注意力用 DP(数据并行)而不是 TP(张量并行)铺到多卡,权衡是什么?',
         kind: 'choice',
-        compute: t => { const f = last(t); return { answer: 'DP 按请求切、注意力这段零通信,代价是每卡要整套复制注意力权重;TP 按头切、权重省成 1/G,但每层都要 all-reduce', step: t.length - 1, evidence: `TP 每层通信 ${String(f.tpComm)} 元素/token、每卡 ${String(f.headsPerGpu)} 头;DP 通信 ${String(f.dpComm)}、每卡 ${String(f.reqPerGpu)} 请求` } },
+        compute: t => { const f = last(t); return { answer: 'DP 按请求切、注意力段零通信；但每卡要存整套权重', step: t.length - 1, evidence: `TP 每层通信 ${String(f.tpComm)} 元素/token、每卡 ${String(f.headsPerGpu)} 头;DP 通信 ${String(f.dpComm)}、每卡 ${String(f.reqPerGpu)} 请求` } },
         distractors: () => [
           'DP 零通信且权重也省成 1/G,全面优于 TP',
           'DP 每层要 all-reduce、TP 零通信,所以贵的部分该用 DP',
@@ -316,7 +316,7 @@ export const LLM_INFER_A_ENTRIES: CatalogEntry[] = [
         label: 'Flash Decode 相对 FlashAttention 的切法',
         ask: 'Flash Decode 相比 prefill 阶段的 FlashAttention,换了什么切法?',
         kind: 'choice',
-        compute: t => { const f = last(t); return { answer: 'prefill 按 query 切块并行;decode 每步只有 1 个 query,改成把长 KV/序列维切成 C 块并行,再用 online softmax 合并', step: t.length - 1, evidence: `1 query 对 N=${String(f.n)} 个 KV,切 ${String(f.chunks)} 块,时延 ~${String(f.seqLatency)}→~${String(f.parLatency)}` } },
+        compute: t => { const f = last(t); return { answer: '把长 KV 切成 C 块并行，再合并回来', step: t.length - 1, evidence: `1 query 对 N=${String(f.n)} 个 KV,切 ${String(f.chunks)} 块,时延 ~${String(f.seqLatency)}→~${String(f.parLatency)}` } },
         distractors: () => [
           '把 1 个 query 复制成 C 份分到多卡并行',
           '按注意力头切成 C 块,每块算一部分头',
@@ -328,7 +328,7 @@ export const LLM_INFER_A_ENTRIES: CatalogEntry[] = [
         label: 'Flash Decode 合并结果的精确性',
         ask: 'Flash Decode 把各块局部结果合并后,和一次性 softmax 是什么关系?',
         kind: 'choice',
-        compute: t => { const f = last(t); return { answer: '用全局最大 M 重新缩放各块的 exp 再相加,结果与一次性 softmax·V 完全相等(无损,不是近似)', step: t.length - 1, evidence: `合并输出 ${String(f.output)} 与一次性 softmax·V 对照 ${String(f.fullOutput)} 相等` } },
+        compute: t => { const f = last(t); return { answer: '用全局最大值重缩放，结果完全相等', step: t.length - 1, evidence: `合并输出 ${String(f.output)} 与一次性 softmax·V 对照 ${String(f.fullOutput)} 相等` } },
         distractors: () => [
           '是近似结果,分块越多误差越大',
           '只在各块分数接近时才相等,否则有偏差',
@@ -375,7 +375,7 @@ export const LLM_INFER_A_ENTRIES: CatalogEntry[] = [
         compute: t => {
           const rows = last(t).rows as { n: number; hitRate: number; ambRate: number; acc: number }[]
           return {
-            answer: 'n 大了容易 miss（前缀没见过），n 小了容易歧义（跟过好几种）',
+            answer: 'n 大了容易 miss（前缀没见过），n 小了容易跟错好几种情况',
             step: t.length - 1,
             evidence: `实测：${rows.map(r => `n=${r.n} 命中 ${(r.hitRate * 100).toFixed(0)}%、歧义 ${(r.ambRate * 100).toFixed(0)}%`).join('；')}`,
           }
@@ -392,7 +392,7 @@ export const LLM_INFER_A_ENTRIES: CatalogEntry[] = [
         ask: '要证明 n-gram 记忆"不受注意力窗口限制"，得跟一个只看最近几个 token 的基线比。'
           + '**在什么样的序列上这件事根本演不出来**?',
         compute: t => ({
-          answer: '周期比窗口还短的序列 —— 该抄的就在窗口里，查表没占到便宜',
+          answer: '周期比窗口还短的序列——该抄的就在窗口里',
           step: t.length - 1,
           evidence: '实测：完美周期（周期 4）序列上，查表和只看最近 6 个 token 的基线都是 82%，两条线一样齐',
         }),
