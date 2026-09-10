@@ -63,7 +63,7 @@ export const LLM_INFER_B_ENTRIES: CatalogEntry[] = [
         compute: t => {
           const f = last(t)
           return {
-            answer: '多占显存——缓存要存下所有算过的 K/V，占用随序列长度线性增长',
+            answer: '多占显存，随序列长度线性增长',
             step: t.length - 1,
             evidence: `终态缓存 ${String(f.cacheSize)} 对 K/V；${String(f.log ?? '')}`,
           }
@@ -121,7 +121,7 @@ export const LLM_INFER_B_ENTRIES: CatalogEntry[] = [
         compute: t => {
           const f = last(t)
           return {
-            answer: 'LRU——换出最久没被用过的那个块到 CPU',
+            answer: 'LRU——换出最久没用过的那块',
             step: t.length - 1,
             evidence: `终态换出 ${String(f.offloads)} 次、换入 ${String(f.reloads)} 次；和 OS 页面置换同一招`,
           }
@@ -201,7 +201,7 @@ export const LLM_INFER_B_ENTRIES: CatalogEntry[] = [
         compute: t => {
           const f = last(t)
           return {
-            answer: '结合律：先算 φ(K)ᵀ·V 得到一个 d×d 状态，再让 φ(Q) 去乘',
+            answer: '结合律：先算 φ(K)ᵀ·V 成 d×d 状态',
             step: t.length - 1,
             evidence: `实测两种乘法顺序输出相对差 ${f.assocErr}（同一个答案），`
               + `而乘加次数 ${f.assocMacFast} vs ${f.assocMacNaive}；状态固定 ${f.stateSize} 个数`,
@@ -267,7 +267,7 @@ export const LLM_INFER_B_ENTRIES: CatalogEntry[] = [
           const tables = f.tables as Record<string, number[]>
           const a = tables.A ?? []
           return {
-            answer: '不连续——如 0、2、4，块表照样把逻辑块映射对，分页不在乎',
+            answer: '不连续——块表照样映射对，分页不在乎',
             step: t.length - 1,
             evidence: `终态请求 A 的块表 = [${a.join('、')}]`,
           }
@@ -285,7 +285,7 @@ export const LLM_INFER_B_ENTRIES: CatalogEntry[] = [
         compute: t => {
           const f = last(t)
           return {
-            answer: '连续分配的外碎片——每请求一张块表映射逻辑块到物理块，块不必连续',
+            answer: '外碎片——块表让逻辑块映射到不连续的物理块',
             step: t.length - 1,
             evidence: `终态 ${Number(f.totalBlocks) - Number(f.freeCount)}/${String(f.totalBlocks)} 块在用；${String(f.log ?? '')}`,
           }
@@ -343,7 +343,7 @@ export const LLM_INFER_B_ENTRIES: CatalogEntry[] = [
         compute: t => {
           const f = last(t)
           return {
-            answer: '把 batch 切成多个微批首尾衔接流入，稳态时每张卡同时各算一个微批',
+            answer: '切成多个微批，首尾衔接流入',
             step: t.length - 1,
             evidence: `M=${String(f.micro)} 时利用率 ${String(f.util)}%、气泡 ${String(f.bubblePct)}%`,
           }
@@ -401,7 +401,7 @@ export const LLM_INFER_B_ENTRIES: CatalogEntry[] = [
         compute: t => {
           const f = last(t)
           return {
-            answer: '多请求共享同一段前缀，前缀那段的 KV 沿前缀树跨请求复用，命中就不重算',
+            answer: '共享前缀的 KV 沿前缀树跨请求复用',
             step: t.length - 1,
             evidence: `累计 ${String(f.seenTotal)} token、复用省下 ${String(f.savedTotal)} 个的 prefill`,
           }
@@ -459,7 +459,7 @@ export const LLM_INFER_B_ENTRIES: CatalogEntry[] = [
         compute: t => {
           const f = last(t)
           return {
-            answer: '带宽 memory-bound——算术强度 AI 仍小于脊点 156',
+            answer: '带宽 memory-bound——强度没到脊点',
             step: t.length - 1,
             evidence: `批 128 时 AI=${String(f.ai)}、脊点 ${String(f.ridge)}、bound=${String(f.bound)}`,
           }
@@ -520,7 +520,7 @@ export const LLM_INFER_B_ENTRIES: CatalogEntry[] = [
           const f = last(t)
           const full = f.full as number[]
           return {
-            answer: 'W 按列切成 G 份，第 g 卡算 Y 的对应列片(Y_g=X·W_g)，再 all-gather 拼成完整 Y，结果与单卡一致',
+            answer: 'W 按列切 G 份，各卡算列片再 all-gather',
             step: t.length - 1,
             evidence: `G=${String(f.G)}、每卡占 1/${String(f.G)}，拼出 Y=[${full.join('、')}]`,
           }

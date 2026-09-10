@@ -50,6 +50,19 @@ const orig = new Map(JSON.parse(readFileSync(`${SP}/leaky.json`, 'utf8')).map(r 
 const SRC = ['server/catalog.ts', ...readdirSync('server/catalog').filter(f => f.endsWith('.ts')).map(f => join('server/catalog', f))]
 const lines = new Map(SRC.map(p => [p, readFileSync(p, 'utf8').split('\n')]))
 
+/** 这条 fact 在源码里显式写了 genre 吗 —— 写了就不受"≤12 字算计数题"的兜底摆布。 */
+function hasGenre(fid) {
+  for (const p of SRC) {
+    const t = text.get(p) ?? lines.get(p)?.join('\n') ?? ''
+    const at = t.indexOf(`id: '${fid}'`)
+    if (at < 0) continue
+    const rest = t.slice(at + 1)
+    const nxt = rest.search(/id: '[a-z0-9_-]+'/)
+    return /genre: '/.test(t.slice(at, nxt < 0 ? t.length : at + 1 + nxt))
+  }
+  return false
+}
+
 let pass = 0
 const fail = []
 const ready = []
@@ -70,6 +83,21 @@ for (const r of rewrites) {
   if (la > mx) { bad(`答案仍是唯一最长（${la} 字，干扰项 ${lw.join('/')}）`); continue }
   if (la < mn) { bad(`答案成了唯一最短（${la} 字，干扰项 ${lw.join('/')}）`); continue }
   if (la < mn - 2 || la > mx + 2) { bad(`答案 ${la} 落在干扰项区间 ${mn}–${mx} 之外`); continue }
+  /**
+   * 答案收到 12 字及以下会**静默把这条原理题变成计数题**。
+   *
+   * catalog.ts 的 genreOf 没写 `genre` 时按长度兜底：`answer.length <= 12 ? 'count' : 'concept'`。
+   * 我把 pp/fill_bubble 收成「切成多个微批首尾衔接流入」正好 12 字，
+   * 它当场从原理题里掉出去 —— 判据的分母从 961 变成 960，**而那条判据是绿的**
+   * （分子也少了一条，看着还像"又降了一条债"）。没有任何东西会喊。
+   *
+   * 收长度是这轮的主要动作，所以这道闸必须在这里：13 字是下限，
+   * 真要更短就得在源码里显式写 `genre: 'concept'`，写了就不再靠长度猜。
+   */
+  if (la <= 12 && !hasGenre(r.fid)) {
+    bad(`答案收到 ${la} 字（≤12），会被 genreOf 按长度判成计数题、悄悄掉出原理题 —— 要么写长点，要么在源码里显式标 genre: 'concept'`)
+    continue
+  }
 
   //  定位：id 那一行，且这一行只有一处 distractors
   const hits = []

@@ -429,9 +429,23 @@ rows.length >= 200 && rows.reduce((n, r) => n + r.concept + r.count, 0) >= 700
       漏的是"该修的没进清单"，而清单看着一切正常 —— 跟当初 bplus/vigenere
       被误判成不可达是同一种病：**清单的口径错了，清单本身不会喊。** */
   const LONGEST_DEBT_CAP = 511
-  concepts >= 800
-    ? ok(`扫过 ${concepts} 条原理 fact`)
-    : bad(`只扫到 ${concepts} 条原理 fact —— 解析不出来的话，下面这条等于空跑`)
+  /**
+   * 原理题总数**只许升不许降**。
+   *
+   * 原来这里写的是 `>= 800`，松到抓不住真事故：改写这批题的时候我把
+   * pp/fill_bubble 的答案收成「切成多个微批首尾衔接流入」正好 12 字，
+   * genreOf 没写 genre 时按 `answer.length <= 12 ? 'count' : 'concept'` 兜底 ——
+   * 它当场从原理题里掉出去。而**下面那条判据是绿的**：分子分母一起少一条，
+   * 看上去还像"又降了一条债"。掉一条题的事故，长得跟修好一条一模一样。
+   *
+   * 所以钉死数目。真加了新原理题就把这个数一起调上去（那是有意的），
+   * 掉下来就是有题悄悄变成了计数题。
+   */
+  const CONCEPT_FLOOR = 961
+  concepts >= CONCEPT_FLOOR
+    ? ok(`扫过 ${concepts} 条原理 fact（下限 ${CONCEPT_FLOOR}，只许升）`)
+    : bad(`原理题从 ${CONCEPT_FLOOR} 掉到 ${concepts} 条 —— 多半是哪条答案被收到 12 字以内，`
+      + `被 genreOf 按长度判成了计数题。要更短就在源码里显式标 genre: 'concept'`)
   longestWins.length <= LONGEST_DEBT_CAP
     ? ok(`「答案是唯一最长」的还有 ${longestWins.length} / ${concepts} 条`
       + `（上限 ${LONGEST_DEBT_CAP}，只许降；随机基线 ${Math.round(concepts * 0.25)}）`)
