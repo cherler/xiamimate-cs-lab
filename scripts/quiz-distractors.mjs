@@ -30,7 +30,9 @@
  * 库层的选项写在源码的 `evidence:` 字段里(对调之后它才是选项，`answer:` 那段长说明成了讲解)，
  * 但这里不认字段名、只认**带引号的整串**，锚点仍是那一行，改不到别处去。
  *
- * 跑法：node scripts/quiz-distractors.mjs <file.json> [--apply]
+ * 跑法：**npx tsx** scripts/quiz-distractors.mjs <file.json> [--apply]
+ *   （必须走 tsx：写完要从运行时读回来复查一遍，那一步要 import server/catalog.ts。
+ *     用 node 跑会在复查那步直接崩 —— 崩了比"悄悄跳过复查"好。）
  * 形状：[{ exp, fid, wrong: [三条], answer?: '收短的选项' }, …]
  */
 import { readFileSync, writeFileSync, readdirSync } from 'node:fs'
@@ -87,7 +89,7 @@ for (const r of rewrites) {
     out = out.replace(q, `'${r.answer}'`)
   }
   pass++
-  ready.push([p, i, out])
+  ready.push([p, i, out, key])
 }
 
 console.log(`\n改写稿 ${rewrites.length} 条：过闸 ${pass}，打回 ${fail.length}`)
@@ -96,4 +98,35 @@ if (!APPLY) { console.log('\n（只体检，没写。加 --apply 才写回源码
 for (const [p, i, ln] of ready) lines.get(p)[i] = ln
 for (const p of new Set(ready.map(x => x[0]))) writeFileSync(p, lines.get(p).join('\n'))
 console.log(`\n已写回 ${ready.length} 条 fact 的干扰项。`)
+
+/**
+ * 写回 ≠ 生效。**这一条是拿真事故换来的。**
+ *
+ * catalog.ts 末尾有个生成器，专管库层「这个库是干什么的」那一问：它在运行时
+ * 把干扰项整个换成**别的库的角色描述**。于是我照着源码改了 qm_what / gs_what /
+ * pd_what 一批，闸口全绿、文件也确实变了，**而用户看到的选项一个字没变** ——
+ * 下一轮体检里它们原样又出现一次，我才发现前一轮白改。
+ *
+ * 静默的是「改了但没生效」，跟「抓到了但没写回」是同一种病：没有任何东西会喊。
+ * 所以写完再从运行时读一遍，对不上就当场说出来。
+ */
+const { CATALOG, traceOf } = await import('../server/catalog.ts')
+const byId = new Map(CATALOG.map(e => [e.id, e]))
+const ghosts = []
+//  只查**真写回去了**的那些。第一版查的是整份改写稿，于是被闸口打回、
+//  压根没写的那条也被报成"写了没生效" —— 判据自己指错了地方。
+const written = new Set(ready.map(x => x[3]))
+for (const r of rewrites) {
+  if (!written.has(`${r.exp}/${r.fid}`)) continue
+  const e = byId.get(r.exp); if (!e) continue
+  const f = e.facts.find(x => x.id === r.fid); if (!f) continue
+  let live
+  try { const t = traceOf(e); live = f.distractors(f.compute(t).answer, t) } catch { continue }
+  const want = new Set(r.wrong)
+  if (live.some(x => !want.has(x))) ghosts.push(`${r.exp}/${r.fid} → 运行时仍是：${live.join(' ｜ ')}`)
+}
+if (ghosts.length) {
+  console.log(`\n⚠️ 这 ${ghosts.length} 条写进了源码但**运行时没生效**（有别的东西在覆盖它们，改源码没用）：`)
+  for (const g of ghosts) console.log(`   ${g}`)
+}
 process.exit(fail.length ? 1 : 0)
