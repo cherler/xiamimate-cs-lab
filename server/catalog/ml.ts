@@ -216,14 +216,14 @@ export const ML_ENTRIES: CatalogEntry[] = [
         id: 'norm_step', label: 'softmax 归一化这一步做什么',
         ask: 'softmax 把 logit 变成概率的"归一化"，具体对每个 exp 值做了什么？',
         kind: 'choice',
-        compute: t => { const f = frameWhere(t, x => x.T === 1); return { answer: '把每个 exp 值除以所有 exp 的总和，让结果都落在 (0,1) 且加起来正好等于 1，成为一个概率分布', step: t.indexOf(f), evidence: String(f.log ?? '') } },
+        compute: t => { const f = frameWhere(t, x => x.T === 1); return { answer: '每个 exp 除以所有 exp 的总和', step: t.indexOf(f), evidence: String(f.log ?? '') } },
         distractors: () => ['直接取 logit 最大的那个置 1、其余置 0', '给每个 logit 减去平均值，让它们零均值', '把每个 logit 平方后再相加'],
       },
       {
         id: 'temp_up', label: '调高温度分布怎么变',
         ask: '把温度 T 从 1 调大，softmax 出来的概率分布会怎么变？',
         kind: 'choice',
-        compute: t => ({ answer: '分布被压平、更均匀，采样更随机、更有创造性（熵变大）；T 调小则分布变尖、越接近只选概率最大的那个（贪心）', step: t.length - 1, evidence: String(last(t).log ?? '') }),
+        compute: t => ({ answer: '分布被压平、更均匀，采样更随机', step: t.length - 1, evidence: String(last(t).log ?? '') }),
         distractors: () => ['分布变得更尖，越接近只选概率最大的那个字', '概率分布完全不变，温度只影响运行速度', '只有最大项的概率变大，其余不变'],
       },
     ],
@@ -252,7 +252,7 @@ export const ML_ENTRIES: CatalogEntry[] = [
         id: 'converge_to', label: '梯度下降收敛到的解',
         ask: '梯度下降把这条回归线一步步调到最后，收敛到的其实是什么解？',
         kind: 'choice',
-        compute: t => ({ answer: '最小二乘（OLS）闭式解——梯度下降迭代找到的直线，和用公式一次性算出的数学最优线是同一条', step: t.length - 1, evidence: String(last(t).log ?? '') }),
+        compute: t => ({ answer: '最小二乘（OLS）闭式解那条线', step: t.length - 1, evidence: String(last(t).log ?? '') }),
         distractors: () => ['穿过全部散点的插值曲线', '一条随机但看起来还凑合的线', '让所有残差绝对值中位数最小的线'],
       },
     ],
@@ -281,7 +281,7 @@ export const ML_ENTRIES: CatalogEntry[] = [
         id: 'sigmoid', label: '逻辑回归用什么把打分变概率',
         ask: '逻辑回归先算线性打分 z=w₁x+w₂y+b，再用什么函数把 z 压成"属于第 1 类的概率"？',
         kind: 'choice',
-        compute: t => ({ answer: 'sigmoid 函数 σ(z)=1/(1+e⁻ᶻ)，把任意实数 z 压到 (0,1) 当概率；损失换成交叉熵。它本质就是单个神经元 + sigmoid', step: t.length - 1, evidence: String(last(t).log ?? '') }),
+        compute: t => ({ answer: 'sigmoid：把任意实数压到 (0,1)', step: t.length - 1, evidence: String(last(t).log ?? '') }),
         distractors: () => ['ReLU：把负的截成 0、正的原样输出', 'softmax：一次给三类以上归一化', 'tanh：把 z 压到 (−1,1) 之间'],
       },
     ],
@@ -317,7 +317,7 @@ export const ML_ENTRIES: CatalogEntry[] = [
         id: 'core_idea', label: 'PageRank 的核心思想',
         ask: 'PageRank 判断一个网页重不重要，靠的是什么？',
         kind: 'choice',
-        compute: t => { const f = frameWhere(t, x => x.iter === 0 && x.phase === 'run'); return { answer: '重要性顺着链接流动：一个页面的重要性取决于有多少、以及多重要的页面链接到它（重要页面的投票更值钱）；数学上是幂迭代，等价于图上随机游走的稳态分布', step: t.indexOf(f), evidence: String(f.log ?? '') } },
+        compute: t => { const f = frameWhere(t, x => x.iter === 0 && x.phase === 'run'); return { answer: '重要性顺着链接流动、会投票', step: t.indexOf(f), evidence: String(f.log ?? '') } },
         distractors: () => ['按网页正文字数多少排，越长越重要', '按网页最后更新时间排，越新越重要', '按域名注册得越早排得越高'],
       },
     ],
@@ -389,7 +389,7 @@ export const ML_ENTRIES: CatalogEntry[] = [
         id: 'delayed_reward', label: '怎么应对延迟奖励', kind: 'choice', genre: 'concept',
         ask: '走迷宫只有终点才 +1、中间每步都没反馈,靠什么学出该往哪走?',
         compute: t => ({
-          answer: '给每格估一个价值 = 即时奖励 + γ×下一格价值，让终点的 +1 一圈圈倒推',
+          answer: '每格估价值 = 即时奖励 + γ×下一格，倒推',
           step: t.length - 1,
           evidence: '每远一步打一次 γ 折；学好后站在任一格往价值最高的邻居走就是最优策略',
         }),
@@ -442,7 +442,7 @@ export const ML_ENTRIES: CatalogEntry[] = [
         compute: t => {
           const f = last(t)
           return {
-            answer: '不对 —— 把用户矩阵乘一个可逆矩阵、物品矩阵乘它的逆，预测一个数都不变，可两边的向量已经面目全非',
+            answer: '不对 —— 用户矩阵乘一个可逆矩阵、物品矩阵乘它的逆，预测一个数都不变',
             step: t.length - 1,
             evidence: `实测：隐向量最大变化 ${f.rotPGap}，而所有预测逐格最大变化只有 ${f.rotGap}`,
           }
@@ -456,7 +456,7 @@ export const ML_ENTRIES: CatalogEntry[] = [
       {
         id: 'how_fill', label: '矩阵分解怎么补全空缺', kind: 'choice', genre: 'concept',
         ask: '评分表大半是空的（没看过），矩阵分解怎么把空缺补出来？',
-        compute: t => ({ answer: '给每个用户、每个物品各学一个隐向量，让"评分 ≈ 两个隐向量的内积"；用已知评分把隐向量学出来，空缺处再用内积一算就是预测评分', step: t.length - 1, evidence: String(last(t).log ?? '') }),
+        compute: t => ({ answer: '各学一个隐向量，让评分≈两个隐向量的内积，空缺一算就有', step: t.length - 1, evidence: String(last(t).log ?? '') }),
         distractors: () => [
           '直接用这部电影所有人打分的平均值，一格一格填进去当预测',
           '在 1~5 分之间按整体评分的分布随机采一个，填进空缺格里',
@@ -489,7 +489,7 @@ export const ML_ENTRIES: CatalogEntry[] = [
         id: 'vs_naive', label: 'SVM 相比随便一条线多要求什么',
         ask: '同样能分开两类，SVM 比"随便找一条能分开的线"多要求什么？',
         kind: 'choice',
-        compute: t => { const f = frameWhere(t, x => x.phase === 'svm'); return { answer: '要求间隔最大——让决策边界离两类都尽量远（"街"最宽）；边界离两边都最远，对新数据容错最大、泛化最好，而且这条街只由少数几个支持向量决定', step: t.indexOf(f), evidence: String(f.log ?? '') } },
+        compute: t => { const f = frameWhere(t, x => x.phase === 'svm'); return { answer: '要求间隔最大——让边界离两类都尽量远', step: t.indexOf(f), evidence: String(f.log ?? '') } },
         distractors: () => ['要求训练得更快、迭代更少', '要求用到的参数更少、更省内存', '要求决策边界紧贴其中一类、离另一类更远'],
       },
     ],

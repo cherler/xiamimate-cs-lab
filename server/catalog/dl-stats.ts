@@ -52,10 +52,10 @@ export const DL_STATS_ENTRIES: CatalogEntry[] = [
         ask: '算出的 dL/dw 是负数，那么梯度下降(w ← w − η·dL/dw)会把 w 往哪个方向调?',
         compute: t => {
           const f = last(t); const g = Number(f.gLdw)
-          const answer = g < 0 ? '增大 w（梯度为负，沿负梯度方向即增大）' : g > 0 ? '减小 w（梯度为正）' : 'w 不变（梯度为零、已收敛）'
+          const answer = g < 0 ? '增大 w（因为梯度是负的）' : g > 0 ? '减小 w（因为梯度是正的）' : 'w 不变（梯度为零、已收敛）'
           return { answer, step: t.length - 1, evidence: String(f.log ?? '') }
         },
-        distractors: a => pick3(a, ['增大 w（梯度为负，沿负梯度方向即增大）', '减小 w（梯度为正）', 'w 不变（梯度为零、已收敛）', '把 w 直接设成 0']),
+        distractors: a => pick3(a, ['增大 w（因为梯度是负的）', '减小 w（因为梯度是正的）', 'w 不变（梯度为零、已收敛）', '把 w 直接设成 0 重新来过']),
       },
     ],
   },
@@ -89,10 +89,10 @@ export const DL_STATS_ENTRIES: CatalogEntry[] = [
         compute: t => {
           const run = t.filter(f => f.phase === 'run')
           const shared = run.every(f => f.wx === run[0].wx && f.wh === run[0].wh)
-          const answer = shared ? '所有时刻共享同一套 wx、wh（所以能吃任意长序列）' : '每个时间步各学一套权重'
+          const answer = shared ? '所有时刻共享同一套 wx、wh' : '每个时间步各学一套权重'
           return { answer, step: 0, evidence: `各步 wx=${run.map(f => f.wx).join(',')}；wh=${run.map(f => f.wh).join(',')}` }
         },
-        distractors: a => pick3(a, ['所有时刻共享同一套 wx、wh（所以能吃任意长序列）', '每个时间步各学一套权重', '只共享 wh，wx 每步不同', '权重随时间步线性增长']),
+        distractors: a => pick3(a, ['所有时刻共享同一套 wx、wh', '每个时间步各学一套自己的权重', '只共享 wh，wx 每一步都不同', '权重随着时间步线性增长上去']),
       },
     ],
   },
@@ -123,7 +123,7 @@ export const DL_STATS_ENTRIES: CatalogEntry[] = [
           const answer = same ? `不变——遗忘门 f=1 守住，c 恒为 ${keep[0].c}` : 'c 每步都被改写'
           return { answer, step: t.indexOf(keep[0] ?? last(t)), evidence: `「守」各步 c=${keep.map(f => f.c).join(',')}` }
         },
-        distractors: a => pick3(a, [a, '每步过 tanh 被挤压、逐渐衰减到 0', '每步累加、越来越大', '直接清零、记忆丢失']),
+        distractors: a => pick3(a, [a, '每步过 tanh 被挤压、逐渐衰减到 0 为止', '每步都往上累加，值越来越大', '直接清零、记忆整个都丢失掉']),
       },
     ],
   },
