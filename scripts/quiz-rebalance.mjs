@@ -80,13 +80,30 @@ for (const r of rewrites) {
   let ok = true
   for (const [from, to] of [[o.answer, r.answer], ...o.wrong.map((w, i) => [w, wrong[i]])]) {
     if (from === to) continue
-    const hits = SRC.filter(p => text.get(p).includes(from))
-    if (hits.length === 0) { bad(`源码里找不到原文：「${from.slice(0, 24)}…」`); ok = false; break }
-    if (hits.length > 1) { bad(`原文在 ${hits.length} 个文件里都出现，不敢改：「${from.slice(0, 24)}…」`); ok = false; break }
-    const p = hits[0]
-    const n = text.get(p).split(from).length - 1
-    if (n > 1) { bad(`原文在 ${p} 里出现 ${n} 次，不敢改：「${from.slice(0, 24)}…」`); ok = false; break }
-    edits.push([p, from, to])
+    /**
+     * 按**带引号的整串**找，而不是裸子串。
+     *
+     * 一句答案常常会在同一个文件里出现两次：一次是选项本身，一次被 `note`
+     * （讲解出处）原样引用进一段更长的话里。裸子串匹配会判成"出现 2 次、不敢改"，
+     * 把本来能改的挡下来；而真去替换又会连讲解里那句一起改掉。
+     * 带引号的整串只匹配**字面量本身** —— 引用它的那段长话不会带上闭合引号。
+     */
+    const forms = [`'${from}'`, `"${from}"`, from]
+    let hitForm = '', hitFile = ''
+    for (const form of forms) {
+      const files = SRC.filter(p => text.get(p).split(form).length - 1 === 1)
+      const anywhere = SRC.filter(p => text.get(p).includes(form))
+      if (files.length === 1 && anywhere.length === 1) { hitForm = form; hitFile = files[0]; break }
+    }
+    if (!hitForm) {
+      const anywhere = SRC.filter(p => text.get(p).includes(from))
+      bad(anywhere.length === 0
+        ? `源码里找不到原文：「${from.slice(0, 24)}…」`
+        : `原文在 ${anywhere.join('、')} 里不是唯一命中，不敢改：「${from.slice(0, 24)}…」`)
+      ok = false; break
+    }
+    edits.push([hitFile, hitForm, hitForm.startsWith("'") || hitForm.startsWith('"')
+      ? hitForm[0] + to + hitForm[0] : to])
   }
   if (!ok) continue
   pass++
