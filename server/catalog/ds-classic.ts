@@ -559,7 +559,7 @@ export const DS_CLASSIC_ENTRIES: CatalogEntry[] = [
           const sw = (f.sweep ?? []) as { w: number; expanded: number }[]
           const d = sw.find(x => x.w === 0), a = sw.find(x => x.w === 1)
           return {
-            answer: '就是 Dijkstra —— 启发完全不起作用，只按已走代价排序，于是四面八方均匀铺开',
+            answer: '就是 Dijkstra —— 启发完全不起作用，只按已走代价排序去展开',
             step: t.length - 1,
             evidence: `实测：w=0 展开 ${d?.expanded}/${f.freeCells} 格，而 w=1 只要 ${a?.expanded} 格`,
           }
@@ -618,7 +618,7 @@ export const DS_CLASSIC_ENTRIES: CatalogEntry[] = [
         id: 'worst_input_for_insert', label: '逐个插入最惨的是哪种输入', kind: 'choice', genre: 'concept',
         ask: '用"逐个插入 sift-up"建最大堆。哪一种输入会让它做最多的比较?',
         compute: t => ({
-          answer: '升序输入 —— 每个新进来的元素都是当前最大，必须一路上浮到根，每次都走满一整条路径',
+          answer: '升序输入 —— 每个新元素都是当前最大，必须一路上浮到根',
           step: t.length - 1,
           evidence: '实测 n=512：升序 3595 次、随机 1125 次、完全逆序只要 511 次（降序输入本来就是个最大堆，一次都不用浮）',
         }),
@@ -635,7 +635,7 @@ export const DS_CLASSIC_ENTRIES: CatalogEntry[] = [
         id: 'gap_depends_on_data', label: '两种建法差多少取决于数据形状', kind: 'choice', genre: 'concept',
         ask: '自底向上建堆是 O(n)、逐个插入是 O(n log n)。那么在实际数据上，后者一定慢很多吗?',
         compute: t => ({
-          answer: '不一定 —— 差多少取决于数据形状：升序输入时差好几倍，随机时只差一点点，而完全逆序时两者一模一样',
+          answer: '不一定 —— 取决于数据形状：升序差好几倍，随机只差一点点，逆序一模一样',
           step: t.length - 1,
           evidence: '实测 n=512：升序 1006 vs 3595（差 3.6 倍）、随机 953 vs 1125（差 1.18 倍）、完全逆序 511 vs 511（降序输入本来就是个最大堆，插入一次都不用上浮）',
         }),
