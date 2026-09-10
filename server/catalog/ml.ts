@@ -425,7 +425,7 @@ export const ML_ENTRIES: CatalogEntry[] = [
         compute: t => {
           const f = last(t)
           return {
-            answer: '都不行 —— 他的隐向量在训练目标里根本没有出现过，怎么调都是在解一个没有约束的方程',
+            answer: '都不行 —— 他的隐向量在训练目标里根本没有出现过，怎么调都是解没约束的方程',
             step: t.length - 1,
             evidence: `实测：他的隐向量范数是 ${f.coldNorm}，那几格上的 RMSE ${f.coldRmse}，而全表是 ${f.testRmse}`,
           }

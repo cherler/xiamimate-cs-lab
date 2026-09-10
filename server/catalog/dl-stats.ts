@@ -195,7 +195,7 @@ export const DL_STATS_ENTRIES: CatalogEntry[] = [
         compute: t => {
           const ds = last(t).depthSweep as { layers: number; spread: number }[]
           return {
-            answer: '层层取平均等于把整张图抹平，节点表示会糊成一样（过平滑）',
+            answer: '层层取平均等于把整张图抹平，节点表示会糊成一样',
             step: t.length - 1,
             evidence: `实测离散度：初始 ${last(t).spread0} → ${ds.map(d => `${d.layers}层 ${d.spread}`).join('、')}`,
           }
@@ -211,7 +211,7 @@ export const DL_STATS_ENTRIES: CatalogEntry[] = [
         id: 'sym_still_smooth', label: '对称归一化的离散度没塌到 0', kind: 'choice', genre: 'concept',
         ask: '换成对称归一化之后，叠到 50 层离散度还剩 0.12、没有塌到 0。这说明它躲过了过平滑吗?',
         compute: t => ({
-          answer: '没有 —— 它塌向正比于 √(度数+1) 的形状，残余差别只反映度数',
+          answer: '没有 —— 它塌向正比于 √(度数+1) 的形状',
           step: t.length - 1,
           evidence: '换一组完全不同的初始特征跑深了还是这个形状 —— 节点原本携带的信息一样丢光了，只是丢的方式不同',
         }),
@@ -228,7 +228,7 @@ export const DL_STATS_ENTRIES: CatalogEntry[] = [
         compute: t => {
           const f = last(t)
           return {
-            answer: '扰动一个节点的初始特征，看第 L 层哪些节点跟着变，再跟 BFS 算的跳数比',
+            answer: '扰动一个节点的初始特征，看第 L 层有哪些节点跟着变',
             step: t.length - 1,
             evidence: `实测：扰动节点 ${f.probeSrc} 之后跟着变的节点，跟另拿 BFS 算的 ${f.layers} 跳内${f.hopsMatch ? '完全一致' : '对不上'}`,
           }
@@ -274,7 +274,7 @@ export const DL_STATS_ENTRIES: CatalogEntry[] = [
           const fwd = t.filter(f => f.dir === 'forward').sort((a, b) => Number(a.t) - Number(b.t))
           const first = fwd[0], lastf = fwd[fwd.length - 1]
           const answer = Number(lastf.sqrtA) < Number(first.sqrtA)
-            ? `递减：√ᾱ 从 ${first.sqrtA} 一路降到约 ${lastf.sqrtA}（信号被噪声淹没）`
+            ? `递减：√ᾱ 从 ${first.sqrtA} 降到约 ${lastf.sqrtA}`
             : `递增：√ᾱ 从约 ${lastf.sqrtA} 升到 ${first.sqrtA}`
           return { answer, step: t.indexOf(lastf), evidence: String(lastf.log ?? '') }
         },
@@ -312,11 +312,11 @@ export const DL_STATS_ENTRIES: CatalogEntry[] = [
         compute: t => {
           const acc = Number(last(t).acc)
           const answer = acc <= 60
-            ? 'D 只能瞎猜——G 造的假数据分布已≈真数据分布（纳什均衡）'
+            ? 'D 只能瞎猜——假分布≈真分布'
             : 'D 还能轻松分辨真假'
           return { answer, step: t.length - 1, evidence: String(last(t).log ?? '') }
         },
-        distractors: a => pick3(a, [a, 'D 完美识破了所有假数据', 'G 训练失败、假数据全部露馅', '真假数据被互换了标签']),
+        distractors: a => pick3(a, [a, 'D 完美识破了所有的假数据', 'G 训练失败、假数据全部露馅了', '真假数据的标签被互换掉了']),
       },
     ],
   },
@@ -344,11 +344,11 @@ export const DL_STATS_ENTRIES: CatalogEntry[] = [
         compute: t => {
           const f = t.find(x => x.nTests === 1)!
           const answer = Number(f.posterior) < 0.5
-            ? '没病的人基数太大（先验仅 1%），误报把真阳性淹没了——基础率谬误'
+            ? '没病的人基数太大，误报淹没真阳性'
             : '单次阳性基本就能确诊'
           return { answer, step: t.indexOf(f), evidence: String(f.log ?? '') }
         },
-        distractors: a => pick3(a, [a, '因为检测灵敏度只有 9%', '因为先验概率本身就是 9%', '因为误报率高达 90%']),
+        distractors: a => pick3(a, [a, '因为这个检测的灵敏度只有 9%', '因为先验概率本身就正好是 9%', '因为它的误报率高达 90% 之多']),
       },
     ],
   },
@@ -455,7 +455,7 @@ export const DL_STATS_ENTRIES: CatalogEntry[] = [
           const runs = t.filter(f => f.phase === 'run').sort((a, b) => Number(a.n) - Number(b.n))
           const first = runs[0], lastf = runs[runs.length - 1]
           const answer = Number(lastf.rmsError) < Number(first.rmsError)
-            ? '越来越小，按 1/√n 缩（RMS误差×√n 近似恒定）'
+            ? '越来越小，按 1/√n 缩'
             : '误差没有下降'
           return { answer, step: t.indexOf(lastf), evidence: `n=${first.n} 误差 ${first.rmsError} → n=${lastf.n} 误差 ${lastf.rmsError}` }
         },
@@ -494,7 +494,7 @@ export const DL_STATS_ENTRIES: CatalogEntry[] = [
           const runs = t.filter(f => f.phase === 'run').sort((a, b) => Number(a.k) - Number(b.k))
           const first = runs[0], lastf = runs[runs.length - 1]
           const answer = Number(lastf.maxDev) < Number(first.maxDev)
-            ? '越来越小：K 越大，两两距离保得越准'
+            ? '越来越小：K 越大距离保得越准'
             : '偏差没有随 K 下降'
           return { answer, step: t.indexOf(lastf), evidence: `K=${first.k} 偏差 ${(Number(first.maxDev) * 100).toFixed(0)}% → K=${lastf.k} 偏差 ${(Number(lastf.maxDev) * 100).toFixed(0)}%` }
         },
@@ -519,7 +519,7 @@ export const DL_STATS_ENTRIES: CatalogEntry[] = [
           const g = Number(f.gap)
           return {
             answer: g < 1e-6
-              ? '逐项差已经掉到 0，两者完全重合 —— 指数族是搜出来的结果，不是事先挑的形式'
+              ? '逐项差已掉到 0，两者完全重合 —— 是搜出来的结果'
               : `还差 ${g}，没有重合`,
             step: t.indexOf(f), evidence: `gap=${g}，约束残差=${f.feasErr}`,
           }
@@ -536,7 +536,7 @@ export const DL_STATS_ENTRIES: CatalogEntry[] = [
         compute: t => {
           const f = last(t)
           return {
-            answer: `${f.freedom} 个 —— 6 个未知数减掉 2 条线性无关的约束，剩下的就是能走的维数`,
+            answer: `${f.freedom} 个 —— 6 个未知数减掉 2 条线性无关的约束，剩下能走的维数`,
             step: t.indexOf(f), evidence: `freedom=${f.freedom}，约束=${f.conText}`,
           }
         },
@@ -553,7 +553,7 @@ export const DL_STATS_ENTRIES: CatalogEntry[] = [
           const f = last(t)
           const drop = +(Number(f.maxEnt) - Number(f.ent)).toFixed(3)
           return {
-            answer: `掉了 ${drop} bit，这一段正是"期望点数=μ"这条约束携带的信息量`,
+            answer: `掉了 ${drop} bit，正是这条约束所携带的信息量`,
             step: t.indexOf(f), evidence: `熵 ${f.ent} / 上限 ${f.maxEnt}`,
           }
         },
@@ -570,7 +570,7 @@ export const DL_STATS_ENTRIES: CatalogEntry[] = [
           const f = last(t)
           const rb = Number(f.randBest), e = Number(f.ent)
           return {
-            answer: `随机撞到的最高熵 ${rb} 低于爬到的 ${e} —— 换一个来源确认爬到的确实是顶`,
+            answer: `随机撞到的最高熵低于爬到的那一个 —— 换个来源确认已到顶`,
             step: t.indexOf(f), evidence: `randBest=${rb}，randN=${f.randN}，爬到 ${e}`,
           }
         },
