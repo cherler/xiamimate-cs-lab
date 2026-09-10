@@ -335,7 +335,7 @@ const CATALOG_CORE: CatalogEntry[] = [
         compute: t => {
           const f = last(t)
           return {
-            answer: '救不回来 —— 元素都相等时挑谁当基准都一样，得换成三路分区，把等于基准的一次全部锁定',
+            answer: '救不回来 —— 全相等时挑谁当基准都一样，得改用三路分区一次锁定等值',
             step: t.length - 1,
             evidence: `实测：全相等数据下三种基准的增长指数分别是 2.03 / 1.88 / 2.03，换成三路分区后是 1.00（当前档 slope=${f.slope}）`,
           }
@@ -421,7 +421,7 @@ const CATALOG_CORE: CatalogEntry[] = [
           const sw = (f.shapeSweep ?? []) as { data: string; rows: { n: number; compares: number }[] }[]
           const bigs = sw.map(x => x.rows[x.rows.length - 1].compares)
           return {
-            answer: '几乎不变 —— 它不看数据长什么样，照着 log n 趟一趟趟扫，代价永远是那么多',
+            answer: '几乎不变 —— 它不看数据长什么样，照着 log n 趟一趟趟扫到底',
             step: t.length - 1,
             evidence: `实测 n=128 四种形状：${bigs.join(' / ')} 次，最费的比最省的只多 ${f.shapeSpread} 倍（快排同样的对照是差 11 倍）`,
           }
@@ -438,7 +438,7 @@ const CATALOG_CORE: CatalogEntry[] = [
         compute: t => {
           const f = last(t)
           return {
-            answer: '合并时那一次比较：相等时先取左段（写成 <=）。左段在原数组里本来就在前面，原序因此保住',
+            answer: '合并时那一次比较：相等时先取左段（写成 <=），左段本来就在前面，原序保住',
             step: t.length - 1,
             evidence: `实测：当前是「${f.tie}」，等值元素的原序${f.stable ? '保住了' : '被打乱了'}；把 <= 改成 < 之后排序结果一模一样，而角标会乱`,
           }
@@ -453,7 +453,7 @@ const CATALOG_CORE: CatalogEntry[] = [
         id: 'space_tradeoff', label: '归并 vs 快排的取舍', kind: 'choice', genre: 'concept',
         ask: '归并排序最坏也是 O(n log n)，而快排最坏是 O(n²)。既然如此，为什么实践中快排反而更常用?',
         compute: t => ({
-          answer: '因为归并要一块 O(n) 的额外缓冲，而快排是原地的、只花 O(log n) 的递归栈，访存局部性也更好',
+          answer: '因为归并要一块 O(n) 的额外缓冲，而快排原地跑、访存局部性也更好',
           step: t.length - 1,
           evidence: `实测缓冲区峰值 ${last(t).totalBuf} 个元素；反过来，数据大到内存装不下时（外部排序）只有归并做得了，因为它只需要顺序读写`,
         }),
@@ -504,7 +504,7 @@ const CATALOG_CORE: CatalogEntry[] = [
         id: 'mod_not_enough', label: '取模也救不了中间量溢出', kind: 'choice', genre: 'concept',
         ask: '把快速幂改成"每一步都对 1e9+7 取模"。这样结果就一定对了吗?',
         compute: t => ({
-          answer: '不一定 —— 取模治的是结果太大，治不了中间量太大：两个 10⁹ 量级的数相乘就是 10¹⁸，在取模之前那一次乘法已经丢精度了',
+          answer: '不一定 —— 取模治的是结果太大，治不了中间量太大：两个 10⁹ 一乘就是 10¹⁸',
           step: t.length - 1,
           evidence: '实测：模乘那一档 n=45 还对（中间量 1.85e15 < 2⁵³），n=100 就错了（中间量 1.89e17）；换成 BigInt 中间量之后四个 n 全部逐位吻合',
         }),
@@ -521,7 +521,7 @@ const CATALOG_CORE: CatalogEntry[] = [
         id: 'matrix_also_overflows', label: '换了运算，溢出的坑还在', kind: 'choice', genre: 'concept',
         ask: '把快速幂里的"数的乘法"换成 2×2 矩阵乘法来求斐波那契。这样就绕开溢出问题了吗?',
         compute: t => ({
-          answer: '没绕开 —— 矩阵每一项是 x·y + x·y，两个 10⁹ 量级的数一乘还是 10¹⁸，撞的是同一个上限',
+          answer: '没绕开 —— 矩阵每一项是 x·y + x·y，两个 10⁹ 一乘还是 10¹⁸',
           step: t.length - 1,
           evidence: '实测：矩阵档内部若用 Number 写，F(100) 会算成 687995181，而真值是 687995182，差 1 且不报错；改走 BigInt 中间量后四个 n 全部逐位吻合',
         }),
@@ -567,7 +567,7 @@ const CATALOG_CORE: CatalogEntry[] = [
         compute: t => {
           const f = last(t)
           return {
-            answer: '它根本没去枚举那些一看就不可能的分支 —— 不是把同样的组合过得更快，而是那些组合压根没被生成',
+            answer: '它根本没去枚举那些一看就不可能的分支 —— 不是把同样的组合过得更快',
             step: t.length - 1,
             evidence: `实测 ${f.n}×${f.n} 找全部解：每步检查访问 ${f.totalNodes} 个节点，放满再检查要 ${f.bruteNodes} 个，而两边得出的解一模一样`,
           }
@@ -582,7 +582,7 @@ const CATALOG_CORE: CatalogEntry[] = [
         id: 'no_solution', label: '"没找到"和"没找"是两件事', kind: 'choice', genre: 'concept',
         ask: '把棋盘调成 3×3，回溯跑完之后一个解都没有。这个结果说明了什么?',
         compute: t => ({
-          answer: '说明 3×3 上确实不存在合法摆法 —— 这是把整棵搜索树都走完之后得出的结论，本身就是个答案',
+          answer: '说明 3×3 上确实不存在合法摆法 —— 这是把整棵搜索树都走完之后得出的结论',
           step: t.length - 1,
           evidence: '实测：3×3 访问 5 个节点、回溯 5 次后穷尽了所有分支，解的个数为 0；N=2 同理',
         }),
@@ -630,7 +630,7 @@ const CATALOG_CORE: CatalogEntry[] = [
           const naive = sc.find(x => x.unionKind.startsWith('朴素') && x.compress === '不压缩')!
           const good = sc.find(x => x.compress !== '不压缩')!
           return {
-            answer: '不成立 —— 不上优化时树会长成一条链，最坏情况是 O(n²)，那句话的前提是两个优化至少上一个',
+            answer: '不成立 —— 不上优化时树可能长成一条链，最坏情况会到 O(n²)',
             step: t.length - 1,
             evidence: `实测 n=256：朴素+不压缩 ${naive.rows[naive.rows.length - 1].steps} 步（指数 ${naive.slope}），打开压缩后 ${good.rows[good.rows.length - 1].steps} 步（指数 ${good.slope}）`,
           }
@@ -645,7 +645,7 @@ const CATALOG_CORE: CatalogEntry[] = [
         id: 'two_opts', label: '两个优化治的不是同一件事', kind: 'choice', genre: 'concept',
         ask: '按秩合并和路径压缩，都是为了不让 find 爬太久。它们的做法有什么根本区别?',
         compute: t => ({
-          answer: '按秩合并是在合并时**从源头**不让树长高，路径压缩是 find 之后**事后**把爬过的那条链拍平',
+          answer: '按秩合并在合并时**从源头**不让树长高，路径压缩是**事后**把链拍平',
           step: t.length - 1,
           evidence: '看规模表「树深」那一列：按秩合并让它从一开始就没高过（两两归并序列上正好是 log₂n），而压缩是把它一次拍到 1',
         }),
@@ -729,7 +729,7 @@ const CATALOG_CORE: CatalogEntry[] = [
         compute: t => {
           const f = last(t)
           return {
-            answer: '说明不了 —— 它可能只是把每个训练点单独圈了一个叶子，留出集上的分数才算数',
+            answer: '说明不了 —— 它可能只是把每个训练点各圈了一个叶子，什么也没学到',
             step: t.length - 1,
             evidence: `实测：训练 ${((f.trainAcc as number) * 100).toFixed(1)}%，而留出只有 ${((f.testAcc as number) * 100).toFixed(1)}%，共 ${f.maxLeaves} 个叶子`,
           }
@@ -744,7 +744,7 @@ const CATALOG_CORE: CatalogEntry[] = [
         id: 'dt_axis', label: '轴对齐切不出斜边界', kind: 'choice', genre: 'concept',
         ask: '真边界是一条 45° 斜线（y = x）时，加深决策树的深度能不能最终把留出准确率推到 100%?',
         compute: t => ({
-          answer: '不能 —— 每一刀都必须平行于坐标轴，阶梯的每一级斜角上都留着一小块判错的三角',
+          answer: '不能 —— 每一刀都必须平行于坐标轴，阶梯每一级都留着判错的三角',
           step: t.length - 1,
           evidence: '实测：对角档训练准确率到 100%，而留出停在 92.5%（基尼）/ 94.3%（信息熵）不再上升',
         }),
