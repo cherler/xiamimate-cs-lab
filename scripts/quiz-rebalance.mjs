@@ -89,21 +89,46 @@ for (const r of rewrites) {
      * 带引号的整串只匹配**字面量本身** —— 引用它的那段长话不会带上闭合引号。
      */
     const forms = [`'${from}'`, `"${from}"`, from]
-    let hitForm = '', hitFile = ''
+    let hitForm = '', hitFile = '', scope = null
     for (const form of forms) {
       const files = SRC.filter(p => text.get(p).split(form).length - 1 === 1)
       const anywhere = SRC.filter(p => text.get(p).includes(form))
       if (files.length === 1 && anywhere.length === 1) { hitForm = form; hitFile = files[0]; break }
     }
+    /**
+     * 全局唯一命不中时的兜底：**把范围缩到这条 fact 自己的那一段**。
+     *
+     * 打回里最常见的一条是「原文在 catalog.ts 里不是唯一命中，不敢改」，
+     * 而卡住的几乎总是 `'两者完全一样'`、`'随机选一条'` 这种**被十几条 fact 共用的短桩**。
+     * 全局看它当然不唯一；但在 `id: 'lfu_vs_lru'` 到下一条 fact 之间，它只出现一次。
+     *
+     * 「不敢改」这个默认是对的 —— 宁可少改一条也不能改错一处。所以兜底不是放松它，
+     * 是**换一个更小、更有据的锚点**：先按 fact id 圈出区间，再在区间内要求唯一。
+     * 圈不出区间、或区间内仍不唯一，照旧打回。
+     */
+    if (!hitForm) {
+      for (const p of SRC) {
+        const t = text.get(p)
+        const at = t.indexOf(`id: '${r.fid}'`) >= 0 ? t.indexOf(`id: '${r.fid}'`) : t.indexOf(`'${r.fid}',`)
+        if (at < 0) continue
+        //  区间 = 这条 fact 的 id 往后，到下一条 fact 的 id 为止
+        const rest = t.slice(at + 1)
+        const nxt = rest.search(/id: '[a-z0-9_]+'|\n\s*cf\('/)
+        const end = nxt < 0 ? t.length : at + 1 + nxt
+        const seg = t.slice(at, end)
+        const form = forms.find(f => seg.split(f).length - 1 === 1)
+        if (form) { hitForm = form; hitFile = p; scope = [at, end]; break }
+      }
+    }
     if (!hitForm) {
       const anywhere = SRC.filter(p => text.get(p).includes(from))
       bad(anywhere.length === 0
         ? `源码里找不到原文：「${from.slice(0, 24)}…」`
-        : `原文在 ${anywhere.join('、')} 里不是唯一命中，不敢改：「${from.slice(0, 24)}…」`)
+        : `原文在 ${anywhere.join('、')} 里不是唯一命中、缩到这条 fact 自己那段也不唯一，不敢改：「${from.slice(0, 24)}…」`)
       ok = false; break
     }
     edits.push([hitFile, hitForm, hitForm.startsWith("'") || hitForm.startsWith('"')
-      ? hitForm[0] + to + hitForm[0] : to])
+      ? hitForm[0] + to + hitForm[0] : to, scope])
   }
   if (!ok) continue
   pass++
@@ -116,7 +141,14 @@ for (const f of fail) console.log(`  ❌ ${f}`)
 if (!APPLY) { console.log(`\n（只体检，没写。加 --apply 才写回源码。）`); process.exit(fail.length ? 1 : 0) }
 
 let n = 0
-for (const { edits } of ready) for (const [p, from, to] of edits) { text.set(p, text.get(p).replace(from, to)); n++ }
+for (const { edits } of ready) for (const [p, from, to, scope] of edits) {
+  const t = text.get(p)
+  //  有 scope 的只在那一段里换（全局第一处可能是别条 fact 的同名短桩）
+  text.set(p, scope
+    ? t.slice(0, scope[0]) + t.slice(scope[0], scope[1]).replace(from, to) + t.slice(scope[1])
+    : t.replace(from, to))
+  n++
+}
 for (const [p, s] of text) writeFileSync(p, s)
 console.log(`\n已写回 ${ready.length} 条 fact、${n} 处字符串。`)
 process.exit(fail.length ? 1 : 0)
