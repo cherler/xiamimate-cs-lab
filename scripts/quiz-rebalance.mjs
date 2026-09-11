@@ -115,6 +115,29 @@ function shapeLeak(answer, wrong) {
   return out
 }
 
+/**
+ * 圈出一条 fact 在源码里的那一段。
+ *
+ * ⚠️ **两种写法都要认。** 主表是 `{ id: 'xx', … }` 的对象字面量，
+ * 而 concepts.ts / concepts-fill.ts 是 `cf('xx', label, ask, answer, wrong[], …)`
+ * 这种紧凑调用 —— 里面**没有 `id:` 这个字样**。
+ * 只认前一种的话，后者会被判成"找不到自己那一段"，于是当成运行时生成的一律拒改 ——
+ * 而那三百多条恰恰是最需要改的。少认一种写法就是少覆盖一批，
+ * 跟今晚 mkLib 那次是同一种病。
+ */
+function factBlock(fid, srcMap) {
+  let out = ''
+  for (const [p, t] of srcMap) {
+    let at = t.indexOf(`id: '${fid}'`)
+    if (at < 0) at = t.indexOf(`cf('${fid}'`)
+    if (at < 0) continue
+    const rest = t.slice(at + 1)
+    const nxt = rest.search(/id: '[a-z0-9_-]+'|cf\('[a-z0-9_-]+'/)
+    out += t.slice(at, nxt < 0 ? t.length : at + 1 + nxt) + '\n'
+  }
+  return out
+}
+
 let pass = 0
 const fail = []
 const ready = []
@@ -157,6 +180,27 @@ for (const r of rewrites) {
   //  外形配平：答案的标点 / 技术符号都不许是唯一最多
   const shape = shapeLeak(r.answer, wrong)
   if (shape.length) { bad(`${shape.join('；')} —— 干扰项别写成白话，要说同一话题下的另一种机制`); continue }
+  /**
+   * **干扰项是运行时生成的，就别碰。**（这条是拿一次真事故换来的。）
+   *
+   * 库层「这个库是干什么的」那一问，干扰项不写在源码里 —— catalog.ts 末尾有个生成器，
+   * 运行时从**别的库的答案**里挑三条当干扰项。于是让这个脚本去替换那些"原文"，
+   * 它按全局唯一命中一找，找到的是**别的实验自己的答案**，一替换就把
+   * langgraph / matplotlib / sklearn 的答案改成了 pandas 的干扰项。
+   * 三条实验的答案当场变成风马牛不相及的东西，而闸口全绿、写回也"成功"了。
+   *
+   * 所以先验一道：每条原干扰项必须出现在**这条 fact 自己那一段**里。
+   * 找不到就说明它是别处生成的 —— 拒绝，别猜。
+   */
+  if (r.wrong && o.wrong.some((w, i) => w !== wrong[i])) {
+    const blocks = factBlock(r.fid, SRC.map(p => [p, text.get(p)]))
+    const stray = o.wrong.filter((w, i) => w !== wrong[i] && !blocks.includes(w))
+    if (stray.length) {
+      bad(`干扰项不写在这条 fact 自己那一段里（多半是运行时生成的），改源码会误伤别的实验：`
+        + `「${stray[0].slice(0, 20)}…」`)
+      continue
+    }
+  }
   //  写回前先确认每条原文在源码里唯一命中
   const edits = []
   let ok = true

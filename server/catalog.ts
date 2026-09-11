@@ -1110,8 +1110,8 @@ const CATALOG_CORE: CatalogEntry[] = [
       {
         id: 'cc_pipeline', label: '上下文窗口爆了的标准处理流水线',
         ask: 'Agent 长会话把上下文窗口撑爆了，工程上标准的处理流水线是怎样的?', kind: 'choice',
-        compute: t => { const f = t as unknown as { stage: string; before: number; running: number }[]; const r = f.find(x => x.stage === 'rebuild'); return ({ answer: '量 token→过阈值→留头尾、压中间', step: f.findIndex(x => x.stage === 'rebuild'), evidence: r ? `本例 ${r.before}→${r.running} tokens` : '压回阈值下' }) },
-        distractors: () => ['直接从最新消息往前删，删到不超为止', '把整段历史丢给另一个模型重写成一句话', '换一个上下文窗口更大的模型就行，不用压缩'],
+        compute: t => { const f = t as unknown as { stage: string; before: number; running: number }[]; const r = f.find(x => x.stage === 'rebuild'); return ({ answer: '量 token→过阈值→留头尾压中间', step: f.findIndex(x => x.stage === 'rebuild'), evidence: r ? `本例 ${r.before}→${r.running} tokens` : '压回阈值下' }) },
+        distractors: () => ['量 token→过阈值→从最新往前删', '量字数→到上限→整段丢给模型重写', '不量→换更大窗口的模型→不压缩'],
       },
       {
         id: 'cc_trigger', label: '压缩的触发阈值怎么算',
@@ -1135,7 +1135,7 @@ const CATALOG_CORE: CatalogEntry[] = [
         id: 'cc_cjk_token', label: '为什么 4字/token 估算对中文有坑',
         ask: '很多框架用"~4 字/token"快速估 token，这对中文场景有什么坑?', kind: 'choice',
         compute: t => { const f = t as unknown as { stage: string; meter?: { est: number; real: number } }[]; const m = f.find(x => x.meter)?.meter; return ({ answer: `低估中文：1 字≈1 token，触发晚`, step: f.findIndex(x => x.meter), evidence: m ? `本例一句中文估 ${m.est}、实际约 ${m.real}，低估 ${(m.real / m.est).toFixed(1)} 倍` : '中文被严重低估' }) },
-        distractors: () => ['高估中文，把压缩触发得比实际需要早了一截', '对中文刚好准确，不必再做任何额外的换算', '只影响英文那一侧，中文场景完全不受影响'],
+        distractors: () => ['高估中文：1 字≈4 token，触发早', '中文英文都准：4 字≈1 token 通用', '只影响英文：中文按 1 字 1 token'],
       },
     ],
   },
@@ -1187,7 +1187,7 @@ const CATALOG_CORE: CatalogEntry[] = [
         id: 'pg_precedence', label: 'allow/ask/deny 规则的优先级',
         ask: '一条命令同时匹配到 allow 和 deny 规则，听谁的?', kind: 'choice',
         compute: () => ({ answer: 'deny→ask→allow，首次匹配', step: 3, evidence: '本例 rm -rf /tmp/* 第一条 deny 就拦下' }),
-        distractors: () => ['allow 优先，宽松的那条规则说了算', '按规则写的先后来，后写的覆盖先写的', '随机挑一条命中的规则，结果不确定'],
+        distractors: () => ['allow→ask→deny，首次匹配', 'deny→allow→ask，末次匹配', 'ask→deny→allow，全部匹配取交'],
       },
       {
         id: 'pg_bypass_net', label: '放行模式还能被拦住联网吗',
@@ -1397,7 +1397,7 @@ const CATALOG_CORE: CatalogEntry[] = [
         id: 'pl_todo_sm', label: 'Todo 状态机的关键不变量',
         ask: 'Agent 的 todo 列表作为状态机，有什么关键约束?', kind: 'choice',
         compute: () => ({ answer: '三态流转，且恰好一个 in_progress', step: 3, evidence: '本例 t1 done、t2 active，同时只一个进行中' }),
-        distractors: () => ['可以同时很多个进行中、并行往前推进', 'todo 只能增不能改状态，一旦写下就不再动它', '完成的要立刻从列表里删掉、不留痕'],
+        distractors: () => ['三态流转，可多个 in_progress 并行', '两态流转，pending 直接跳 completed', '四态流转，多一个 blocked 可无限停'],
       },
       {
         id: 'pl_recite', label: 'todo 每轮重贴回近端图什么',
@@ -1484,7 +1484,7 @@ const CATALOG_CORE: CatalogEntry[] = [
         id: 'complete_flow', label: 'Trie 补全的三步',
         ask: '输入前缀「car」后，Trie 自动补全是怎么给出候选的?', kind: 'choice',
         compute: () => ({ answer: '前缀节点→DFS 收集→按热度取前 K', step: 7, evidence: '收集到 car(3)/card(2)/care(4)，按频率排 care(4)>car(3)>card(2)' }),
-        distractors: () => ['直接返回前缀节点上挂着的那一个词就可以了', '把整棵树里的所有词全都原样返回回去', '按字母序返回结果、完全不按热度排序'],
+        distractors: () => ['根节点→BFS 逐层→按字母序取前 K', '前缀节点→只取该节点挂的那一个词', '全表扫描→逐个前缀比对→原序返回'],
       },
     ],
   },
@@ -1510,7 +1510,7 @@ const CATALOG_CORE: CatalogEntry[] = [
     facts: [
       { id: 'pt_what', label: 'PyTorch 是什么', ask: 'PyTorch 是什么?为什么大模型都用它?', kind: 'choice', compute: () => ({ answer: '深度学习事实标准框架(BSD-3):张量(GPU 加速)+自动求导(autograd)+动态计算图+nn 模块。手推的前向传播/注意力写成代码就是几行 PyTorch;大模型训练/推理栈(Transformers/vLLM/DeepSpeed)全建在它上', step: 0, evidence: '张量+自动求导+动态图、大模型代码底座' }), distractors: () => ['一个推理服务引擎', '一个向量数据库', '一个操作系统'] },
       { id: 'pt_autograd', label: 'autograd 是什么', ask: 'PyTorch 的自动求导(autograd)在做什么?', kind: 'choice', compute: () => ({ answer: '动态记录前向计算构成的计算图,反向传播时自动按链式法则算出每个参数的梯度——你只写前向,梯度自动来。这是训练神经网络的核心便利', step: 0, evidence: '记录计算图、反向自动求梯度' }), distractors: () => ['自动把模型的权重下载到本地', '自动把权重量化成低精度来存', '自动把张量分到多张卡上去算'] },
-      { id: 'pt_pos', label: 'PyTorch 的定位', ask: 'PyTorch 和 vLLM/DeepSpeed 是什么关系?', kind: 'choice', compute: () => ({ answer: 'PyTorch 是通用底座(写模型/训练/推理的语言);vLLM 是建在它上的高吞吐推理服务、DeepSpeed 是建在它上的训练优化。要开箱的推理服务/大规模并行训练,要在 PyTorch 之上再叠专用库', step: 0, evidence: '通用底座、vLLM/DeepSpeed 建其上' }), distractors: () => ['是 vLLM 的替代品，两者二选一即可', '只能做推理，要训练得换别的框架', '只能跑在 CPU 上，要用 GPU 得另外装库'] },
+      { id: 'pt_pos', label: 'PyTorch 的定位', ask: 'PyTorch 和 vLLM/DeepSpeed 是什么关系?', kind: 'choice', compute: () => ({ answer: 'PyTorch 是通用底座(写模型/训练/推理的语言);vLLM 是建在它上的高吞吐推理服务、DeepSpeed 是建在它上的训练优化。要开箱的推理服务/大规模并行训练,要在 PyTorch 之上再叠专用库', step: 0, evidence: '通用底座、vLLM/DeepSpeed 建其上' }), distractors: () => ['是 vLLM/DeepSpeed 的替代品', '建在 vLLM/DeepSpeed 之上的封装', '和 vLLM/DeepSpeed 平行、不依赖'] },
     ],
   },
   {
@@ -1541,7 +1541,7 @@ const CATALOG_CORE: CatalogEntry[] = [
     id: 'tensorrtllm', title: 'TensorRT-LLM · NVIDIA 极致推理', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'tensorrtllm' }, entities: [], streams: [] },
     facts: [
       { id: 'tr_what', label: 'TensorRT-LLM 是什么', ask: 'TensorRT-LLM 是什么?怎么做到快?', kind: 'choice', compute: () => ({ answer: 'NVIDIA 的 LLM 推理库(Apache-2.0):用 Python API 定义模型、编译成 TensorRT 引擎,靠算子融合、量化(INT8/FP8/NVFP4)、内核自动调优在 NVIDIA GPU 上做极致优化,通常吞吐/延迟最优(比 vLLM 高约 10-20%)', step: 0, evidence: '编译成 TensorRT 引擎、算子融合+量化' }), distractors: () => ['在 CPU 上多线程并行、不依赖 GPU', '把权重放在显存之外;靠 NVLink 换入换出来提速', '解释执行不编译;靠 PyTorch 动态图保持跨厂商通用'] },
-      { id: 'tr_cost', label: 'TensorRT-LLM 的代价', ask: 'TensorRT-LLM 追求极致性能的代价是什么?', kind: 'choice', compute: () => ({ answer: '要把模型编译成引擎(上手复杂、换模型/配置要重编)、强绑 NVIDIA 硬件(换硬件重来)、灵活性低于 PyTorch 原生。所以很多人用 vLLM——85% 的性能换来低得多的运维复杂度', step: 0, evidence: '要编译、绑 NVIDIA 硬件、灵活性低' }), distractors: () => ['完全没有代价、又快又通用还免去了编译这步', '只能跑很小的模型、大一点的就装不下了', '必须联网校验授权、一断网就跑不起来了'] },
+      { id: 'tr_cost', label: 'TensorRT-LLM 的代价', ask: 'TensorRT-LLM 追求极致性能的代价是什么?', kind: 'choice', compute: () => ({ answer: '要把模型编译成引擎(上手复杂、换模型/配置要重编)、强绑 NVIDIA 硬件(换硬件重来)、灵活性低于 PyTorch 原生。所以很多人用 vLLM——85% 的性能换来低得多的运维复杂度', step: 0, evidence: '要编译、绑 NVIDIA 硬件、灵活性低' }), distractors: () => ['要编译、绑 AMD ROCm、精度会掉', '免编译、绑 NVIDIA 驱动、吞吐偏低', '要编译、跨厂商通用、但显存翻倍'] },
       { id: 'tr_cover', label: 'TensorRT-LLM 用到的技术', ask: 'TensorRT-LLM 内部用到实验室哪些概念?', kind: 'choice', compute: () => ({ answer: '量化(FP8/NVFP4)、张量并行/流水并行(多卡切模型)、in-flight(连续)批处理、FlashAttention 类注意力核、编译式推理引擎——都是「大模型推理」组里的实验', step: 0, evidence: '量化/张量并行/推理引擎/FlashAttention' }), distractors: () => ['卷积/池化/BatchNorm/残差连接/数据增强', '点云配准/ICP/SLAM/回环检测/位姿图优化', 'RRT/A*/势场法/Dubins 曲线/D* Lite'] },
     ],
   },
@@ -1573,7 +1573,7 @@ const CATALOG_CORE: CatalogEntry[] = [
     id: 'deepspeed', title: 'DeepSpeed · 训练优化(ZeRO)', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'deepspeed' }, entities: [], streams: [] },
     facts: [
       { id: 'ds_zero', label: 'ZeRO 是什么', ask: 'DeepSpeed 的招牌 ZeRO 解决什么?', kind: 'choice', compute: () => ({ answer: '零冗余优化器:数据并行里每张卡本来都存一份完整的优化器状态/梯度/参数(冗余),ZeRO 把它们分片到多卡(ZeRO-1/2/3),消除冗余显存,让单卡放不下的大模型也能训。是"平民训大模型"的关键', step: 0, evidence: '分片优化器状态/梯度/参数、消冗余显存' }), distractors: () => ['一种新的注意力实现、既省显存又提速', '把模型权重量化到 4-bit 之后再存', '一种采样策略、让生成的结果更稳定'] },
-      { id: 'ds_offload', label: 'ZeRO-Offload', ask: 'DeepSpeed 的 Offload/Infinity 是什么?', kind: 'choice', compute: () => ({ answer: '把优化器状态/参数等卸载到 CPU 内存甚至 NVMe 硬盘,让单卡也能训超大模型(用速度换容量);对应实验里的 KV/状态卸载思想。代价是带宽瓶颈、速度下降', step: 0, evidence: '卸载到 CPU/NVMe、以速度换容量' }), distractors: () => ['把模型上传到云端算完之后再传回本地来用', '直接删掉一半的参数、模型小一半', '每次只训练其中一层、各层轮流来'] },
+      { id: 'ds_offload', label: 'ZeRO-Offload', ask: 'DeepSpeed 的 Offload/Infinity 是什么?', kind: 'choice', compute: () => ({ answer: '把优化器状态/参数等卸载到 CPU 内存甚至 NVMe 硬盘,让单卡也能训超大模型(用速度换容量);对应实验里的 KV/状态卸载思想。代价是带宽瓶颈、速度下降', step: 0, evidence: '卸载到 CPU/NVMe、以速度换容量' }), distractors: () => ['卸载到另一张 GPU、以带宽换显存', '把 FP32 降成 INT4、以精度换容量', '把梯度丢掉不存、以收敛换显存'] },
       { id: 'ds_cover', label: 'DeepSpeed 对应的实验', ask: 'DeepSpeed 用到实验室哪些概念?', kind: 'choice', compute: () => ({ answer: 'MoE(混合专家)训练、KV/状态卸载、张量并行、集合通信(all-reduce/all-gather)——都是「大模型推理/算法」里的实验。它和 Megatron 结合(Megatron-DeepSpeed)训超大模型', step: 0, evidence: 'MoE/KV 卸载/张量并行/集合通信' }), distractors: () => ['ICP/点云配准/SLAM/回环检测', 'Dubins 曲线/RRT/A*/势场法', 'FOC 电流环/PID/阻抗控制'] },
     ],
   },
@@ -1581,7 +1581,7 @@ const CATALOG_CORE: CatalogEntry[] = [
     id: 'peft', title: 'PEFT(LoRA) · 参数高效微调', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'peft' }, entities: [], streams: [] },
     facts: [
       { id: 'pf_lora', label: 'LoRA 是什么', ask: 'LoRA(PEFT)是怎么做到高效微调的?', kind: 'choice', compute: () => ({ answer: '冻结大模型主体,只在权重旁边加一对低秩矩阵 A·B、只训这两个小矩阵(原权重不动)。要训的参数量骤降到千分之几,显存/成本大降,效果却接近全量微调', step: 0, evidence: '冻结主体、只训低秩 A·B、参数骤降' }), distractors: () => ['把整个模型的全部参数重新训一遍', '把模型权重量化成 1-bit 之后存', '换一个参数量更大的基座模型来训'] },
-      { id: 'pf_qlora', label: 'QLoRA 是什么', ask: 'QLoRA 为什么能在消费级单卡微调大模型?', kind: 'choice', compute: () => ({ answer: '把基座模型量化成 4-bit(省显存)+ 在上面挂 LoRA(只训低秩小矩阵)。量化压住基座显存 + LoRA 压住可训参数,双管齐下,消费级单卡就能微调几十亿参数模型', step: 0, evidence: '4-bit 量化基座 + LoRA、消费级卡可微调' }), distractors: () => ['把训练整个搬到云端的 GPU 集群上面去跑完再拿回', '只微调最后一层、别的层全部冻住不动', '把数据集裁小、少喂一些训练样本给它'] },
+      { id: 'pf_qlora', label: 'QLoRA 是什么', ask: 'QLoRA 为什么能在消费级单卡微调大模型?', kind: 'choice', compute: () => ({ answer: '把基座模型量化成 4-bit(省显存)+ 在上面挂 LoRA(只训低秩小矩阵)。量化压住基座显存 + LoRA 压住可训参数,双管齐下,消费级单卡就能微调几十亿参数模型', step: 0, evidence: '4-bit 量化基座 + LoRA、消费级卡可微调' }), distractors: () => ['16-bit 基座 + 全量微调、单卡也够用', '4-bit 量化梯度 + 全参更新、显存减半', '8-bit 基座 + Adapter 串联、只训最后层'] },
       { id: 'pf_use', label: 'PEFT 的用途与局限', ask: 'PEFT/LoRA 适合什么?有什么局限?', kind: 'choice', compute: () => ({ answer: '适合领域/任务微调、一个基座挂多套 LoRA 按任务切换、低成本对齐(配 TRL);局限是冻结主体、极端任务不如全量微调,且仍依赖一个好的预训练基座、秩等超参要调', step: 0, evidence: '领域微调/多适配器切换;不如全量、依赖好基座' }), distractors: () => ['能从零训出一个大模型;而且完全不挑基座的好坏', '不需要任何基座;直接从随机权重起训', '效果一定超过全量微调;没有任何局限'] },
     ],
   },
@@ -1614,7 +1614,7 @@ const CATALOG_CORE: CatalogEntry[] = [
     facts: [
       { id: 'pd_what', label: 'pandas 是什么', ask: 'pandas 是干什么的?核心数据结构?', kind: 'choice', compute: () => ({ answer: '结构化数据处理的行业标准:核心是 DataFrame(带行列标签的二维表),做读写(CSV/Parquet/SQL)、清洗、缺失值、分组聚合(groupby)、合并(merge)、时间序列。是 ML 前"数据整理"(约 80% 的活)的主力', step: 0, evidence: 'DataFrame、清洗/groupby/merge' }), distractors: () => ['软件模拟整台计算机、启动完整 OS、配 KVM', '几千行能真跑的教学类 Unix 内核', '刚体动力学算法库(RNEA/ABA/CRBA)+解析导数'] },
       { id: 'pd_role', label: 'pandas 的角色', ask: 'pandas 在机器学习流程里处于什么位置?', kind: 'choice', compute: () => ({ answer: '在"原始数据"和"能喂模型的特征"之间的桥:清洗、合并、聚合出干净的特征表,再交给 scikit-learn/XGBoost 建模。做 ML 大部分时间其实花在 pandas 的数据整理上', step: 0, evidence: '原始数据→特征表的桥、数据整理主力' }), distractors: () => ['负责训练模型、跑梯度下降的那一个步骤', '负责部署推理、对外提供接口服务', '负责画图表、把最终结果可视化出来'] },
-      { id: 'pd_limit', label: 'pandas 的局限', ask: 'pandas 处理大数据有什么局限?', kind: 'choice', compute: () => ({ answer: '单机内存内——数据大过内存就吃力;大表/链式操作也容易慢或吃内存。更大/更快看 Polars、Dask、Spark。它也不做建模(那是 scikit-learn)', step: 0, evidence: '单机内存内、大数据看 Polars/Dask' }), distractors: () => ['不能读 CSV 文件，只认自家的那种二进制格式', '只能处理数字列，处理不了文本列', '必须联网，一断网就没法做任何运算'] },
+      { id: 'pd_limit', label: 'pandas 的局限', ask: 'pandas 处理大数据有什么局限?', kind: 'choice', compute: () => ({ answer: '单机内存内——数据大过内存就吃力;大表/链式操作也容易慢或吃内存。更大/更快看 Polars、Dask、Spark。它也不做建模(那是 scikit-learn)', step: 0, evidence: '单机内存内、大数据看 Polars/Dask' }), distractors: () => ['只支持 CSV/JSON，读不了 Parquet', '只做数值列，object 列一律跳过', '必须连 MySQL 取数，不能读本地'] },
     ],
   },
   {
@@ -1637,7 +1637,7 @@ const CATALOG_CORE: CatalogEntry[] = [
     id: 'sklearn', title: 'scikit-learn · 经典机器学习', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'sklearn' }, entities: [], streams: [] },
     facts: [
       { id: 'sk_what', label: 'scikit-learn 是什么', ask: 'scikit-learn 是干什么的?', kind: 'choice', compute: () => ({ answer: '经典(非深度)机器学习的事实标准库:把几十种算法(KNN/K-Means/PCA/SVM/决策树/逻辑·线性回归/随机森林/GBDT)统一成 fit/predict/transform API,配特征处理、交叉验证、网格搜索、Pipeline。结构化数据建模/快速基线/教学首选', step: 0, evidence: '经典 ML 事实标准、统一 API+Pipeline' }), distractors: () => ['一个深度学习框架', '一个数据可视化库', '一个推理引擎'] },
-      { id: 'sk_api', label: '统一 API 与 Pipeline', ask: 'scikit-learn 的 fit/predict 统一 API 和 Pipeline 有什么好处?', kind: 'choice', compute: () => ({ answer: '所有模型都是 fit(训练)/predict(预测)/transform(变换)同一套,换算法只改一行;Pipeline 把预处理+模型串成一条流水线,交叉验证时能防"数据泄露"(预处理只在训练折上 fit)。规范又不易出错', step: 0, evidence: '换算法只改一行、Pipeline 防泄露' }), distractors: () => ['能自动收集数据、连爬虫都不用自己动手写了', '能自动部署到生产、自带服务与监控', '能自动画图、把结果直接可视化出来'] },
+      { id: 'sk_api', label: '统一 API 与 Pipeline', ask: 'scikit-learn 的 fit/predict 统一 API 和 Pipeline 有什么好处?', kind: 'choice', compute: () => ({ answer: '所有模型都是 fit(训练)/predict(预测)/transform(变换)同一套,换算法只改一行;Pipeline 把预处理+模型串成一条流水线,交叉验证时能防"数据泄露"(预处理只在训练折上 fit)。规范又不易出错', step: 0, evidence: '换算法只改一行、Pipeline 防泄露' }), distractors: () => ['自动调参、GridSearch 免写循环', '自动部署、Serving 自带监控面板', '自动画图、Plotting 一行出结果'] },
       { id: 'sk_cover', label: 'scikit-learn 对应的实验', ask: 'scikit-learn 的算法对应实验室哪些实验?', kind: 'choice', compute: () => ({ answer: 'KNN/SVM/逻辑回归/线性回归/决策树(分类回归)、K-Means/PCA(聚类降维)、GBDT(集成)——正是「机器学习算法」组那批实验。库是现成算法、实验讲原理', step: 0, evidence: 'KNN/SVM/回归/决策树/K-Means/PCA' }), distractors: () => ['卷积/池化/RNN/注意力/BatchNorm/残差', 'ICP/SLAM/点云配准/回环检测/位姿图', 'RRT/A*/Dubins/势场法/D* Lite/PRM'] },
     ],
   },
@@ -1653,7 +1653,7 @@ const CATALOG_CORE: CatalogEntry[] = [
     id: 'jax', title: 'JAX · 可微的 NumPy', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'jax' }, entities: [], streams: [] },
     facts: [
       { id: 'jx_what', label: 'JAX 是什么', ask: 'JAX 是什么?为什么叫"可微的 NumPy"?', kind: 'choice', compute: () => ({ answer: 'Google 的高性能数值计算库:NumPy 接口 + 自动求导(grad)+ XLA 编译(jit)+ 向量化(vmap)+ GPU/TPU。用几乎和 NumPy 一样的代码,但能自动求导、能编译加速——所以叫"可微的 NumPy"', step: 0, evidence: 'NumPy 接口+grad 自动求导+jit 编译+GPU/TPU' }), distractors: () => ['一个数据库', '一个可视化库', '一个推理服务'] },
-      { id: 'jx_transform', label: 'grad/jit/vmap', ask: 'JAX 的 grad、jit、vmap 分别做什么?', kind: 'choice', compute: () => ({ answer: 'grad:对任意函数自动求导(还能高阶);jit:用 XLA 把函数编译成融合内核、GPU/TPU 提速;vmap:自动把函数向量化成批处理。它们是可组合的函数变换,函数式风格', step: 0, evidence: 'grad 求导/jit 编译/vmap 批处理' }), distractors: () => ['分别是三个预训练好的模型、下载下来就能开箱即用', '分别是三种数据库、各存一类数据', '分别是三个可视化函数、用来画图'] },
+      { id: 'jx_transform', label: 'grad/jit/vmap', ask: 'JAX 的 grad、jit、vmap 分别做什么?', kind: 'choice', compute: () => ({ answer: 'grad:对任意函数自动求导(还能高阶);jit:用 XLA 把函数编译成融合内核、GPU/TPU 提速;vmap:自动把函数向量化成批处理。它们是可组合的函数变换,函数式风格', step: 0, evidence: 'grad 求导/jit 编译/vmap 批处理' }), distractors: () => ['grad 编译/jit 批处理/vmap 求导', 'grad 剪枝/jit 量化/vmap 蒸馏', 'grad 分片/jit 混精/vmap 重算'] },
       { id: 'jx_cover', label: 'JAX 对应的实验/用途', ask: 'JAX 对应实验室哪些概念?典型用在哪?', kind: 'choice', compute: () => ({ answer: '梯度下降、反向传播、矩阵运算——写 JAX 就是"可微的 NumPy"。前沿 DL/研究(Flax)、大规模 RL 仿真(Brax、MuJoCo MJX)、科学计算、TPU 训练大量用它', step: 0, evidence: '梯度下降/反向传播/矩阵;前沿 DL/RL 仿真' }), distractors: () => ['ICP/SLAM/点云配准;主要用在机器人', 'B+ 树/LSM/WAL;主要用在数据库引擎里面', 'RSA/AES/哈希;主要用在密码学工程'] },
     ],
   },
@@ -1734,7 +1734,7 @@ const CATALOG_CORE: CatalogEntry[] = [
     facts: [
       { id: 'ng_what', label: 'nginx 是什么', ask: 'nginx 是干什么的?靠什么扛高并发?', kind: 'choice', compute: () => ({ answer: '高性能 Web 服务器/反向代理/负载均衡(BSD-2):靠事件驱动 + 异步非阻塞(epoll/kqueue)架构,单进程用 IO 多路复用管海量连接,单机就能扛住高并发(经典 C10K 问题的答案)', step: 0, evidence: '事件驱动+epoll 异步非阻塞、扛高并发' }), distractors: () => ['靠为每个连接开一个线程', '靠更快的 CPU', '靠更大的内存'] },
       { id: 'ng_epoll', label: 'nginx 和 OS 的关系', ask: 'nginx 的高并发和操作系统哪个机制相关?', kind: 'choice', compute: () => ({ answer: 'IO 多路复用(epoll):一个线程用 epoll 同时盯着成千上万个连接,谁有数据就处理谁,不用一连接一线程。这和 OS 的事件通知、进程调度/事件循环相通——是「网络」和「操作系统」的交汇', step: 0, evidence: 'epoll IO 多路复用、和调度/事件循环相通' }), distractors: () => ['和文件系统 inode 的分配与回收方式完全相通', '和 CPU 缓存的命中率与替换相通', '和浮点运算的舍入误差处理相通'] },
-      { id: 'ng_role', label: 'nginx vs curl', ask: 'nginx 和 curl 在网络里分别是什么角色?', kind: 'choice', compute: () => ({ answer: 'nginx 是服务端(接收并响应请求的 Web 服务器),curl 是客户端(发起请求)。一次网络请求:curl 发出 → 经 TCP 握手 → nginx 接收响应。抓包看两边靠 Wireshark', step: 0, evidence: 'nginx 服务端、curl 客户端' }), distractors: () => ['两者都是客户端、都只负责发出网络请求', '两者都是抓包工具、只是界面不同', '两者是同一个东西、两个名字'] },
+      { id: 'ng_role', label: 'nginx vs curl', ask: 'nginx 和 curl 在网络里分别是什么角色?', kind: 'choice', compute: () => ({ answer: 'nginx 是服务端(接收并响应请求的 Web 服务器),curl 是客户端(发起请求)。一次网络请求:curl 发出 → 经 TCP 握手 → nginx 接收响应。抓包看两边靠 Wireshark', step: 0, evidence: 'nginx 服务端、curl 客户端' }), distractors: () => ['nginx 客户端、curl 服务端', 'nginx 和 curl 都是客户端', 'nginx 和 curl 都是抓包器'] },
     ],
   },
   {
@@ -1742,14 +1742,14 @@ const CATALOG_CORE: CatalogEntry[] = [
     facts: [
       { id: 'rd_what', label: 'Redis 是什么', ask: 'Redis 是干什么的?为什么快?', kind: 'choice', compute: () => ({ answer: '内存数据结构服务器(C 写):把字符串/哈希/列表/集合/有序集合(跳表)/位图等当网络服务用,常做缓存/排行榜/队列。快在数据全在内存 + 单线程事件循环(无锁竞争)。内部是一座数据结构博物馆', step: 0, evidence: '内存数据结构服务器、单线程事件循环、极快' }), distractors: () => ['一个关系数据库(存磁盘)', '一个编译器', '一个 Web 服务器'] },
       { id: 'rd_cover', label: 'Redis 对应的实验', ask: 'Redis 内部结构对应实验室哪些概念?', kind: 'choice', compute: () => ({ answer: '哈希表(渐进式 rehash,对应「数据结构」哈希)、有序集合用跳表、以及内存满时的 LRU/LFU 淘汰(和「操作系统」页替换 LRU 同思路)。它是这些数据结构的工程范本', step: 0, evidence: '哈希表 rehash、LRU 淘汰↔页替换' }), distractors: () => ['TCP 三次握手和 CRC 校验、滑动窗口', '卷积和注意力、位置编码', '梯度下降和反向传播、链式法则'] },
-      { id: 'rd_license', label: 'Redis 许可变更', ask: 'Redis 的许可这几年发生了什么?用要注意什么?', kind: 'choice', compute: () => ({ answer: '2024 从宽松的 BSD 改成 source-available(SSPLv1/RSALv2),一度不再是 OSI 开源;Redis 8(2025)又加回 AGPLv3 作为可选,现在是三重许可。商用/云服务要看清条款;社区拉了个 BSD 分叉叫 Valkey', step: 0, evidence: '2024 转闭源、8 又加回 AGPLv3' }), distractors: () => ['一直是 MIT 没变过、随便用都不受任何限制', '一直在公有领域、从来没有任何限制', '变成了完全闭源收费、要按坐席买授权'] },
+      { id: 'rd_license', label: 'Redis 许可变更', ask: 'Redis 的许可这几年发生了什么?用要注意什么?', kind: 'choice', compute: () => ({ answer: '2024 从宽松的 BSD 改成 source-available(SSPLv1/RSALv2),一度不再是 OSI 开源;Redis 8(2025)又加回 AGPLv3 作为可选,现在是三重许可。商用/云服务要看清条款;社区拉了个 BSD 分叉叫 Valkey', step: 0, evidence: '2024 转闭源、8 又加回 AGPLv3' }), distractors: () => ['2024 转 MIT、8 收紧 BSD-3', '一直 BSD-3、8 起加 Apache', '2024 转 GPL-3、8 放宽 MIT'] },
     ],
   },
   {
     id: 'sqlite', title: 'SQLite · 嵌入式数据库', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'sqlite' }, entities: [], streams: [] },
     facts: [
       { id: 'sq_what', label: 'SQLite 是什么', ask: 'SQLite 有什么特别?为什么部署最广?', kind: 'choice', compute: () => ({ answer: '嵌入式、零配置、单文件的关系数据库(公有领域):整个库就是磁盘上一个 .db 文件,随程序进程跑、不用单独的服务器。因为小、稳、无依赖,被嵌进手机/浏览器/操作系统/飞机——是部署量最大的数据库', step: 0, evidence: '单文件+零配置+嵌入式、部署最广' }), distractors: () => ['需要单独起一个服务器进程才能用起来', '只能在云上跑、本地跑不了', '是内存数据库、根本不落盘'] },
-      { id: 'sq_cover', label: 'SQLite 的存储结构', ask: 'SQLite 的存储引擎核心是什么数据结构?对应哪个实验?', kind: 'choice', compute: () => ({ answer: 'B 树/B+ 树:表和索引都用 B 树组织、页式存储到文件。正是「数据结构」里的 B 树/B+ 树实验。SQLite 是"B 树怎么落到磁盘文件"的最佳活样本', step: 0, evidence: 'B 树/B+ 树存储、对应 btree' }), distractors: () => ['哈希桶 + 开放寻址、整张表装在内存里', '链表、按插入顺序一条条串起来', '红黑树、纯内存索引不落盘'] },
+      { id: 'sq_cover', label: 'SQLite 的存储结构', ask: 'SQLite 的存储引擎核心是什么数据结构?对应哪个实验?', kind: 'choice', compute: () => ({ answer: 'B 树/B+ 树:表和索引都用 B 树组织、页式存储到文件。正是「数据结构」里的 B 树/B+ 树实验。SQLite 是"B 树怎么落到磁盘文件"的最佳活样本', step: 0, evidence: 'B 树/B+ 树存储、对应 btree' }), distractors: () => ['LSM 树 + SSTable、对应 lsm', '哈希桶 + 开放寻址、对应 hash', '跳表 + WAL 追加、对应 skiplist'] },
       { id: 'sq_license', label: 'SQLite 许可', ask: 'SQLite 的许可是什么?', kind: 'choice', compute: () => ({ answer: '公有领域(Public Domain)——没有版权限制,想怎么用怎么用(商用/闭源都行、无需署名)。这在开源里少见,也是它能嵌进一切的原因之一', step: 0, evidence: '公有领域、无任何许可限制' }), distractors: () => ['GPL 传染、改了就要开源', 'AGPL、云服务受限制', '商业收费、按坐席买'] },
     ],
   },
@@ -1765,8 +1765,8 @@ const CATALOG_CORE: CatalogEntry[] = [
     id: 'docker', title: 'Docker · 容器', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'docker' }, entities: [], streams: [] },
     facts: [
       { id: 'dk_what', label: 'Docker 是什么', ask: 'Docker 容器和虚拟机有什么本质不同?', kind: 'choice', compute: () => ({ answer: '容器不是虚拟机:它不虚拟一整台机器,而是直接用宿主 Linux 内核的原语——namespaces(隔离进程/网络/文件视图)+cgroups(限 CPU/内存)+overlayfs(镜像分层)——把应用装进一个隔离环境。共享内核,所以比 VM 轻', step: 0, evidence: '共享内核、靠 namespaces 隔离' }), distractors: () => ['和虚拟机一样虚拟整台机器、自带 Guest OS', '是一种新的 CPU 指令集扩展', '是一个编译器、把代码打包成镜像'] },
-      { id: 'dk_cover', label: 'Docker 对应的 OS 概念', ask: 'Docker 用到的 Linux 内核机制对应实验室哪些 OS 概念?', kind: 'choice', compute: () => ({ answer: 'cgroups 限制 CPU/内存配额(和进程调度/资源管理相关)、overlayfs 联合文件系统(和 inode/文件系统相关)。理解容器 = 理解 OS 的隔离与资源管理', step: 0, evidence: 'cgroups↔调度、overlayfs↔文件系统' }), distractors: () => ['TCP 拥塞控制、滑动窗口、CRC 校验与重传机制', '浮点表示、IEEE 754 与舍入误差', '词向量、Word2Vec 与位置编码'] },
-      { id: 'dk_license', label: 'Docker 的开源与商业', ask: 'Docker 的开源和商业怎么区分?', kind: 'choice', compute: () => ({ answer: '底层容器引擎(moby 项目)是 Apache-2.0 开源;而 Docker Desktop(桌面客户端)对较大企业有商业授权条款。用引擎/CLI 一般没问题,企业用 Desktop 要看授权', step: 0, evidence: '引擎 Apache-2.0、桌面版收费' }), distractors: () => ['完全免费开源、任何场景都没有许可上的限制', '完全闭源收费、要按坐席买授权', '是 GPL 传染、用了就得开源'] },
+      { id: 'dk_cover', label: 'Docker 对应的 OS 概念', ask: 'Docker 用到的 Linux 内核机制对应实验室哪些 OS 概念?', kind: 'choice', compute: () => ({ answer: 'cgroups 限制 CPU/内存配额(和进程调度/资源管理相关)、overlayfs 联合文件系统(和 inode/文件系统相关)。理解容器 = 理解 OS 的隔离与资源管理', step: 0, evidence: 'cgroups↔调度、overlayfs↔文件系统' }), distractors: () => ['cgroups↔页表、overlayfs↔TLB 刷新', 'namespaces↔虚拟内存、seccomp↔中断', 'epoll↔文件系统、inotify↔进程调度'] },
+      { id: 'dk_license', label: 'Docker 的开源与商业', ask: 'Docker 的开源和商业怎么区分?', kind: 'choice', compute: () => ({ answer: '底层容器引擎(moby 项目)是 Apache-2.0 开源;而 Docker Desktop(桌面客户端)对较大企业有商业授权条款。用引擎/CLI 一般没问题,企业用 Desktop 要看授权', step: 0, evidence: '引擎 Apache-2.0 但桌面版收费' }), distractors: () => ['引擎 GPL-2.0、桌面版免费', '引擎 AGPL-3.0、桌面版 BSD-3', '引擎 BSD-3、桌面版 Apache-2'] },
     ],
   },
   {
@@ -1781,7 +1781,7 @@ const CATALOG_CORE: CatalogEntry[] = [
     id: 'curl', title: 'curl · 网络客户端', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'curl' }, entities: [], streams: [] },
     facts: [
       { id: 'cl_what', label: 'curl 是什么', ask: 'curl 是干什么的?', kind: 'choice', compute: () => ({ answer: '网络客户端(curl License,MIT 派生):命令行工具 + 库 libcurl,把 HTTP(S)/FTP 等几十种协议的请求发出去、拿回响应。是部署量最大的软件之一(几乎每台设备/汽车/手机里都有),调 API/下载/自动化脚本首选', step: 0, evidence: '命令行+libcurl、多协议客户端、部署量最大' }), distractors: () => ['一个 Web 服务器', '一个抓包工具', '一个数据库'] },
-      { id: 'cl_cover', label: 'curl 一次请求发生什么', ask: '一次 `curl https://...` 背后经历了什么?对应哪个实验?', kind: 'choice', compute: () => ({ answer: 'DNS 解析 → TCP 三次握手 → TLS 握手 → 发 HTTP 请求 → 收响应。curl -v 能看到握手和头的全过程。对应「计算机网络」的三次握手、TCP——它是网络的"客户端侧"活样本', step: 0, evidence: 'DNS→TCP 握手→TLS→HTTP' }), distractors: () => ['直接读取本地的文件、完全不走任何的网络', '只是画一张图、不发出任何请求', '编译一段代码、然后在本地跑起来'] },
+      { id: 'cl_cover', label: 'curl 一次请求发生什么', ask: '一次 `curl https://...` 背后经历了什么?对应哪个实验?', kind: 'choice', compute: () => ({ answer: 'DNS 解析 → TCP 三次握手 → TLS 握手 → 发 HTTP 请求 → 收响应。curl -v 能看到握手和头的全过程。对应「计算机网络」的三次握手、TCP——它是网络的"客户端侧"活样本', step: 0, evidence: 'DNS→TCP 握手→TLS→HTTP' }), distractors: () => ['TCP 握手→DNS→TLS→HTTP', 'DNS→UDP 直发→HTTP(免握手)', 'ARP→DHCP→NAT→HTTP'] },
       { id: 'cl_role', label: 'curl 的角色', ask: 'curl 在网络里是什么角色?配合谁?', kind: 'choice', compute: () => ({ answer: '客户端(发起请求),对应的服务端是 nginx 那类 Web 服务器;要看它俩之间线路上的包,用 Wireshark 抓。curl 发 → 握手 → nginx 收响应 → Wireshark 看全过程', step: 0, evidence: '客户端;配服务端 nginx 与抓包' }), distractors: () => ['服务端;等着别人来连它、只做被动响应', '抓包分析器;把链路上的流量抓下来', '编译器;把源码翻译成机器码'] },
     ],
   },
