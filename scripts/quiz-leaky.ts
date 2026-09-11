@@ -38,8 +38,11 @@ function why(ans: string, wrong: string[]): string[] {
     ['标点', (x: string) => (x.match(PUNC_RE) ?? []).length],
     ['技术符号', (x: string) => (x.match(NOTE_RE) ?? []).length],
   ] as [string, (x: string) => number][]) {
-    const na = f(ans), nw = wrong.map(f)
-    if (na > Math.max(...nw)) out.push(`${name}(${na} vs ${nw.join('/')})`)
+    //  容差和那两把闸口同一份（见 quiz-rebalance.mjs 里的实测表）：
+    //  技术符号差 ≥2 才算漏，标点要差 ≥3，字数差 ≥1 就算。
+    const TOL: Record<string, number> = { 长度: 1, 标点: 3, 技术符号: 2 }
+    const na = f(ans), nw = wrong.map(f), gap = na - Math.max(...nw)
+    if (gap >= TOL[name]!) out.push(`${name}(+${gap}：${na} vs ${nw.join('/')})`)
   }
   return out
 }

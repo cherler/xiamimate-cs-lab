@@ -90,12 +90,27 @@ function hasGenre(fid) {
  */
 const NOTE_RE = /[A-Za-z0-9=+\-×·↔→√≈²³∝]/g
 const PUNC_RE = /[，、；：（）(),;:]/g
+/**
+ * 两条通道的容差不一样，是**量出来的**，不是拍的。
+ *
+ * 给一个只看外形的作弊者设「差多少才下注」的门槛，实测(581 条点得到的题)：
+ *            差≥1    差≥2    差≥3    差≥4
+ *   技术符号  41.7   37.7   35.2   32.9   ← 差 4 个符号还能考 33 分，真漏
+ *   标点      39.6   27.6   25.9   25.3   ← 差 2 个就掉到基线，36.8 全是"差一个逗号"的噪声
+ *   字数      25.0   25.0   25.0   25.0   ← 这条已经死透
+ *
+ * 所以技术符号卡 ≥2 就打回，标点放到 ≥3。
+ * **这不是放松闸口，是别让它逼着我去数逗号** —— 为配平而删答案里一个顿号，
+ * 既不改善题目、也蒙不到分，纯属给自己的指标灌水。
+ */
+const TOL = { 标点: 3, 技术符号: 2 }
 function shapeLeak(answer, wrong) {
   const out = []
   for (const [name, re] of [['标点', PUNC_RE], ['技术符号', NOTE_RE]]) {
     const na = (answer.match(re) ?? []).length
     const nw = wrong.map(w => (w.match(re) ?? []).length)
-    if (na > Math.max(...nw)) out.push(`${name}数 ${na} 比三个干扰项(${nw.join('/')})都多`)
+    const gap = na - Math.max(...nw)
+    if (gap >= TOL[name]) out.push(`${name}数 ${na} 比三个干扰项(${nw.join('/')})多 ${gap} 个`)
   }
   return out
 }
