@@ -70,7 +70,7 @@
 | 建树+拖拽+校验+冒泡点亮 逻辑 | ✅ 冒烟 16✅ | `game/craft/WebLevel.ts`(旧Phaser版,交互层将重做) |
 | 布局算法 | ✅ 已装 | `d3-hierarchy`(npm) |
 | 三引擎对比 spike(结论:图表库出局) | ✅ 留档 | `public/spikes/{g6,d3,reactflow}.html` |
-| **机器运转 juice** | ✅ 已验好玩 | `public/spikes/machine.html` |
+| **机器运转 juice** | ✅ 已验好玩 | 切片已删（2026-09-11）——结论留着，页面和 11MB 贴图不留 |
 | 美术(Opus-Magnum 黄铜件) | ⏳ 待生图 | — |
 
 ## 七、路线图(接下来打磨实现)
