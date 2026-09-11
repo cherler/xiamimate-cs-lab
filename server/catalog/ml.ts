@@ -166,7 +166,7 @@ export const ML_ENTRIES: CatalogEntry[] = [
         ask: '残差连接 y=x+f(x) 凭什么让几十上百层的深网络也训得动？',
         kind: 'choice',
         compute: t => ({ answer: "导数变成 1+f′(x)，+1 就是高速路", step: t.length - 1, evidence: String(last(t).log ?? '') }),
-        distractors: () => ['残差把每层的梯度都放大 2 倍，抵消掉衰减', '残差跳过了一半的层，连乘次数直接减半', '残差用更大的学习率把消失的梯度补回来'],
+        distractors: () => ['导数变成 2·f′(x)，梯度放大 2 倍', '导数变成 f′(x)/2，连乘次数减半', '导数不变，靠调大 lr 把梯度补回'],
       },
     ],
   },

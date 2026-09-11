@@ -344,9 +344,9 @@ const CATALOG_CORE: CatalogEntry[] = [
           }
         },
         distractors: a => [a,
-          '由分治结构保证 —— 只要是"分到底再合并回去"，相等元素就不可能被换序',
-          '由自底向上的扫描顺序保证 —— 段宽从 1 开始翻倍，天然是从左往右处理的',
-          '由额外缓冲区保证 —— 输出写进新数组而不是原地交换，位置关系就不会被破坏',
+          '由分治结构保证：分到底、再合并回去，相等元素之间的先后，就不可能被换掉',
+          '由自底向上的扫描顺序保证：段宽从 1 开始翻倍，天然、从左往右一段段处理',
+          '由额外缓冲区保证：输出写进新数组、而不是原地交换，位置、关系就都不会被破坏',
         ].filter(o => o !== a).slice(0, 3),
       },
       {
@@ -1534,7 +1534,7 @@ const CATALOG_CORE: CatalogEntry[] = [
     facts: [
       { id: 'sg_radix', label: 'RadixAttention 是什么', ask: 'SGLang 的核心创新 RadixAttention 是什么?', kind: 'choice', compute: () => ({ answer: '用基数树(radix tree)按 token 前缀组织 KV 缓存块,自动、细粒度地复用共享前缀的缓存。多轮对话/RAG/few-shot 里前缀大量重复时,命中率高、吞吐大幅提升', step: 0, evidence: '基数树按前缀复用 KV 缓存' }), distractors: () => ['一种新的注意力数学近似', '把 KV 缓存放到磁盘', '一种量化方法'] },
       { id: 'sg_vs', label: 'SGLang vs vLLM', ask: 'SGLang 相比 vLLM 强在什么场景?', kind: 'choice', compute: () => ({ answer: '前缀重复多的场景(多轮对话、RAG、few-shot)——RadixAttention 自动复用共享前缀,吞吐常胜过 vLLM(基准显示 H100 上更高、RAG 场景加速明显);还把结构化/受约束生成(JSON/正则)做成一等公民', step: 0, evidence: '前缀复用场景吞吐领先、结构化生成' }), distractors: () => ['只跑在 CPU 上、不用显卡', '完全不用 KV 缓存、所以更省显存', '只支持单轮对话、多轮要换 vLLM'] },
-      { id: 'sg_struct', label: 'SGLang 的结构化生成', ask: 'SGLang 除了快,还有什么特色?', kind: 'choice', compute: () => ({ answer: '结构化/受约束生成:前端 DSL 方便写多步流程、约束输出为 JSON/正则/固定选项,适合 Agent、工具调用、结构化抽取。是"服务引擎 + 结构化前端"二合一', step: 0, evidence: 'DSL + 受约束生成(JSON/正则)' }), distractors: () => ['自带图形界面 + 一键部署的控制台', '自动训练模型 + 现成的数据标注台', '内置向量数据库 + 现成的 RAG 流水线'] },
+      { id: 'sg_struct', label: 'SGLang 的结构化生成', ask: 'SGLang 除了快,还有什么特色?', kind: 'choice', compute: () => ({ answer: '结构化/受约束生成:前端 DSL 方便写多步流程、约束输出为 JSON/正则/固定选项,适合 Agent、工具调用、结构化抽取。是"服务引擎 + 结构化前端"二合一', step: 0, evidence: 'DSL + 受约束生成(JSON/正则)' }), distractors: () => ['GUI + 一键部署的 console', 'AutoML + 自带 labeling 标注台', '内置 VectorDB + 现成 RAG 流水线'] },
     ],
   },
   {
@@ -1564,7 +1564,7 @@ const CATALOG_CORE: CatalogEntry[] = [
   {
     id: 'megatron', title: 'Megatron-LM · 并行训练引擎', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'megatron' }, entities: [], streams: [] },
     facts: [
-      { id: 'mg_what', label: 'Megatron-LM 是什么', ask: 'Megatron-LM 解决什么问题?', kind: 'choice', compute: () => ({ answer: 'NVIDIA 的超大模型并行训练引擎(Apache-2.0):当模型大到单卡放不下、连 ZeRO 也不够时,靠切开计算本身来训。Megatron-Core 提供五种并行:张量 TP/流水 PP/数据 DP/专家 EP/上下文 CP', step: 0, evidence: '并行训练引擎、TP/PP/DP 等五种并行' }), distractors: () => ['在线推理服务引擎、管 KV 缓存与请求调度', '轻量微调库、只更新一小部分模型参数', '向量数据库、存嵌入并做相似度检索'] },
+      { id: 'mg_what', label: 'Megatron-LM 是什么', ask: 'Megatron-LM 解决什么问题?', kind: 'choice', compute: () => ({ answer: 'NVIDIA 的超大模型并行训练引擎(Apache-2.0):当模型大到单卡放不下、连 ZeRO 也不够时,靠切开计算本身来训。Megatron-Core 提供五种并行:张量 TP/流水 PP/数据 DP/专家 EP/上下文 CP', step: 0, evidence: '并行训练引擎、TP/PP/DP 等五种并行' }), distractors: () => ['在线推理引擎、管 KV cache 与调度', '轻量微调库、只更 LoRA 那一小部分', '向量库、存 embedding 做相似检索'] },
       { id: 'mg_par', label: '张量并行 vs 流水并行', ask: 'Megatron 的张量并行和流水并行有什么区别?', kind: 'choice', compute: () => ({ answer: '张量并行(TP):把同一层的大矩阵切到多卡、算完 all-reduce 合并(层内切);流水并行(PP):把不同层分到不同卡、用微批流水填满(层间切)。专家并行(EP)则把 MoE 的不同专家放不同卡。对应实验里的张量/流水/专家并行', step: 0, evidence: 'TP 层内切矩阵、PP 层间切、EP 专家分卡' }), distractors: () => ['TP 按数据批次来切、PP 按模型的参数量来切', 'TP 只用在推理阶段、PP 只用在训练', '两者完全等价，只是叫法上不一样而已'] },
       { id: 'mg_vs', label: 'Megatron vs DeepSpeed', ask: 'Megatron-LM 和 DeepSpeed 分工?', kind: 'choice', compute: () => ({ answer: 'Megatron 强在切开计算的并行(张量/流水/专家并行,把集群榨满);DeepSpeed 强在 ZeRO(分片优化器状态省显存)+卸载+MoE。二者常结合(Megatron-DeepSpeed)训超大模型', step: 0, evidence: 'Megatron 切并行、DeepSpeed 省显存' }), distractors: () => ['两者是竞品、不能放在一起用', 'Megatron 做推理、DeepSpeed 做训练', 'DeepSpeed 是 Megatron 的一个子模块'] },
     ],
@@ -1604,7 +1604,7 @@ const CATALOG_CORE: CatalogEntry[] = [
   {
     id: 'numpy', title: 'NumPy · 科学计算地基', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'numpy' }, entities: [], streams: [] },
     facts: [
-      { id: 'np_what', label: 'NumPy 是什么', ask: 'NumPy 为什么是数据科学的地基?', kind: 'choice', compute: () => ({ answer: '核心是 ndarray(N 维数组、连续内存、类型统一)+向量化运算(把 for 循环下沉到 C/SIMD,比纯 Python 快几十上百倍),加广播/线代/随机数/FFT。pandas/SciPy/scikit-learn/PyTorch 全建在它(或它的数组接口)之上', step: 0, evidence: 'ndarray+向量化、生态全建其上' }), distractors: () => ['一个机器学习模型库、自带训练器和调参', '一个可视化库、专门用来画各种图表', '一个数据库、负责存储与查询结构化数据'] },
+      { id: 'np_what', label: 'NumPy 是什么', ask: 'NumPy 为什么是数据科学的地基?', kind: 'choice', compute: () => ({ answer: '核心是 ndarray(N 维数组、连续内存、类型统一)+向量化运算(把 for 循环下沉到 C/SIMD,比纯 Python 快几十上百倍),加广播/线代/随机数/FFT。pandas/SciPy/scikit-learn/PyTorch 全建在它(或它的数组接口)之上', step: 0, evidence: 'ndarray+向量化、生态全建其上' }), distractors: () => ['DataFrame+索引对齐、专做表格', 'Tensor+autograd、专做深度学习', 'Series+时间索引、专做时序'] },
       { id: 'np_vec', label: '向量化为什么快', ask: 'NumPy 的向量化为什么比纯 Python 循环快?', kind: 'choice', compute: () => ({ answer: '把整块数组的运算下沉到编译好的 C/SIMD 代码一次算完,避免 Python 解释器逐元素循环的开销(还利用连续内存和缓存)。所以写 NumPy 要"整块数组运算"而不是 Python for 循环', step: 0, evidence: '整块运算下沉 C/SIMD、免解释器循环开销' }), distractors: () => ['因为它默认把所有运算都放到 GPU 上跑', '因为它用多线程把 Python 循环并行起来', '因为它先把数据压缩之后再做运算'] },
       { id: 'np_cover', label: 'NumPy 对应的实验', ask: 'NumPy 的数组运算对应实验室哪些实验?', kind: 'choice', compute: () => ({ answer: '矩阵乘、内存布局(行/列主序与步幅)、softmax(数值稳定)、条件数、低秩近似(SVD)——这些「机器学习基础」实验底层就是 NumPy 的数组/线代运算', step: 0, evidence: 'matmul/布局/softmax/条件数/低秩' }), distractors: () => ['RRT/A*/势场法/Dubins/D* Lite', 'ICP/点云配准/SLAM/回环检测', 'FOC 电流环/Clarke/Park/SVPWM'] },
     ],
@@ -1686,7 +1686,7 @@ const CATALOG_CORE: CatalogEntry[] = [
     facts: [
       { id: 'gs_what', label: 'gensim 是什么', ask: 'gensim 是干什么的?', kind: 'choice', compute: () => ({ answer: '主题建模与词向量的经典库:Word2Vec/FastText/Doc2Vec 词/文档向量、LDA/LSI 主题模型、TF-IDF、相似度检索,主打无监督从大规模文本挖语义、能流式处理大语料。Word2Vec 的著名实现就出自这里', step: 0, evidence: '主题模型 + 词向量、word2vec 原产地' }), distractors: () => ['经典 ML 事实标准、统一 API 加 Pipeline', '图分析库、最短路/PageRank/中心性', '事件驱动 + epoll 非阻塞、扛高并发'] },
       { id: 'gs_cover', label: 'gensim 对应的实验', ask: 'gensim 对应实验室哪个实验?', kind: 'choice', compute: () => ({ answer: '词向量(Word2Vec)——它是 word2vec 的原产地,「国王−男人+女人≈王后」那个著名例子就来自这类词向量。「深度学习算法」里的词向量实验讲的就是它的原理', step: 0, evidence: '词向量 Word2Vec、国王−男人+女人≈王后' }), distractors: () => ['ICP 点云配准、把两片点云对齐', 'RRT 运动规划、在障碍中找路径', 'FOC 电流环、Clarke 与 Park 变换'] },
-      { id: 'gs_license', label: 'gensim 的许可注意', ask: '用 gensim 要注意什么许可问题?', kind: 'choice', compute: () => ({ answer: '它是 LGPL-2.1(弱传染)——比 NumPy/scikit-learn 的 BSD 严:动态链接调用一般 OK,但静态链接或改动它的源码再分发,可能要求把那部分也按 LGPL 开源。商用要评估。这正是"库要核许可"的价值', step: 0, evidence: 'LGPL-2.1 弱传染、改源要开源' }), distractors: () => ['MIT 随便用、闭源商用没有任何限制', '公有领域、没有任何许可上的限制', '闭源收费软件、要按坐席买授权用'] },
+      { id: 'gs_license', label: 'gensim 的许可注意', ask: '用 gensim 要注意什么许可问题?', kind: 'choice', compute: () => ({ answer: '它是 LGPL-2.1(弱传染)——比 NumPy/scikit-learn 的 BSD 严:动态链接调用一般 OK,但静态链接或改动它的源码再分发,可能要求把那部分也按 LGPL 开源。商用要评估。这正是"库要核许可"的价值', step: 0, evidence: 'LGPL-2.1 弱传染、改源要开源' }), distractors: () => ['MIT 许可、闭源商用都没有限制', 'Apache-2.0、带专利授权条款', 'AGPL-3.0、联网服务也要开源'] },
     ],
   },
   {
@@ -1941,11 +1941,20 @@ export function getEntry(id: string): CatalogEntry | undefined {
      * 仍然是纯函数、无随机 —— 可复现这条没丢。
      */
     const len = (x: string) => [...x].length
-    const lm = len(mine)
-    const near = pool.slice().sort((a, b) => Math.abs(len(a) - lm) - Math.abs(len(b) - lm) || a.localeCompare(b))
-    const longer = near.find(r => len(r) >= lm)
-    const shorter = near.find(r => len(r) <= lm)
-    const picks = [...new Set([longer, shorter, ...near].filter((x): x is string => !!x))].slice(0, 3)
+    /*  **字数配得上还不够，符号也得配得上。**
+        只按字数挑同伴时判据⑫又抓出一条：`ndarray+向量化、生态全建其上` 里有 8 个
+        英文/数字，而挑中的三条同伴一个都没有 —— 于是"挑看起来最技术的那条"照样能蒙。
+        所以距离按「字数差 + 符号数差」一起算。 */
+    const note = (x: string) => (x.match(/[A-Za-z0-9=+\-×·↔→√≈²³∝]/g) ?? []).length
+    const lm = len(mine), nm = note(mine)
+    const dist = (x: string) => Math.abs(len(x) - lm) + Math.abs(note(x) - nm)
+    const near = pool.slice().sort((a, b) => dist(a) - dist(b) || a.localeCompare(b))
+    //  长度和符号都各留一条"不低于"、一条"不高于"的，剩下按最近补满
+    const pick = (f: (x: string) => number, m: number, up: boolean) =>
+      near.find(r => (up ? f(r) >= m : f(r) <= m))
+    const picks = [...new Set([
+      pick(len, lm, true), pick(len, lm, false), pick(note, nm, true), pick(note, nm, false), ...near,
+    ].filter((x): x is string => !!x))].slice(0, 3)
     if (new Set(picks).size < 3) continue
     e.facts = e.facts.map(x => x === f ? { ...x, distractors: () => picks } : x)
   }
