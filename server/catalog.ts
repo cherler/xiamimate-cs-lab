@@ -1556,7 +1556,7 @@ const CATALOG_CORE: CatalogEntry[] = [
   {
     id: 'flashattn', title: 'FlashAttention · 注意力内核', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'flashattn' }, entities: [], streams: [] },
     facts: [
-      { id: 'fa_what', label: 'FlashAttention 是什么', ask: 'FlashAttention 解决了注意力的什么问题?', kind: 'choice', compute: () => ({ answer: '标准注意力要把 N×N 的注意力矩阵写回显存、显存 O(N²) 且访存慢。FlashAttention 通过 IO 感知——把注意力分块在片上 SRAM 里算、不落地 N×N 矩阵 + 在线 softmax——做到又快又省显存(O(N)),且是精确注意力(不近似)', step: 0, evidence: 'IO 感知分块进 SRAM、显存降到 O(N)' }), distractors: () => ['换成线性注意力、复杂度从 O(N²) 降到 O(N)', '丢掉一部分注意力头、只算剩下的那几个', '用低秩近似替代精确注意力、精度换速度'] },
+      { id: 'fa_what', label: 'FlashAttention 是什么', ask: 'FlashAttention 解决了注意力的什么问题?', kind: 'choice', compute: () => ({ answer: '标准注意力要把 N×N 的注意力矩阵写回显存、显存 O(N²) 且访存慢。FlashAttention 通过 IO 感知——把注意力分块在片上 SRAM 里算、不落地 N×N 矩阵 + 在线 softmax——做到又快又省显存(O(N)),且是精确注意力(不近似)', step: 0, evidence: 'IO 感知分块进 SRAM、显存降到 O(N)' }), distractors: () => ['换成线性注意力、复杂度从 O(N²) 降到 O(N)', '丢掉一半注意力头、FLOPs 直接减半', '低秩近似替代精确 attention、精度换速度'] },
       { id: 'fa_exact', label: 'FlashAttention 近似吗', ask: 'FlashAttention 是对注意力的近似吗?', kind: 'choice', compute: () => ({ answer: '不是近似——它和标准注意力数学上完全等价(精确),只是换了个又快又省显存的算法(分块+在线 softmax)。所以能直接替换标准注意力、不掉精度,这是它成为默认实现的原因', step: 0, evidence: '精确、和标准注意力等价、可直接替换' }), distractors: () => ['是近似、会掉一点精度、需要重新训练', '只在推理时能用、训练的时候用不了', '只对短序列有效、序列一长就会退化'] },
       { id: 'fa_cover', label: 'FlashAttention 的意义', ask: 'FlashAttention 为什么对大模型很关键?对应哪些实验?', kind: 'choice', compute: () => ({ answer: '显存从 O(N²) 降到 O(N),让训练/推理更长上下文成为可能、还更快;是现代大模型默认注意力(Transformers/vLLM/TensorRT-LLM 都集成)。对应实验:FlashAttention、Flash-Decoding、缩放点积/掩码', step: 0, evidence: '省显存能训长上下文、现已是默认实现' }), distractors: () => ['只省一点点显存、对训练长度没有影响', '和上下文长度无关、只影响批大小', '只用在 CV 模型上、语言模型用不到它'] },
     ],
@@ -1629,7 +1629,7 @@ const CATALOG_CORE: CatalogEntry[] = [
     id: 'matplotlib', title: 'Matplotlib · 数据可视化', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'matplotlib' }, entities: [], streams: [] },
     facts: [
       { id: 'mpl_what', label: 'Matplotlib 是什么', ask: 'Matplotlib 是干什么的?', kind: 'choice', compute: () => ({ answer: 'Python 数据可视化的老牌主力:折线/散点/柱状/热图/等高线/3D 都能画,pyplot 上手快又能控到每个元素。做 ML 时画损失曲线、决策边界、特征分布、混淆矩阵都靠它——把"数字"变成"看得懂"', step: 0, evidence: 'Python 可视化主力、pyplot、什么图都能画' }), distractors: () => ['一个机器学习库', '一个数据处理库', '一个推理引擎'] },
-      { id: 'mpl_eco', label: 'Matplotlib 的生态', ask: 'seaborn/Plotly 和 Matplotlib 什么关系?', kind: 'choice', compute: () => ({ answer: 'seaborn 建在 Matplotlib 之上、做统计图更省事(几行出漂亮图);Plotly 补交互(能缩放/悬停)。Matplotlib 是最通用可控的底层,pandas .plot 也基于它', step: 0, evidence: 'seaborn 建其上、Plotly 补交互' }), distractors: () => ['它们是竞品、和 Matplotlib 完全无关', 'seaborn 是深度学习库、和画图无关', 'Plotly 是数据库、负责存储图表数据'] },
+      { id: 'mpl_eco', label: 'Matplotlib 的生态', ask: 'seaborn/Plotly 和 Matplotlib 什么关系?', kind: 'choice', compute: () => ({ answer: 'seaborn 建在 Matplotlib 之上、做统计图更省事(几行出漂亮图);Plotly 补交互(能缩放/悬停)。Matplotlib 是最通用可控的底层,pandas .plot 也基于它', step: 0, evidence: 'seaborn 建其上、Plotly 补交互' }), distractors: () => ['seaborn 是竞品、Plotly 无关', 'seaborn 是 DL 库、Plotly 管画图', 'Plotly 是数据库、seaborn 建其上'] },
       { id: 'mpl_limit', label: 'Matplotlib 的取舍', ask: 'Matplotlib 有什么取舍?', kind: 'choice', compute: () => ({ answer: '最通用、可控到出版级,但默认样式一般、精修代码啰嗦;交互弱(要交互看 Plotly/Bokeh);有 pyplot 和面向对象两套 API 易混;大量数据点渲染慢', step: 0, evidence: '通用可控但精修啰嗦、交互弱、两套 API' }), distractors: () => ['不能导出图片、只能在屏幕上看一眼', '只能画折线图、别的图形一律画不了', '必须有 GPU 才能画、纯 CPU 跑不动'] },
     ],
   },
@@ -1668,7 +1668,7 @@ const CATALOG_CORE: CatalogEntry[] = [
   {
     id: 'statsmodels', title: 'statsmodels · 统计建模与推断', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'statsmodels' }, entities: [], streams: [] },
     facts: [
-      { id: 'sm_what', label: 'statsmodels 是什么', ask: 'statsmodels 和 scikit-learn 有什么不同?', kind: 'choice', compute: () => ({ answer: 'statsmodels 专注统计建模与"推断"(要 p 值、置信区间、显著性、诊断报告),scikit-learn 专注"预测"(要准)。statsmodels 做回归/时间序列/假设检验时给完整统计报告——回答"这个变量显著吗、关系可信吗"', step: 0, evidence: '推断(p 值/置信区间)vs 预测(准)' }), distractors: () => ['两者完全一样、只是名字不同而已', 'statsmodels 专做深度学习模型', 'statsmodels 是一个画图库'] },
+      { id: 'sm_what', label: 'statsmodels 是什么', ask: 'statsmodels 和 scikit-learn 有什么不同?', kind: 'choice', compute: () => ({ answer: 'statsmodels 专注统计建模与"推断"(要 p 值、置信区间、显著性、诊断报告),scikit-learn 专注"预测"(要准)。statsmodels 做回归/时间序列/假设检验时给完整统计报告——回答"这个变量显著吗、关系可信吗"', step: 0, evidence: '推断(p 值/置信区间)vs 预测(准)' }), distractors: () => ['预测(准确率)vs 推断(p 值/区间)', '两者完全一样(同一套 API)、只是名字', 'statsmodels 专做 DL(深度学习)模型'] },
       { id: 'sm_cover', label: 'statsmodels 对应的实验', ask: 'statsmodels 对应实验室哪些概念?', kind: 'choice', compute: () => ({ answer: '线性回归、逻辑回归(带显著性推断)、以及中心极限定理、大数定律(统计根基)——「机器学习算法/概率统计」里的实验。它把这些做成带统计报告的建模', step: 0, evidence: '线性/逻辑回归、中心极限、大数定律' }), distractors: () => ['卷积和池化、图像分类', 'ICP 和点云配准、位姿', 'PagedAttention、KV 缓存'] },
       { id: 'sm_use', label: 'statsmodels 用在哪', ask: 'statsmodels 典型用在什么场景?', kind: 'choice', compute: () => ({ answer: '计量经济/社科的统计分析、时间序列预测(ARIMA)、A/B 实验的显著性检验——要"解释"而非只"预测"的场景。大规模纯预测则用 sklearn/XGBoost', step: 0, evidence: '计量/时间序列/AB 检验,要解释' }), distractors: () => ['图像识别与目标检测、那一类的视觉任务', '大模型推理、在线服务化', '机器人控制、实时闭环'] },
     ],
@@ -1678,7 +1678,7 @@ const CATALOG_CORE: CatalogEntry[] = [
     facts: [
       { id: 'nx_what', label: 'NetworkX 是什么', ask: 'NetworkX 是干什么的?', kind: 'choice', compute: () => ({ answer: 'Python 图/网络分析库:建图(有向/无向/带权)+跑经典图算法——最短路(Dijkstra/A*/Bellman-Ford)、PageRank、连通分量/并查集、最小生成树、最大流、中心性、社区发现。纯 Python 上手极快、适合建模/分析/教学', step: 0, evidence: '图分析库、最短路/PageRank/连通/中心性' }), distractors: () => ['一个神经网络框架', '一个数据库', '一个绘图库'] },
       { id: 'nx_cover', label: 'NetworkX 对应的实验', ask: 'NetworkX 对应实验室哪些经典算法实验?', kind: 'choice', compute: () => ({ answer: 'PageRank(网页排名)、A* 寻路(带启发的最短路)、并查集(连通分量)——正是「经典算法」组里的实验。库里都是现成一行调用、原理在实验里', step: 0, evidence: 'PageRank/A*/并查集' }), distractors: () => ['卷积/RNN/注意力', 'FOC/PID/阻抗控制', 'KV Cache/量化/MoE'] },
-      { id: 'nx_limit', label: 'NetworkX 的取舍', ask: 'NetworkX 处理超大图有什么局限?', kind: 'choice', compute: () => ({ answer: '纯 Python、图很大(百万边以上)会慢、内存内;超大图看 igraph/graph-tool(C 核)或 GPU 图库。它也不做图神经网络(那是 PyG/DGL)。胜在灵活、算法全、上手快', step: 0, evidence: '纯 Python 大图慢、不做 GNN' }), distractors: () => ['不能建有向图、只支持无向', '只能算最短路、别的算不了', '必须用 GPU 才行、纯 CPU 跑不动'] },
+      { id: 'nx_limit', label: 'NetworkX 的取舍', ask: 'NetworkX 处理超大图有什么局限?', kind: 'choice', compute: () => ({ answer: '纯 Python、图很大(百万边以上)会慢、内存内;超大图看 igraph/graph-tool(C 核)或 GPU 图库。它也不做图神经网络(那是 PyG/DGL)。胜在灵活、算法全、上手快', step: 0, evidence: '纯 Python 大图慢、不做 GNN' }), distractors: () => ['纯 C++ 实现很快、也不做 GNN', '只支持无向 Graph、建不了 DiGraph', '必须用 GPU 跑、纯 CPU 跑不动'] },
     ],
   },
   {
@@ -1694,13 +1694,13 @@ const CATALOG_CORE: CatalogEntry[] = [
     facts: [
       { id: 'lx_what', label: 'Linux 内核是什么', ask: 'Linux 内核负责哪些核心工作?', kind: 'choice', compute: () => ({ answer: '操作系统内核(GPL-2.0):进程调度、虚拟内存(分页/缺页/页替换)、文件系统(inode/位图/日志)、并发原语(信号量/锁/死锁避免)、网络栈。你「操作系统」组实验讲的原理在它里都有工业级真实现', step: 0, evidence: '调度/虚拟内存/文件系统/并发/网络栈' }), distractors: () => ['一个编译器、把源码翻成机器码', '一个数据库、负责存储与查询', '一个网页服务器、专门处理 HTTP 请求'] },
       { id: 'lx_cover', label: 'Linux 对应的实验', ask: 'Linux 内核对应实验室「操作系统」组哪些实验?', kind: 'choice', compute: () => ({ answer: '进程调度、缺页/页替换、虚拟内存、inode/位图/分区(文件系统)、磁盘寻道、信号量、银行家(死锁避免)——OS 组几乎全覆盖。库是工业实现、实验讲原理', step: 0, evidence: '调度/缺页/inode/信号量/银行家' }), distractors: () => ['卷积/注意力/BatchNorm', 'RRT/Dubins/势场法/PRM/D* Lite', 'B 树/哈希/LSM/跳表'] },
-      { id: 'lx_gpl', label: 'Linux 的许可', ask: 'Linux 内核用什么许可?意味着什么?', kind: 'choice', compute: () => ({ answer: 'GPL-2.0(only,有传染性):改动内核代码并分发,要以 GPL 开源那部分。用户空间程序通过系统调用用内核不受影响(有 syscall 例外)。这也是内核驱动开源生态的原因', step: 0, evidence: 'GPL-2.0 传染;改内核分发要开源' }), distractors: () => ['MIT 许可、随便用、闭源商用也行得通', '闭源商业软件、要买授权才能用', '公有领域、没有任何许可上的限制'] },
+      { id: 'lx_gpl', label: 'Linux 的许可', ask: 'Linux 内核用什么许可?意味着什么?', kind: 'choice', compute: () => ({ answer: 'GPL-2.0(only,有传染性):改动内核代码并分发,要以 GPL 开源那部分。用户空间程序通过系统调用用内核不受影响(有 syscall 例外)。这也是内核驱动开源生态的原因', step: 0, evidence: 'GPL-2.0 传染;改内核要开源' }), distractors: () => ['MIT 许可;随便用，闭源商用也行', 'BSD-3 许可;只需保留版权声明', 'Apache-2.0;带专利授权条款'] },
     ],
   },
   {
     id: 'gcc', title: 'GCC · GNU 编译器套件', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'gcc' }, entities: [], streams: [] },
     facts: [
-      { id: 'gc_steps', label: 'GCC 编译四步', ask: 'GCC 把源码变成可执行程序经过哪几步?', kind: 'choice', compute: () => ({ answer: '预处理(展开宏/头文件)→编译(语法分析+优化+生成汇编)→汇编(汇编→机器码目标文件)→链接(合并目标+库成可执行文件)。gcc -S 可看编译到的汇编', step: 0, evidence: '预处理→编译→汇编→链接' }), distractors: () => ['源码直接一步就变成机器码', '解释执行、压根不用编译', '先运行起来再回头编译'] },
+      { id: 'gc_steps', label: 'GCC 编译四步', ask: 'GCC 把源码变成可执行程序经过哪几步?', kind: 'choice', compute: () => ({ answer: '预处理(展开宏/头文件)→编译(语法分析+优化+生成汇编)→汇编(汇编→机器码目标文件)→链接(合并目标+库成可执行文件)。gcc -S 可看编译到的汇编', step: 0, evidence: '预处理→编译→汇编→链接四步' }), distractors: () => ['编译→预处理→链接→汇编四步', '预处理→汇编→编译→链接四步', '词法→语法→语义→运行四步'] },
       { id: 'gc_cover', label: 'GCC 对应的实验', ask: 'GCC 生成的机器指令对应实验室哪些「组成原理」实验?', kind: 'choice', compute: () => ({ answer: '加法/减法、乘法、浮点表示的机器级运算(GCC 把高级语言的算术编译成这些指令),以及编译前端的表达式求值(语法分析)。它把「组成原理」的运算真正生成出来', step: 0, evidence: '加减/乘法/浮点/表达式' }), distractors: () => ['TCP 和握手', 'ICP 和 SLAM', 'PageRank 和 A*'] },
       { id: 'gc_license', label: 'GCC 许可与你的程序', ask: 'GCC 是 GPLv3,那你用它编出来的程序也要开源吗?', kind: 'choice', compute: () => ({ answer: '不用。GCC 本身是 GPLv3,但它有"运行时库例外(GCC Runtime Library Exception)",让你编出来的程序不被 GPL 传染——可以闭源商用。改 GCC 本身才受 GPL 约束', step: 0, evidence: 'GPLv3+运行时例外、编出的程序不传染' }), distractors: () => ['要，用 GCC 编出来的程序也必须跟着 GPL', 'GCC 本身是闭源的、要买授权', '完全没有许可、想怎么用都行'] },
     ],
@@ -1717,7 +1717,7 @@ const CATALOG_CORE: CatalogEntry[] = [
     id: 'qemu', title: 'QEMU · 整机模拟器', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'qemu' }, entities: [], streams: [] },
     facts: [
       { id: 'qm_what', label: 'QEMU 是什么', ask: 'QEMU 是干什么的?', kind: 'choice', compute: () => ({ answer: '整机模拟/虚拟化器(GPL-2.0):在软件里模拟出一整台计算机(CPU 指令翻译、内存、磁盘、网卡、外设),能启动完整操作系统,配 Linux KVM 可做接近原生的硬件加速虚拟化', step: 0, evidence: '软件模拟整台计算机、启动完整 OS、配 KVM' }), distractors: () => ['点云处理的老牌标准库、滤波/特征/配准/分割', '开源 VLA 基座(7B)、图 + 指令→动作', '基数树按前缀复用 KV 缓存、提吞吐'] },
-      { id: 'qm_use', label: 'QEMU 学 OS 的价值', ask: 'QEMU 为什么是学操作系统/开发内核的标准平台?', kind: 'choice', compute: () => ({ answer: '它把整机放到一个可观察、可调试(配 GDB 单步调内核)的环境里跑,改内核不会搞崩真机、还能跨架构。学 OS、跑 xv6、开发/调试 Linux 内核都在它上面', step: 0, evidence: '整机可观察可调试、配 GDB 调内核' }), distractors: () => ['因为它是所有模拟器里面跑得最快的一个', '因为它自带图形界面、点点就能用', '因为它自带编译器、不用另装工具链'] },
+      { id: 'qm_use', label: 'QEMU 学 OS 的价值', ask: 'QEMU 为什么是学操作系统/开发内核的标准平台?', kind: 'choice', compute: () => ({ answer: '它把整机放到一个可观察、可调试(配 GDB 单步调内核)的环境里跑,改内核不会搞崩真机、还能跨架构。学 OS、跑 xv6、开发/调试 Linux 内核都在它上面', step: 0, evidence: '整机可观察可调试、配 GDB 调内核' }), distractors: () => ['所有模拟器里跑得最快、配 KVM', '自带图形界面、配 IDE 点点就能用', '自带编译器、配 GCC 不用装工具链'] },
       { id: 'qm_cover', label: 'QEMU 对应的实验', ask: 'QEMU 模拟的机器涉及实验室哪些「组成原理」概念?', kind: 'choice', compute: () => ({ answer: 'CPU 指令执行(缓存、流水线)、内存管理单元 MMU(虚拟内存/分页)——它把这些组成原理概念放到可跑可调的整机里。纯模拟慢、配 KVM 才快', step: 0, evidence: '缓存/流水线/虚拟内存(MMU)' }), distractors: () => ['TCP 三次握手/子网划分/CRC', '词向量和注意力、位置编码', 'B 树和哈希表、跳表与索引'] },
     ],
   },
@@ -1764,7 +1764,7 @@ const CATALOG_CORE: CatalogEntry[] = [
   {
     id: 'docker', title: 'Docker · 容器', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'docker' }, entities: [], streams: [] },
     facts: [
-      { id: 'dk_what', label: 'Docker 是什么', ask: 'Docker 容器和虚拟机有什么本质不同?', kind: 'choice', compute: () => ({ answer: '容器不是虚拟机:它不虚拟一整台机器,而是直接用宿主 Linux 内核的原语——namespaces(隔离进程/网络/文件视图)+cgroups(限 CPU/内存)+overlayfs(镜像分层)——把应用装进一个隔离环境。共享内核,所以比 VM 轻', step: 0, evidence: '共享内核、靠 namespaces 隔离' }), distractors: () => ['和虚拟机一样虚拟整台机器、自带 Guest OS', '是一种新的 CPU 指令集扩展', '是一个编译器、把代码打包成镜像'] },
+      { id: 'dk_what', label: 'Docker 是什么', ask: 'Docker 容器和虚拟机有什么本质不同?', kind: 'choice', compute: () => ({ answer: '容器不是虚拟机:它不虚拟一整台机器,而是直接用宿主 Linux 内核的原语——namespaces(隔离进程/网络/文件视图)+cgroups(限 CPU/内存)+overlayfs(镜像分层)——把应用装进一个隔离环境。共享内核,所以比 VM 轻', step: 0, evidence: '共享内核、靠 namespaces 隔离' }), distractors: () => ['独立内核、靠 hypervisor 虚拟', '共享内核、靠 chroot 换根目录', '独立内核、靠 QEMU 模拟整机'] },
       { id: 'dk_cover', label: 'Docker 对应的 OS 概念', ask: 'Docker 用到的 Linux 内核机制对应实验室哪些 OS 概念?', kind: 'choice', compute: () => ({ answer: 'cgroups 限制 CPU/内存配额(和进程调度/资源管理相关)、overlayfs 联合文件系统(和 inode/文件系统相关)。理解容器 = 理解 OS 的隔离与资源管理', step: 0, evidence: 'cgroups↔调度、overlayfs↔文件系统' }), distractors: () => ['cgroups↔页表、overlayfs↔TLB 刷新', 'namespaces↔虚拟内存、seccomp↔中断', 'epoll↔文件系统、inotify↔进程调度'] },
       { id: 'dk_license', label: 'Docker 的开源与商业', ask: 'Docker 的开源和商业怎么区分?', kind: 'choice', compute: () => ({ answer: '底层容器引擎(moby 项目)是 Apache-2.0 开源;而 Docker Desktop(桌面客户端)对较大企业有商业授权条款。用引擎/CLI 一般没问题,企业用 Desktop 要看授权', step: 0, evidence: '引擎 Apache-2.0 但桌面版收费' }), distractors: () => ['引擎 GPL-2.0、桌面版免费', '引擎 AGPL-3.0、桌面版 BSD-3', '引擎 BSD-3、桌面版 Apache-2'] },
     ],
@@ -1774,7 +1774,7 @@ const CATALOG_CORE: CatalogEntry[] = [
     facts: [
       { id: 'xv_what', label: 'xv6 是什么', ask: 'xv6 是什么?为什么用它学 OS?', kind: 'choice', compute: () => ({ answer: 'MIT 为操作系统课(6.S081)写的教学操作系统(MIT 许可):一个几千行、能真编译运行的类 Unix 内核(RISC-V + QEMU)。Linux 几千万行读不动,xv6 小到能完整读懂,却涵盖进程/调度/内存/文件系统/锁', step: 0, evidence: '几千行能真跑的教学类 Unix 内核' }), distractors: () => ['一个生产级服务器内核', '一个编译器', '一个数据库'] },
       { id: 'xv_cover', label: 'xv6 覆盖的 OS 概念', ask: 'xv6 里能读到实验室哪些 OS 实验的完整实现?', kind: 'choice', compute: () => ({ answer: '进程调度(上下文切换)、虚拟内存(分页/缺页)、inode + 日志的文件系统——「操作系统」组实验的原理,在 xv6 里是完整、可编译运行的最小真实现。是从"原理"到"真代码"的最短路径', step: 0, evidence: '调度/缺页/inode 的完整可运行实现' }), distractors: () => ['TCP 三次握手和子网划分的完整实现过程', '卷积和注意力、批归一化的实现', 'B 树和哈希表、跳表索引的实现'] },
-      { id: 'xv_vs', label: 'xv6 vs Linux', ask: '学 OS 用 xv6 还是 Linux?', kind: 'choice', compute: () => ({ answer: '先 xv6 后 Linux:xv6 小(几千行)、能完整读懂 OS 骨架,适合入门;Linux 是生产内核(几千万行、功能全但门槛极高),xv6 打好基础后再看 Linux 的工业实现', step: 0, evidence: 'xv6 入门读懂骨架、Linux 工业实现' }), distractors: () => ['xv6 更适合直接拿去做生产环境的部署使用', 'Linux 更适合教学入门读骨架', '两者完全一样、只是名字不同'] },
+      { id: 'xv_vs', label: 'xv6 vs Linux', ask: '学 OS 用 xv6 还是 Linux?', kind: 'choice', compute: () => ({ answer: '先 xv6 后 Linux:xv6 小(几千行)、能完整读懂 OS 骨架,适合入门;Linux 是生产内核(几千万行、功能全但门槛极高),xv6 打好基础后再看 Linux 的工业实现', step: 0, evidence: 'xv6 入门读懂骨架、Linux 工业实现' }), distractors: () => ['xv6 做生产部署、Linux 只作教学', 'xv6 和 Linux 完全一样、只是名字', '两者完全一样、只是名字不同'] },
     ],
   },
   {
@@ -1798,7 +1798,7 @@ const CATALOG_CORE: CatalogEntry[] = [
         id: 'why_anchor', label: '双指针法的空间复杂度',
         ask: '通配符匹配用"双指针+回溯锚点"而不是动态规划，好处是?', kind: 'choice',
         compute: () => ({ answer: 'O(n) 时间、O(1) 额外空间', step: 6, evidence: '全程只维护 si/pj/star/sTmp 几个变量，无二维表' }),
-        distractors: () => ['双指针一定比 DP 慢上不少的', '双指针也要 O(n×m) 的额外空间', '两种方法的空间开销完全是一样的'],
+        distractors: () => ['O(n×m) 时间、O(n×m) 空间', 'O(n) 时间、O(n×m) 空间', 'O(n×m) 时间、O(1) 空间'],
       },
     ],
   },

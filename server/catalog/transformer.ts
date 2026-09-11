@@ -110,7 +110,7 @@ export const TRANSFORMER_ENTRIES: CatalogEntry[] = [
           const s = fi(t, f => f.angleDeg === 90)
           return { answer: '方向无关（正交），相似度为 0', step: s, evidence: ev(t[s]) }
         },
-        distractors: () => ['两个向量的长度恰好都等于 0', '两个向量的方向是完全相同的', '任意两个向量之间的内积都是 0'],
+        distractors: () => ['方向相同（重合），相似度 1', '长度都为 0（零向量），内积 0', '任意两向量（无论夹角），内积 0'],
       },
       {
         id: 'why_qk_dot', label: '注意力为何用 Q·K 打分', kind: 'choice',
@@ -563,7 +563,7 @@ export const TRANSFORMER_ENTRIES: CatalogEntry[] = [
           const s = fi(t, f => f.phase === 'rms')
           return { answer: 'RMSNorm 不减均值，只除以 RMS', step: s, evidence: ev(t[s]) }
         },
-        distractors: () => ['RMSNorm 多用一个偏置参数', 'RMSNorm 用最大值代替均值来归一化', 'RMSNorm 不需要可学习增益'],
+        distractors: () => ['RMSNorm 减均值，除以 RMS', 'LayerNorm 不减均值，只除 RMS', 'RMSNorm 用 max 代替 RMS 归一'],
       },
       {
         id: 'unit_scale', label: '归一化拉到什么尺度', kind: 'choice',

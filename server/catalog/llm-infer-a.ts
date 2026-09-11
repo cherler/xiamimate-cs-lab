@@ -78,9 +78,9 @@ export const LLM_INFER_A_ENTRIES: CatalogEntry[] = [
         kind: 'choice',
         compute: t => { const f = last(t); return { answer: '省的是 HBM 访存，且与一次性 softmax 等价', step: t.length - 1, evidence: `末态在线输出 ${String(f.out)} 与真值 softmax ${String(f.naive)} 的相对误差 ~0` } },
         distractors: () => [
-          '省的是计算量,分块后总的乘加次数变少了',
-          '靠近似 softmax 换速度,会有一点可控的精度损失',
-          '省的是显存,因为不再需要存 K/V 缓存',
+          '靠 approximate softmax 换速度，有精度损失',
+          '省的是 FLOPs，分块后总乘加次数变少了',
+          '省的是显存，不再需要存 K/V cache 了',
         ],
       },
       {
