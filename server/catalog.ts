@@ -1082,7 +1082,7 @@ const CATALOG_CORE: CatalogEntry[] = [
         id: 'ra_stuck', label: '模型陷入重复怎么办',
         ask: 'Agent 循环里模型卡住了、一直发同一个动作(反复 search 同一个词)，怎么防它无限跑?', kind: 'choice',
         compute: () => ({ answer: 'stuck 检测：最近几步动作相同就停', step: 4, evidence: '切"重复"场景：最近 3 步动作全相同 → stuck 中止' }),
-        distractors: () => ['相信模型自己会停，框架不用做额外检测', '让它一直跑，反正迟早会试对，成本可忽略', '把采样温度调高，让它随机跳出这个循环'],
+        distractors: () => ['timeout：超过 60s 就掐掉', 'temperature 调高，让它自己跳', 'budget 上限：跑满 N 步就停，不看动作'],
       },
       {
         id: 'ra_budget', label: '任务不收敛怎么控成本',
@@ -1152,7 +1152,7 @@ const CATALOG_CORE: CatalogEntry[] = [
         id: 'tc_error', label: '工具调用失败了怎么办',
         ask: '一个工具调用解析失败 / 工具不存在 / 被权限拒绝，好的 harness 怎么处理?', kind: 'choice',
         compute: t => { const f = t as unknown as { stage: string; history?: { ok: boolean }[] }[]; const d = f.find(x => x.stage === 'done'); const fails = d?.history?.filter(h => !h.ok).length ?? 3; return ({ answer: '错误当 tool_result 喂回，不中断', step: f.findIndex(x => x.stage === 'done'), evidence: `本例 5 个调用里 ${fails} 个失败（拒绝/未知/解析错），全变成 error 结果回灌、循环没断` }) },
-        distractors: () => ['直接抛异常，把整个 Agent 循环就地停掉', '静默忽略这个调用，当作什么都没发生过', '自动挑一个最相近的工具替换后照样执行'],
+        distractors: () => ['静默丢掉这次 tool_call，当没发生过', '直接抛异常，Agent loop 就地停掉', '自动换一个最像的 tool 照样执行'],
       },
       {
         id: 'tc_encoding', label: '工具调用一定是 JSON 吗',
@@ -1251,7 +1251,7 @@ const CATALOG_CORE: CatalogEntry[] = [
         id: 'mr_scoring', label: 'agent 从记忆库捞哪几条进上下文靠什么',
         ask: 'agent 长期记忆一大堆、上下文塞不下，查询来了靠什么决定捞哪几条?', kind: 'choice',
         compute: () => ({ answer: '打分检索：三信号加权求和取 top-k', step: 3, evidence: '得分 = w·最近 + w·相关 + w·重要，排序取 top-k' }),
-        distractors: () => ['按存入的先后顺序，先存进去的那条先捞', '把所有记忆一股脑全都塞进上下文窗口里去', '随机抽几条，反正模型自己会挑出有用的'],
+        distractors: () => ['FIFO 检索：按存入顺序取最早的 k 条', '全量注入：不检索，整库塞进 context', '随机抽样：均匀抽 k 条，不看相关度'],
       },
       {
         id: 'mr_signals', label: '记忆打分的三个信号',
@@ -1549,7 +1549,7 @@ const CATALOG_CORE: CatalogEntry[] = [
     id: 'llamacpp', title: 'llama.cpp · 端侧本地推理', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'llamacpp' }, entities: [], streams: [] },
     facts: [
       { id: 'lc_what', label: 'llama.cpp 是什么', ask: 'llama.cpp 是干什么的?最大特点?', kind: 'choice', compute: () => ({ answer: '把大模型跑到普通设备(CPU/Apple Silicon/手机)的 C++ 框架(MIT):基于自研 ggml 张量库、模型用 GGUF 格式 + 量化(Q4_K_M 等)大幅压内存,不用 GPU 也能跑。是端侧/本地 LLM 的事实标准(Ollama 封装它)', step: 0, evidence: 'C++ 端侧推理、GGUF 量化、不用 GPU' }), distractors: () => ['一个 GPU 集群训练框架', '一个云端推理服务', '一个向量数据库'] },
-      { id: 'lc_gguf', label: 'GGUF 和量化', ask: 'llama.cpp 靠什么在普通设备上跑大模型?', kind: 'choice', compute: () => ({ answer: 'GGUF 格式 + 量化:把权重从 FP16 压成 4/5/8-bit(如 Q4_K_M),显存/内存需求骤降,普通 CPU/笔记本/手机就能跑。量化是端侧推理的关键(有精度损失、低档更明显)', step: 0, evidence: 'GGUF+量化压权重、端侧可跑' }), distractors: () => ['把模型传到云端算完再传回来', '靠插更多内存条来装下整份的权重', '换一个参数量更大的模型来跑'] },
+      { id: 'lc_gguf', label: 'GGUF 和量化', ask: 'llama.cpp 靠什么在普通设备上跑大模型?', kind: 'choice', compute: () => ({ answer: 'GGUF 格式 + 量化:把权重从 FP16 压成 4/5/8-bit(如 Q4_K_M),显存/内存需求骤降,普通 CPU/笔记本/手机就能跑。量化是端侧推理的关键(有精度损失、低档更明显)', step: 0, evidence: 'GGUF+量化压权重、端侧可跑' }), distractors: () => ['ONNX+剪枝压权重、端侧可跑', 'FP32+分页换出、靠内存条扛', 'TensorRT 编译、必须有 GPU'] },
       { id: 'lc_pos', label: 'llama.cpp 的定位', ask: 'llama.cpp 适合/不适合什么?', kind: 'choice', compute: () => ({ answer: '适合本地/端侧/离线/隐私场景(不用 GPU、可移植到手机树莓派);不适合高并发大吞吐服务(那用 vLLM/TensorRT-LLM)。Ollama/LM Studio 等桌面工具就封装它', step: 0, evidence: '端侧本地强、高并发服务弱' }), distractors: () => ['适合万卡集群上做预训练', '适合高并发的云端在线服务', '只能跑在服务器 GPU 上'] },
     ],
   },
@@ -1725,7 +1725,7 @@ const CATALOG_CORE: CatalogEntry[] = [
     id: 'wireshark', title: 'Wireshark · 网络抓包分析', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'wireshark' }, entities: [], streams: [] },
     facts: [
       { id: 'ws_what', label: 'Wireshark 是什么', ask: 'Wireshark 是干什么的?', kind: 'choice', compute: () => ({ answer: '网络抓包分析工具(GPL-2.0+):抓下网卡上的每个数据包,逐层逐字段解析(以太网→IP→TCP→HTTP…),让你亲眼看到协议在线路上怎么运作。是网络故障排查、协议开发、安全分析的事实标准', step: 0, evidence: '抓包逐层解析、看协议真实运作' }), distractors: () => ['一个 Web 服务器', '一个编译器', '一个数据库'] },
-      { id: 'ws_cover', label: 'Wireshark 对应的实验', ask: 'Wireshark 能对照实验室「计算机网络」组哪些实验?', kind: 'choice', compute: () => ({ answer: 'TCP(拥塞/可靠、序号确认重传窗口)、三次握手、子网划分、CRC 校验——你能抓真实的包对照实验里的原理看:握手的 SYN/ACK、重传、校验字段都在包里', step: 0, evidence: 'TCP/三次握手/子网/CRC' }), distractors: () => ['缺页和页替换、虚拟内存与页表项', '卷积和池化、批归一化', 'B 树和哈希、跳表索引'] },
+      { id: 'ws_cover', label: 'Wireshark 对应的实验', ask: 'Wireshark 能对照实验室「计算机网络」组哪些实验?', kind: 'choice', compute: () => ({ answer: 'TCP(拥塞/可靠、序号确认重传窗口)、三次握手、子网划分、CRC 校验——你能抓真实的包对照实验里的原理看:握手的 SYN/ACK、重传、校验字段都在包里', step: 0, evidence: 'TCP/三次握手/子网/CRC' }), distractors: () => ['LRU/缺页/页表/TLB 刷新', 'CNN/池化/BN/ReLU', 'B 树/哈希/跳表/LSM'] },
       { id: 'ws_use', label: 'Wireshark 的价值', ask: 'Wireshark 对学网络协议有什么独特价值?', kind: 'choice', compute: () => ({ answer: '把课本上抽象的协议变成"看得见的真流量":你能实际抓到 TCP 三次握手的三个包、看到重传和窗口变化、逐字段拆开每个包。学协议从"背 RFC"变成"看真包"', step: 0, evidence: '协议从课本变可见的真实流量' }), distractors: () => ['帮你写出跑得更快的那种代码', '帮你训练模型调超参', '帮你管理内存和显存'] },
     ],
   },
@@ -1756,7 +1756,7 @@ const CATALOG_CORE: CatalogEntry[] = [
   {
     id: 'git', title: 'Git · 分布式版本控制', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'git' }, entities: [], streams: [] },
     facts: [
-      { id: 'gt_what', label: 'Git 的内部模型', ask: 'Git 内部是怎么存东西的?', kind: 'choice', compute: () => ({ answer: '内容寻址对象库:每个文件(blob)/目录(tree)/提交(commit)都按内容的 SHA 哈希寻址——改一点内容哈希就变;提交靠父指针连成有向无环图(DAG),分支只是指向某个提交的指针。是一个漂亮的数据结构设计', step: 0, evidence: '内容寻址 + 提交 DAG + 分支是指针' }), distractors: () => ['存整个项目的多份完整拷贝、非常占磁盘的空间', '存每次改动的差异行号、按行回放', '按文件名加时间戳存、覆盖旧版本'] },
+      { id: 'gt_what', label: 'Git 的内部模型', ask: 'Git 内部是怎么存东西的?', kind: 'choice', compute: () => ({ answer: '内容寻址对象库:每个文件(blob)/目录(tree)/提交(commit)都按内容的 SHA 哈希寻址——改一点内容哈希就变;提交靠父指针连成有向无环图(DAG),分支只是指向某个提交的指针。是一个漂亮的数据结构设计', step: 0, evidence: '内容寻址 + 提交 DAG + 分支是指针' }), distractors: () => ['路径寻址 + 提交链表 + 分支是拷贝', '内容寻址 + 提交 DAG + 分支是快照', '行号寻址 + diff 链 + 分支是补丁'] },
       { id: 'gt_cover', label: 'Git 对应的实验', ask: 'Git 的设计对应实验室哪些数据结构?', kind: 'choice', compute: () => ({ answer: '哈希(内容寻址,改内容→新哈希,类似哈希表/指纹)、拓扑排序(提交的有向无环图 DAG,log 就是拓扑序);内容去重/压缩和布隆/压缩思路相通。理解 Git = 把哈希+DAG 串一遍', step: 0, evidence: '哈希(内容寻址)、拓扑排序(提交 DAG)' }), distractors: () => ['TCP 三次握手、拥塞控制与滑动窗口的机制', '卷积和池化、批归一化与残差', '调度和缺页、虚拟内存与页表'] },
       { id: 'gt_dist', label: 'Git 为什么分布式', ask: 'Git 的"分布式"体现在哪?', kind: 'choice', compute: () => ({ answer: '每个克隆(clone)都是包含完整历史的完整仓库,可以离线提交/查历史/建分支,不依赖中心服务器;需要时再和别人同步(push/pull)。这和集中式(SVN,必须连服务器)不同', step: 0, evidence: '每个克隆是完整仓库、可离线、去中心' }), distractors: () => ['必须连上中心服务器才能提交代码上去', '只在云端存代码、本地不留副本', '不能建分支、只有一条主线可用'] },
     ],
@@ -1782,7 +1782,7 @@ const CATALOG_CORE: CatalogEntry[] = [
     facts: [
       { id: 'cl_what', label: 'curl 是什么', ask: 'curl 是干什么的?', kind: 'choice', compute: () => ({ answer: '网络客户端(curl License,MIT 派生):命令行工具 + 库 libcurl,把 HTTP(S)/FTP 等几十种协议的请求发出去、拿回响应。是部署量最大的软件之一(几乎每台设备/汽车/手机里都有),调 API/下载/自动化脚本首选', step: 0, evidence: '命令行+libcurl、多协议客户端、部署量最大' }), distractors: () => ['一个 Web 服务器', '一个抓包工具', '一个数据库'] },
       { id: 'cl_cover', label: 'curl 一次请求发生什么', ask: '一次 `curl https://...` 背后经历了什么?对应哪个实验?', kind: 'choice', compute: () => ({ answer: 'DNS 解析 → TCP 三次握手 → TLS 握手 → 发 HTTP 请求 → 收响应。curl -v 能看到握手和头的全过程。对应「计算机网络」的三次握手、TCP——它是网络的"客户端侧"活样本', step: 0, evidence: 'DNS→TCP 握手→TLS→HTTP' }), distractors: () => ['TCP 握手→DNS→TLS→HTTP', 'DNS→UDP 直发→HTTP(免握手)', 'ARP→DHCP→NAT→HTTP'] },
-      { id: 'cl_role', label: 'curl 的角色', ask: 'curl 在网络里是什么角色?配合谁?', kind: 'choice', compute: () => ({ answer: '客户端(发起请求),对应的服务端是 nginx 那类 Web 服务器;要看它俩之间线路上的包,用 Wireshark 抓。curl 发 → 握手 → nginx 收响应 → Wireshark 看全过程', step: 0, evidence: '客户端;配服务端 nginx 与抓包' }), distractors: () => ['服务端;等着别人来连它、只做被动响应', '抓包分析器;把链路上的流量抓下来', '编译器;把源码翻译成机器码'] },
+      { id: 'cl_role', label: 'curl 的角色', ask: 'curl 在网络里是什么角色?配合谁?', kind: 'choice', compute: () => ({ answer: '客户端(发起请求),对应的服务端是 nginx 那类 Web 服务器;要看它俩之间线路上的包,用 Wireshark 抓。curl 发 → 握手 → nginx 收响应 → Wireshark 看全过程', step: 0, evidence: '客户端;配服务端 nginx 与抓包' }), distractors: () => ['服务端;配客户端 curl 与压测器', '抓包器;配 nginx 与 tcpdump', '代理;配 nginx 做 L7 层转发'] },
     ],
   },
   {

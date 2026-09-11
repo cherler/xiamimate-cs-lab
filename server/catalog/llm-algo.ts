@@ -325,7 +325,7 @@ export const LLM_ALGO_ENTRIES: CatalogEntry[] = [
           const f = t.find(x => x.stage === 'retrieve') ?? last(t)
           return { answer: '向量最近邻：按相似度找最接近的 top-k', step: t.indexOf(f), evidence: String(f.log ?? '') }
         },
-        distractors: () => ['关键词全文匹配:看文档里有没有出现问题中的字词', '让模型逐篇通读所有文档再打分挑选', '从知识库里随机抽取几篇'],
+        distractors: () => ['关键词 BM25：看文档里有没有出现问句的词', '全量重排：让模型逐篇通读再打分挑 top-k', '随机抽样：从知识库里均匀抽 k 篇出来'],
       },
       {
         id: 'rag_which_docs', label: '命中了哪两篇、为何',

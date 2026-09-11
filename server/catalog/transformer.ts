@@ -73,7 +73,7 @@ export const TRANSFORMER_ENTRIES: CatalogEntry[] = [
           const s = fi(t, f => f.phase === 'score' && f.qi === 0)
           return { answer: '防 softmax 饱和、梯度消失', step: s, evidence: ev(t[s]) }
         },
-        distractors: () => ['让注意力的权重相加起来正好等于 1', '把 Q 和 K 投影到相同的维度上去', '减少注意力这一步要做的计算量'],
+        distractors: () => ['让 softmax 输出之和正好为 1', '把 Q、K 投影到同一维度 d', '减少 QKᵀ 那一步的计算量'],
       },
     ],
   },
@@ -440,7 +440,7 @@ export const TRANSFORMER_ENTRIES: CatalogEntry[] = [
           const s = fi(t, f => f.phase === 'kv')
           return { answer: '序列长度与并发数 batch', step: s, evidence: ev(t[s]) }
         },
-        distractors: () => ['模型层数的平方，和序列长度无关', '词表大小，词表越大缓存越大', '训练步数，训得越久缓存越大'],
+        distractors: () => ['模型层数的平方，与 seq 无关', '词表大小 vocab，越大越占', '训练步数 step，训久就涨'],
       },
     ],
   },

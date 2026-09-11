@@ -420,7 +420,7 @@ export const DL_STATS_ENTRIES: CatalogEntry[] = [
             : `峰度基本不变`
           return { answer, step: t.indexOf(lastf), evidence: `m=${first.m} 超额峰度 ${first.exKurt} → m=${lastf.m} 超额峰度 ${lastf.exKurt}` }
         },
-        distractors: a => pick3(a, [a, '从钟形一路逐渐摊平成均匀分布的那种样子', '始终保持均匀的那种平顶形状不变', '越来越尖、峰度一路冲向正无穷']),
+        distractors: a => pick3(a, [a, '从钟形（峰度≈0）摊平成平顶', '峰度恒为 -1.205，形状一直不变', '峰度冲向 +∞，分布越来越尖']),
       },
     ],
   },
