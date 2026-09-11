@@ -1,7 +1,6 @@
 # 上线
 
-> **还没真上过线。** 这篇是**上线时照着做**的清单，不是「已经这么做了」的记录。
-> 真跑过一遍之后，把踩到的坑补进最后一节，并把这句话删掉。
+> **2026-09-11 首次上线完成。** 清单照着走了一遍，踩到的坑补在最后一节。
 >
 > 2026-08-18 拍板「先不急着上线」；2026-09-10 用户说准备上线，同日把路径从
 > `/lab` 改名成 `/cslab`（**后端 `/v1/lab/progress` 与 `app.lab_progress` 表没跟着改**）。
@@ -195,4 +194,52 @@ sudo rsync -a --delete /srv/xiamimate/cslab/<上一版>/ /srv/xiamimate/cslab/cu
 
 ## 踩过的坑
 
-（还没上过线。真跑一遍之后写在这里。）
+2026-09-11 首次上线实录。清单本身是准的 —— 下面这四条是清单**没写到**的。
+
+**① 服务器上 `git clone` 要用 SSH 地址，HTTPS 会卡在要用户名。**
+本机的 origin 是 `https://github.com/cherler/xiamimate-cs-lab.git`，照抄到服务器上
+一跑就是 `could not read Username for 'https://github.com'` —— 那台机器只配了
+部署用的 SSH key，没有 HTTPS 凭据。服务器上另外三个仓的 origin 全是
+`git@github.com:cherler/….git`，照它们抄就对了。
+
+**② `xiamimate-cslab-ai.service` 这个 unit 原本不存在，要现建。**
+清单里写的是「或按服务器上的 systemd unit 起」，而那台机器上根本没有。
+照 `xiamimate-ai-service.service` 抄一份即可（改 WorkingDirectory 和 ExecStart）：
+
+```ini
+WorkingDirectory=/srv/xiamimate/xiamimate-lab
+ExecStart=/usr/bin/npx tsx --env-file=.env server/index.ts
+```
+
+`.env` 里的 MiniMax 三件套**直接从 `/srv/xiamimate/xiamimate-tools-frontend/.env` 抄**
+（同一个号，没必要各配一份）；另外补 `XM_API_BASE=https://xiamimate.com` 和 `LAB_AI_PORT=8300`。
+起来之后 `journalctl -u xiamimate-cslab-ai` 最后一行必须是「计费：已接入主站计费」。
+
+**③ 第 5 步那道门比清单写的更死：新 key 在运营台里是「没有」，不是「没勾」。**
+`modules_vis` 存的是**显式覆盖**，`isModuleVisible` 的规则是
+`overrides[key] ?? (status !== "planned")`。cslab 声明为 `planned`、而线上那份
+overrides 里压根没有 `cslab` 这个键 —— 于是四步做完、`/cslab/` 完全正常，
+**首页却只有三张卡，一点异常都看不出来**。
+
+放出来（运营台勾选，或后端直接调用）：
+
+```bash
+cd /srv/xiamimate/xiamimate-tools-backend
+PYTHONPATH=. .venv/bin/python -c "
+from app import site_settings as ss
+v = ss.get_module_vis(); v['cslab'] = True; print(ss.set_module_vis(v))"
+```
+
+**④ 前端产物的自查条件别写成「index.html 里有没有 cslab」。**
+首页 v4 是客户端渲染的，模块名在 JS chunk 里、`index.html` 里一个字都没有。
+我第一次就是拿这个条件挡住了自己的发布。要查就查整个 `out/`：
+
+```bash
+grep -rl "虾米CS课堂" out/ | wc -l          # 应 ≥1
+grep -rl "一人项目\|幼升小" out/ | wc -l    # 应为 0（solo/school 已删）
+```
+
+上线后实测（都过）：`/cslab/` 200、四个子应用 200、`/v1/lab/progress` 401、
+`/v1/credits/quote?module=lab_ai` 回 `credits:1 multiplier:1.0`、
+游客 reserve 回 `guest:true used:1 limit:5`、真调一次 `/cslab/ai/explain`
+回 `metered:true credits:1`、首页四张卡、页面零 4xx 零 JS 报错。
