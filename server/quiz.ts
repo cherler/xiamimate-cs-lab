@@ -9,7 +9,7 @@
  * 大模型只能让题面更好读，永远不能让答案变错。这是「焊死引擎」的实现。
  */
 import { getEntry, traceOf, genreOf, type CatalogEntry, type Fact, type FactGenre } from './catalog.ts'
-import { generate, type Principal, type Billing } from './llm.ts'
+import { generate, QuotaRefused, type Principal, type Billing } from './llm.ts'
 import { prompt } from './prompts/loader.ts'
 
 export type Question = {
@@ -247,6 +247,21 @@ export async function explainQuestion(
     const text = r.text.trim()
     return text ? { explanation: text, source: 'llm', billing: r.billing } : fallback
   } catch (e) {
+    /**
+     * **「额度用完」和「模型挂了」不是一件事，别混进同一个兜底。**
+     *
+     * 两种都落回引擎讲解（实验照用，这点是对的），但用户看到的东西必须不一样：
+     * 模型挂了是我们的事，不用打扰他；额度用完了是**他可以做点什么**——登录，
+     * 用自己的积分。原来这里一律 `console.warn` 然后静默降级，
+     * 用户只看到讲解忽然变素了，既不知道为什么、也不知道登录就能继续。
+     * （实测：游客打满 5 次之后第 6 次就是这个样子。）
+     */
+    if (e instanceof QuotaRefused) {
+      return {
+        ...fallback,
+        billing: { metered: false, credits: 0, tokens: 0, note: '今日免费额度用完了 —— 登录后用自己的积分，讲解会更细' },
+      }
+    }
     console.warn('[quiz] 讲解生成失败，用引擎兜底:', (e as Error).message)
     return fallback
   }

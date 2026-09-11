@@ -274,6 +274,30 @@ console.log('\n【自检：这些判据能红吗】')
     ? ok('自检：把 402 混进 `status >= 400` 一把抓时，⑥那条会红（那正是加限流之前的写法）')
     : bad('自检失败：⑥认不出"402 没被单独处理"')
 
+  /**
+   * ⑧ **「额度用完」不许和「模型挂了」共用一个兜底。**
+   *
+   * 两种都该落回引擎讲解（实验照用），但用户看到的必须不一样：
+   * 模型挂了是我们的事，不用打扰他；额度用完了是**他能做点什么** —— 登录，用自己的积分。
+   * 原来 server/quiz.ts 的 explainQuestion 一律 `console.warn` 然后静默降级，
+   * 游客打满 5 次之后第 6 次讲解忽然变素，而**页面上一个字的解释都没有**。
+   * （2026-09-11 真机联测打出来的：前 5 次 source=llm，第 6 次 source=engine、note 为空。）
+   */
+  //  ⚠️ 正则别放在语句开头 —— esbuild 会把行首的 `/` 当成除号，整个文件语法崩。
+  const RE_QUOTA_NOTE = /\bQuotaRefused\b[\s\S]{0,400}?note:/
+  const qz = srcFiles.find(f => f.name === 'quiz.ts')?.text ?? ''
+  const tail = qz.slice(qz.indexOf('catch (e)', qz.indexOf('explainQuestion')))
+  RE_QUOTA_NOTE.test(tail)
+    ? ok('⑧ 额度用完时会带一句给用户的说明，不是静默降级')
+    : bad('⑧ explainQuestion 把 QuotaRefused 和别的报错一起吞了 —— '
+      + '用户只看到讲解变素，不知道是额度到头、也不知道登录就能继续')
+
+  //  ⑧ 自检：并回同一个 catch 的写法要能被抓住
+  const FAKE_CATCH = "} catch (e) {\n  console.warn('失败，用引擎兜底')\n  return fallback\n}"
+  !RE_QUOTA_NOTE.test(FAKE_CATCH)
+    ? ok('自检：把 QuotaRefused 并回通用 catch 时，⑧那条会红')
+    : bad('自检失败：⑧认不出"额度用完被静默吞掉"')
+
   //  ⑦ 把积分换算成「次」
   const BAD_UNIT2 = /(?:剩|还剩|已用|共|\d|\}|>)\s*次(?!数)/
   BAD_UNIT2.test('今天还剩 <b>{left}</b> / {b.limit} 次') && !BAD_UNIT2.test('本次消耗 <b>1</b> 积分')
