@@ -72,6 +72,34 @@ function hasGenre(fid) {
   return false
 }
 
+/**
+ * 选项的**外形**也要配平，不只是字数。
+ *
+ * 把长度那条通道堵死之后，判据⑫（不读题的人能考多少分）当场顶上来两条新的：
+ *   挑标点最多的 36.8 分、挑技术符号最多的 35.0 分（随机基线 25）。
+ * 根因是我自己写出来的：正确答案具体，带着 `softmax`、`O(N)`、`→`、顿号；
+ * 三个干扰项图省事写成了泛泛的白话中文。`DNS→TCP 握手→TLS→HTTP` 配上
+ * 「直接读取本地的文件、完全不走任何的网络」，不读题也知道挑哪个。
+ *
+ * 所以闸口跟着升级：答案的标点数、技术符号数都不许是**唯一最多**。
+ * 这是在逼着写「同一话题下的另一种机制」而不是白话 ——
+ * 顺序错的 `TCP 握手→DNS→TLS→HTTP`、协议错的 `DNS→UDP 直发→HTTP`，
+ * 既配得上外形，排除它又真需要知识。题目质量本身就上去了。
+ *
+ * ⚠️ 只禁「唯一最多」，不要求相等：答案本来就该有符号的题不必为了配平去掺水。
+ */
+const NOTE_RE = /[A-Za-z0-9=+\-×·↔→√≈²³∝]/g
+const PUNC_RE = /[，、；：（）(),;:]/g
+function shapeLeak(answer, wrong) {
+  const out = []
+  for (const [name, re] of [['标点', PUNC_RE], ['技术符号', NOTE_RE]]) {
+    const na = (answer.match(re) ?? []).length
+    const nw = wrong.map(w => (w.match(re) ?? []).length)
+    if (na > Math.max(...nw)) out.push(`${name}数 ${na} 比三个干扰项(${nw.join('/')})都多`)
+  }
+  return out
+}
+
 let pass = 0
 const fail = []
 const ready = []
@@ -111,6 +139,9 @@ for (const r of rewrites) {
     continue
   }
 
+  //  外形配平：答案的标点 / 技术符号都不许是唯一最多
+  const shape = shapeLeak(r.answer, wrong)
+  if (shape.length) { bad(`${shape.join('；')} —— 干扰项别写成白话，要说同一话题下的另一种机制`); continue }
   //  写回前先确认每条原文在源码里唯一命中
   const edits = []
   let ok = true
