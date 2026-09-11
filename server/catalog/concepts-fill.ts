@@ -190,7 +190,7 @@ export const FILL_FACTS: Record<string, Fact[]> = {
       '中心节点那种做法带宽压在一个点上,卡越多越堵'),
     cf('two_phase', '环形 all-reduce 的两段', '环形 all-reduce 分成哪两个阶段？',
       'reduce-scatter 之后再 all-gather',
-      ['先广播再规约：每个节点先拿到全量的数据，再各自求和累加起来', '先排序再合并：按节点编号的顺序把结果逐个累加起来', '先压缩再传输：量化之后再走一圈环，能省一半带宽'],
+      ['all-gather 之后再 reduce-scatter', 'broadcast 之后再 all-reduce 一次', 'all-to-all 之后再 gather 到主卡'],
       '两段各走 N−1 步,总通信量与卡数无关'),
   ],
   chunkprefill: [
@@ -266,7 +266,7 @@ export const FILL_FACTS: Record<string, Fact[]> = {
   linattn: [
     cf('trick', '线性注意力靠什么降阶', '线性注意力把 O(N²) 压到 O(N)，靠的是什么？',
       '去掉 softmax 改结合律，先算 K·V',
-      ['把注意力矩阵稀疏化，只保留每行最大的若干项', '把序列切成固定长度的块，块与块之间不做注意力', '用一个低秩矩阵去近似注意力矩阵，秩取得很小'],
+      ['保留 softmax，把 QKᵀ 稀疏化留 top-k', '把 QKᵀ 做低秩分解，秩取到 r≪N', '按块切 K/V，块之间不做 attention'],
       '(QKᵀ)V 换成 Q(KᵀV):后者的中间量是 d×d,和序列长度无关'),
     cf('cost', '线性注意力的代价', '线性注意力的代价是什么？',
       '固定大小的状态装不下长程细节，回忆变差',
@@ -310,7 +310,7 @@ export const FILL_FACTS: Record<string, Fact[]> = {
       'MLP 的两层这样配,一整块只在最后 all-reduce 一次'),
     cf('when_worth', '张量并行什么时候划算', '张量并行在什么条件下才划算？',
       '带宽高时——每层都要 all-reduce',
-      ['模型层数很多时——层数越多，切分得就越均匀', '批大小很大时——通信量会被大批次摊薄掉', '序列很长时——通信量和序列长度本来就无关'],
+      ['层数多时——PP 的气泡会被摊薄掉', '批大小大时——all-gather 量被摊薄', '序列长时——KV 与序列长度无关'],
       '所以 TP 一般只在单机 NVLink 内用,跨机走流水并行'),
   ],
 

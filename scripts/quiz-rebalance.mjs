@@ -232,6 +232,17 @@ for (const r of rewrites) {
      * 是**换一个更小、更有据的锚点**：先按 fact id 圈出区间，再在区间内要求唯一。
      * 圈不出区间、或区间内仍不唯一，照旧打回。
      */
+    /*  兜底之前先确认这个 fact id 全局唯一。
+        27 个 id 是跨实验重名的（why_sorted 在 binsearch 和 minikv 各有一条、
+        cost 更是四条实验共用）。按 id 圈区间的话，indexOf 只会命中第一处 ——
+        要改的是第二条时，就会静静地写到别人身上。宁可少改一条。 */
+    const idCount = SRC.reduce((n, p) => n
+      + (text.get(p).split(`id: '${r.fid}'`).length - 1)
+      + (text.get(p).split(`cf('${r.fid}'`).length - 1), 0)
+    if (!hitForm && idCount !== 1) {
+      bad(`原文不是唯一命中，而 fact id「${r.fid}」在源码里出现 ${idCount} 次，按 id 圈区间会写错地方 —— 这条手改`)
+      ok = false; break
+    }
     if (!hitForm) {
       for (const p of SRC) {
         const t = text.get(p)
