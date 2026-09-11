@@ -495,6 +495,47 @@ rows.length >= 200 && rows.reduce((n, r) => n + r.concept + r.count, 0) >= 700
       + `${reach.has(MUST_NOT) ? `${MUST_NOT} 所在的组早已下线却算成点得到；` : ''}`
       + `⑩ 要么在空跑，要么口径错了`)
 
+  /**
+   * ⑪ **选项里不许出现标记语言。**
+   *
+   * 出题面板渲染选项是 `{opt}` —— **原样输出，不走富文本**（web/src/shell/AiCompanion.tsx）。
+   * 所以 fact 的答案里写 `**从源头**` 想加个着重号，用户看到的就是一串星号。
+   * 这和之前 Panels.tsx 那次「261/286 个实验的讲解带着裸 ** 上屏」是同一种病，
+   * 只是漏了出题面板这一处。
+   *
+   * 更要紧的是它**还是一条泄题通道**：着重号只有正确答案带、三个干扰项都没有，
+   * 那就跟"答案是唯一最长"一样，不读题也能挑出来。所以这条和⑩并列，不是排版洁癖。
+   */
+  const MARKUP = /\*\*|`|<\/?[a-z][^<>]{0,24}>/i
+  const marked: string[] = []
+  for (const e of CATALOG) {
+    let t: Record<string, unknown>[] = []
+    try { t = traceOf(e) as Record<string, unknown>[] } catch { continue }
+    for (const f of e.facts) {
+      if (genreOf(f, t) !== 'concept') continue
+      let ans = '', ds: string[] = []
+      try {
+        ans = String(f.compute(t as never).answer)
+        ds = f.distractors(ans, t as never).filter((d: string) => d !== ans)
+      } catch { continue }
+      if (ds.length < 3) continue
+      if ([ans, ...ds].some(x => MARKUP.test(x))) marked.push(`${e.id}/${f.id}`)
+    }
+  }
+  marked.length === 0
+    ? ok('选项里没有一条带 ** / 反引号 / HTML 标签 —— 出题面板是原样渲染的，写了就当字面量上屏')
+    : bad(`这些题的选项里带着标记语言，会当字面量显示给用户，而且只有正确答案带就是在泄题：`
+      + `${marked.slice(0, 8).join(' ')}${marked.length > 8 ? ' …' : ''}`)
+
+  /**
+   * ⑪ 的自检要证明**两头**都对 —— 我写这条时正是在第二头翻的车：
+   * 一开始 HTML 标签那半写成 `<[a-z]`，结果把 `N_eff<N/2 就重采样` 里的 `<N`
+   * 当成了标签，报了两条根本没问题的题。判据比根因宽一格，一样是错。
+   */
+  MARKUP.test('这里有**着重号**') && MARKUP.test('带 <b>标签</b> 的') && !MARKUP.test('N_eff<N/2 就重采样') && !MARKUP.test('复杂度从 O(N²) 降到 O(N)')
+    ? ok('自检：⑪ 抓得住 ** 和 <b>，且不误伤 N_eff<N/2、O(N²) 这类数学写法 —— 它能红也不乱红')
+    : bad('自检失败：⑪ 要么抓不住标记，要么把数学比较误当成 HTML 标签')
+
   //  自检：判法本身得能分辨好坏，不是永远为真
   const L = (x: string) => [...x].length
   const leak = ['正确答案写得又长又全面还带理由', '短的', '也短', '很短']

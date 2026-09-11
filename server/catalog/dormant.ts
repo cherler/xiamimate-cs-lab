@@ -812,7 +812,7 @@ export const DORMANT_ENTRIES: CatalogEntry[] = [
       {
         id: 'at_weight', label: '时序集成的权重公式',
         ask: 'ACT 时序集成的权重 w_i = exp(-m·i)，其中 i=0 对应哪条预测，m 默认多少?', kind: 'choice',
-        compute: t => { const f = t as unknown as { m: number }[]; const m = f.find(x => x.m != null && x.m > 0)?.m ?? 0.01; return ({ answer: `i=0 是**最旧**那条预测(LeRobot 代码 exp(-m·arange))；m 默认 ${m} → 权重近似均匀、还略偏旧(别过度信最新那条抖的，代码注释:激进上调新动作会削弱分块好处)`, step: 3, evidence: 'm 大→更信旧;m<0→更信新' }) },
+        compute: t => { const f = t as unknown as { m: number }[]; const m = f.find(x => x.m != null && x.m > 0)?.m ?? 0.01; return ({ answer: `i=0 是最旧那条预测(LeRobot 代码 exp(-m·arange))；m 默认 ${m} → 权重近似均匀、还略偏旧(别过度信最新那条抖的，代码注释:激进上调新动作会削弱分块好处)`, step: 3, evidence: 'm 大→更信旧;m<0→更信新' }) },
         distractors: () => ['i=0 是最新那条、m 默认 1.0', 'i=0 是最旧、权重全相等(m 恒为 0)', 'i=0 是最重要那条、m 由模型学出'],
       },
       {
@@ -1207,7 +1207,7 @@ export const DORMANT_ENTRIES: CatalogEntry[] = [
       {
         id: 'dyn_mass', label: '质量矩阵非对角项是什么',
         ask: '机械臂质量矩阵 M(q) 的非对角项代表什么?M 有什么性质?', kind: 'choice',
-        compute: t => { const f = t as unknown as { M?: number[][] }[]; const M = f.find(x => x.M)?.M; const off = M ? M[0]![1] : 0.69; return ({ answer: `非对角项(本例 M₁₂=${off})是**关节间的惯性耦合**——给一个关节加速度会在另一个关节上产生力矩;非对角≠0 就是耦合。M 还随构型变(cos q2)、且恒对称正定(是动能度规、故一定可逆)`, step: 2, evidence: 'M 对称正定→正向动力学良定义;非对角=耦合' }) },
+        compute: t => { const f = t as unknown as { M?: number[][] }[]; const M = f.find(x => x.M)?.M; const off = M ? M[0]![1] : 0.69; return ({ answer: `非对角项(本例 M₁₂=${off})是关节间的惯性耦合——给一个关节加速度会在另一个关节上产生力矩;非对角≠0 就是耦合。M 还随构型变(cos q2)、且恒对称正定(是动能度规、故一定可逆)`, step: 2, evidence: 'M 对称正定→正向动力学良定义;非对角=耦合' }) },
         distractors: () => ['非对角是测量噪声、应忽略', '非对角是重力项', 'M 是常数矩阵、与姿势无关'],
       },
       {

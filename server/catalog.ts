@@ -545,7 +545,7 @@ const CATALOG_CORE: CatalogEntry[] = [
         id: 'two_opts', label: '两个优化治的不是同一件事', kind: 'choice', genre: 'concept',
         ask: '按秩合并和路径压缩，都是为了不让 find 爬太久。它们的做法有什么根本区别?',
         compute: t => ({
-          answer: '按秩合并在合并时**从源头**不让树长高，路径压缩是**事后**把链拍平',
+          answer: '按秩合并在合并时从源头不让树长高，路径压缩是事后把链拍平',
           step: t.length - 1,
           evidence: '看规模表「树深」那一列：按秩合并让它从一开始就没高过（两两归并序列上正好是 log₂n），而压缩是把它一次拍到 1',
         }),
