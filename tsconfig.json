@@ -10,7 +10,14 @@
     "noUncheckedIndexedAccess": false,
     "exactOptionalPropertyTypes": false,
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    /*  `@engine/*` 的别名在这里也要有一份。
+        判据文件（tests/guide-content.test.ts 等）会 import web/src 下的模块，
+        而那边用 `@engine/core/document.ts` 引引擎 —— web/tsconfig.json 里配了别名、
+        根 tsconfig 里没有，于是 `npx tsc --noEmit` 报 TS2307 找不到模块。
+        更糟的是 npm run typecheck 是 `tsc && tsc -p web/tsconfig.json`：
+        第一条红了第二条**压根不会跑**，web 那半根本没在查。 */
+    "paths": { "@engine/*": ["./src/*"] }
   },
   "include": ["src/**/*.ts", "tests/**/*.ts", "scripts/**/*.ts", "server/**/*.ts"]
 }

@@ -89,8 +89,14 @@ export type InterviewOptions = { expIds?: string[]; trackTitle?: string; history
 // 看参考答案:给面试官刚问的那道题一个**基于钉死要点**的参考答案(不是模型自由发挥,只用给定要点)。
 export async function interviewAnswer(expId: string, opts: InterviewOptions = {}): Promise<{ answer: string; billing: Billing }> {
   const track = !!(opts.expIds && opts.expIds.length > 1)
-  const entry = track ? null : getEntry(expId)
-  if (!track && !entry) throw new Error(`未知实验：${expId}（可用：见 /cslab/ai/experiments）`)
+  /*  这里有两个不同含义的"没有"，别混成一个（typecheck 也正是卡在这）：
+      · track 模式下**本来就没有单个实验** → null
+      · getEntry 查不到这个 expId        → undefined
+      下面那句 throw 专治后者；过了它之后 undefined 已不可能，
+      剩下的 null 只剩前一种意思，这才谈得上并成 CatalogEntry | null。 */
+  const found = track ? null : getEntry(expId)
+  if (!track && !found) throw new Error(`未知实验：${expId}（可用：见 /cslab/ai/experiments）`)
+  const entry: CatalogEntry | null = found ?? null
   const history = opts.history ?? []
   const lastQ = [...history].reverse().find(h => h.role === 'interviewer')?.text ?? '（上一题）'
   if (opts.useLLM === false) return { answer: '（未调用大模型）参考答案见实验要点。', billing: { metered: false, credits: 0, tokens: 0, note: '未调用大模型' } }
@@ -106,8 +112,14 @@ export async function interviewAnswer(expId: string, opts: InterviewOptions = {}
 
 export async function interview(expId: string, opts: InterviewOptions = {}): Promise<InterviewResult> {
   const track = !!(opts.expIds && opts.expIds.length > 1)
-  const entry = track ? null : getEntry(expId)
-  if (!track && !entry) throw new Error(`未知实验：${expId}（可用：见 /cslab/ai/experiments）`)
+  /*  这里有两个不同含义的"没有"，别混成一个（typecheck 也正是卡在这）：
+      · track 模式下**本来就没有单个实验** → null
+      · getEntry 查不到这个 expId        → undefined
+      下面那句 throw 专治后者；过了它之后 undefined 已不可能，
+      剩下的 null 只剩前一种意思，这才谈得上并成 CatalogEntry | null。 */
+  const found = track ? null : getEntry(expId)
+  if (!track && !found) throw new Error(`未知实验：${expId}（可用：见 /cslab/ai/experiments）`)
+  const entry: CatalogEntry | null = found ?? null
   const scopeName = track ? `${opts.trackTitle ?? '这条职业线'}（跨主题）` : entry!.title
 
   const history = opts.history ?? []
