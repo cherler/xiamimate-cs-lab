@@ -278,7 +278,7 @@ export const DL_STATS_ENTRIES: CatalogEntry[] = [
             : `递增：√ᾱ 从约 ${lastf.sqrtA} 升到 ${first.sqrtA}`
           return { answer, step: t.indexOf(lastf), evidence: String(lastf.log ?? '') }
         },
-        distractors: a => pick3(a, [a, '保持不变：√ᾱ 恒为 1，只是叠加噪声', '先降后升：中途信号会回升', '随机跳变、没有规律']),
+        distractors: a => pick3(a, [a, '不变：√ᾱ 恒为 1，只是叠加上噪声了', '先降后升：√ᾱ 中途会回到 0.5', '递增：√ᾱ 从 0.071 一路升到 1']),
       },
     ],
   },

@@ -381,9 +381,9 @@ export const LLM_INFER_A_ENTRIES: CatalogEntry[] = [
           }
         },
         distractors: a => [a,
-          'n 大了会变慢，n 小了会变快 —— 只是速度上的取舍，准确率一样',
-          'n 大了表更小，n 小了表更大 —— 只影响内存占用，不影响预测',
-          'n 怎么调都一样 —— 只要那个模式出现过，多长的前缀都查得到',
+          'n 大了 hit 率更高、n 小了 miss 多，只是命中率取舍',
+          'n 大了表更小、n 小了表更大 —— 只影响 memory 占用，不影响预测',
+          'n 怎么调结果都一样 —— 只要 pattern 出现过，多长的前缀都查得到',
         ].filter(o => o !== a).slice(0, 3),
       },
       {

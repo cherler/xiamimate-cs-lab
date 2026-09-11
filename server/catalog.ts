@@ -536,9 +536,9 @@ const CATALOG_CORE: CatalogEntry[] = [
           }
         },
         distractors: a => [a,
-          '成立 —— 用树加父指针表示分组这件事本身就带来了近乎常数的复杂度',
-          '成立 —— 只要元素个数固定，树的高度就有上界，爬树的代价自然是常数',
-          '不成立 —— 但原因是没有按大小合并，跟路径压缩和按秩合并都没有关系',
+          '成立 —— 用树加父指针表示分组，本身就带来近乎 O(1) 复杂度',
+          '成立 —— 元素个数固定时树高有上界，爬树代价自然是 O(1) 常数',
+          '不成立 —— 但原因是没做按大小合并，跟 path compression 无关',
         ].filter(o => o !== a).slice(0, 3),
       },
       {
@@ -1042,7 +1042,7 @@ const CATALOG_CORE: CatalogEntry[] = [
         id: 'two_structs', label: 'LRU 为什么要 HashMap + 双向链表两个结构',
         ask: '实现 O(1) 的 LRU 缓存，为什么要同时用 HashMap 和双向链表?', kind: 'choice',
         compute: () => ({ answer: 'HashMap 管定位，双向链表管顺序，都 O(1)', step: 0, evidence: 'get 命中要把节点移到头，删除中间节点需要前驱指针，所以必须双向链表' }),
-        distractors: () => ['HashMap 一个就够，链表只是为了方便打印内容', '双向链表管定位，HashMap 只记每个键的过期时间', '用单向链表也行，删节点时从头遍历找前驱够快'],
+        distractors: () => ['双向链表管定位，HashMap 管每个键的 TTL 过期', 'HashMap 一个就够，链表只为 debug 时打印内容', '单向链表也行，删节点时从头找前驱，够快了'],
       },
       {
         id: 'evict_tail', label: 'LRU 淘汰谁、命中怎么处理',
@@ -1526,7 +1526,7 @@ const CATALOG_CORE: CatalogEntry[] = [
     facts: [
       { id: 'vl_paged', label: 'PagedAttention 是什么', ask: 'vLLM 的招牌 PagedAttention 解决什么问题?', kind: 'choice', compute: () => ({ answer: '把 KV 缓存像操作系统的虚拟内存一样分块管理:按需分配、跨请求共享(如共同前缀),几乎消除显存碎片、大幅提高吞吐和可容纳的并发数。这是 vLLM 高吞吐的核心', step: 0, evidence: 'KV 缓存仿 OS 分页、分块共享、消碎片' }), distractors: () => ['把模型权重分页换出到 SSD 上去省下显存', '把注意力矩阵做低秩近似来省下算力', '换一个参数更小的模型来降低显存占用'] },
       { id: 'vl_batch', label: '连续批处理', ask: 'vLLM 的连续批处理(continuous batching)是什么?', kind: 'choice', compute: () => ({ answer: '请求可以动态地进出同一个批次(谁生成完就退出、新请求随时加入),让 GPU 始终打满、不用等整批对齐,大幅提高吞吐。配 PagedAttention 一起把利用率拉满', step: 0, evidence: '请求动态进出同批、GPU 打满' }), distractors: () => ['一次只处理一个请求，后面排队等', '攒够一整批请求再一起算，要等齐', '把批处理挪到 CPU 上去做'] },
-      { id: 'vl_pos', label: 'vLLM 的定位', ask: 'vLLM 适合什么?和 llama.cpp/TensorRT-LLM 怎么选?', kind: 'choice', compute: () => ({ answer: 'vLLM 面向 GPU 上的高吞吐服务、开箱 OpenAI 兼容、易用;端侧/CPU 本地跑用 llama.cpp;NVIDIA GPU 上追极致延迟用 TensorRT-LLM(但要编译、运维更复杂,vLLM 以 85% 性能换易用)', step: 0, evidence: 'GPU 高吞吐;端侧用 llama.cpp' }), distractors: () => ['只适合手机端侧;高吞吐要用 llama.cpp', '只做训练不做推理;服务要换 TRT-LLM', '一次只能加载一个模型;多模型开多进程'] },
+      { id: 'vl_pos', label: 'vLLM 的定位', ask: 'vLLM 适合什么?和 llama.cpp/TensorRT-LLM 怎么选?', kind: 'choice', compute: () => ({ answer: 'vLLM 面向 GPU 上的高吞吐服务、开箱 OpenAI 兼容、易用;端侧/CPU 本地跑用 llama.cpp;NVIDIA GPU 上追极致延迟用 TensorRT-LLM(但要编译、运维更复杂,vLLM 以 85% 性能换易用)', step: 0, evidence: 'GPU 高吞吐;端侧用 llama.cpp' }), distractors: () => ['端侧高吞吐;服务器用 llama.cpp', '只做训练;推理要换 TensorRT-LLM', '一次只跑一个模型;多模型开多进程'] },
     ],
   },
   {
@@ -1741,7 +1741,7 @@ const CATALOG_CORE: CatalogEntry[] = [
     id: 'redis', title: 'Redis · 内存数据结构服务器', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'redis' }, entities: [], streams: [] },
     facts: [
       { id: 'rd_what', label: 'Redis 是什么', ask: 'Redis 是干什么的?为什么快?', kind: 'choice', compute: () => ({ answer: '内存数据结构服务器(C 写):把字符串/哈希/列表/集合/有序集合(跳表)/位图等当网络服务用,常做缓存/排行榜/队列。快在数据全在内存 + 单线程事件循环(无锁竞争)。内部是一座数据结构博物馆', step: 0, evidence: '内存数据结构服务器、单线程事件循环、极快' }), distractors: () => ['一个关系数据库(存磁盘)', '一个编译器', '一个 Web 服务器'] },
-      { id: 'rd_cover', label: 'Redis 对应的实验', ask: 'Redis 内部结构对应实验室哪些概念?', kind: 'choice', compute: () => ({ answer: '哈希表(渐进式 rehash,对应「数据结构」哈希)、有序集合用跳表、以及内存满时的 LRU/LFU 淘汰(和「操作系统」页替换 LRU 同思路)。它是这些数据结构的工程范本', step: 0, evidence: '哈希表 rehash、LRU 淘汰↔页替换' }), distractors: () => ['TCP 三次握手和 CRC 校验、滑动窗口', '卷积和注意力、位置编码', '梯度下降和反向传播、链式法则'] },
+      { id: 'rd_cover', label: 'Redis 对应的实验', ask: 'Redis 内部结构对应实验室哪些概念?', kind: 'choice', compute: () => ({ answer: '哈希表(渐进式 rehash,对应「数据结构」哈希)、有序集合用跳表、以及内存满时的 LRU/LFU 淘汰(和「操作系统」页替换 LRU 同思路)。它是这些数据结构的工程范本', step: 0, evidence: '哈希表 rehash、LRU 淘汰↔页替换' }), distractors: () => ['B+ 树 index、WAL 日志↔崩溃恢复', 'TCP 握手、CRC 校验↔滑动窗口', 'CNN 卷积、BN 归一↔位置编码'] },
       { id: 'rd_license', label: 'Redis 许可变更', ask: 'Redis 的许可这几年发生了什么?用要注意什么?', kind: 'choice', compute: () => ({ answer: '2024 从宽松的 BSD 改成 source-available(SSPLv1/RSALv2),一度不再是 OSI 开源;Redis 8(2025)又加回 AGPLv3 作为可选,现在是三重许可。商用/云服务要看清条款;社区拉了个 BSD 分叉叫 Valkey', step: 0, evidence: '2024 转闭源、8 又加回 AGPLv3' }), distractors: () => ['2024 转 MIT、8 收紧 BSD-3', '一直 BSD-3、8 起加 Apache', '2024 转 GPL-3、8 放宽 MIT'] },
     ],
   },
@@ -1757,7 +1757,7 @@ const CATALOG_CORE: CatalogEntry[] = [
     id: 'git', title: 'Git · 分布式版本控制', kernel: libraryKernel as Kernel<unknown>, doc: { kind: 'library', params: { lib: 'git' }, entities: [], streams: [] },
     facts: [
       { id: 'gt_what', label: 'Git 的内部模型', ask: 'Git 内部是怎么存东西的?', kind: 'choice', compute: () => ({ answer: '内容寻址对象库:每个文件(blob)/目录(tree)/提交(commit)都按内容的 SHA 哈希寻址——改一点内容哈希就变;提交靠父指针连成有向无环图(DAG),分支只是指向某个提交的指针。是一个漂亮的数据结构设计', step: 0, evidence: '内容寻址 + 提交 DAG + 分支是指针' }), distractors: () => ['路径寻址 + 提交链表 + 分支是拷贝', '内容寻址 + 提交 DAG + 分支是快照', '行号寻址 + diff 链 + 分支是补丁'] },
-      { id: 'gt_cover', label: 'Git 对应的实验', ask: 'Git 的设计对应实验室哪些数据结构?', kind: 'choice', compute: () => ({ answer: '哈希(内容寻址,改内容→新哈希,类似哈希表/指纹)、拓扑排序(提交的有向无环图 DAG,log 就是拓扑序);内容去重/压缩和布隆/压缩思路相通。理解 Git = 把哈希+DAG 串一遍', step: 0, evidence: '哈希(内容寻址)、拓扑排序(提交 DAG)' }), distractors: () => ['TCP 三次握手、拥塞控制与滑动窗口的机制', '卷积和池化、批归一化与残差', '调度和缺页、虚拟内存与页表'] },
+      { id: 'gt_cover', label: 'Git 对应的实验', ask: 'Git 的设计对应实验室哪些数据结构?', kind: 'choice', compute: () => ({ answer: '哈希(内容寻址,改内容→新哈希,类似哈希表/指纹)、拓扑排序(提交的有向无环图 DAG,log 就是拓扑序);内容去重/压缩和布隆/压缩思路相通。理解 Git = 把哈希+DAG 串一遍', step: 0, evidence: '哈希(内容寻址)、拓扑排序(提交 DAG)' }), distractors: () => ['B+ 树(按路径来存)、最短路(提交链表)', '红黑树(按时间)、并查集(分支合并)', '跳表(按版本号)、堆排序(提交顺序)'] },
       { id: 'gt_dist', label: 'Git 为什么分布式', ask: 'Git 的"分布式"体现在哪?', kind: 'choice', compute: () => ({ answer: '每个克隆(clone)都是包含完整历史的完整仓库,可以离线提交/查历史/建分支,不依赖中心服务器;需要时再和别人同步(push/pull)。这和集中式(SVN,必须连服务器)不同', step: 0, evidence: '每个克隆是完整仓库、可离线、去中心' }), distractors: () => ['必须连上中心服务器才能提交代码上去', '只在云端存代码、本地不留副本', '不能建分支、只有一条主线可用'] },
     ],
   },
@@ -1815,7 +1815,7 @@ const CATALOG_CORE: CatalogEntry[] = [
         id: 'vs_wildcard', label: '正则 * 和通配符 * 的区别',
         ask: '正则的 * 和通配符（glob）的 * 有什么本质区别?', kind: 'choice',
         compute: () => ({ answer: '正则 * 跟前一个字符，glob * 是任意段', step: 5, evidence: 'p="c*a*b" 里 c*=零或多个c、a*=零或多个a；通配符里 * 是任意段' }),
-        distractors: () => ['两者完全一样', '正则 * 匹配一整段、而通配符 * 只匹配一个', '只是写法不同、语义上其实完全相同'],
+        distractors: () => ['正则 * 是任意段，glob * 跟前一个字符', '正则 * 和 glob * 完全一样，只是写法不同', '正则 * 跟后一个字符，glob * 只配一个字符'],
       },
     ],
   },

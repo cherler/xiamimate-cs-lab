@@ -216,9 +216,9 @@ export const TRANSFORMER_ENTRIES: CatalogEntry[] = [
           }
         },
         distractors: a => [a,
-          '因为它算得更快 —— 只要速度上去了就是优化',
-          '因为它省了显存 —— 缓存下来的 K/V 比重算占的空间小',
-          '因为它是论文里公认的做法 —— 大家都这么叫',
+          '因为它省了显存 —— 缓存的 K/V 比重算占的空间小',
+          '因为它算得更快 —— 416 次乘加降到 344 次就是优化',
+          '因为论文里都这么叫 —— KV cache 是公认的优化项',
         ].filter(o => o !== a).slice(0, 3),
       },
       {
@@ -572,7 +572,7 @@ export const TRANSFORMER_ENTRIES: CatalogEntry[] = [
           const f = last(t)
           return { answer: '单位均方根（RMS=1）的尺度', step: t.length - 1, evidence: ev(f) }
         },
-        distractors: () => ['零均值、单位方差的那种标准尺度', '所有维度上的数值都被拉成了 1', '归一化成一个和为 1 的概率分布'],
+        distractors: () => ['零均值单位方差（μ=0,σ=1）', '所有维度都被拉成 1 的尺度', '和为 1（Σ=1）的概率分布'],
       },
     ],
   },
