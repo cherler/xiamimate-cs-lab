@@ -496,6 +496,81 @@ rows.length >= 200 && rows.reduce((n, r) => n + r.concept + r.count, 0) >= 700
       + `⑩ 要么在空跑，要么口径错了`)
 
   /**
+   * ⑫ **不读题的人考多少分。**
+   *
+   * ⑨⑩⑪ 是一条通道一条通道地堵：答案唯一最长、唯一最短、带着重号……
+   * 可"靠选项外形蒙答案"的通道不止这几条，堵完一条还有下一条
+   * （这一轮就抓出两条新的：正确答案的**标点**和**技术符号**都系统性地比干扰项多，
+   * 因为答案写得具体、而干扰项被我写成了泛泛的白话中文）。
+   *
+   * 所以直接判**结果**：拉一队只看选项形状、完全不读题的"考生"，
+   * 谁都不许显著超过随机基线 25 分。新通道一旦出现，它自己会顶上来。
+   * 想加新策略就往 CHEATS 里加一行 —— 这张表就是"我们想到过的作弊法"的清单。
+   *
+   * ⚠️ 低于 25 分**不是好事也不是坏事**，别去优化那个方向：
+   * 「挑最长的」现在 14.9 分，是因为改写时把答案一律往干扰项区间里收，
+   * 这只说明长度这条通道反过来也不通了。真正的目标是**四条都贴着 25**。
+   */
+  {
+    const NOTE = /[A-Za-z0-9=+\-×·↔→√≈²³∝]/g
+    const PUNC = /[，、；：（）(),;:]/g
+    const words = (x: string) => new Set((x.match(/[\u4e00-\u9fa5]{2,3}|[A-Za-z]{3,}/g) ?? []))
+    const echo = (x: string, q: string) => { const g = words(q); let n = 0; for (const w of words(x)) if (g.has(w)) n++; return n }
+    const CHEATS: [string, (o: string[], q: string) => number[]][] = [
+      ['挑最长的', o => o.map(x => [...x].length)],
+      ['挑最短的', o => o.map(x => -[...x].length)],
+      ['挑标点最多的', o => o.map(x => (x.match(PUNC) ?? []).length)],
+      ['挑技术符号最多的', o => o.map(x => (x.match(NOTE) ?? []).length)],
+      ['挑最像题面的', (o, q) => o.map(x => echo(x, q))],
+      ['挑最不像题面的', (o, q) => o.map(x => -echo(x, q))],
+      ['挑不说满的', o => o.map(x => (/一定|完全|永远|总是|根本|绝不|一律/.test(x) ? 0 : 1))],
+    ]
+    const hit = new Map(CHEATS.map(([n]) => [n, 0]))
+    let n = 0
+    for (const e of CATALOG) {
+      if (!reach.has(e.id)) continue
+      let t: Record<string, unknown>[] = []
+      try { t = traceOf(e) as Record<string, unknown>[] } catch { continue }
+      for (const f of e.facts) {
+        if (genreOf(f, t) !== 'concept') continue
+        let a = '', ds: string[] = []
+        try {
+          a = String(f.compute(t as never).answer)
+          ds = f.distractors(a, t as never).filter((d: string) => d !== a).slice(0, 3)
+        } catch { continue }
+        if (!a || ds.length < 3) continue
+        n++
+        const opts = [a, ...ds]                         // opts[0] 恒为正确答案
+        for (const [name, score] of CHEATS) {
+          const v = score(opts, f.ask), mx = Math.max(...v)
+          //  平手按均分记：真考生在并列项里只能瞎猜
+          if (v[0] === mx) hit.set(name, hit.get(name)! + 1 / v.filter(x => x === mx).length)
+        }
+      }
+    }
+    /*  **只许降。** 每堵掉一条通道就把这个数压到当天实测的最高分。
+        降账记录：82.3（2026-09-10 首测，那时是「挑最长的」）→ 36.8（2026-09-11，
+        长度那条已经反过来了，现在最高的是「挑标点最多的」）。
+        贴到 25 上下才算这笔账还清 —— 还差的那批是 129 条
+        「答案带技术符号、三个干扰项是白话中文」的题，要把干扰项写得和答案一样具体。 */
+    const CHEAT_CAP = 38
+    const board = [...hit].map(([k, v]) => [k, v / n * 100] as const).sort((a, b) => b[1] - a[1])
+    const [topName, topScore] = board[0]!
+    topScore <= CHEAT_CAP
+      ? ok(`不读题的最高分 ${topScore.toFixed(1)}（${topName}），上限 ${CHEAT_CAP}、随机基线 25`
+        + `\n     ${board.slice(1).map(([k, v]) => `${k} ${v.toFixed(1)}`).join('　')}`)
+      : bad(`光看选项外形就能考 ${topScore.toFixed(1)} 分（${topName}），超过上限 ${CHEAT_CAP}`
+        + `。别调这个上限，去把干扰项写得和答案一样具体`)
+
+    //  自检：这队"考生"得真的能分辨好坏 —— 造一组明显泄题的选项，最高分必须远超 25
+    const rig = ['正确答案 O(N log N)、带着 softmax 和一堆符号', '短的白话', '也是白话', '还是白话']
+    const rigTop = Math.max(...CHEATS.map(([, sc]) => { const v = sc(rig, '随便什么题面'); return v[0] === Math.max(...v) ? 1 : 0 }))
+    rigTop === 1 && n > 400
+      ? ok(`自检：这队"考生"在造假的泄题选项上会中，且扫过 ${n} 条真题 —— ⑫ 没空跑`)
+      : bad(`自检失败：⑫ 要么认不出明显泄题的选项，要么只扫到 ${n} 条题（太少，等于没测）`)
+  }
+
+  /**
    * ⑪ **选项里不许出现标记语言。**
    *
    * 出题面板渲染选项是 `{opt}` —— **原样输出，不走富文本**（web/src/shell/AiCompanion.tsx）。
