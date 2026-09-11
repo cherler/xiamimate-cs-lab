@@ -469,6 +469,11 @@ rows.length >= 200 && rows.reduce((n, r) => n + r.concept + r.count, 0) >= 700
    * **在用户实际做得到的题上，「不读题、永远挑最长选项」这一招必须完全失效。**
    *
    * 2026-09-10 首测时全量 772 条会漏、点得到的 324 条；当晚逐条改写清零。
+   *
+   * 📌 **放开一条休眠轨道是要付账的**（实测，不是估计）：把具身智能轨的
+   * status 从 'hidden' 改回 'active'，点得到的实验 173 → 235，这条判据当场红 207 条，
+   * ⑫ 的不读题分数从 36.8 跳到 51.6。那 207 条得先改写完才谈得上放开 ——
+   * 这是有意的：判据在说「这一轨的题还没准备好见用户」。
    * 这条判据从此不是"只许降"而是**零容忍** —— 新加一道会漏的题就当场红。
    * 新题写不出等长选项时，别改这条判据，去把三个干扰项写厚
    * （做法见 scripts/quiz-rebalance.mjs 与 scripts/quiz-distractors.mjs）。
@@ -476,7 +481,9 @@ rows.length >= 200 && rows.reduce((n, r) => n + r.concept + r.count, 0) >= 700
   liveLeaks.length === 0
     ? ok(`点得到的 ${liveConcepts} 条原理题里，没有一条能靠"挑最长的"蒙对`)
     : bad(`点得到的题里有 ${liveLeaks.length} 条的答案是唯一最长，靠长度就能蒙对：`
-      + `${liveLeaks.slice(0, 8).join(' ')}${liveLeaks.length > 8 ? ' …' : ''}`)
+      + `${liveLeaks.slice(0, 8).join(' ')}${liveLeaks.length > 8 ? ' …' : ''}`
+      + `\n     出单子：npx tsx scripts/quiz-leaky.ts　改写过闸：node scripts/quiz-rebalance.mjs <稿子.json> --apply`
+      + `\n     刚放开一条轨道的话，这就是那条轨道的题还没配平 —— 那是内容活，别调判据`)
 
   /**
    * ⑩ 的自检 —— **这条比判据本身更要紧**。
