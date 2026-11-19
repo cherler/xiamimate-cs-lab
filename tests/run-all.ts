@@ -10,6 +10,7 @@ const here = dirname(fileURLToPath(import.meta.url))
 const tsxBin = resolve(here, '..', 'node_modules', '.bin', 'tsx')
 
 const SUITES = [
+  ['GitHub Pages 的路径与服务边界', 'pages-hosting.test.ts'],
   ['阶段 0 · 收敛与确定性（标准 2 / 4）', 'phase0-convergence.test.ts'],
   ['parameter 轴 · 高阶内核', 'parameter-axis.test.ts'],
   ['标准 5 · 内核可插拔', 'kernel-pluggable.test.ts'],

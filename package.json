@@ -29,7 +29,9 @@
     "contrast": "node scripts/theme-contrast.mjs --all",
     "smoke:guide": "node scripts/guide-coverage-smoke.mjs",
     "smoke:zero": "node scripts/step-zero-smoke.mjs",
-    "smoke:knobs": "node scripts/knob-sweep-smoke.mjs"
+    "smoke:knobs": "node scripts/knob-sweep-smoke.mjs",
+    "build:pages": "node scripts/build-pages.mjs",
+    "preview:pages": "vite preview --config web/vite.config.ts --base /xiamimate-cs-lab/ --host 127.0.0.1 --port 5338 --strictPort web"
   },
   "devDependencies": {
     "@types/matter-js": "^0.20.2",

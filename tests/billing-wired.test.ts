@@ -23,6 +23,7 @@
  */
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
+import ts from 'typescript'
 
 let failures = 0
 const ok = (m: string) => console.log(`  ✅ ${m}`)
@@ -40,7 +41,18 @@ const RE_ENV = /^XM_API_BASE=\S/m
 const RE_BILL = /\bbilling\b/
 const RE_NOTE = /<BillingNote\s*\/>/
 //  必须截在 postJSON 函数体里 —— 截在六个调用点上，新加一个接口就会漏
-const RE_HOOK = /async function postJSON[\s\S]{0,600}?setBilling\(/
+function hasBillingHook(source: string): boolean {
+  const file = ts.createSourceFile('AiCompanion.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
+  const fn = file.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'postJSON')
+  if (!fn || !ts.isFunctionDeclaration(fn) || !fn.body) return false
+  let found = false
+  const visit = (node: ts.Node) => {
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'setBilling') found = true
+    ts.forEachChild(node, visit)
+  }
+  visit(fn.body)
+  return found
+}
 const RE_402 = /status === 402[\s\S]{0,200}?throw new QuotaRefused/
 const RE_RETHROW = /if \(e instanceof QuotaRefused\) throw e/
 const RE_VID = /x-visitor-id/i
@@ -147,7 +159,7 @@ if (!existsSync(BE)) {
     : bad('AiCompanion 没有显示 billing —— 「计费没通」和「正常扣分」在屏幕上就没法分辨')
 
   //  必须截在 postJSON 那一层：截在六个调用点上，新加一个接口就会漏
-  RE_HOOK.test(ai)
+  hasBillingHook(ai)
     ? ok('截在 postJSON 这一层 —— 新加的接口自动带上，漏不掉')
     : bad('billing 不是在 postJSON 里截的 —— 新接口会漏掉，且漏了看不出来')
 }
@@ -306,9 +318,12 @@ console.log('\n【自检：这些判据能红吗】')
 
   //  ⑤ 截在调用点而不是 postJSON 上
   const FAKE_UI = 'async function postJSON<T>(path, body) {\n  const data = await r.json()\n  return data\n}\nsetBilling(d.billing)'
-  !RE_HOOK.test(FAKE_UI.slice(0, FAKE_UI.indexOf('}\nsetBilling')))
+  !hasBillingHook(FAKE_UI)
     ? ok('自检：billing 截在 postJSON 之外时，⑤那条会红')
     : bad('自检失败：⑤认不出截错了地方')
+  hasBillingHook(`async function postJSON() { ${' '.repeat(900)} setBilling(data.billing) }`)
+    ? ok('自检：函数变长不影响归属判断')
+    : bad('自检失败：⑤仍然依赖字符距离')
 }
 
 console.log(`\n${'─'.repeat(52)}`)

@@ -11,6 +11,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { EXPERIMENTS, DISCIPLINE_OF_GROUP } from '../registry.ts'
 import { Md, mdInline } from './md.tsx'
+import { GITHUB_PAGES } from '../platform.ts'
 
 // 当前实验所在职业线的全部实验 id（用于「整轨面试」跨主题抽题；后端会自动过滤没接 catalog 的）
 function trackExpIdsOf(expId: string): string[] {
@@ -40,6 +41,7 @@ type ReviewPack = { title: string; summary: string; factCards: Card[]; conceptCa
 let SUPPORTED: Map<string, number> | null = null
 let supportedPromise: Promise<Map<string, number>> | null = null
 export function loadAiFacts(): Promise<Map<string, number>> {
+  if (GITHUB_PAGES) return Promise.resolve(new Map())
   if (SUPPORTED) return Promise.resolve(SUPPORTED)
   if (!supportedPromise) {
     supportedPromise = fetch('/cslab/ai/experiments')
@@ -117,6 +119,7 @@ function visitorId(): string {
 }
 
 async function postJSON<T>(path: string, body: unknown): Promise<T> {
+  if (GITHUB_PAGES) throw new AiError('请前往虾米伙伴使用在线 AI 学伴')
   const vid = visitorId()
   const r = await fetch(path, {
     method: 'POST',
@@ -207,6 +210,14 @@ export function AiCompanion({ expId, onCite, onFactAnswer, drillFactId, onDrillC
   //  从进度面板「去练最弱那条」跳来:自动切到出题模式,别让定向题落在别的页签后头看不见。
   useEffect(() => { if (drillFactId) setMode('quiz') }, [drillFactId])
 
+  if (GITHUB_PAGES) return (
+    <div className="aic aic-muted">
+      <p>当前为 GitHub Pages 版。交互实验、已有练习和本地学习进度可直接使用。</p>
+      <p>AI 学伴需要在线服务；如服务开放，可前往虾米伙伴继续当前实验。</p>
+      <p><a href={`https://xiamimate.com/cslab/?exp=${encodeURIComponent(expId)}`} target="_blank" rel="noopener noreferrer">打开虾米伙伴在线版 ↗</a></p>
+      <p className="aic-hint">虾米伙伴由作者自行维护，可能随时暂停或关闭。这里只传递实验编号，不会自动传送问题或学习记录。</p>
+    </div>
+  )
   if (supported === null) return <div className="aic aic-muted">加载中…</div>
   if (!supported) {
     return (

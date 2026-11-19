@@ -1,5 +1,20 @@
 # 上线
 
+## GitHub Pages 独立版（2026-11-19）
+
+用户确认公开完整版 `cherler/xiamimate-cs-lab` 并部署至 [GitHub Pages](https://cherler.github.io/xiamimate-cs-lab/)，验证成功后删除旧简化仓库 `cherler/xiami-cslab`。本地源码目录仍为 `xiamimate-lab`，与虾米看股 `xiamimate-stock-lab` 区分。
+
+- `.github/workflows/pages.yml` 使用 GitHub Actions 构建与部署；Pages Source 设为 GitHub Actions，不设置自定义域名。
+- Node.js 22，根目录与 `games/algo-cards` 分别执行 `npm ci`，运行类型检查、全部测试、`npm run build:pages`，上传 `web/dist/`。
+- `PAGES_BASE` 默认为 `/xiamimate-cs-lab/`，工作流根据仓库名设置；`VITE_GITHUB_PAGES=true` 仅在该构建生效。主课堂、卡牌及图解的往返链接使用同一子路径。
+- Pages 不加载主站 `/chrome`、账号 `/v1` 或 `/cslab/ai`；实验、已有练习和学习记录在浏览器中运行。AI 面板提供显式在线版链接，只传实验编号，不传问题或学习记录。
+- 虾米伙伴在线服务可能随时暂停或关闭。Pages 静态体验与源码独立可用，主站账号同步和在线 AI 不保证长期可用。
+- 不上传 `.env`、原始会话或模型权重。Qwen 浏览器推理仍由用户点击后下载模型，依赖 WebGPU 与第三方模型服务。
+
+本地验收：`npm run preview:pages`，打开 `http://127.0.0.1:5338/xiamimate-cs-lab/`；检查实验播放、实验深链接刷新、学习进度、AI 提示、算法卡牌与图解往返。
+
+## 虾米伙伴主站部署记录
+
 > **2026-09-11 首次上线完成。** 清单照着走了一遍，踩到的坑补在最后一节。
 >
 > 2026-08-18 拍板「先不急着上线」；2026-09-10 用户说准备上线，同日把路径从

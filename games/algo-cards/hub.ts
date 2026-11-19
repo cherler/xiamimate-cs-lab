@@ -29,9 +29,10 @@ const PROGRESS_URL = '/v1/lab/progress'
  * 光看路径分不出来,会白打一个必然 404 的 /v1/lab/progress,在控制台留红字、
  * 把「控制台无报错」那条判据废掉。②挂载路径在 /cslab/ 下。
  */
-const env = (import.meta as { env?: { DEV?: boolean } }).env
-export const onPlatform = () => !env?.DEV && location.pathname.startsWith('/cslab/')
-export const homeUrl = () => '/cslab/'
+const env = (import.meta as { env?: { DEV?: boolean; BASE_URL?: string; VITE_GITHUB_PAGES?: string } }).env
+const pages = env?.VITE_GITHUB_PAGES === 'true'
+export const onPlatform = () => !pages && !env?.DEV && location.pathname.startsWith('/cslab/')
+export const homeUrl = () => pages ? (env?.BASE_URL || '/').replace(/cards\/$/, '') : '/cslab/'
 
 export type HubOpts = {
   /** 显示在条上的游戏名。 */
@@ -167,9 +168,9 @@ export function mountHub(o: HubOpts): Hub {
       : cloud === 'syncing' ? '同步中…' : cloud === 'synced' ? '已同步到你的账号' : '同步失败 · 本地进度没丢'
   function render() {
     bar.innerHTML = ''
-    const home = document.createElement(onPlatform() ? 'a' : 'button')
+    const home = document.createElement(onPlatform() || pages ? 'a' : 'button')
     home.className = 'btn'; home.textContent = '← 虾米CS课堂'
-    if (onPlatform()) (home as HTMLAnchorElement).href = homeUrl()
+    if (onPlatform() || pages) (home as HTMLAnchorElement).href = homeUrl()
     else home.onclick = () => alert('现在是独立运行(没挂在 /cslab/ 下),没有主站可回。')
     const t = document.createElement('b'); t.textContent = o.title
     const extra = (o.links ?? []).map(l => { const a = document.createElement('a'); a.className = 'btn'; a.href = l.href; a.textContent = l.label; return a })

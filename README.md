@@ -1,4 +1,31 @@
-# xiamimate-lab
+# 虾米 CS 课堂
+
+计算机课程交互实验项目。通过逐步运行、参数调整、参考实现校验和练习，观察数据结构、计算机组成、操作系统、网络、机器学习与大模型的工作过程。当前页面按「408 基础」「算法」「大模型」组织实验，保留算法卡牌和 Transformer 图解入口。
+
+访问：[GitHub Pages 完整版（推荐）](https://cherler.github.io/xiamimate-cs-lab/) · [公开源码](https://github.com/cherler/xiamimate-cs-lab) · [虾米伙伴在线版（可能随时停用）](https://xiamimate.com/cslab/)。本仓库是完整版，替代旧的 `cherler/xiami-cslab` 简化项目。
+
+**服务可用性说明：** 虾米伙伴（xiamimate.com）由作者自行维护，可能随时暂停或关闭，相关链接及在线 AI 功能不保证持续可用。Pages 的交互实验、静态讲解和本地学习进度不依赖该站；账号登录、跨设备同步和 AI 学伴需要独立后端，Pages 不提供这些服务，也不保存 API 密钥。学习记录保存在当前浏览器中，可在进度面板导出；不会与主站自动同步。
+
+## GitHub Pages 与本地构建
+
+需要 Node.js 22.12+。浏览实验无需安装依赖；构建时使用锁文件安装：
+
+```sh
+git clone https://github.com/cherler/xiamimate-cs-lab.git
+cd xiamimate-cs-lab
+npm ci
+npm ci --prefix games/algo-cards
+npm run typecheck
+npm test
+npm run build:pages
+npm run preview:pages
+```
+
+打开 `http://127.0.0.1:5338/xiamimate-cs-lab/`。Pages 构建同时打包主课堂、算法卡牌和两个 Transformer 图解页面，支持实验链接刷新。浏览器推理原型需 WebGPU、可访问的 CDN 和模型下载服务；模型权重由使用者主动加载，不包含在 Pages 站点中。
+
+`main` 推送后，GitHub Actions 安装依赖、执行检查并发布 `web/dist/`。不需要设置模型密钥；私密 `.env`、模型权重和作者本地数据不进入发布包。主站 `/cslab/` 的构建方式独立保留，详见 [部署说明](deploy/README.md)。以下保留原有引擎设计与开发记录。
+
+## 引擎与内核
 
 计算机专业课交互仿真实验室 —— 引擎与内核。
 
@@ -18,7 +45,7 @@ npm install
 npm test          # 跑全部测试
 npm run typecheck # tsc --noEmit
 
-npm run web          # 起视图层（30 个实验都能跑）·「独立形态」
+npm run web          # 起视图层 ·「独立形态」
 npm run web:single   # 打成一个自包含 HTML
 
 npm run demo:cache   # 单看 Cache 参考实现的轨迹
@@ -121,11 +148,9 @@ AI 的位置在**作者侧**（起草词条），产出是审过的静态文本�
 （"没锚点"和"锚点落空"看起来一样，但一个是设计、一个是 bug）。
 导览里点名的旋钮与预置同样逐个核对。
 
-## 上线
+## 部署
 
-**现在不上。** 清单写在 [deploy/README.md](deploy/README.md)：后端建表+重启 →
-前端带 `VITE_BASE` 构建发布 → 贴 Caddy 片段 → 线上自查 → 运营台勾开入口。
-最后那一步是唯一的一道门：本仓页面是公开的，没有服务端鉴权。
+独立展示使用上方 GitHub Pages 流程。虾米伙伴主站版于 2026-09-11 首次上线，账号与 AI 服务需要主站后端；主站维护清单和历史记录见 [部署说明](deploy/README.md)。Pages 发布不更改主站服务或后台数据。
 
 ## 目录
 

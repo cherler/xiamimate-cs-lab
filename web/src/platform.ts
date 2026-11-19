@@ -35,10 +35,21 @@
  * 与其把 DOM 塞进引擎的 tsconfig（引擎是纯 Node 的，那会让它以后能悄悄用上 document），
  * 不如在这一处把两个宿主对象显式取出来 —— 顺带也真的兜住了 Node 里没有它们这件事。
  */
-const env = (import.meta as { env?: { BASE_URL?: string } }).env
+const env = (import.meta as { env?: { BASE_URL?: string; VITE_GITHUB_PAGES?: string } }).env
 const loc = (globalThis as { location?: { protocol: string } }).location
 
-const MOUNTED = (env?.BASE_URL || '/') !== '/'
+export const GITHUB_PAGES = env?.VITE_GITHUB_PAGES === 'true'
+
+// A project subpath on Pages is independent hosting, not the Xiami platform.
+export function hostSettings(base: string, pages: boolean, protocol: string) {
+  return {
+    platform: !pages && base === '/cslab/' && ['http:', 'https:'].includes(protocol),
+    ai: !pages,
+    subappsBase: pages ? base : '/cslab/',
+  }
+}
+const hosting = hostSettings(env?.BASE_URL || '/', GITHUB_PAGES, loc?.protocol || '')
+export const subappUrl = (name: 'cards' | 'explainer' | 'explainer-live'): string => `${hosting.subappsBase}${name}/`
 
 /**
  * 现在该不该去打主站的接口（`/chrome/*`、`/v1/*`）。
@@ -47,4 +58,4 @@ const MOUNTED = (env?.BASE_URL || '/') !== '/'
  * 那里一个绝对路径都请求不出去。
  */
 export const onPlatform = (): boolean =>
-  MOUNTED && !!loc && loc.protocol.startsWith('http')
+  hosting.platform

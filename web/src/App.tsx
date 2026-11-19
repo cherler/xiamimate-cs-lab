@@ -33,6 +33,7 @@ import { TipLayer } from './shell/Tip.tsx'
 import { cardsOf, GUIDES } from './guide.ts'
 import * as progress from './progress.ts'
 import * as sync from './sync.ts'
+import { GITHUB_PAGES, subappUrl } from './platform.ts'
 
 /**
  * 头部「可视化 / 游戏」位 —— 按当前职业(discipline key)换的一颗按钮。
@@ -49,8 +50,8 @@ const VIZ_OF_DISC: Record<string, { icon: string; label: string; href?: string; 
   /*  ⚠️ tip 原来写「服务器推理」—— 说反了。那一页是 `experiments/qwen-browser/`：
       **纯浏览器**跑真模型（transformers.js + WebGPU，没有服务器），首次要下模型权重。
       2026-09-08 顺着「按钮打不开」查出来的（路径当时还没进 vite 的子应用表，见 vite.config.ts）。 */
-  llm:  { icon: '🔬', label: 'Transformer 图解', href: '/cslab/explainer/', tip: '在浏览器里看 Qwen 怎么想：真实分词 + 下一词预测。纯浏览器推理（transformers.js + WebGPU），可切 0.5B / 1.5B —— 首次载入要下模型权重' },
-  algo: { icon: '🎴', label: '算法卡牌', href: '/cslab/cards/', tip: '卡是算法、敌人是有性质的数据，血条是时间预算' },
+  llm:  { icon: '🔬', label: 'Transformer 图解', href: subappUrl('explainer'), tip: '在浏览器里看 Qwen 怎么想：真实分词 + 下一词预测。纯浏览器推理（transformers.js + WebGPU），可切 0.5B / 1.5B —— 首次载入要下模型权重' },
+  algo: { icon: '🎴', label: '算法卡牌', href: subappUrl('cards'), tip: '卡是算法、敌人是有性质的数据，血条是时间预算' },
   /*  408 那一轨原来挂着「🕹️ 探索游戏」(games/xiami-world,/cslab/world)。
       **2026-09-10 用户拍板从虾米CS课堂里去掉:完成度太差。**
 
@@ -1302,7 +1303,7 @@ export default function App() {
              onClick={e => e.stopPropagation()}>
           <div className="aipanel-head">
             <b>💬 AI 学伴 · {exp.title}</b>
-            <span className="aipanel-sub">出题 / 答疑 / 复习 / 面试 —— 答案钉在这个实验真跑出来的步骤上</span>
+            <span className="aipanel-sub">{GITHUB_PAGES ? 'AI 学伴需要在线服务；本页实验与学习进度可独立使用。' : '出题 / 答疑 / 复习 / 面试 —— 答案钉在这个实验真跑出来的步骤上'}</span>
             <button className="aipanel-x" onClick={() => setAiOpen(false)} title="关闭（Esc）">✕</button>
           </div>
           <div className="aipanel-body">
