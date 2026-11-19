@@ -1,239 +1,84 @@
-# 虾米 CS 课堂
+# 虾米 CS 课堂 · 计算机交互实验室
 
-计算机课程交互实验项目。通过逐步运行、参数调整、参考实现校验和练习，观察数据结构、计算机组成、操作系统、网络、机器学习与大模型的工作过程。当前页面按「408 基础」「算法」「大模型」组织实验，保留算法卡牌和 Transformer 图解入口。
+**课本上的图，能自己跑一遍。**
 
-访问：[GitHub Pages 完整版（推荐）](https://cherler.github.io/xiamimate-cs-lab/) · [公开源码](https://github.com/cherler/xiamimate-cs-lab) · [虾米伙伴在线版（可能随时停用）](https://xiamimate.com/cslab/)。本仓库是完整版，替代旧的 `cherler/xiami-cslab` 简化项目。
+把数据结构、计算机组成、操作系统、网络、算法与大模型的工作过程变成可操作的实验。逐步运行、修改输入、切换策略，再看状态和结果怎样改变。
 
-**服务可用性说明：** 虾米伙伴（xiamimate.com）由作者自行维护，可能随时暂停或关闭，相关链接及在线 AI 功能不保证持续可用。Pages 的交互实验、静态讲解和本地学习进度不依赖该站；账号登录、跨设备同步和 AI 学伴需要独立后端，Pages 不提供这些服务，也不保存 API 密钥。学习记录保存在当前浏览器中，可在进度面板导出；不会与主站自动同步。
+[开始实验](https://cherler.github.io/xiamimate-cs-lab/) · [视频演示](https://cherler.github.io/xiamimate-cs-lab/promo/) · [开发指南](docs/DEVELOPMENT.md) · [文档导航](docs/README.md)
 
-## GitHub Pages 与本地构建
+## 27 秒看一遍：课本上的图，能自己跑一遍
 
-需要 Node.js 22.12+。浏览实验无需安装依赖；构建时使用锁文件安装：
+[![虾米 CS 课堂宣传视频：课本上的图，能自己跑一遍，点击播放](web/public/promo/cover.png)](https://cherler.github.io/xiamimate-cs-lab/promo/)
 
-```sh
+[▶ 播放宣传视频](https://cherler.github.io/xiamimate-cs-lab/promo/) · 27 秒 · 1080p · 点击封面播放
+
+视频和封面保留录制时的界面、实验数量与旧地址；当前公开仓库与在线入口以上方链接为准。
+
+## 从“看图”到“动手验证”
+
+| 学习场景 | 可以怎样探索 |
+| --- | --- |
+| 数据结构与算法 | 逐步观察排序、图算法等过程，修改输入比较轨迹 |
+| 计算机组成 | 从 Cache 等实验看状态变化、命中与访问过程 |
+| 操作系统 | 比较进程调度、页面置换、磁盘调度等策略 |
+| 计算机网络 | 观察 TCP 与滑动窗口等机制的运行过程 |
+| 机器学习与大模型 | 浏览相关实验与 Transformer 图解 |
+| 学习复盘 | 跟随讲解、查看本步推演、完成练习并保存进度 |
+
+页面按 **408 基础、算法、大模型** 组织入口，并保留算法卡牌与 Transformer 图解。
+
+## 一个实验，四种看法
+
+1. **跑起来**：播放或单步前进，看到每次状态变化。
+2. **改一改**：调整参数与输入，重新计算结果。
+3. **比一比**：切换规则、扫描参数，观察不同策略的轨迹。
+4. **讲清楚**：结合图形、读数、日志和练习解释这一步为什么发生。
+
+仿真内核与独立参考实现分别维护，练习答案从运行轨迹派生。验证过程、覆盖范围与开发记录可在文档中查看。
+
+## 打开就能学
+
+GitHub Pages 提供交互实验、静态讲解、算法卡牌与本地学习进度，不依赖主站账号。学习记录保存在当前浏览器，可在进度面板导出。
+
+浏览器推理原型需要 WebGPU 和可访问的模型下载服务，模型由使用者主动加载。AI 学伴与跨设备同步需要后端，不在 Pages 中提供。
+
+## 本地运行
+
+需要 Node.js 22.12+。
+
+```bash
 git clone https://github.com/cherler/xiamimate-cs-lab.git
 cd xiamimate-cs-lab
 npm ci
 npm ci --prefix games/algo-cards
-npm run typecheck
-npm test
 npm run build:pages
 npm run preview:pages
 ```
 
-打开 `http://127.0.0.1:5338/xiamimate-cs-lab/`。Pages 构建同时打包主课堂、算法卡牌和两个 Transformer 图解页面，支持实验链接刷新。浏览器推理原型需 WebGPU、可访问的 CDN 和模型下载服务；模型权重由使用者主动加载，不包含在 Pages 站点中。
+打开 <http://127.0.0.1:5338/xiamimate-cs-lab/>。引擎开发、实验校验和主站集成方式见 [开发指南](docs/DEVELOPMENT.md)。
 
-`main` 推送后，GitHub Actions 安装依赖、执行检查并发布 `web/dist/`。不需要设置模型密钥；私密 `.env`、模型权重和作者本地数据不进入发布包。主站 `/cslab/` 的构建方式独立保留，详见 [部署说明](deploy/README.md)。以下保留原有引擎设计与开发记录。
+## 项目结构
 
-## 引擎与内核
-
-计算机专业课交互仿真实验室 —— 引擎与内核。
-
-对标粒子先生的物理实验室，做**计算机专业课**（数据结构 / 组成原理 / 操作系统 / 计算机网络）的交互仿真。
-不叫"考研 408"：考研三年跌 130 万，但那四门课全国计算机在校生都要上。
-
-**这里没有护城河。** 仿真谁都能写，验证器谁都能写 —— 别拿它当壁垒。
-
-验证器是一件**有用的工具**，不是护城河：只有计算机领域的正确性能被程序自动判
-（跑参考实现比对轨迹），所以只有这个领域敢让 AI 生成新实验。它降低的是出错率和
-出内容的成本，不构成任何人进不来的理由。
-
-## 快速开始
-
-```bash
-npm install
-npm test          # 跑全部测试
-npm run typecheck # tsc --noEmit
-
-npm run web          # 起视图层 ·「独立形态」
-npm run web:single   # 打成一个自包含 HTML
-
-npm run demo:cache   # 单看 Cache 参考实现的轨迹
-npm run demo:sched
-npm run demo:tcp
+```text
+src/core/            文档模型、执行器与验证器
+src/kernels/         各领域的仿真内核
+src/reference/       独立参考实现
+web/                 React 实验视图、讲解与学习进度
+web/public/promo/    宣传视频、封面与播放页
+games/algo-cards/    算法卡牌
+experiments/         Transformer 图解与浏览器推理原型
+tests/               内核与内容检查
+docs/                蓝图、标准、决策记录与开发指南
 ```
 
-## 两种形态
+## 参与改进
 
-本仓同一份代码有两种跑法，**区别只由挂载路径决定**（见 `web/src/platform.ts`）：
+欢迎反馈具体实验中的异常状态、讲解不清楚的步骤，或提出想验证的问题。修改实验时请同步核对参考实现、运行轨迹与练习结果，详见 [内容与验收标准](docs/standards.md)。
 
-| | 独立形态 | 并入形态 |
-|---|---|---|
-| 起法 | `npm run web` | `npm run web:lab` + `npm run gateway` |
-| base | `/` | `/cslab/` |
-| 平台页眉页脚 | 无 | 有（加载主站 `/chrome` 制品） |
-| 学习进度 | 只存本机 | 登录后与账号双向合并 |
-| 外观 | 跟随系统 | 跟平台的「随系统 / 白天 / 黑夜」 |
-| 冒烟 | `npm run smoke -- http://127.0.0.1:5178/` | `npm run smoke:platform` |
+[虾米伙伴在线版](https://xiamimate.com/cslab/)由个人维护，可能随时暂停或关闭；Pages 的交互实验与本地进度独立运行。
 
-**并入形态的本机入口是 `http://127.0.0.1:3000/cslab`**，与虾米看股、虾米看AI 一致 ——
-主站的 `next.config.ts` 把 `/cslab/*` 转给本仓的 dev server。
-**不要直接开 `:5178`**：那儿拿不到 `/chrome` 也拿不到 `/v1`，
-两个「看起来都对」的地址只有一个是并入后的样子。
+## 虾米伙伴系列
 
-```bash
-# 终端 1（本仓）        VITE_BASE=/cslab/ 的 dev server（:5178）
-npm run web:lab
-# 终端 2（tools-frontend）主站 :3000，rewrites 负责分流
-npm run dev
-# 终端 3（tools-backend）账号与进度接口 :8200
-bash scripts/dev.sh
-# 然后开 http://127.0.0.1:3000/cslab
-```
+[虾米跨境](https://github.com/cherler/xiamimate-crossborder) · [虾米看 AI](https://github.com/cherler/xiamimate-ai-atlas) · [虾米看股](https://github.com/cherler/xiamimate-stock-lab) · [虾米 CS 课堂](https://github.com/cherler/xiamimate-cs-lab) · [模型工坊](https://github.com/cherler/xiamimate-model-lab)
 
-⚠️ **必须用 `npm run web:lab`，不能用 `npm run web`。** 后者挂在根上，
-HTML 里写的是 `src="/src/main.tsx"`，经 :3000 转过去落到主站身上 ——
-**页面回 200，内容却是空的**。冒烟脚本的前置检查专门查这一条。
-
-### 另一条入口：本地网关（验静态形态）
-
-`:3000` 走的是 Next dev 的 rewrites，方便，但**不是线上的形状**。
-网关把线上那套单域名分流搬到本机，规则与 `deploy/caddy-snippet.conf` 一一对应
-（**改一边要改另一边**），能验到「不存在的资源回不回 404」这类只有静态托管才成立的事：
-
-```bash
-npm run web:build:lab
-node scripts/local-gateway.mjs --lab=static --main=static
-node scripts/platform-smoke.mjs http://127.0.0.1:8090
-```
-
-## 外观（随系统 / 白天 / 黑夜）
-
-真源是平台的 `localStorage["xm-theme"]`（主站 `lib/theme.ts`），
-主站、虾米看股、虾米看AI 都照它走，本仓也一样。**本仓不自己做开关** ——
-设置在账户中心那一处，多一个入口就等于多一份要同步的状态。
-
-深浅两套色号写在 `web/src/styles.css` 的令牌块里，深色那份全部收在 `--dk-*`。
-浅色的强调色是**另一套色号**，不是同一个色号调亮度：琥珀 `#F0B429` 压在白纸上
-只有 1.86:1，它本来就是为暗底选的。
-
-```bash
-npm run contrast   # 两套外观 × 30 个实验，逐个元素量**合成之后**的对比度
-```
-
-门槛是：**浅色 0 处不达标**；深色只要求「欠账不比改浅色之前多」——
-深色那批 9~12px 的小字一直是 2.5~4.2:1，是既有欠账，要不要一起修是另一件事。
-
-并入的整体做法见 [虾米看股并入虾米伙伴](../wiki/27-stock-lab-platform-integration.md)，
-本仓的差异见 [logs/2026-08-18-platform-integration.md](logs/2026-08-18-platform-integration.md)。
-
-## 讲解层
-
-右下角一张**悬浮讲解卡**（形态参照 [Transformer Explainer](https://poloclub.github.io/transformer-explainer/)）：
-可以 ‹ › 翻页、折叠、隐藏。**讲到哪儿就把页面上那块用虚线描一圈**；反过来，
-**点页面上几乎任何一块，卡片都直接翻过去** —— 舞台、位域、轴、日志、读数、真题、
-边界、目录、页签、每一颗预置按钮、每一个参数旋钮。Cache 那一屏是 27 张卡。
-
-内容一部分手写（回答什么问题 / 屏幕上每块是什么 / 先拧什么看什么 / 名词），
-一部分**派生**：预置卡直接用预置的 `note`（那句话本来就是被测试逐条验过的行为主张 ——
-按钮上写什么、讲解里说什么、测试验什么，是同一句话），参数卡用选项自动生成，
-页面各区域写一次、并进每个实验。数据在 `web/src/guide.ts`。
-
-锚点**一处定义两个方向用**：卡 → 元素（高亮）、元素 → 卡（点击跳转），
-所以不会出现"点得到但讲不了"或者反过来。
-
-**本仓（引擎层）没有接运行时 AI 智能体**，这是刻意的 ——
-一个大模型在验过的答案旁边给出可能错的解释，是最坏的位置；而且讲解框是每个新手
-都会点的东西，接按次计费的模型等于给最不产生收入的动作装计价器。
-AI 的位置在**作者侧**（起草词条），产出是审过的静态文本。理由详见
-[logs/2026-08-18-guide-layer.md](logs/2026-08-18-guide-layer.md)。
-
-**一行能说完的东西不占一张卡**：读数与参数标签带虚下划线，悬停给一句话
-（`TIPS`，只写名字自己说不清的那些）。这一层照的是参照站的分工 ——
-它有 `Tooltip`（悬停一行）和 `TextbookTooltip`（点开翻到那一页）两层。
-
-判据挂在最容易漂的地方：**锚点选择器必须落得下** —— 舞台改个 class，翻到那一页时
-屏幕上就没反应了，没有报错、靠看是看不出来的。冒烟把 30 个实验的每一页都翻一遍，
-逐页问"页面上有没有高亮"；该不该高亮由组件自己在 `data-anchored` 上声明
-（"没锚点"和"锚点落空"看起来一样，但一个是设计、一个是 bug）。
-导览里点名的旋钮与预置同样逐个核对。
-
-## 部署
-
-独立展示使用上方 GitHub Pages 流程。虾米伙伴主站版于 2026-09-11 首次上线，账号与 AI 服务需要主站后端；主站维护清单和历史记录见 [部署说明](deploy/README.md)。Pages 发布不更改主站服务或后台数据。
-
-## 目录
-
-```
-src/
-├── core/
-│   ├── document.ts   文档层：SimDocument / Entity / Stream / AxisSpec
-│   ├── kernel.ts     内核契约 + 执行器 run() / resume()
-│   └── verify.ts     验证器：四种比较器
-├── kernels/          领域内核（实现 Kernel<S>）
-│   ├── cache.ts      Cache 命中率      · step 轴
-│   ├── scheduler.ts  进程调度甘特图    · time 轴
-│   ├── tcp.ts        TCP 拥塞窗口      · time 轴
-│   ├── page.ts       页面置换          · step 轴（FIFO/LRU/OPT/CLOCK）
-│   ├── disk.ts       磁盘调度          · step 轴（FCFS/SSTF/SCAN/C-SCAN/LOOK）
-│   ├── sweep.ts      参数扫描（高阶）  · parameter 轴 → 曲线
-│   └── compare.ts    并排对比（高阶）  · 沿用内层轴 → N 条轨迹对齐
-└── reference/        独立参考实现 —— 验证基准，不是内核
-web/                  视图层（Vite + React）
-├── src/shell/        共享框架：轴 · 日志 · 参数 · 读数 · 边界
-├── src/stages/       每个内核一个舞台
-└── src/registry.ts   实验注册表 —— 加实验只改这里
-tests/                每个测试都自带"必须能红"的自检
-docs/
-├── blueprint.md      总蓝图（产品闭环 + 架构 + 标准）
-├── standards.md      验收标准 / 内容标准 / 依赖准入
-├── decisions/        ADR 决策记录
-└── research/         调研原始材料
-logs/                 每次验证的结果与发现
-```
-
-## 架构一句话
-
-```
-文档 Document ──compile()──▶ 仿真模型 SimModel ──run()──▶ 轨迹 Trace ──▶ 渲染 / 验证
-     ▲                            ▲
-造物型从这里进                408 从这里进
-```
-
-六条路共用这一条流水线。详见 [docs/blueprint.md](docs/blueprint.md)。
-
-## 状态
-
-| 阶段 | 内容 | 状态 |
-|---|---|---|
-| 0 | DSL 收敛验证（三个实验挤一个 schema） | ✅ 通过 |
-| 0b | parameter 轴 · 高阶内核 | ✅ 通过 |
-| 0c | 验收标准 5 / 6 | ✅ 通过 |
-| 0d | 内容环实测：AI 填 DSL | ✅ 精确题 60/60（20题×3次）、陷阱题 6/6 |
-| 1 | 宿主框架 + 视图层 | ✅ 标准 3 已验 |
-| 1b | 扩实验：页面置换 · 磁盘调度 | ✅ 5 个实验 |
-| 1c | 接真题：判题 + 跳到那一步看为什么 | ✅ 答案从轨迹派生 |
-| 1d | 扩实验：排序 · Dijkstra · 银行家 · 滑动窗口 ARQ | ✅ 9 个实验 |
-| 1e | 输入全开放：驱动序列 + 实体表可编辑 | ✅ 参数换不了题面数据，这两个才行 |
-| 1f | **408 全景表实现完毕** | ✅ **30 个实验 · 30 道题 139 问 · 四科全覆盖** |
-| 0e | **L2 组合级**：AI 自选原语 | ✅ 36/36（12题×3次），选原语与填参数均 100% |
-| 3 | L3 新原语（风险最高，可能做不成） | 未开始 |
-| 2 | **前端版式**：Cache 那套（因果链+表+搬运）铺满 30 个 | ✅ 3 个实验级开关（`whyInRail` 30 · `tickChip` 7 · `sequence.chips` 9） |
-| 2 | **本步推演**（`step`，右栏「本步为什么」） | ✅ **30/30** · 冒烟拿真轨迹 458 步逐个走过 |
-| 2 | **引导式实验笔记**（`brief`：输入→规则→结果 + 本次发现） | ✅ **30/30** · 14 份新 verdict 全**现算**（拿真轨迹逐个核过） |
-| 2 | 一句话结论式副标题（`tasks.md` P1-2） | ⏭️ 已超越 · 副标题现为问句；结论改为在实验记录/笔记里**现算**，比静态标语更符合"答案从轨迹派生" |
-
-> 详细的落地进度与下一步在 [docs/tasks.md](docs/tasks.md) 的「进度快照」一节（2026-08-21 校准）。
-
-**AI 填 DSL 实测要点**（详见 `logs/2026-08-17-ai-bench.md`）：
-
-- MiniMax 的 Anthropic 兼容端点**不支持 `output_config.format`**，**强制工具调用 `tool_choice` 才是可用路径**（脚本内置逐级降级探测，换模型自动重测）
-- 强制 `tool_choice` 仍有 **~3% 偶发不出 `tool_use` 块** → `fillWithRetry()` 重试
-- 端点**不强制 schema 的 `required`** → 落地校验必须自己做（`validateDocument` 关卡 0）
-- 但**缺"有语义的值"和缺"空集合"要分开处理** → `normalizeDocument()` 把省略的数组补成 `[]`
-- 端点**同样不强制 `enum`** → 凡是能从别处拿到权威值的字段就别让模型填（`kind` 直接用工具名覆盖）
-
-```bash
-npm run ai:bench        # L1：填参数，跑一遍
-npm run ai:bench -- 3   # 每题 3 次
-npm run ai:l2           # L2：6 个工具混着给，模型自选原语
-npm run ai:l2 -- 3
-```
-
-## 铁律
-
-1. **状态必须自足** —— 只能读 `prev`，不许读闭包里的可变状态。JSON 往返后还能续跑。
-2. **参考实现独立** —— `src/reference/` 与 `src/kernels/` 不共享代码，否则是自己验自己。
-3. **不会红的检查等于没有检查** —— 每条标准都要有一个故意做错的版本能把它弄红。
-4. **答案从轨迹派生** —— 题库里绝不手写答案；人会写错，而且配置一改答案就得跟着改。
-5. **出处不编** —— 记不准的年份题号一律不写，按题型标注，等有可核对的来源再补。
+这些项目由个人持续维护。欢迎通过仓库 Issues 反馈问题、提出具体使用场景；觉得有用，也欢迎 Star 或分享。
